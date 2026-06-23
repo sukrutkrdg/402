@@ -1,0 +1,36 @@
+{
+  "name": "x402-bazaar-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools — pay per call in USDC on Base, no API keys needed.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "x402-bazaar-mcp": "./src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@x402/evm": "^2.16.0",
+    "@x402/fetch": "^2.16.0",
+    "viem": "^2.21.0",
+    "zod": "^3.23.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "x402",
+    "base",
+    "usdc",
+    "pay-per-call",
+    "agent",
+    "modelcontextprotocol"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/x402-bazaar-mcp"
+  }
+}

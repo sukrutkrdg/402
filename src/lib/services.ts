@@ -10,6 +10,7 @@
 
 import { aiSummarize, aiExtract, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
+import { gasOracle, tokenPrice, txDecode } from "./onchain-extra";
 
 export interface ServiceParam {
   name: string;
@@ -87,6 +88,42 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Address", placeholder: "0x… wallet or contract", required: true }],
     handler: addressIntel,
+  },
+  {
+    id: "gas-oracle",
+    name: "Gas Oracle",
+    tagline: "Live Base gas estimates — slow / normal / fast",
+    description:
+      "Returns current Base gas fees (baseFee, maxPriorityFee) and three tiered suggestions (slow, normal, fast) in Gwei, derived live from the Base RPC. Built for agents that time or cost-estimate transactions.",
+    price: "$0.005",
+    icon: "⛽",
+    category: "Onchain",
+    params: [],
+    handler: gasOracle,
+  },
+  {
+    id: "token-price",
+    name: "Token Price",
+    tagline: "DEX price & liquidity for any Base token",
+    description:
+      "Pass a Base token contract address and get the current USD price, 24h change, liquidity, and volume from DexScreener (highest-liquidity pair auto-selected). No API key required.",
+    price: "$0.01",
+    icon: "💲",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token address", required: true }],
+    handler: tokenPrice,
+  },
+  {
+    id: "tx-decode",
+    name: "TX Decode",
+    tagline: "Structural decode of any Base transaction",
+    description:
+      "Provide a Base transaction hash and get a structured summary: from/to, ETH value, status, gas used, block, method selector, and nonce — straight from Base RPC.",
+    price: "$0.01",
+    icon: "🔍",
+    category: "Onchain",
+    params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
+    handler: txDecode,
   },
   {
     id: "ai-summarize",
