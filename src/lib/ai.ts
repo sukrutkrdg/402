@@ -6,16 +6,15 @@
  * if a Claude call throws, withX402 returns an error and the buyer is NOT
  * charged. That's why these throw on failure instead of returning a stub.
  *
- * Model is configurable via ANTHROPIC_MODEL (default claude-opus-4-8). For
- * fatter margins on these micro-priced endpoints, set ANTHROPIC_MODEL to a
- * cheaper model (e.g. claude-haiku-4-5) — that's a pricing decision, so it's
- * left to the operator rather than hardcoded.
+ * Model is configurable via ANTHROPIC_MODEL. Default is claude-haiku-4-5 —
+ * chosen for fat margins on these micro-priced endpoints (~$0.003/call vs ~$0.02
+ * price). Set ANTHROPIC_MODEL=claude-opus-4-8 to trade margin for max quality.
  */
 
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-opus-4-8";
+const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
 export function aiConfigured(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
