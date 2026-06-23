@@ -16,3 +16,6 @@ next-env.d.ts
 .idea/
 *.log
 .cache/
+
+# locally exported brand assets (regenerated from /brand/* routes)
+base-app-assets/
