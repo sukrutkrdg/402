@@ -2,22 +2,54 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { getBaseAppId } from "@/lib/config";
+import FarcasterReady from "@/components/FarcasterReady";
 
 const baseAppId = getBaseAppId();
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402-eight.vercel.app").replace(
+  /\/$/,
+  "",
+);
+
+// Farcaster Mini App embed — renders the URL as a launchable card in feeds.
+const miniappEmbed = {
+  version: "1",
+  imageUrl: `${SITE_URL}/brand/embed`,
+  button: {
+    title: "Open x402 Bazaar",
+    action: {
+      type: "launch_miniapp",
+      url: SITE_URL,
+      name: "x402 Bazaar",
+      splashImageUrl: `${SITE_URL}/brand/splash`,
+      splashBackgroundColor: "#07080a",
+    },
+  },
+};
+const frameEmbed = {
+  ...miniappEmbed,
+  button: { ...miniappEmbed.button, action: { ...miniappEmbed.button.action, type: "launch_frame" } },
+};
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "x402 Bazaar — Pay-per-call API marketplace on Base",
   description:
     "A pay-per-call API marketplace powered by x402 and Base Builder Codes. Every payment is attributed onchain via ERC-8021.",
-  // Base App verification / discovery tag (base:app_id). Distinct from the
-  // x402 Builder Code; set via NEXT_PUBLIC_BASE_APP_ID.
-  other: baseAppId ? { "base:app_id": baseAppId } : {},
+  other: {
+    // Base App verification / discovery tag. Distinct from the x402 Builder Code.
+    ...(baseAppId ? { "base:app_id": baseAppId } : {}),
+    // Farcaster Mini App embed (with fc:frame for backward compatibility).
+    "fc:miniapp": JSON.stringify(miniappEmbed),
+    "fc:frame": JSON.stringify(frameEmbed),
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className="min-h-screen antialiased">
+        <FarcasterReady />
         <header className="sticky top-0 z-20 border-b border-base-line/70 bg-black/40 backdrop-blur">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
             <Link href="/" className="flex items-center gap-2.5">
