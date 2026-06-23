@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sukrutkrdg/x402-bazaar-mcp",
+  "description": "Call paid Base APIs (token risk/honeypot, prices, gas, wallet intel, tx decode + AI utilities) from your agent — pay per call in USDC over x402, no API keys.",
+  "repository": {
+    "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp",
+    "source": "github"
+  },
+  "version": "0.1.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "x402-bazaar-mcp",
+      "version": "0.1.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "AGENT_PRIVATE_KEY",
+          "description": "Hex private key of a Base wallet holding USDC. Used locally to sign x402 payments — never sent anywhere. Use a dedicated low-balance wallet.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "X402_BAZAAR_CATALOG",
+          "description": "Override the catalog URL (default https://402.com.tr/api/catalog).",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

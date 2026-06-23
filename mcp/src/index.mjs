@@ -57,7 +57,7 @@ function getPayingFetch() {
 
 const server = new McpServer({
   name: "x402-bazaar",
-  version: "0.1.2",
+  version: "0.1.3",
 });
 
 // ---------------------------------------------------------------------------
