@@ -8,11 +8,14 @@
  * an LLM call is a one-line change.
  */
 
+import { aiSummarize, aiExtract, aiTranslate } from "./ai";
+
 export interface ServiceParam {
   name: string;
   label: string;
   placeholder: string;
   required?: boolean;
+  multiline?: boolean;
 }
 
 export interface ServiceDef {
@@ -60,6 +63,47 @@ const ASSETS: Record<string, number> = {
 };
 
 export const SERVICES: ServiceDef[] = [
+  {
+    id: "ai-summarize",
+    name: "AI Summarize",
+    tagline: "Any text → crisp bullet points",
+    description:
+      "Paste text and get a 3-5 bullet summary from Claude. Pay-per-call — no API key or subscription needed on your side.",
+    price: "$0.02",
+    icon: "🧠",
+    category: "AI",
+    params: [{ name: "text", label: "Text to summarize", placeholder: "Paste an article, email, or notes…", required: true, multiline: true }],
+    handler: aiSummarize,
+  },
+  {
+    id: "ai-extract",
+    name: "AI Extract",
+    tagline: "Unstructured text → structured JSON",
+    description:
+      "Pull named fields out of any text as clean JSON (e.g. name, email, company, date). Powered by Claude structured outputs.",
+    price: "$0.02",
+    icon: "🗂️",
+    category: "AI",
+    params: [
+      { name: "text", label: "Source text", placeholder: "Paste text containing the data…", required: true, multiline: true },
+      { name: "fields", label: "Fields (comma-separated)", placeholder: "name, email, company, date" },
+    ],
+    handler: aiExtract,
+  },
+  {
+    id: "ai-translate",
+    name: "AI Translate",
+    tagline: "Translate text to any language",
+    description: "Translate text into a target language with Claude. One micro-payment per translation.",
+    price: "$0.02",
+    icon: "🌐",
+    category: "AI",
+    params: [
+      { name: "text", label: "Text to translate", placeholder: "Merhaba dünya…", required: true, multiline: true },
+      { name: "to", label: "Target language", placeholder: "English" },
+    ],
+    handler: aiTranslate,
+  },
   {
     id: "market-snapshot",
     name: "Market Snapshot",

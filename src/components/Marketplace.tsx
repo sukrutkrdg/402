@@ -8,6 +8,7 @@ export interface ServiceParamMeta {
   label: string;
   placeholder: string;
   required?: boolean;
+  multiline?: boolean;
 }
 
 export interface ServiceMeta {
@@ -98,12 +99,22 @@ function ServiceCard({
           {service.params.map((p) => (
             <label key={p.name} className="flex flex-col gap-1">
               <span className="label">{p.label}</span>
-              <input
-                className="rounded-lg border border-base-line bg-black/40 px-3 py-2 text-sm outline-none focus:border-base-blue"
-                placeholder={p.placeholder}
-                value={params[p.name] ?? ""}
-                onChange={(e) => setParams((s) => ({ ...s, [p.name]: e.target.value }))}
-              />
+              {p.multiline ? (
+                <textarea
+                  rows={4}
+                  className="resize-y rounded-lg border border-base-line bg-black/40 px-3 py-2 text-sm outline-none focus:border-base-blue"
+                  placeholder={p.placeholder}
+                  value={params[p.name] ?? ""}
+                  onChange={(e) => setParams((s) => ({ ...s, [p.name]: e.target.value }))}
+                />
+              ) : (
+                <input
+                  className="rounded-lg border border-base-line bg-black/40 px-3 py-2 text-sm outline-none focus:border-base-blue"
+                  placeholder={p.placeholder}
+                  value={params[p.name] ?? ""}
+                  onChange={(e) => setParams((s) => ({ ...s, [p.name]: e.target.value }))}
+                />
+              )}
             </label>
           ))}
         </div>

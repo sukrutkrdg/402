@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { getConfig, sellerReady, buyerReady } from "@/lib/config";
 import { getBuyerAddress } from "@/lib/x402-client";
+import { aiConfigured } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -28,5 +29,6 @@ export async function GET() {
     buyer,
     buyerEnabled: cfg.enableBuyer,
     buyTokenRequired: Boolean(cfg.buyAccessToken),
+    aiReady: aiConfigured(),
   });
 }

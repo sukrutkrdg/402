@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
   const target = new URL(`/api/x402/${service.id}`, origin);
   for (const p of service.params) {
     const v = body.params?.[p.name];
-    if (v) target.searchParams.set(p.name, v);
+    // Cap each value so large AI inputs stay within URL length limits.
+    if (v) target.searchParams.set(p.name, v.slice(0, 5000));
   }
 
   let payingFetch: ReturnType<typeof getPayingFetch>;
