@@ -104,7 +104,7 @@ function ServiceCard({
 
       <p className="text-[13px] leading-relaxed text-gray-400">{service.description}</p>
 
-      {service.params.length > 0 && (
+      {buyerEnabled && service.params.length > 0 && (
         <div className="flex flex-col gap-2">
           {service.params.map((p) => (
             <label key={p.name} className="flex flex-col gap-1">
@@ -130,13 +130,26 @@ function ServiceCard({
         </div>
       )}
 
-      <button className="btn-primary" onClick={buy} disabled={loading || !buyerEnabled}>
-        {!buyerEnabled
-          ? "Buying disabled (showcase)"
-          : loading
-            ? "Settling payment…"
-            : `Pay ${service.price} & call`}
-      </button>
+      {buyerEnabled ? (
+        <button className="btn-primary" onClick={buy} disabled={loading}>
+          {loading ? "Settling payment…" : `Pay ${service.price} & call`}
+        </button>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 overflow-hidden rounded-lg border border-base-line bg-black/40 px-3 py-2">
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-gray-500">GET</span>
+            <code className="truncate font-mono text-[11px] text-sky-300">/api/x402/{service.id}</code>
+          </div>
+          {service.params.length > 0 && (
+            <div className="text-[11px] text-gray-500">
+              params: {service.params.map((p) => p.name).join(", ")}
+            </div>
+          )}
+          <a href="/agents" className="btn-ghost">
+            Call from your agent →
+          </a>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
@@ -293,9 +306,14 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         <StatusBar status={status} />
 
         {!buyerEnabled && (
-          <div className="card px-4 py-3 text-xs text-amber-300">
-            🔒 Showcase mode: paying is disabled on this deployment. Browse the services and use the{" "}
-            <a className="underline" href="/dashboard">
+          <div className="card px-4 py-3 text-xs text-gray-400">
+            🤖 These APIs are built for agents — they call the endpoints directly and pay per call in
+            USDC. See{" "}
+            <a className="text-sky-400 hover:underline" href="/agents">
+              For agents
+            </a>{" "}
+            to integrate, or the{" "}
+            <a className="text-sky-400 hover:underline" href="/dashboard">
               attribution dashboard
             </a>{" "}
             to decode any settlement on-chain.
