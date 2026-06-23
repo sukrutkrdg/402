@@ -7,17 +7,13 @@
  */
 
 import { SERVICES } from "@/lib/services";
-import { getConfig } from "@/lib/config";
+import { getConfig, getSiteUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402-eight.vercel.app").replace(
-  /\/$/,
-  "",
-);
-
 export function GET() {
   const cfg = getConfig();
+  const SITE_URL = getSiteUrl();
   return Response.json({
     name: "x402 Bazaar",
     description:

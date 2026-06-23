@@ -7,14 +7,12 @@
  *   FARCASTER_HEADER, FARCASTER_PAYLOAD, FARCASTER_SIGNATURE
  */
 
+import { getSiteUrl } from "@/lib/config";
+
 export const dynamic = "force-dynamic";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402-eight.vercel.app").replace(
-  /\/$/,
-  "",
-);
-
 export function GET() {
+  const SITE_URL = getSiteUrl();
   return Response.json({
     accountAssociation: {
       // Public, domain-bound proof of ownership (signed for 402-eight.vercel.app,

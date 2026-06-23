@@ -1,11 +1,9 @@
 import { SERVICES } from "@/lib/services";
+import { getSiteUrl } from "@/lib/config";
 
 export const metadata = { title: "For Agents & Developers — x402 Bazaar" };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402-eight.vercel.app").replace(
-  /\/$/,
-  "",
-);
+const SITE_URL = getSiteUrl();
 
 function Code({ children }: { children: string }) {
   return (

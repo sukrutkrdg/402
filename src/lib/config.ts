@@ -79,6 +79,11 @@ export function getBaseAppId(): string | undefined {
   return process.env.NEXT_PUBLIC_BASE_APP_ID?.trim() || DEFAULT_BASE_APP_ID;
 }
 
+/** Canonical public site origin (no trailing slash). Override via NEXT_PUBLIC_SITE_URL. */
+export function getSiteUrl(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402.com.tr").replace(/\/$/, "");
+}
+
 /** True when the server is fully wired to settle real payments on mainnet. */
 export function sellerReady(c: AppConfig): { ok: boolean; missing: string[] } {
   const missing: string[] = [];

@@ -1,15 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
-import { getBaseAppId } from "@/lib/config";
+import { getBaseAppId, getSiteUrl } from "@/lib/config";
 import FarcasterReady from "@/components/FarcasterReady";
 
 const baseAppId = getBaseAppId();
-
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402-eight.vercel.app").replace(
-  /\/$/,
-  "",
-);
+const SITE_URL = getSiteUrl();
 
 // Farcaster Mini App embed — renders the URL as a launchable card in feeds.
 const miniappEmbed = {
