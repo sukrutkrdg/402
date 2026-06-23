@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(0, 82, 255, 0.18), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(0, 82, 255, 0.1), transparent 55%),
+    #07080a;
+  color: #e7eaf0;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2f3a transparent;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-base-line bg-base-panel/70 backdrop-blur;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-base-blue text-white hover:brightness-110 active:brightness-95;
+  }
+  .btn-ghost {
+    @apply btn border border-base-line bg-white/5 text-white hover:bg-white/10;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-base-line bg-white/5 px-2.5 py-1 text-xs font-medium text-gray-300;
+  }
+  .label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-gray-500;
+  }
+  .codechip {
+    @apply rounded-md border border-base-line bg-black/40 px-1.5 py-0.5 font-mono text-[12px] text-sky-300;
+  }
+}
