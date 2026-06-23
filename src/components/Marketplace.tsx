@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import StatusBar, { useStatus } from "./StatusBar";
 
 export interface ServiceParamMeta {
@@ -235,6 +235,14 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const buyerEnabled = status?.buyerEnabled ?? true;
   const tokenRequired = status?.buyTokenRequired ?? false;
 
+  const [callsServed, setCallsServed] = useState<number | null>(null);
+  useEffect(() => {
+    fetch("/api/public-stats")
+      .then((r) => r.json())
+      .then((d) => setCallsServed(typeof d.callsServed === "number" ? d.callsServed : null))
+      .catch(() => setCallsServed(null));
+  }, []);
+
   const groups = groupByCategory(services);
 
   return (
@@ -268,12 +276,17 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           </div>
 
           {/* Trust strip */}
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             {TRUST_PILLS.map((p) => (
               <span key={p.label} className="pill">
                 {p.label}
               </span>
             ))}
+            <span className="pill border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              {services.length} services live
+              {callsServed && callsServed > 0 ? ` · ${callsServed.toLocaleString()} calls served` : ""}
+            </span>
           </div>
         </div>
 

@@ -12,9 +12,19 @@ export async function logUsage(serviceId: string, paid: boolean): Promise<void> 
   try {
     await kvIncr(`usage:total:${serviceId}`);
     if (paid) await kvIncr(`usage:paid:${serviceId}`);
+    await kvIncr("usage:calls:total"); // cheap global counter for the public strip
     await kvLPush("usage:recent", JSON.stringify({ s: serviceId, paid, t: Date.now() }), 100);
   } catch {
     /* never let analytics break a request */
+  }
+}
+
+/** Single cheap read for the public "N calls served" strip (no per-service fan-out). */
+export async function getCallsServed(): Promise<number> {
+  try {
+    return await kvGetNumber("usage:calls:total");
+  } catch {
+    return 0;
   }
 }
 

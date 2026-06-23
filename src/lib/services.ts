@@ -13,6 +13,7 @@ import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode } from "./onchain-extra";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
+import { contractAbi, decodeSelector } from "./onchain-extra3";
 
 export interface ServiceParam {
   name: string;
@@ -167,6 +168,30 @@ export const SERVICES: ServiceDef[] = [
       { name: "webhook", label: "Webhook URL (https)", placeholder: "https://your-endpoint", required: true },
     ],
     handler: registerAlert,
+  },
+  {
+    id: "contract-abi",
+    name: "Contract ABI Lookup",
+    tagline: "Is this Base contract verified? Get its ABI",
+    description:
+      "Checks Sourcify for a Base contract's verification status and returns its ABI as function/event name lists + item count (full or partial match). No API key required.",
+    price: "$0.01",
+    icon: "📄",
+    category: "Onchain",
+    params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
+    handler: contractAbi,
+  },
+  {
+    id: "decode-selector",
+    name: "4-Byte Selector Decoder",
+    tagline: "Turn a function selector into readable signatures",
+    description:
+      "Resolves a 4-byte function selector (e.g. 0x70a08231) to candidate human-readable signatures via 4byte.directory. Accepts a bare selector or full calldata.",
+    price: "$0.005",
+    icon: "🧩",
+    category: "Onchain",
+    params: [{ name: "selector", label: "Function selector", placeholder: "0x70a08231", required: true }],
+    handler: decodeSelector,
   },
   {
     id: "ai-summarize",
