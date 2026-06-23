@@ -58,9 +58,17 @@ export function getConfig(): AppConfig {
   };
 }
 
-/** Public Base App id for the `base:app_id` verification meta tag (safe to expose). */
+/**
+ * Public Base App id for the `base:app_id` verification meta tag.
+ *
+ * Safe to expose (it's a public meta tag). Falls back to the project's app id so
+ * the tag always renders even when NEXT_PUBLIC_BASE_APP_ID isn't set on the host.
+ * Override via env to reuse this project for a different Base app.
+ */
+const DEFAULT_BASE_APP_ID = "6a3a16d373eebca465279cc8";
+
 export function getBaseAppId(): string | undefined {
-  return process.env.NEXT_PUBLIC_BASE_APP_ID?.trim() || undefined;
+  return process.env.NEXT_PUBLIC_BASE_APP_ID?.trim() || DEFAULT_BASE_APP_ID;
 }
 
 /** True when the server is fully wired to settle real payments on mainnet. */
