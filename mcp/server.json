@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sukrutkrdg/x402-bazaar-mcp",
-  "description": "Call paid Base APIs (token risk/honeypot, prices, gas, wallet intel, tx decode + AI utilities) from your agent — pay per call in USDC over x402, no API keys.",
+  "description": "Pay-per-call Base APIs for agents: token risk, prices, gas, wallet intel, AI. USDC via x402.",
   "repository": {
     "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp",
     "source": "github"
