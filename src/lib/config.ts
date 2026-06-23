@@ -49,6 +49,8 @@ export interface AppConfig {
   enableBuyer: boolean;
   /** Optional shared secret required to call `/api/buy` when set. */
   buyAccessToken: string | undefined;
+  /** Owner-only secret to view the private revenue dashboard (/stats). */
+  statsToken: string | undefined;
 }
 
 export function getConfig(): AppConfig {
@@ -63,6 +65,7 @@ export function getConfig(): AppConfig {
     // Default ON locally; set ENABLE_BUYER=false on public deploys to disable spending.
     enableBuyer: process.env.ENABLE_BUYER?.trim().toLowerCase() !== "false",
     buyAccessToken: process.env.BUY_ACCESS_TOKEN?.trim() || undefined,
+    statsToken: process.env.STATS_TOKEN?.trim() || undefined,
   };
 }
 
