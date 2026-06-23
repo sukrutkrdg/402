@@ -90,6 +90,33 @@ point it at `npx x402-bazaar-mcp` with `AGENT_PRIVATE_KEY` in the environment.
 
 ---
 
+## What your agent can do (tools)
+
+Tools are loaded live from the catalog, so the list stays current. At the time of
+writing it includes:
+
+| Tool | Price | What it does |
+|---|---|---|
+| `token_risk` | $0.02 | Token safety score (honeypot, taxes, ownership, holders) for any Base token |
+| `address_intel` | $0.01 | EOA/contract, ETH+USDC balance, activity for any address |
+| `gas_oracle` | $0.005 | Live Base gas estimates (slow/normal/fast) |
+| `token_price` | $0.01 | DEX price + liquidity for a Base token |
+| `tx_decode` | $0.01 | Structural decode of a Base transaction |
+| `wallet_tokens` | $0.01 | Portfolio of major Base tokens + USD value |
+| `trending_tokens` | $0.005 | Currently boosted/trending Base tokens |
+| `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
+
+### Example
+
+Once installed, just ask your agent naturally — it picks the right tool and pays per call:
+
+> "Is `0x…` a safe token to buy on Base? Check the risk and current price."
+
+The agent calls `token_risk` and `token_price`, each settling a tiny USDC payment
+from your wallet, and answers with the on-chain data.
+
+---
+
 ## Discovering available services
 
 - Human-readable catalog & docs: <https://402.com.tr/agents>

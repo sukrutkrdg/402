@@ -1,0 +1,33 @@
+# Smithery configuration for x402-bazaar-mcp
+# Docs: https://smithery.ai/docs
+#
+# If Smithery scans the repo root (sukrutkrdg/402) rather than this subfolder,
+# copy this file to the repo root or point Smithery at the `mcp` directory.
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - agentPrivateKey
+    properties:
+      agentPrivateKey:
+        type: string
+        title: Agent wallet private key
+        description: >-
+          Private key of a Base wallet holding USDC. Used locally to sign x402
+          payments (gasless for the payer). Use a dedicated low-balance wallet.
+      catalogUrl:
+        type: string
+        title: Catalog URL
+        default: https://402.com.tr/api/catalog
+        description: Override the x402 Bazaar catalog endpoint (optional).
+  commandFunction: |-
+    (config) => ({
+      command: "npx",
+      args: ["-y", "x402-bazaar-mcp"],
+      env: {
+        AGENT_PRIVATE_KEY: config.agentPrivateKey,
+        ...(config.catalogUrl ? { X402_BAZAAR_CATALOG: config.catalogUrl } : {})
+      }
+    })
