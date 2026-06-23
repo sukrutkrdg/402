@@ -66,13 +66,13 @@ export function iconArt(px: number) {
         <div
           style={{
             display: "flex",
-            fontSize: px * 0.205,
+            fontSize: px * 0.3,
             fontWeight: 800,
             color: "#0046e6",
-            letterSpacing: -px * 0.006,
+            letterSpacing: -px * 0.008,
           }}
         >
-          x402
+          402
         </div>
       </div>
     </div>
@@ -110,7 +110,7 @@ function brandRow() {
           color: "#fff",
         }}
       >
-        x4
+        402
       </div>
       <div style={{ display: "flex", fontSize: 46, fontWeight: 700 }}>x402 Bazaar</div>
     </div>

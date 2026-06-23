@@ -14,6 +14,7 @@ import { gasOracle, tokenPrice, txDecode } from "./onchain-extra";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector } from "./onchain-extra3";
+import { basenameResolve } from "./basename";
 
 export interface ServiceParam {
   name: string;
@@ -192,6 +193,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "selector", label: "Function selector", placeholder: "0x70a08231", required: true }],
     handler: decodeSelector,
+  },
+  {
+    id: "basename",
+    name: "Basename Resolver",
+    tagline: "Resolve names ↔ addresses on Base",
+    description:
+      "Forward + reverse Basename resolution read from the Base L2 Resolver: turn jesse.base.eth into an address, or an address into its primary Basename. No API key required.",
+    price: "$0.005",
+    icon: "🏷️",
+    category: "Onchain",
+    params: [{ name: "query", label: "Basename or address", placeholder: "jesse.base.eth or 0x…", required: true }],
+    handler: basenameResolve,
   },
   {
     id: "ai-summarize",
