@@ -12,7 +12,66 @@
  */
 
 import "server-only";
+import net from "node:net";
+import { lookup } from "node:dns/promises";
 import { kvSet, kvGet, kvDel, kvSAdd, kvSRem, kvSMembers } from "@/lib/kv";
+
+// ---------------------------------------------------------------------------
+// SSRF protection for caller-supplied webhook URLs
+// ---------------------------------------------------------------------------
+
+/** True if an IP literal is in a private / loopback / link-local / metadata range. */
+function isPrivateIp(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true; // link-local + cloud metadata (169.254.169.254)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    return false;
+  }
+  const lower = ip.toLowerCase();
+  if (lower === "::1" || lower === "::") return true;
+  if (lower.startsWith("::ffff:")) return isPrivateIp(lower.replace("::ffff:", "")); // IPv4-mapped
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique-local fc00::/7
+  if (lower.startsWith("fe80")) return true; // link-local
+  return false;
+}
+
+/**
+ * Rejects webhook URLs that could be used for SSRF: non-https, localhost/.local,
+ * private IP literals, or hostnames that resolve to private addresses. Called at
+ * registration AND again by the cron right before delivery (DNS-rebinding defense).
+ */
+export async function assertSafeWebhook(raw: string): Promise<URL> {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("Invalid webhook: must be a valid URL");
+  }
+  if (url.protocol !== "https:") throw new Error("Invalid webhook: must be an https:// URL");
+
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (/^(localhost|.*\.local|.*\.internal)$/i.test(host)) {
+    throw new Error("Invalid webhook: host not allowed");
+  }
+  if (net.isIP(host)) {
+    if (isPrivateIp(host)) throw new Error("Invalid webhook: private/internal address not allowed");
+    return url;
+  }
+  let addrs;
+  try {
+    addrs = await lookup(host, { all: true });
+  } catch {
+    throw new Error("Invalid webhook: host could not be resolved");
+  }
+  if (addrs.length === 0 || addrs.some((a) => isPrivateIp(a.address))) {
+    throw new Error("Invalid webhook: resolves to a private/internal address");
+  }
+  return url;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,18 +176,10 @@ export async function registerAlert(
     throw new Error('Invalid direction: must be "above" or "below"');
   }
 
-  // ---- Validate webhook ----
+  // ---- Validate webhook (https + SSRF protection: no private/internal hosts) ----
   const webhook = (params.webhook || "").trim();
   if (!webhook) throw new Error("webhook is required");
-  let parsedWebhook: URL;
-  try {
-    parsedWebhook = new URL(webhook);
-  } catch {
-    throw new Error("Invalid webhook: must be a valid URL");
-  }
-  if (parsedWebhook.protocol !== "https:") {
-    throw new Error("Invalid webhook: must be an https:// URL");
-  }
+  await assertSafeWebhook(webhook);
 
   // ---- Fetch current price (throws if unavailable — prevents charge on failure) ----
   const currentPrice = await fetchTokenPrice(token);

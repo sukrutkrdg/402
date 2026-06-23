@@ -24,6 +24,7 @@ import {
   getAlert,
   markFired,
   fetchTokenPrice,
+  assertSafeWebhook,
 } from "@/lib/alerts";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -45,8 +46,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // ---- Load active alert ids ----
-  const ids = await listActiveAlerts();
+  // ---- Load active alert ids (bounded per run to cap work) ----
+  const ids = (await listActiveAlerts()).slice(0, 500);
 
   let checked = 0;
   let fired = 0;
@@ -87,6 +88,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         : currentPrice <= alert.threshold;
 
     if (!crossed) continue;
+
+    // Re-validate webhook right before delivery (DNS-rebinding / TOCTOU defense).
+    try {
+      await assertSafeWebhook(alert.webhook);
+    } catch (err) {
+      errors.push(`${id}: webhook blocked — ${err instanceof Error ? err.message : String(err)}`);
+      await markFired(id);
+      continue;
+    }
 
     // ---- Fire webhook ----
     const payload = {
