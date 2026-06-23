@@ -5,6 +5,8 @@ const nextConfig = {
     return [
       // Serve the Farcaster Mini App manifest at the well-known path.
       { source: "/.well-known/farcaster.json", destination: "/api/farcaster-manifest" },
+      // Machine-readable x402 service catalog for agent/indexer discovery.
+      { source: "/.well-known/x402", destination: "/api/catalog" },
     ];
   },
 };

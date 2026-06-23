@@ -9,6 +9,7 @@
  */
 
 import { aiSummarize, aiExtract, aiTranslate } from "./ai";
+import { tokenRisk, addressIntel } from "./onchain";
 
 export interface ServiceParam {
   name: string;
@@ -63,6 +64,30 @@ const ASSETS: Record<string, number> = {
 };
 
 export const SERVICES: ServiceDef[] = [
+  {
+    id: "token-risk",
+    name: "Token Risk Check",
+    tagline: "Pre-trade safety score for any Base token",
+    description:
+      "Pass a token contract address and get a risk score + flags (ERC-20 conformance, ownership renounce, upgradeable proxy) computed live from Base. Built for trading bots and agents that vet tokens before buying.",
+    price: "$0.02",
+    icon: "🛡️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token address", required: true }],
+    handler: tokenRisk,
+  },
+  {
+    id: "address-intel",
+    name: "Address Intelligence",
+    tagline: "Instant profile of any Base address",
+    description:
+      "EOA vs contract, ETH + USDC balance, transaction count and activity level — straight from Base RPC. Useful for counterparty and wallet checks.",
+    price: "$0.01",
+    icon: "🔎",
+    category: "Onchain",
+    params: [{ name: "address", label: "Address", placeholder: "0x… wallet or contract", required: true }],
+    handler: addressIntel,
+  },
   {
     id: "ai-summarize",
     name: "AI Summarize",

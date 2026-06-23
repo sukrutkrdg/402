@@ -75,6 +75,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               >
                 Attribution
               </Link>
+              <Link
+                href="/agents"
+                className="rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
+              >
+                For agents
+              </Link>
               <a
                 href="https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes"
                 target="_blank"
