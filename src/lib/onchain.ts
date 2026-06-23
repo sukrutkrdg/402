@@ -45,7 +45,31 @@ function requireAddress(raw: string): Address {
   return getAddress(v);
 }
 
-/** Token Risk Check — pre-trade safety signals for a Base token. */
+type GoPlus = Record<string, unknown>;
+
+/** Free public token-security data (honeypot, taxes, holders). Returns null on failure. */
+async function fetchGoPlus(address: string): Promise<GoPlus | null> {
+  try {
+    const r = await fetch(
+      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!r.ok) return null;
+    const j = (await r.json()) as { result?: Record<string, GoPlus> };
+    const row = j.result?.[address.toLowerCase()];
+    return row && Object.keys(row).length > 0 ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+const isTrue = (v: unknown) => v === "1" || v === 1 || v === true;
+const num = (v: unknown) => {
+  const n = parseFloat(String(v));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Token Risk Check v2 — RPC base + public security enrichment (honeypot, taxes, holders). */
 export async function tokenRisk(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
   const c = client();
@@ -71,18 +95,20 @@ export async function tokenRisk(params: Record<string, string>) {
     }
   };
 
-  const [name, symbol, decimals, totalSupply] = await Promise.all([
+  // RPC base (authoritative, live) + GoPlus security (honeypot/taxes/holders) in parallel
+  const [name, symbol, decimals, totalSupply, gp] = await Promise.all([
     read("name"),
     read("symbol"),
     read("decimals"),
     read("totalSupply"),
+    fetchGoPlus(address),
   ]);
 
   const flags: string[] = [];
   const isErc20 = symbol !== undefined && decimals !== undefined && totalSupply !== undefined;
   if (!isErc20) flags.push("not_standard_erc20");
 
-  // Ownership
+  // Ownership (RPC)
   let owner: string | undefined;
   for (const abi of ownerAbis) {
     try {
@@ -102,18 +128,54 @@ export async function tokenRisk(params: Record<string, string>) {
   let upgradeableProxy = false;
   try {
     const slot = await c.getStorageAt({ address, slot: IMPL_SLOT });
-    if (slot && BigInt(slot) !== 0n) {
-      upgradeableProxy = true;
-      flags.push("upgradeable_proxy");
-    }
+    if (slot && BigInt(slot) !== 0n) upgradeableProxy = true;
   } catch {
     /* ignore */
   }
 
+  // --- scoring ---
   let score = 0;
   if (flags.includes("not_standard_erc20")) score += 40;
-  if (flags.includes("owner_not_renounced")) score += 35;
-  if (flags.includes("upgradeable_proxy")) score += 30;
+  if (flags.includes("owner_not_renounced")) score += 15;
+  if (upgradeableProxy) { flags.push("upgradeable_proxy"); score += 15; }
+
+  // GoPlus security enrichment
+  let security: Record<string, unknown> | null = null;
+  if (gp) {
+    const buyTax = num(gp.buy_tax) * 100;
+    const sellTax = num(gp.sell_tax) * 100;
+    const topHolderPct = Array.isArray(gp.holders) && gp.holders[0]
+      ? num((gp.holders[0] as GoPlus).percent) * 100
+      : null;
+
+    if (isTrue(gp.is_honeypot)) { flags.push("honeypot"); score += 60; }
+    if (isTrue(gp.cannot_sell_all)) { flags.push("cannot_sell_all"); score += 40; }
+    if (sellTax >= 50) { flags.push("extreme_sell_tax"); score += 40; }
+    else if (sellTax >= 10) { flags.push("high_sell_tax"); score += 25; }
+    if (buyTax >= 10) { flags.push("high_buy_tax"); score += 15; }
+    if (isTrue(gp.transfer_pausable)) { flags.push("transfer_pausable"); score += 20; }
+    if (isTrue(gp.is_mintable)) { flags.push("mintable"); score += 15; }
+    if (gp.is_open_source !== undefined && !isTrue(gp.is_open_source)) { flags.push("unverified_source"); score += 25; }
+    if (isTrue(gp.can_take_back_ownership)) { flags.push("can_take_back_ownership"); score += 25; }
+    if (isTrue(gp.hidden_owner)) { flags.push("hidden_owner"); score += 20; }
+    if (isTrue(gp.is_blacklisted)) { flags.push("has_blacklist"); score += 15; }
+    if (topHolderPct !== null && topHolderPct >= 50) { flags.push("top_holder_over_50pct"); score += 20; }
+
+    security = {
+      isHoneypot: isTrue(gp.is_honeypot),
+      buyTaxPct: buyTax,
+      sellTaxPct: sellTax,
+      isOpenSource: gp.is_open_source !== undefined ? isTrue(gp.is_open_source) : null,
+      isMintable: isTrue(gp.is_mintable),
+      transferPausable: isTrue(gp.transfer_pausable),
+      canTakeBackOwnership: isTrue(gp.can_take_back_ownership),
+      hiddenOwner: isTrue(gp.hidden_owner),
+      holderCount: gp.holder_count !== undefined ? Number(gp.holder_count) : null,
+      topHolderPct,
+      lpHolderCount: gp.lp_holder_count !== undefined ? Number(gp.lp_holder_count) : null,
+    };
+  }
+
   score = Math.min(score, 100);
   const riskLevel = score >= 70 ? "high" : score >= 35 ? "medium" : "low";
 
@@ -121,8 +183,8 @@ export async function tokenRisk(params: Record<string, string>) {
     address,
     isContract: true,
     token: {
-      name: name ?? null,
-      symbol: symbol ?? null,
+      name: name ?? (gp?.token_name as string) ?? null,
+      symbol: symbol ?? (gp?.token_symbol as string) ?? null,
       decimals: decimals !== undefined ? Number(decimals) : null,
       totalSupply: totalSupply !== undefined ? String(totalSupply) : null,
     },
@@ -130,11 +192,14 @@ export async function tokenRisk(params: Record<string, string>) {
       ? { owner, renounced }
       : { owner: null, renounced: null, note: "No owner()/getOwner() function found" },
     upgradeableProxy,
+    security,
     riskScore: score,
     riskLevel,
     flags,
-    coverage:
-      "v1 (RPC-only): contract, ERC-20 conformance, ownership renounce, EIP-1967 proxy. v2: honeypot simulation + holder concentration.",
+    sources: gp ? ["base-rpc", "goplus"] : ["base-rpc"],
+    coverage: gp
+      ? "RPC base + GoPlus security (honeypot, taxes, holders, source, ownership controls)."
+      : "RPC-only (security provider unavailable): contract, ERC-20, ownership, proxy.",
     checkedAt: new Date().toISOString(),
   };
 }
