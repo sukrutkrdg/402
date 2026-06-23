@@ -29,7 +29,7 @@ import { getConfig } from "@/lib/config";
 // ---------------------------------------------------------------------------
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl) });
+  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
 }
 
 /** Validates a checksummed 0x…40-hex address; throws a user-facing message on failure. */
@@ -187,33 +187,9 @@ export async function walletTokens(params: Record<string, string>) {
       const data = (await res.json()) as DexTokensResponse;
       const pairs = data.pairs?.filter(Boolean) ?? [];
 
-      // For each token address, pick the pair with the greatest USD liquidity.
-      for (const token of BASE_TOKENS) {
-        const addrLower = token.address.toLowerCase();
-        const relevant = pairs.filter(
-          (p) =>
-            p.chainId === "base" &&
-            typeof p.priceUsd === "string" &&
-            p.priceUsd !== null,
-        );
-        // Find best pair for this token (DexScreener may mix all tokens in one response).
-        // We pick among pairs that are generally for base — best by liquidity.
-        const best = relevant.reduce<DexPair | null>((top, p) => {
-          if (!top) return p;
-          return (p.liquidity?.usd ?? 0) > (top.liquidity?.usd ?? 0) ? p : top;
-        }, null);
-
-        if (best?.priceUsd) {
-          const price = parseFloat(best.priceUsd);
-          if (Number.isFinite(price)) priceMap.set(addrLower, price);
-        }
-      }
-
-      // Re-derive per-token prices more accurately: group pairs by which token
-      // address they correspond to via a second pass using the response structure.
       // DexScreener /latest/dex/tokens/{addrs} returns pairs for ALL requested
-      // addresses mixed together, so we need a smarter approach: build a per-address
-      // best-pair lookup.  We iterate pairs and match by pairAddress token fields.
+      // addresses mixed together, so match each token to its own pairs by
+      // baseToken/quoteToken address and pick the highest-liquidity one.
       interface DetailedPair extends DexPair {
         baseToken?: { address?: string };
         quoteToken?: { address?: string };

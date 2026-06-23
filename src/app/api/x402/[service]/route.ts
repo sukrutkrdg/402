@@ -26,7 +26,9 @@ function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>
   const params: Record<string, string> = {};
   for (const p of service!.params) {
     const v = url.searchParams.get(p.name);
-    if (v) params[p.name] = v;
+    // Defensive ceiling — handlers clamp their own params, but never allocate
+    // oversized values. No legitimate param here exceeds 2000 chars.
+    if (v) params[p.name] = v.slice(0, 2000);
   }
   return params;
 }

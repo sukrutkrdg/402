@@ -78,7 +78,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
 
 const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY);
-const client = new x402Client().register("eip155:8453", new ExactEvmScheme(account));
+const client = new x402Client();
+client.register("eip155:8453", new ExactEvmScheme(account));
 const pay = wrapFetchWithPayment(fetch, client);
 
 const server = new McpServer({ name: "x402-bazaar", version: "1.0.0" });

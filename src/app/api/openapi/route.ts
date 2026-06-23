@@ -30,7 +30,7 @@ export function GET() {
           },
           "402": { description: "Payment Required — pay via x402 and retry" },
         },
-        "x-x402": { price: s.price, network: "eip155:8453", asset: "USDC", payTo: cfg.payTo },
+        "x-x402": { price: s.price, network: "eip155:8453", asset: "USDC", payTo: cfg.payTo || null },
       },
     };
   }

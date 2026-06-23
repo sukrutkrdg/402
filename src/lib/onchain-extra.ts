@@ -29,7 +29,7 @@ import { getConfig } from "@/lib/config";
 // ---------------------------------------------------------------------------
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl) });
+  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
 }
 
 /** Validates a checksummed 0x…40-hex address; throws a user-facing message on failure. */
@@ -54,12 +54,19 @@ export async function gasOracle(_params: Record<string, string>) {
   const c = client();
 
   // Fetch fee estimates and latest block in parallel for a consistent snapshot.
-  const [fees, block] = await Promise.all([
-    c.estimateFeesPerGas(),
-    c.getBlock({ blockTag: "latest" }),
-  ]);
+  let fees, block;
+  try {
+    [fees, block] = await Promise.all([
+      c.estimateFeesPerGas(),
+      c.getBlock({ blockTag: "latest" }),
+    ]);
+  } catch (err) {
+    throw new Error(`Gas oracle unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
-  const baseFee = block.baseFeePerGas ?? fees.maxFeePerGas - fees.maxPriorityFeePerGas;
+  const baseFee =
+    block.baseFeePerGas ??
+    (fees.maxFeePerGas !== undefined ? fees.maxFeePerGas - fees.maxPriorityFeePerGas : 0n);
   const maxPriorityFee = fees.maxPriorityFeePerGas;
 
   // Derive slow / normal / fast tip tiers as simple multipliers of the suggested

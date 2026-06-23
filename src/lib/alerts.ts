@@ -14,7 +14,7 @@
 import "server-only";
 import net from "node:net";
 import { lookup } from "node:dns/promises";
-import { kvSet, kvGet, kvDel, kvSAdd, kvSRem, kvSMembers } from "@/lib/kv";
+import { kvSet, kvGet, kvSAdd, kvSRem, kvSMembers } from "@/lib/kv";
 
 // ---------------------------------------------------------------------------
 // SSRF protection for caller-supplied webhook URLs
@@ -252,7 +252,8 @@ export async function markFired(id: string): Promise<void> {
     }
   }
   await kvSRem("alerts:active", id);
-  await kvDel(`alert:${id}`);
+  // NOTE: we intentionally do NOT kvDel here — the 1-hour TTL above keeps the
+  // fired alert briefly inspectable, then it expires on its own.
 }
 
 /** Convenience re-export of the price helper for use in the cron route. */

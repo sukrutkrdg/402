@@ -16,6 +16,7 @@ import { getService } from "@/lib/services";
 import { recordPayment } from "@/lib/store";
 import { getConfig } from "@/lib/config";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { safeEqual } from "@/lib/secure";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,10 @@ export async function POST(req: NextRequest) {
   }
 
   // 2) Optional shared-secret gate so a public URL can't drain the buyer wallet.
+  // Header only (not body) so the secret doesn't end up in request logs.
   if (cfg.buyAccessToken) {
-    const provided = req.headers.get("x-buy-token") || body.token || "";
-    if (provided !== cfg.buyAccessToken) {
+    const provided = req.headers.get("x-buy-token") || "";
+    if (!safeEqual(provided, cfg.buyAccessToken)) {
       return NextResponse.json({ error: "Invalid or missing access token." }, { status: 401 });
     }
   }

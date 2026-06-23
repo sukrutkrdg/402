@@ -30,12 +30,6 @@ function requireAddress(raw: string): Address {
 // 1. contractAbi — Sourcify verification + ABI for a Base contract
 // ---------------------------------------------------------------------------
 
-interface SourcifyCheckEntry {
-  address?: string;
-  chainIds?: Array<{ chainId: string; status: string }>;
-  status?: string | boolean;
-}
-
 interface SourcifyMetadata {
   output?: {
     abi?: Array<{ type: string; name?: string; [key: string]: unknown }>;
@@ -74,7 +68,10 @@ export async function contractAbi(params: Record<string, string>) {
         `https://repo.sourcify.dev/contracts/${match}/8453/${address}/metadata.json`,
         { signal: AbortSignal.timeout(8000) },
       );
-      if (res.status === 404) continue; // not verified under this match
+      if (res.status === 404) {
+        serverError = null; // clean "not under this match" — not a server failure
+        continue;
+      }
       if (!res.ok) {
         serverError = `Sourcify responded ${res.status}`;
         continue;
@@ -85,6 +82,8 @@ export async function contractAbi(params: Record<string, string>) {
         matchType = label;
         break;
       }
+      // 200 but no ABI in metadata → treat as "couldn't compute", don't claim unverified.
+      serverError = "Sourcify metadata had no ABI";
     } catch (err) {
       serverError = err instanceof Error ? err.message : String(err);
     }

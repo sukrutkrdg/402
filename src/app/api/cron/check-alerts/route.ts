@@ -26,6 +26,8 @@ import {
   fetchTokenPrice,
   assertSafeWebhook,
 } from "@/lib/alerts";
+import { kvConfigured } from "@/lib/kv";
+import { safeEqual } from "@/lib/secure";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ---- Auth check ----
@@ -42,9 +44,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     ? authHeader.slice(7)
     : "";
 
-  if (provided !== secret) {
+  if (!safeEqual(provided, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Without KV, alerts live in per-instance memory — a cron hitting a different
+  // instance sees nothing. Surface that instead of silently reporting 0.
+  const kvWarning = kvConfigured()
+    ? undefined
+    : "KV not configured — alerts are in-memory and NOT durable across instances; configure UPSTASH_REDIS_REST_URL/TOKEN.";
 
   // ---- Load active alert ids (bounded per run to cap work) ----
   const ids = (await listActiveAlerts()).slice(0, 500);
@@ -136,5 +144,5 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     fired++;
   }
 
-  return NextResponse.json({ checked, fired, errors });
+  return NextResponse.json({ checked, fired, errors, ...(kvWarning ? { kvWarning } : {}) });
 }

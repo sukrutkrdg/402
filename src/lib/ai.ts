@@ -104,7 +104,8 @@ export async function aiExtract(params: Record<string, string>) {
 export async function aiTranslate(params: Record<string, string>) {
   const input = (params.text || "").trim();
   if (!input) throw new Error("Missing 'text'");
-  const to = (params.to || "English").trim().slice(0, 40);
+  // Sanitize the language so it can't inject instructions into the system prompt.
+  const to = ((params.to || "English").replace(/[^a-zA-Z\s-]/g, "").trim().slice(0, 40)) || "English";
   const { text, truncated } = clamp(input, 1200);
 
   const msg = await client().messages.create({

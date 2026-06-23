@@ -3,13 +3,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRevenue } from "@/lib/revenue";
 import { getConfig } from "@/lib/config";
+import { safeEqual } from "@/lib/secure";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const cfg = getConfig();
   const url = new URL(req.url);
-  const provided = req.headers.get("x-stats-token") || url.searchParams.get("token") || "";
+  // Header only — never accept the token in the query string (it leaks into logs).
+  const provided = req.headers.get("x-stats-token") || "";
 
   // Private dashboard: requires STATS_TOKEN to be set and matched.
   if (!cfg.statsToken) {
@@ -18,7 +20,7 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
-  if (provided !== cfg.statsToken) {
+  if (!safeEqual(provided, cfg.statsToken)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

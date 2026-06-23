@@ -162,7 +162,7 @@ function ServiceCard({
           <div>
             <div className="label mb-1">Response</div>
             <pre className="max-h-48 overflow-auto rounded-lg bg-black/50 p-3 text-[11px] leading-relaxed text-sky-200">
-              {JSON.stringify(out.result.data, null, 2)}
+              {JSON.stringify(out.result?.data ?? out.result ?? out, null, 2)}
             </pre>
           </div>
 

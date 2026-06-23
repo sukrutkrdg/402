@@ -33,16 +33,16 @@ export async function getRevenue(blocks = 5000): Promise<RevenueResult> {
     return { payTo: null, windowBlocks: 0, count: 0, totalUsdc: "0", payments: [], note: "PAY_TO_ADDRESS not set", checkedAt: now };
   }
   const payTo = getAddress(cfg.payTo) as Address;
-  const client = createPublicClient({ chain: base, transport: http(cfg.rpcUrl) });
+  const client = createPublicClient({ chain: base, transport: http(cfg.rpcUrl, { timeout: 8000 }) });
 
   // Public Base RPC limits getLogs ranges; keep the window modest by default.
   // For a wider window, set BASE_RPC_URL to a dedicated RPC.
   const span = BigInt(Math.min(Math.max(blocks, 100), 10000));
-  const latest = await client.getBlockNumber();
-  const fromBlock = latest > span ? latest - span : 0n;
 
   let logs;
   try {
+    const latest = await client.getBlockNumber();
+    const fromBlock = latest > span ? latest - span : 0n;
     logs = await client.getLogs({
       address: USDC_BASE as Address,
       event: transferEvent,
