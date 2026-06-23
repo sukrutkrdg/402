@@ -10,6 +10,11 @@
   "scripts": {
     "start": "node src/index.mjs"
   },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "homepage": "https://402.com.tr/agents",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@x402/evm": "^2.16.0",
@@ -31,6 +36,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/x402-bazaar-mcp"
+    "url": "git+https://github.com/sukrutkrdg/402.git",
+    "directory": "mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/sukrutkrdg/402/issues"
   }
 }

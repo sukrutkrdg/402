@@ -37,6 +37,16 @@ interface BuyResult {
 const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
+// Category display order — earlier index = rendered first.
+const CATEGORY_ORDER = ["Onchain", "AI", "Markets", "Data", "Fun", "Utility"];
+
+const TRUST_PILLS = [
+  { label: "USDC on Base" },
+  { label: "No API keys" },
+  { label: "x402 protocol" },
+  { label: "MCP-ready" },
+];
+
 function ServiceCard({
   service,
   buyerEnabled,
@@ -186,6 +196,38 @@ function ServiceCard({
   );
 }
 
+/** Group services by category, returning groups in CATEGORY_ORDER order.
+ *  Any category not in CATEGORY_ORDER is appended at the end. */
+function groupByCategory(services: ServiceMeta[]): Array<{ category: string; items: ServiceMeta[] }> {
+  const map = new Map<string, ServiceMeta[]>();
+  for (const s of services) {
+    const existing = map.get(s.category);
+    if (existing) {
+      existing.push(s);
+    } else {
+      map.set(s.category, [s]);
+    }
+  }
+
+  const ordered: Array<{ category: string; items: ServiceMeta[] }> = [];
+
+  // Add known categories in preferred order
+  for (const cat of CATEGORY_ORDER) {
+    const items = map.get(cat);
+    if (items) {
+      ordered.push({ category: cat, items });
+      map.delete(cat);
+    }
+  }
+
+  // Append any remaining unknown categories
+  for (const [category, items] of map) {
+    ordered.push({ category, items });
+  }
+
+  return ordered;
+}
+
 export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const status = useStatus();
   const [token, setToken] = useState("");
@@ -193,24 +235,50 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const buyerEnabled = status?.buyerEnabled ?? true;
   const tokenRequired = status?.buyTokenRequired ?? false;
 
+  const groups = groupByCategory(services);
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
+      {/* Hero */}
       <section className="flex flex-col gap-5">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           <span className="pill w-fit">⚡ x402 · Base mainnet · Builder Codes</span>
+
           <h1 className="max-w-2xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
             A pay-per-call API marketplace where every payment is{" "}
             <span className="text-base-blue">attributed onchain</span>.
           </h1>
-          <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
-            Each service below is a real x402-protected endpoint. Calling one triggers a USDC
-            micro-payment on Base, settled by the Coinbase facilitator. Your{" "}
-            <strong className="text-gray-200">Builder Code</strong> is written into the settlement
-            transaction&apos;s calldata (ERC-8021 Schema&nbsp;2) — so the traffic is attributed back
-            to this app in the Base dashboard.
+
+          <p className="max-w-xl text-sm leading-relaxed text-gray-400">
+            Browse and call real APIs instantly — no signup, no API keys. Humans pay per use;
+            autonomous agents settle USDC micro-payments over the{" "}
+            <strong className="text-gray-200">x402 protocol</strong> on Base, with every transaction
+            attributed onchain via{" "}
+            <strong className="text-gray-200">ERC-8021 Builder Codes</strong>.
           </p>
+
+          {/* CTAs */}
+          <div className="flex flex-wrap gap-3">
+            <a href="/agents" className="btn-primary">
+              For agents &amp; API →
+            </a>
+            <a href="/dashboard" className="btn-ghost">
+              Attribution →
+            </a>
+          </div>
+
+          {/* Trust strip */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {TRUST_PILLS.map((p) => (
+              <span key={p.label} className="pill">
+                {p.label}
+              </span>
+            ))}
+          </div>
         </div>
+
         <StatusBar status={status} />
+
         {!buyerEnabled && (
           <div className="card px-4 py-3 text-xs text-amber-300">
             🔒 Showcase mode: paying is disabled on this deployment. Browse the services and use the{" "}
@@ -220,6 +288,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             to decode any settlement on-chain.
           </div>
         )}
+
         {buyerEnabled && tokenRequired && (
           <label className="card flex flex-col gap-1 px-4 py-3">
             <span className="label">Access token (required to pay)</span>
@@ -234,11 +303,17 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {services.map((s) => (
-          <ServiceCard key={s.id} service={s} buyerEnabled={buyerEnabled} token={token} />
-        ))}
-      </section>
+      {/* Service groups */}
+      {groups.map(({ category, items }) => (
+        <section key={category} className="flex flex-col gap-3">
+          <div className="label">{category}</div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {items.map((s) => (
+              <ServiceCard key={s.id} service={s} buyerEnabled={buyerEnabled} token={token} />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

@@ -11,6 +11,7 @@
 import { aiSummarize, aiExtract, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode } from "./onchain-extra";
+import { walletTokens, trendingTokens } from "./onchain-extra2";
 
 export interface ServiceParam {
   name: string;
@@ -124,6 +125,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
     handler: txDecode,
+  },
+  {
+    id: "wallet-tokens",
+    name: "Wallet Token Portfolio",
+    tagline: "ETH + major Base token balances with USD values",
+    description:
+      "Returns native ETH plus WETH, USDC, USDbC, DAI, cbETH balances for any Base address, enriched with live USD values via DexScreener. Only non-zero holdings are returned.",
+    price: "$0.01",
+    icon: "💼",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: walletTokens,
+  },
+  {
+    id: "trending-tokens",
+    name: "Trending Tokens on Base",
+    tagline: "Currently boosted/promoted Base tokens",
+    description:
+      "Fetches the DexScreener boosts feed filtered to Base — up to 15 trending tokens with address, description, boost amount, and link. Great for discovery bots.",
+    price: "$0.005",
+    icon: "🔥",
+    category: "Onchain",
+    params: [],
+    handler: trendingTokens,
   },
   {
     id: "ai-summarize",
