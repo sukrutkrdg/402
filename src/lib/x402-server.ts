@@ -9,6 +9,7 @@
 import "server-only";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { NETWORK, getConfig, sellerReady } from "./config";
 
@@ -31,6 +32,10 @@ export function getResourceServer(): x402ResourceServer {
     createFacilitatorConfig(cfg.cdpApiKeyId, cfg.cdpApiKeySecret),
   );
 
-  cached = new x402ResourceServer(facilitator).register(NETWORK, new ExactEvmScheme());
+  // Register the Bazaar extension so routes that declare a discovery extension
+  // get auto-indexed in the x402 Bazaar (CDP's discovery layer) after settlement.
+  cached = new x402ResourceServer(facilitator)
+    .register(NETWORK, new ExactEvmScheme())
+    .registerExtension(bazaarResourceServerExtension);
   return cached;
 }

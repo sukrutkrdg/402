@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withX402, type RouteConfig } from "@x402/next";
 import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/builder-code";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { getResourceServer } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
 import { NETWORK, getConfig } from "@/lib/config";
@@ -70,6 +71,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     });
   };
 
+  const inputSchema =
+    service.params.length > 0
+      ? {
+          type: "object",
+          properties: Object.fromEntries(
+            service.params.map((p) => [p.name, { type: "string", description: p.label }]),
+          ),
+          required: service.params.filter((p) => p.required).map((p) => p.name),
+        }
+      : undefined;
+
   const routeConfig: RouteConfig = {
     accepts: {
       scheme: "exact",
@@ -79,9 +91,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     },
     description: service.description,
     mimeType: "application/json",
-    // Declare our Builder Code so it lands in the settlement calldata as `a`.
+    serviceName: service.name,
+    tags: [service.category.toLowerCase(), "x402", "base"],
     extensions: {
+      // Builder Code → lands in settlement calldata as `a`.
       [BUILDER_CODE]: declareBuilderCodeExtension(cfg.appBuilderCode),
+      // Discovery → auto-indexed in the x402 Bazaar after settlement.
+      ...declareDiscoveryExtension(inputSchema ? { inputSchema } : {}),
     },
   };
 
