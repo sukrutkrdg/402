@@ -1,13 +1,15 @@
 /** Non-secret config status for the UI (are seller + buyer wired up?). */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getConfig, sellerReady, buyerReady } from "@/lib/config";
 import { getBuyerAddress } from "@/lib/x402-client";
 import { aiConfigured } from "@/lib/ai";
+import { freeRemaining } from "@/lib/free-tier";
+import { clientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const cfg = getConfig();
   const seller = sellerReady(cfg);
   const buyer = buyerReady(cfg);
@@ -30,5 +32,6 @@ export async function GET() {
     buyerEnabled: cfg.enableBuyer,
     buyTokenRequired: Boolean(cfg.buyAccessToken),
     aiReady: aiConfigured(),
+    freeTier: freeRemaining(`free:${clientIp(req)}`),
   });
 }

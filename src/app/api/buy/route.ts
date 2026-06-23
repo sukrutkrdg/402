@@ -77,7 +77,8 @@ export async function POST(req: NextRequest) {
 
   let res: Response;
   try {
-    res = await payingFetch(target.toString());
+    // Force the paid flow (skip free tier) so the demo always settles a real payment.
+    res = await payingFetch(target.toString(), { headers: { "x-x402-force": "1" } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Payment failed";
     return NextResponse.json({ error: `Payment failed: ${message}` }, { status: 502 });

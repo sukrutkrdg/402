@@ -14,8 +14,20 @@ import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/buil
 import { getResourceServer } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
 import { NETWORK, getConfig } from "@/lib/config";
+import { consumeFree } from "@/lib/free-tier";
+import { clientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>) {
+  const url = new URL(request.url);
+  const params: Record<string, string> = {};
+  for (const p of service!.params) {
+    const v = url.searchParams.get(p.name);
+    if (v) params[p.name] = v;
+  }
+  return params;
+}
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ service: string }> }) {
   const { service: serviceId } = await ctx.params;
@@ -26,15 +38,31 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
 
   const cfg = getConfig();
 
+  // Free tier: an unpaid request (no payment header) that isn't the internal
+  // demo buy flow gets a few free calls/day per IP, then must pay. This is the
+  // agent trial funnel.
+  const hasPayment = Boolean(req.headers.get("x-payment") || req.headers.get("payment-signature"));
+  const forcePay = req.headers.get("x-x402-force") === "1";
+  if (!hasPayment && !forcePay) {
+    const ip = clientIp(req);
+    const free = consumeFree(`free:${ip}`);
+    if (free.allowed) {
+      try {
+        const data = await service.handler(paramsFrom(req, service));
+        return NextResponse.json(
+          { service: service.id, builderCode: cfg.appBuilderCode, data, freeTier: true, freeRemaining: free.remaining },
+          { headers: { "x-free-tier": "true", "x-free-remaining": String(free.remaining) } },
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Service error";
+        return NextResponse.json({ error: message }, { status: 502 });
+      }
+    }
+  }
+
   // The business logic that runs once payment is verified.
   const handler = async (request: NextRequest) => {
-    const url = new URL(request.url);
-    const params: Record<string, string> = {};
-    for (const p of service.params) {
-      const v = url.searchParams.get(p.name);
-      if (v) params[p.name] = v;
-    }
-    const data = await service.handler(params);
+    const data = await service.handler(paramsFrom(request, service));
     return NextResponse.json({
       service: service.id,
       builderCode: cfg.appBuilderCode,
