@@ -22,8 +22,21 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const BASESCAN_TOKENTX = (a: string) => `https://basescan.org/address/${a}#tokentxns`;
 const short = (a: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
+interface UsageRow {
+  id: string;
+  name: string;
+  total: number;
+  paid: number;
+}
+interface Usage {
+  per: UsageRow[];
+  totalCalls: number;
+  totalPaid: number;
+}
+
 export default function Stats() {
   const [data, setData] = useState<Revenue | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState("");
@@ -39,6 +52,13 @@ export default function Stats() {
       if (!r.ok) throw new Error(j.error || j.note || "Failed to load");
       setData(j);
       setAuthed(true);
+      // usage analytics (best-effort)
+      try {
+        const ur = await fetch(`/api/usage`, { headers: { "x-stats-token": tok } });
+        if (ur.ok) setUsage(await ur.json());
+      } catch {
+        /* ignore */
+      }
       try {
         localStorage.setItem("x402_stats_token", tok);
       } catch {
@@ -194,6 +214,34 @@ export default function Stats() {
           </div>
         )}
       </section>
+
+      {usage && usage.per.some((r) => r.total > 0) && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">
+            Service usage{" "}
+            <span className="text-sm font-normal text-gray-500">
+              ({usage.totalCalls} calls · {usage.totalPaid} paid)
+            </span>
+          </h2>
+          <div className="card divide-y divide-base-line/60">
+            {usage.per
+              .filter((r) => r.total > 0)
+              .map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div className="truncate text-sm">{r.name}</div>
+                  <div className="flex shrink-0 items-center gap-3 text-xs">
+                    <span className="text-emerald-300">{r.paid} paid</span>
+                    <span className="text-gray-500">{r.total - r.paid} free</span>
+                    <span className="font-mono font-bold">{r.total}</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+          <p className="text-[11px] text-gray-500">
+            Durable counts require KV (UPSTASH_REDIS_REST_URL/TOKEN); otherwise they reset on cold start.
+          </p>
+        </section>
+      )}
 
       <section className="card flex flex-col gap-2 p-5 text-xs text-gray-400">
         <div className="label">Where to see everything</div>

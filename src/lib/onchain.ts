@@ -148,6 +148,44 @@ export async function tokenRisk(params: Record<string, string>) {
       ? num((gp.holders[0] as GoPlus).percent) * 100
       : null;
 
+    // --- Deeper holder/LP analysis ---
+
+    // top10HolderPct: sum of percent for first up to 10 holders (×100, rounded to 2 dp)
+    let top10HolderPct: number | null = null;
+    if (Array.isArray(gp.holders) && gp.holders.length > 0) {
+      const slice = (gp.holders as GoPlus[]).slice(0, 10);
+      top10HolderPct = Math.round(
+        slice.reduce((acc, h) => acc + num(h.percent), 0) * 100 * 100,
+      ) / 100;
+    }
+
+    // lockedLpPct: sum of percent where is_locked truthy OR holder is a burn/dead address (×100)
+    let lockedLpPct: number | null = null;
+    if (Array.isArray(gp.lp_holders) && gp.lp_holders.length > 0) {
+      const burnAddrs = new Set([
+        "0x0000000000000000000000000000000000000000",
+        "0x000000000000000000000000000000000000dead",
+      ]);
+      lockedLpPct =
+        Math.round(
+          (gp.lp_holders as GoPlus[]).reduce((acc, h) => {
+            const addr = String(h.address ?? "").toLowerCase();
+            const locked = isTrue(h.is_locked) || burnAddrs.has(addr);
+            return acc + (locked ? num(h.percent) : 0);
+          }, 0) *
+            100 *
+            100,
+        ) / 100;
+    }
+
+    // creatorPct: creator_percent × 100
+    const creatorPct =
+      gp.creator_percent !== undefined ? Math.round(num(gp.creator_percent) * 100 * 100) / 100 : null;
+
+    // isInDex: boolean
+    const isInDex = gp.is_in_dex !== undefined ? isTrue(gp.is_in_dex) : null;
+
+    // --- Existing flags ---
     if (isTrue(gp.is_honeypot)) { flags.push("honeypot"); score += 60; }
     if (isTrue(gp.cannot_sell_all)) { flags.push("cannot_sell_all"); score += 40; }
     if (sellTax >= 50) { flags.push("extreme_sell_tax"); score += 40; }
@@ -161,6 +199,23 @@ export async function tokenRisk(params: Record<string, string>) {
     if (isTrue(gp.is_blacklisted)) { flags.push("has_blacklist"); score += 15; }
     if (topHolderPct !== null && topHolderPct >= 50) { flags.push("top_holder_over_50pct"); score += 20; }
 
+    // --- New deeper flags (deduplicated via check before push) ---
+    if (creatorPct !== null && creatorPct >= 5 && !flags.includes("creator_holds_significant")) {
+      flags.push("creator_holds_significant"); score += 10;
+    }
+    if (top10HolderPct !== null && top10HolderPct >= 70 && !flags.includes("concentrated_holders")) {
+      flags.push("concentrated_holders"); score += 15;
+    }
+    if (Array.isArray(gp.lp_holders) && lockedLpPct !== null && lockedLpPct < 50 && !flags.includes("lp_not_locked")) {
+      flags.push("lp_not_locked"); score += 20;
+    }
+    if (isTrue(gp.is_airdrop_scam) && !flags.includes("airdrop_scam")) {
+      flags.push("airdrop_scam"); score += 40;
+    }
+    if (isInDex === false && !flags.includes("not_listed_on_dex")) {
+      flags.push("not_listed_on_dex"); score += 15;
+    }
+
     security = {
       isHoneypot: isTrue(gp.is_honeypot),
       buyTaxPct: buyTax,
@@ -173,6 +228,20 @@ export async function tokenRisk(params: Record<string, string>) {
       holderCount: gp.holder_count !== undefined ? Number(gp.holder_count) : null,
       topHolderPct,
       lpHolderCount: gp.lp_holder_count !== undefined ? Number(gp.lp_holder_count) : null,
+      // --- New deeper fields ---
+      top10HolderPct,
+      lockedLpPct,
+      creatorPct,
+      isInDex,
+      // Additional GoPlus booleans
+      isAntiWhale: gp.is_anti_whale !== undefined ? isTrue(gp.is_anti_whale) : null,
+      antiWhaleModifiable: gp.anti_whale_modifiable !== undefined ? isTrue(gp.anti_whale_modifiable) : null,
+      tradingCooldown: gp.trading_cooldown !== undefined ? isTrue(gp.trading_cooldown) : null,
+      slippageModifiable: gp.slippage_modifiable !== undefined ? isTrue(gp.slippage_modifiable) : null,
+      isTrueToken: gp.is_true_token !== undefined ? isTrue(gp.is_true_token) : null,
+      isAirdropScam: gp.is_airdrop_scam !== undefined ? isTrue(gp.is_airdrop_scam) : null,
+      creatorAddress: gp.creator_address !== undefined ? String(gp.creator_address) : null,
+      creatorBalance: gp.creator_balance !== undefined ? String(gp.creator_balance) : null,
     };
   }
 
@@ -198,7 +267,7 @@ export async function tokenRisk(params: Record<string, string>) {
     flags,
     sources: gp ? ["base-rpc", "goplus"] : ["base-rpc"],
     coverage: gp
-      ? "RPC base + GoPlus security (honeypot, taxes, holders, source, ownership controls)."
+      ? "RPC base + GoPlus security (honeypot, taxes, holders, holder concentration, LP lock, creator holdings, source, ownership controls)."
       : "RPC-only (security provider unavailable): contract, ERC-20, ownership, proxy.",
     checkedAt: new Date().toISOString(),
   };

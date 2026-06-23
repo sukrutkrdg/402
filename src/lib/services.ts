@@ -12,6 +12,7 @@ import { aiSummarize, aiExtract, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode } from "./onchain-extra";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
+import { registerAlert } from "./alerts";
 
 export interface ServiceParam {
   name: string;
@@ -149,6 +150,23 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [],
     handler: trendingTokens,
+  },
+  {
+    id: "price-alert",
+    name: "Token Price Alert",
+    tagline: "Webhook when a Base token crosses your target",
+    description:
+      "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A polling cron checks DexScreener and POSTs your webhook the moment it crosses. Expires after 30 days.",
+    price: "$0.05",
+    icon: "🔔",
+    category: "Onchain",
+    params: [
+      { name: "token", label: "Token address", placeholder: "0x… token", required: true },
+      { name: "threshold", label: "Price threshold (USD)", placeholder: "1.50", required: true },
+      { name: "direction", label: "Direction (above/below)", placeholder: "above", required: true },
+      { name: "webhook", label: "Webhook URL (https)", placeholder: "https://your-endpoint", required: true },
+    ],
+    handler: registerAlert,
   },
   {
     id: "ai-summarize",
