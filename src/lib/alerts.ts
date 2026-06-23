@@ -95,7 +95,10 @@ export interface Alert {
 const ALERT_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
 
 interface DexScreenerPair {
+  baseToken?: { address?: string };
+  quoteToken?: { address?: string };
   priceUsd?: string;
+  priceNative?: string;
   liquidity?: { usd?: number };
 }
 
@@ -103,7 +106,7 @@ interface DexScreenerResponse {
   pairs?: DexScreenerPair[] | null;
 }
 
-/** Fetch the current USD price for a token via DexScreener (highest-liquidity pair). */
+/** Fetch the current USD price for a token via DexScreener (base-token-matched pair). */
 async function fetchTokenPrice(token: string): Promise<number> {
   let data: DexScreenerResponse;
   try {
@@ -122,16 +125,23 @@ async function fetchTokenPrice(token: string): Promise<number> {
   const pairs = data.pairs?.filter(Boolean) ?? [];
   if (pairs.length === 0) throw new Error("No price data for token");
 
-  // Pick the pair with the greatest USD liquidity — most reliable price source.
-  const best = pairs.reduce<DexScreenerPair>((top, p) => {
-    const topLiq = top.liquidity?.usd ?? 0;
-    const pLiq = p.liquidity?.usd ?? 0;
-    return pLiq > topLiq ? p : top;
-  }, pairs[0]);
+  const addrLc = token.toLowerCase();
+  const highestLiq = (arr: DexScreenerPair[]) =>
+    arr.reduce((top, p) => ((p.liquidity?.usd ?? 0) > (top.liquidity?.usd ?? 0) ? p : top), arr[0]);
 
-  if (!best.priceUsd) throw new Error("No price data for token");
+  // Only trust pairs where the queried token is the BASE token (correct priceUsd).
+  const baseMatches = pairs.filter((p) => p.baseToken?.address?.toLowerCase() === addrLc);
+  let price: number;
+  if (baseMatches.length > 0) {
+    price = parseFloat(highestLiq(baseMatches).priceUsd ?? "");
+  } else {
+    // Token only appears as quote — derive from base price / priceNative.
+    const best = highestLiq(pairs);
+    const baseUsd = parseFloat(best.priceUsd ?? "");
+    const native = parseFloat(best.priceNative ?? "");
+    price = native > 0 ? baseUsd / native : NaN;
+  }
 
-  const price = parseFloat(best.priceUsd);
   if (!Number.isFinite(price)) throw new Error("No price data for token");
   return price;
 }

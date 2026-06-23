@@ -95,8 +95,10 @@ export async function gasOracle(_params: Record<string, string>) {
 interface DexScreenerPair {
   dexId?: string;
   pairAddress?: string;
-  baseToken?: { name?: string; symbol?: string };
+  baseToken?: { address?: string; name?: string; symbol?: string };
+  quoteToken?: { address?: string; name?: string; symbol?: string };
   priceUsd?: string;
+  priceNative?: string;
   priceChange?: { h24?: number };
   liquidity?: { usd?: number };
   volume?: { h24?: number };
@@ -136,28 +138,51 @@ export async function tokenPrice(params: Record<string, string>) {
     throw new Error("No price data found for this token");
   }
 
-  // Pick the pair with the greatest USD liquidity (most reliable price source).
-  const best = pairs.reduce<DexScreenerPair>((top, p) => {
-    const topLiq = top.liquidity?.usd ?? 0;
-    const pLiq = p.liquidity?.usd ?? 0;
-    return pLiq > topLiq ? p : top;
-  }, pairs[0]);
+  const addrLc = address.toLowerCase();
+  const highestLiq = (arr: DexScreenerPair[]) =>
+    arr.reduce((top, p) => ((p.liquidity?.usd ?? 0) > (top.liquidity?.usd ?? 0) ? p : top), arr[0]);
 
-  if (!best.priceUsd) {
+  // Only trust pairs where the queried token is the BASE token — that's the pair
+  // whose priceUsd is this token's price. (Picking by liquidity alone returns the
+  // wrong price for tokens that are usually the quote side, e.g. USDC.)
+  const baseMatches = pairs.filter((p) => p.baseToken?.address?.toLowerCase() === addrLc);
+
+  let best: DexScreenerPair;
+  let priceUsd: string | null;
+  if (baseMatches.length > 0) {
+    best = highestLiq(baseMatches);
+    priceUsd = best.priceUsd ?? null;
+  } else {
+    // Token only appears as the quote side — derive its USD from base/priceNative.
+    best = highestLiq(pairs);
+    const baseUsd = parseFloat(best.priceUsd ?? "");
+    const native = parseFloat(best.priceNative ?? "");
+    priceUsd =
+      Number.isFinite(baseUsd) && Number.isFinite(native) && native > 0
+        ? String(baseUsd / native)
+        : null;
+  }
+
+  if (!priceUsd) {
     throw new Error("No price data found for this token");
   }
 
+  // Report the queried token's own metadata (it's the base in baseMatches,
+  // otherwise the quote in the fallback pair).
+  const self =
+    best.baseToken?.address?.toLowerCase() === addrLc ? best.baseToken : best.quoteToken;
+
   return {
     address,
-    priceUsd: best.priceUsd,
+    priceUsd,
     priceChange24h: best.priceChange?.h24 ?? null,
     liquidityUsd: best.liquidity?.usd ?? null,
     volume24h: best.volume?.h24 ?? null,
     dexId: best.dexId ?? null,
     pairAddress: best.pairAddress ?? null,
     baseToken: {
-      name: best.baseToken?.name ?? null,
-      symbol: best.baseToken?.symbol ?? null,
+      name: self?.name ?? null,
+      symbol: self?.symbol ?? null,
     },
     checkedAt: new Date().toISOString(),
   };

@@ -54,6 +54,34 @@ function riskEmoji(level: unknown): string {
   return level === "low" ? "🟢" : level === "medium" ? "🟡" : "🔴";
 }
 
+interface RiskValue {
+  riskScore?: number;
+  riskLevel?: string;
+  flags?: string[];
+  upgradeableProxy?: boolean;
+  token?: { name?: string | null; symbol?: string | null; decimals?: number | null };
+  ownership?: { renounced?: boolean | null };
+  security?: {
+    isHoneypot?: boolean;
+    buyTaxPct?: number | null;
+    sellTaxPct?: number | null;
+    isOpenSource?: boolean | null;
+    holderCount?: number | null;
+    topHolderPct?: number | null;
+    top10HolderPct?: number | null;
+    lockedLpPct?: number | null;
+  } | null;
+}
+interface PriceValue {
+  priceUsd?: string;
+  priceChange24h?: number | null;
+  liquidityUsd?: number | null;
+  volume24h?: number | null;
+  baseToken?: { name?: string | null; symbol?: string | null };
+}
+
+const n = (x: unknown) => (typeof x === "number" ? Math.round(x).toLocaleString() : null);
+
 async function buildReport(address: string): Promise<string> {
   const [risk, price, sanctions] = await Promise.allSettled([
     tokenRisk({ address }),
@@ -61,41 +89,56 @@ async function buildReport(address: string): Promise<string> {
     sanctionsCheck({ address }),
   ]);
 
-  const lines: string[] = [`🔎 <b>Token report</b>\n<code>${esc(address)}</code>`];
+  const r = risk.status === "fulfilled" ? (risk.value as RiskValue) : null;
+  const p = price.status === "fulfilled" ? (price.value as PriceValue) : null;
 
-  if (risk.status === "fulfilled") {
-    const r = risk.value as {
-      riskScore?: number;
-      riskLevel?: string;
-      flags?: string[];
-      token?: { name?: string; symbol?: string };
-    };
-    const name = r.token?.symbol || r.token?.name;
-    lines.push(
-      `\n${riskEmoji(r.riskLevel)} <b>Risk:</b> ${esc(r.riskLevel ?? "?")} (${esc(r.riskScore ?? "?")}/100)` +
-        (name ? ` · ${esc(name)}` : ""),
-    );
-    if (r.flags && r.flags.length) lines.push(`⚠️ ${r.flags.slice(0, 6).map(esc).join(", ")}`);
-  } else {
-    lines.push("\n• Risk: unavailable");
-  }
+  // Title: name (SYMBOL)
+  const name = r?.token?.name || p?.baseToken?.name || "";
+  const symbol = r?.token?.symbol || p?.baseToken?.symbol || "";
+  const title = name && symbol ? `${esc(name)} (${esc(symbol)})` : esc(name || symbol || "Token");
 
-  if (sanctions.status === "fulfilled") {
-    const s = sanctions.value as { sanctioned?: boolean };
-    lines.push(s.sanctioned ? "⛔ <b>OFAC sanctioned</b>" : "✅ Not OFAC-sanctioned");
-  }
+  const L: string[] = [`🔎 <b>${title}</b>`, `<code>${esc(address)}</code>`];
 
-  if (price.status === "fulfilled") {
-    const p = price.value as { priceUsd?: string; priceChange24h?: number | null; liquidityUsd?: number | null };
-    if (p.priceUsd) {
-      const chg = typeof p.priceChange24h === "number" ? ` (${p.priceChange24h > 0 ? "+" : ""}${p.priceChange24h}% 24h)` : "";
-      const liq = typeof p.liquidityUsd === "number" ? ` · liq $${Math.round(p.liquidityUsd).toLocaleString()}` : "";
-      lines.push(`💲 <b>$${esc(p.priceUsd)}</b>${esc(chg)}${esc(liq)}`);
+  // Risk + security details
+  if (r) {
+    L.push(`\n${riskEmoji(r.riskLevel)} <b>Risk:</b> ${esc(r.riskLevel ?? "?")} (${esc(r.riskScore ?? "?")}/100)`);
+    const s = r.security;
+    if (s) {
+      if (s.isHoneypot) L.push("🍯 <b>HONEYPOT</b> — sells may be blocked");
+      const det: string[] = [];
+      if (n(s.holderCount)) det.push(`👥 ${n(s.holderCount)} holders`);
+      if (typeof s.top10HolderPct === "number") det.push(`Top10 ${s.top10HolderPct}%`);
+      if (typeof s.lockedLpPct === "number") det.push(`LP locked ${s.lockedLpPct}%`);
+      if (det.length) L.push(det.join(" · "));
+      if (typeof s.buyTaxPct === "number" || typeof s.sellTaxPct === "number") {
+        L.push(`💸 Tax: buy ${esc(s.buyTaxPct ?? "?")}% / sell ${esc(s.sellTaxPct ?? "?")}%`);
+      }
+      if (s.isOpenSource === true) L.push("📄 Verified source");
+      else if (s.isOpenSource === false) L.push("📄 Unverified source");
     }
+    if (r.ownership?.renounced === true) L.push("🔓 Ownership renounced");
+    if (r.upgradeableProxy) L.push("♻️ Upgradeable proxy");
+    if (r.flags?.length) L.push(`⚠️ ${r.flags.slice(0, 6).map(esc).join(", ")}`);
+  } else {
+    L.push("\n• Risk: unavailable");
   }
 
-  lines.push(`\n<a href="${SITE}/agents">Use these APIs in your agent →</a>`);
-  return lines.join("\n");
+  // Sanctions
+  if (sanctions.status === "fulfilled") {
+    const sc = sanctions.value as { sanctioned?: boolean };
+    L.push(sc.sanctioned ? "⛔ <b>OFAC sanctioned</b>" : "✅ Not OFAC-sanctioned");
+  }
+
+  // Price
+  if (p?.priceUsd) {
+    const chg = typeof p.priceChange24h === "number" ? ` (${p.priceChange24h > 0 ? "+" : ""}${p.priceChange24h}% 24h)` : "";
+    const liq = n(p.liquidityUsd) ? ` · Liq $${n(p.liquidityUsd)}` : "";
+    const vol = n(p.volume24h) ? ` · Vol $${n(p.volume24h)}` : "";
+    L.push(`💲 <b>$${esc(p.priceUsd)}</b>${esc(chg)}${esc(liq)}${esc(vol)}`);
+  }
+
+  L.push(`\n🔗 <a href="https://basescan.org/token/${esc(address)}">BaseScan</a> · <a href="${SITE}/agents">Use these APIs in your agent →</a>`);
+  return L.join("\n");
 }
 
 export async function POST(req: NextRequest) {
