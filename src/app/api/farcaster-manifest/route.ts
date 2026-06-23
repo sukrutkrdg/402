@@ -15,15 +15,15 @@ export function GET() {
   const SITE_URL = getSiteUrl();
   return Response.json({
     accountAssociation: {
-      // Public, domain-bound proof of ownership (signed for 402-eight.vercel.app,
-      // FID 287286). Env vars override if you redeploy to a different domain.
+      // Public, domain-bound proof of ownership (signed for 402.com.tr, FID
+      // 287286). Env vars override if you deploy to a different domain.
       header:
         process.env.FARCASTER_HEADER ||
-        "eyJmaWQiOjI4NzI4NiwidHlwZSI6ImF1dGgiLCJrZXkiOiIweDVmMzY1MDAwYjkyNDlFMWMzQTU3YmYxNWFCRDUxQTIyOWRiMjM1NzMifQ",
-      payload: process.env.FARCASTER_PAYLOAD || "eyJkb21haW4iOiI0MDItZWlnaHQudmVyY2VsLmFwcCJ9",
+        "eyJmaWQiOjI4NzI4NiwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDg0ODhiNkY5NThiMTVlQzQxZjZiNmMyRWY4MkFEQzEwNTc4NTU5NjkifQ",
+      payload: process.env.FARCASTER_PAYLOAD || "eyJkb21haW4iOiI0MDIuY29tLnRyIn0",
       signature:
         process.env.FARCASTER_SIGNATURE ||
-        "1j4tnBFt0dsKglkvmGVlB7XfTClk64CMGB0r/H2dteVg7WHjzcHXuJs0vWfovj2G9DfsLw2XFLhjPWzWZlGq+Bw=",
+        "9QthhsDzRfIRFps7v/hz4NbaCRs618p0F0FTAFlgRJcTGYfcFX1qjejoS+ZcR7EuZI6iKGzQdkpuqV+7n3AtjRs=",
     },
     miniapp: {
       version: "1",
