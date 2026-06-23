@@ -92,11 +92,13 @@ export async function POST(req: NextRequest) {
 
   const result = await res.json();
 
-  // Settlement details live in the X-PAYMENT-RESPONSE header.
+  // Settlement details live in the PAYMENT-RESPONSE header (x402 v2 emits it
+  // without the legacy `X-` prefix; accept both for safety).
   let txHash = "";
   let network = "";
   let payer: string | undefined;
-  const settleHeader = res.headers.get("x-payment-response");
+  const settleHeader =
+    res.headers.get("payment-response") || res.headers.get("x-payment-response");
   if (settleHeader) {
     try {
       const settle = decodePaymentResponseHeader(settleHeader);
