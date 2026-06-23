@@ -36,10 +36,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sukrutkrdg/402.git",
-    "directory": "mcp"
+    "url": "git+https://github.com/sukrutkrdg/x402-bazaar-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/sukrutkrdg/402/issues"
+    "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp/issues"
   }
 }
