@@ -10,7 +10,8 @@
 
 import { aiSummarize, aiExtract, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
-import { gasOracle, tokenPrice, txDecode } from "./onchain-extra";
+import { gasOracle, tokenPrice, txDecode, multiTokenPrice } from "./onchain-extra";
+import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector } from "./onchain-extra3";
@@ -219,6 +220,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Address to screen", placeholder: "0x… wallet or contract", required: true }],
     handler: sanctionsCheck,
+  },
+  {
+    id: "holders",
+    name: "Token Holder Distribution",
+    tagline: "Top holders, concentration & LP lock",
+    description:
+      "Top-10 holders with their %, holder count, concentration level (whale risk), and LP-lock %, from GoPlus. Lets agents judge how fairly a token is distributed before trading. No API key required.",
+    price: "$0.01",
+    icon: "👥",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: holderDistribution,
+  },
+  {
+    id: "multi-price",
+    name: "Batch Token Prices",
+    tagline: "Prices for up to 10 Base tokens at once",
+    description:
+      "Pass a comma-separated list of up to 10 Base token addresses and get USD price + 24h change for each in one call. Ideal for agents pricing a portfolio or watchlist.",
+    price: "$0.01",
+    icon: "🧾",
+    category: "Onchain",
+    params: [{ name: "addresses", label: "Token addresses (comma-separated)", placeholder: "0x…, 0x…", required: true }],
+    handler: multiTokenPrice,
   },
   {
     id: "new-tokens",

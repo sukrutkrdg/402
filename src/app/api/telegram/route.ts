@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
+import { kvLPush, kvLRange } from "@/lib/kv";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +48,40 @@ async function send(chatId: number, text: string) {
 
 const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
-  "Send me any <b>Base token address</b> (0x…) and I'll return a risk + sanctions + price report.\n\n" +
+  "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
+  "Commands: /scan &lt;address&gt; · /recent · /help\n\n" +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
+
+async function recordScan(address: string, symbol: string) {
+  try {
+    await kvLPush("bot:recent", JSON.stringify({ a: address, s: symbol || "", t: Date.now() }), 50);
+  } catch {
+    /* best-effort */
+  }
+}
+
+async function recentList(): Promise<string> {
+  let rows: string[] = [];
+  try {
+    rows = await kvLRange("bot:recent", 0, 7);
+  } catch {
+    /* ignore */
+  }
+  const items = rows
+    .map((r) => {
+      try {
+        return JSON.parse(r) as { a: string; s: string };
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is { a: string; s: string } => x !== null);
+  if (items.length === 0) return "No tokens scanned yet. Send me a Base token address to start.";
+  const lines = items.map(
+    (it) => `• ${it.s ? `<b>${esc(it.s)}</b> — ` : ""}<code>${esc(it.a)}</code>`,
+  );
+  return `🕘 <b>Recently scanned</b>\n${lines.join("\n")}`;
+}
 
 function riskEmoji(level: unknown): string {
   return level === "low" ? "🟢" : level === "medium" ? "🟡" : "🔴";
@@ -96,6 +129,7 @@ async function buildReport(address: string): Promise<string> {
   const name = r?.token?.name || p?.baseToken?.name || "";
   const symbol = r?.token?.symbol || p?.baseToken?.symbol || "";
   const title = name && symbol ? `${esc(name)} (${esc(symbol)})` : esc(name || symbol || "Token");
+  void recordScan(address, symbol || name);
 
   const L: string[] = [`🔎 <b>${title}</b>`, `<code>${esc(address)}</code>`];
 
@@ -163,6 +197,11 @@ export async function POST(req: NextRequest) {
 
   if (/^\/start|^\/help/i.test(text)) {
     await send(chatId, WELCOME);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/recent/i.test(text)) {
+    await send(chatId, await recentList());
     return NextResponse.json({ ok: true });
   }
 

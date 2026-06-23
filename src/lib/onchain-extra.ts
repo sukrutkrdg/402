@@ -188,6 +188,40 @@ export async function tokenPrice(params: Record<string, string>) {
   };
 }
 
+/**
+ * Batch price lookup for up to 10 Base tokens in one call. Each token is priced
+ * via the same base-token-matched logic as tokenPrice; failures are reported
+ * per-token (the call still succeeds for the rest).
+ *
+ * params.addresses — comma-separated 0x… token addresses.
+ */
+export async function multiTokenPrice(params: Record<string, string>) {
+  const list = (params.addresses || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+  if (list.length === 0) throw new Error("Provide 'addresses' — comma-separated 0x… token addresses");
+
+  const results = await Promise.all(
+    list.map(async (a) => {
+      try {
+        const p = await tokenPrice({ address: a });
+        return {
+          address: a,
+          priceUsd: p.priceUsd,
+          symbol: p.baseToken.symbol,
+          priceChange24h: p.priceChange24h,
+        };
+      } catch (e) {
+        return { address: a, error: e instanceof Error ? e.message : "lookup failed" };
+      }
+    }),
+  );
+
+  return { count: results.length, results, checkedAt: new Date().toISOString() };
+}
+
 // ---------------------------------------------------------------------------
 // 3. txDecode — structural decode of a Base transaction
 // ---------------------------------------------------------------------------
