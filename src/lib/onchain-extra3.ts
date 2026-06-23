@@ -57,31 +57,45 @@ interface SourcifyMetadata {
 export async function contractAbi(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
 
-  // --- Step 1: check verification status ---
-  let checkData: SourcifyCheckEntry[];
-  try {
-    const res = await fetch(
-      `https://sourcify.dev/server/check-by-addresses?addresses=${address}&chainIds=8453`,
-      { signal: AbortSignal.timeout(8000) },
-    );
-    if (!res.ok) throw new Error(`Sourcify check responded ${res.status}`);
-    checkData = (await res.json()) as SourcifyCheckEntry[];
-  } catch (err) {
-    throw new Error(
-      `Sourcify verification check failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  // Fetch metadata.json directly from the Sourcify repo (more robust than the
+  // deprecated check endpoint). full_match = exact, partial_match = metadata-equal.
+  // 200 → verified (parse ABI). 404 → not this match. 5xx/network → throw (so the
+  // buyer isn't charged for an answer we couldn't actually compute).
+  let abi: Array<{ type: string; name?: string }> = [];
+  let matchType: "full" | "partial" | null = null;
+  let serverError: string | null = null;
+
+  for (const [match, label] of [
+    ["full_match", "full"],
+    ["partial_match", "partial"],
+  ] as const) {
+    try {
+      const res = await fetch(
+        `https://repo.sourcify.dev/contracts/${match}/8453/${address}/metadata.json`,
+        { signal: AbortSignal.timeout(8000) },
+      );
+      if (res.status === 404) continue; // not verified under this match
+      if (!res.ok) {
+        serverError = `Sourcify responded ${res.status}`;
+        continue;
+      }
+      const meta = (await res.json()) as SourcifyMetadata;
+      if (Array.isArray(meta?.output?.abi)) {
+        abi = meta.output.abi as Array<{ type: string; name?: string }>;
+        matchType = label;
+        break;
+      }
+    } catch (err) {
+      serverError = err instanceof Error ? err.message : String(err);
+    }
   }
 
-  // Parse the status from the response array.
-  const entry = Array.isArray(checkData) ? checkData[0] : null;
-  const chainEntry = entry?.chainIds?.find((c) => c.chainId === "8453");
-  const status = chainEntry?.status; // "perfect" | "partial" | undefined/false
+  // Distinguish "confirmed not verified" (clean 404s) from "couldn't reach Sourcify".
+  if (matchType === null && serverError) {
+    throw new Error(`Sourcify unavailable: ${serverError}`);
+  }
 
-  const verified = status === "perfect" || status === "partial";
-  const matchType: "full" | "partial" | null =
-    status === "perfect" ? "full" : status === "partial" ? "partial" : null;
-
-  if (!verified) {
+  if (matchType === null) {
     return {
       address,
       verified: false,
@@ -93,30 +107,7 @@ export async function contractAbi(params: Record<string, string>) {
     };
   }
 
-  // --- Step 2: fetch metadata to obtain the ABI ---
-  // Try full_match first (exact byte-for-byte), fall back to partial_match.
-  const matchPaths =
-    matchType === "full"
-      ? ["full_match", "partial_match"]
-      : ["partial_match", "full_match"];
-
-  let abi: Array<{ type: string; name?: string }> = [];
-  for (const match of matchPaths) {
-    try {
-      const res = await fetch(
-        `https://repo.sourcify.dev/contracts/${match}/8453/${address}/metadata.json`,
-        { signal: AbortSignal.timeout(8000) },
-      );
-      if (!res.ok) continue;
-      const meta = (await res.json()) as SourcifyMetadata;
-      if (Array.isArray(meta?.output?.abi)) {
-        abi = meta.output.abi as Array<{ type: string; name?: string }>;
-        break;
-      }
-    } catch {
-      // Try next match type.
-    }
-  }
+  const verified = true;
 
   const functions = abi
     .filter((item) => item.type === "function" && item.name)
