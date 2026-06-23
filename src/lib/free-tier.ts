@@ -1,41 +1,34 @@
 /**
- * Best-effort free tier: N free calls per IP per day, to let agents try before
- * they pay (an adoption funnel — not a hard security boundary).
+ * Free tier: N free calls per IP per day, to let agents try before they pay.
  *
- * In-memory + per-instance, so on serverless it resets on cold start and isn't
- * shared across instances. Keep the quota small. For hard global enforcement,
- * back this with a KV store (Vercel KV / Upstash) — same function signatures.
+ * Backed by the KV layer (src/lib/kv.ts): durable & globally consistent when KV
+ * is configured, in-memory fallback otherwise. AI services are excluded from the
+ * free tier at the route level (they have real upstream cost).
  */
 
 import "server-only";
-
-const counts = new Map<string, { day: string; n: number }>();
+import { kvIncr, kvGetNumber } from "./kv";
 
 export function freeLimit(): number {
   const n = parseInt(process.env.FREE_TIER_DAILY || "3", 10);
   return Number.isFinite(n) && n >= 0 ? n : 3;
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+function dayKey(key: string): string {
+  return `free:${key}:${new Date().toISOString().slice(0, 10)}`;
 }
 
-/** Try to consume one free call for this key. */
-export function consumeFree(key: string): { allowed: boolean; remaining: number; limit: number } {
+/** Atomically consume one free call for this key (per day). */
+export async function consumeFree(key: string): Promise<{ allowed: boolean; remaining: number; limit: number }> {
   const limit = freeLimit();
   if (limit <= 0) return { allowed: false, remaining: 0, limit };
-  const day = today();
-  const rec = counts.get(key);
-  const used = rec && rec.day === day ? rec.n : 0;
-  if (used >= limit) return { allowed: false, remaining: 0, limit };
-  counts.set(key, { day, n: used + 1 });
-  return { allowed: true, remaining: limit - (used + 1), limit };
+  const n = await kvIncr(dayKey(key), 86400); // expires after 24h
+  if (n > limit) return { allowed: false, remaining: 0, limit };
+  return { allowed: true, remaining: limit - n, limit };
 }
 
-export function freeRemaining(key: string): { remaining: number; limit: number } {
+export async function freeRemaining(key: string): Promise<{ remaining: number; limit: number }> {
   const limit = freeLimit();
-  const day = today();
-  const rec = counts.get(key);
-  const used = rec && rec.day === day ? rec.n : 0;
+  const used = await kvGetNumber(dayKey(key));
   return { remaining: Math.max(0, limit - used), limit };
 }

@@ -32,6 +32,6 @@ export async function GET(req: NextRequest) {
     buyerEnabled: cfg.enableBuyer,
     buyTokenRequired: Boolean(cfg.buyAccessToken),
     aiReady: aiConfigured(),
-    freeTier: freeRemaining(`free:${clientIp(req)}`),
+    freeTier: await freeRemaining(`free:${clientIp(req)}`),
   });
 }
