@@ -58,7 +58,8 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 
 const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY as `0x${string}`);
-const client = new x402Client().register("eip155:8453", new ExactEvmScheme(account));
+const client = new x402Client();
+client.register("eip155:8453", new ExactEvmScheme(account));
 const payingFetch = wrapFetchWithPayment(fetch, client);
 
 export const x402Bazaar = customActionProvider({

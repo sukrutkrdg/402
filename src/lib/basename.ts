@@ -42,7 +42,7 @@ const resolverAbi = [
 ] as const;
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl) });
+  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
 }
 
 // ENSIP-11 coinType for a chain id (Base mainnet 8453 → 0x80002105).

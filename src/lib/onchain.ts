@@ -36,7 +36,7 @@ const ownerAbis = [
 ] as const;
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl) });
+  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
 }
 
 function requireAddress(raw: string): Address {

@@ -48,7 +48,14 @@ export default function Stats() {
     try {
       const r = await fetch(`/api/revenue?blocks=4000`, { headers: { "x-stats-token": tok } });
       const j = await r.json();
-      if (r.status === 401) throw new Error("Wrong password.");
+      if (r.status === 401) {
+        try {
+          localStorage.removeItem("x402_stats_token");
+        } catch {
+          /* ignore */
+        }
+        throw new Error("Wrong password.");
+      }
       if (!r.ok) throw new Error(j.error || j.note || "Failed to load");
       setData(j);
       setAuthed(true);

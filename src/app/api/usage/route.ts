@@ -4,18 +4,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getUsage } from "@/lib/usage";
 import { SERVICES } from "@/lib/services";
+import { safeEqual } from "@/lib/secure";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const cfg = getConfig();
-  const provided =
-    req.headers.get("x-stats-token") || new URL(req.url).searchParams.get("token") || "";
+  // Header only — never accept the token in the query string (it leaks into logs).
+  const provided = req.headers.get("x-stats-token") || "";
 
   if (!cfg.statsToken) {
     return NextResponse.json({ error: "Locked. Set STATS_TOKEN to enable." }, { status: 503 });
   }
-  if (provided !== cfg.statsToken) {
+  if (!safeEqual(provided, cfg.statsToken)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

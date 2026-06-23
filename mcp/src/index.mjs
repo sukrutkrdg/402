@@ -57,7 +57,7 @@ function getPayingFetch() {
 
 const server = new McpServer({
   name: "x402-bazaar",
-  version: "0.1.3",
+  version: "0.1.4",
 });
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ const server = new McpServer({
 
 let services = [];
 try {
-  const res = await fetch(CATALOG_URL);
+  const res = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(10000) });
   if (res.ok) {
     const catalog = await res.json();
     services = catalog.services ?? catalog ?? [];
@@ -80,9 +80,17 @@ try {
 }
 if (!Array.isArray(services)) services = [];
 
+const registeredNames = new Set();
 for (const service of services) {
   // MCP tool names must use underscores (not dashes).
   const toolName = (service.id ?? service.name ?? "unknown").replace(/-/g, "_");
+
+  // Guard against duplicate tool names (would overwrite/break registration).
+  if (registeredNames.has(toolName)) {
+    process.stderr.write(`[x402-bazaar-mcp] WARN: duplicate tool name "${toolName}" — skipping\n`);
+    continue;
+  }
+  registeredNames.add(toolName);
 
   // Build a zod schema for each input key. The catalog's service.input entries
   // carry { type, required, description } — honor `required` so the agent knows
