@@ -7,29 +7,73 @@
  * font renders cleanly.
  */
 
-/** Square app icon. `px` keeps the type scaling with the canvas size. */
+/** Square app icon. `px` keeps the type/effects scaling with the canvas size. */
 export function iconArt(px: number) {
   return (
     <div
       style={{
+        position: "relative",
         width: "100%",
         height: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(135deg, #0052ff 0%, #0036aa 100%)",
-        color: "#ffffff",
+        background: "linear-gradient(140deg, #0a3cff 0%, #0052ff 46%, #2b7bff 100%)",
       }}
     >
+      {/* top-left light sheen */}
+      <div
+        style={{
+          position: "absolute",
+          top: -px * 0.26,
+          left: -px * 0.22,
+          width: px * 0.85,
+          height: px * 0.85,
+          borderRadius: 9999,
+          display: "flex",
+          background:
+            "radial-gradient(circle at center, rgba(255,255,255,0.5), rgba(255,255,255,0) 62%)",
+        }}
+      />
+      {/* bottom-right depth shadow */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: -px * 0.3,
+          right: -px * 0.3,
+          width: px * 0.9,
+          height: px * 0.9,
+          borderRadius: 9999,
+          display: "flex",
+          background:
+            "radial-gradient(circle at center, rgba(0,18,70,0.55), rgba(0,18,70,0) 60%)",
+        }}
+      />
+      {/* coin medallion */}
       <div
         style={{
           display: "flex",
-          fontSize: px * 0.3,
-          fontWeight: 800,
-          letterSpacing: -px * 0.012,
+          alignItems: "center",
+          justifyContent: "center",
+          width: px * 0.66,
+          height: px * 0.66,
+          borderRadius: 9999,
+          background: "linear-gradient(160deg, #ffffff 0%, #cfddff 100%)",
+          border: `${px * 0.022}px solid rgba(255,255,255,0.85)`,
+          boxShadow: `0 ${px * 0.03}px ${px * 0.07}px rgba(0,0,30,0.45), inset 0 ${px * 0.016}px ${px * 0.03}px rgba(255,255,255,0.95), inset 0 -${px * 0.022}px ${px * 0.045}px rgba(0,42,150,0.28)`,
         }}
       >
-        x402
+        <div
+          style={{
+            display: "flex",
+            fontSize: px * 0.205,
+            fontWeight: 800,
+            color: "#0046e6",
+            letterSpacing: -px * 0.006,
+          }}
+        >
+          x402
+        </div>
       </div>
     </div>
   );
