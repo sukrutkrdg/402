@@ -22,7 +22,14 @@ export function rateLimit(key: string, limit: number, windowMs: number): { ok: b
 }
 
 export function clientIp(req: Request): string {
+  // On Vercel, x-vercel-forwarded-for is set by the platform and is the
+  // trustworthy client IP. x-forwarded-for is client-spoofable, so prefer the
+  // platform headers first.
+  const vercel = req.headers.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0].trim();
+  const real = req.headers.get("x-real-ip");
+  if (real) return real.trim();
   const xff = req.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
-  return req.headers.get("x-real-ip") || "unknown";
+  return "unknown";
 }

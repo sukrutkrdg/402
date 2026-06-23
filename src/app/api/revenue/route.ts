@@ -1,0 +1,29 @@
+/** Revenue (incoming USDC to the seller wallet) — OWNER ONLY (STATS_TOKEN gated). */
+
+import { NextRequest, NextResponse } from "next/server";
+import { getRevenue } from "@/lib/revenue";
+import { getConfig } from "@/lib/config";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  const cfg = getConfig();
+  const url = new URL(req.url);
+  const provided = req.headers.get("x-stats-token") || url.searchParams.get("token") || "";
+
+  // Private dashboard: requires STATS_TOKEN to be set and matched.
+  if (!cfg.statsToken) {
+    return NextResponse.json(
+      { error: "Revenue dashboard is locked. Set STATS_TOKEN in the environment to enable it." },
+      { status: 503 },
+    );
+  }
+  if (provided !== cfg.statsToken) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const blocksParam = url.searchParams.get("blocks");
+  const blocks = blocksParam ? parseInt(blocksParam, 10) : 5000;
+  const data = await getRevenue(Number.isFinite(blocks) ? blocks : 5000);
+  return NextResponse.json(data);
+}
