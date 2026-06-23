@@ -15,6 +15,8 @@ import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector } from "./onchain-extra3";
 import { basenameResolve } from "./basename";
+import { sanctionsCheck } from "./compliance";
+import { newTokens } from "./onchain-extra4";
 
 export interface ServiceParam {
   name: string;
@@ -205,6 +207,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "query", label: "Basename or address", placeholder: "jesse.base.eth or 0x…", required: true }],
     handler: basenameResolve,
+  },
+  {
+    id: "sanctions",
+    name: "Sanctions Check",
+    tagline: "Is this address OFAC-sanctioned?",
+    description:
+      "Checks an address against the OFAC SDN list of sanctioned digital-currency addresses. Built for compliance agents and bots that must screen counterparties before transacting. Direct-address match; list refreshed regularly. No API key required.",
+    price: "$0.01",
+    icon: "⚖️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Address to screen", placeholder: "0x… wallet or contract", required: true }],
+    handler: sanctionsCheck,
+  },
+  {
+    id: "new-tokens",
+    name: "New Token Scanner",
+    tagline: "Freshly listed/profiled tokens on Base",
+    description:
+      "Returns the latest tokens profiled on Base from the DexScreener feed — address, description, and links. Great for discovery bots hunting new launches early.",
+    price: "$0.005",
+    icon: "🆕",
+    category: "Onchain",
+    params: [],
+    handler: newTokens,
   },
   {
     id: "ai-summarize",
