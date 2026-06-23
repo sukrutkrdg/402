@@ -99,17 +99,16 @@ for (const service of services) {
   // MCP tool names must use underscores (not dashes).
   const toolName = (service.id ?? service.name ?? "unknown").replace(/-/g, "_");
 
-  // Build a zod schema for each known input key.
-  // The catalog's service.input is an object whose keys are param names.
-  // We register every param as an optional z.string() — agents may fill in
-  // whatever subset they know about.
+  // Build a zod schema for each input key. The catalog's service.input entries
+  // carry { type, required, description } — honor `required` so the agent knows
+  // which params are mandatory (required → non-optional string, else optional).
   const inputShape = {};
   const inputDef = service.input ?? {};
   for (const key of Object.keys(inputDef)) {
-    // Mark params as optional so the tool can still be called with partial args.
-    inputShape[key] = z.string().optional().describe(
-      inputDef[key]?.description ?? inputDef[key] ?? key
-    );
+    const def = inputDef[key] ?? {};
+    const desc = (typeof def === "object" ? def.description : def) ?? key;
+    const base = z.string().describe(typeof desc === "string" ? desc : key);
+    inputShape[key] = def && def.required ? base : base.optional();
   }
 
   const description =

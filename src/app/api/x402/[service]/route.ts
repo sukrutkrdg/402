@@ -62,7 +62,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : "Service error";
-        return NextResponse.json({ error: message }, { status: 502 });
+        // 400 for bad input, 502 for upstream unavailability, 500 otherwise.
+        const m = message.toLowerCase();
+        const status =
+          /provide|missing|valid|invalid|required|no .*found|no price/.test(m)
+            ? 400
+            : /unavailable|failed|responded \d|timeout|fetch/.test(m)
+              ? 502
+              : 500;
+        return NextResponse.json({ error: message }, { status });
       }
     }
   }
