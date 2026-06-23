@@ -17,9 +17,15 @@ const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://402-eight
 export function GET() {
   return Response.json({
     accountAssociation: {
-      header: process.env.FARCASTER_HEADER || "",
-      payload: process.env.FARCASTER_PAYLOAD || "",
-      signature: process.env.FARCASTER_SIGNATURE || "",
+      // Public, domain-bound proof of ownership (signed for 402-eight.vercel.app,
+      // FID 287286). Env vars override if you redeploy to a different domain.
+      header:
+        process.env.FARCASTER_HEADER ||
+        "eyJmaWQiOjI4NzI4NiwidHlwZSI6ImF1dGgiLCJrZXkiOiIweDVmMzY1MDAwYjkyNDlFMWMzQTU3YmYxNWFCRDUxQTIyOWRiMjM1NzMifQ",
+      payload: process.env.FARCASTER_PAYLOAD || "eyJkb21haW4iOiI0MDItZWlnaHQudmVyY2VsLmFwcCJ9",
+      signature:
+        process.env.FARCASTER_SIGNATURE ||
+        "1j4tnBFt0dsKglkvmGVlB7XfTClk64CMGB0r/H2dteVg7WHjzcHXuJs0vWfovj2G9DfsLw2XFLhjPWzWZlGq+Bw=",
     },
     miniapp: {
       version: "1",
