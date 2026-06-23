@@ -24,76 +24,61 @@ import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// 1. Validate environment
+// 1. Config + lazy paying-fetch
 // ---------------------------------------------------------------------------
-
-const rawKey = process.env.AGENT_PRIVATE_KEY;
-if (!rawKey) {
-  process.stderr.write(
-    "[x402-bazaar-mcp] ERROR: AGENT_PRIVATE_KEY is not set.\n" +
-      "  Export a hex private key for a Base wallet that holds USDC.\n" +
-      "  Example: export AGENT_PRIVATE_KEY=0xabc123...\n"
-  );
-  process.exit(1);
-}
-
-// Normalise: add 0x prefix if the user omitted it
-const privateKey = /** @type {`0x${string}`} */ (
-  rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`
-);
+// The private key is needed only to PAY for a tool call — not to start the
+// server. Building it lazily lets the server boot, advertise its tools, and be
+// scanned by registries (Smithery, etc.) without a key. The key is required
+// only when a tool is actually invoked.
 
 const CATALOG_URL =
   process.env.X402_BAZAAR_CATALOG ?? "https://402.com.tr/api/catalog";
 
+let _payingFetch = null;
+function getPayingFetch() {
+  if (_payingFetch) return _payingFetch;
+  const rawKey = process.env.AGENT_PRIVATE_KEY;
+  if (!rawKey) {
+    throw new Error(
+      "AGENT_PRIVATE_KEY is not set — required to pay for tool calls. Add it to your MCP client config."
+    );
+  }
+  const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
+  const account = privateKeyToAccount(privateKey);
+  const client = new x402Client();
+  client.register("eip155:8453", new ExactEvmScheme(account));
+  _payingFetch = wrapFetchWithPayment(fetch, client);
+  return _payingFetch;
+}
+
 // ---------------------------------------------------------------------------
-// 2. Build x402 paying-fetch
-// ---------------------------------------------------------------------------
-
-// Create a viem account from the private key.
-const account = privateKeyToAccount(privateKey);
-
-// Register the account with the x402 client on Base mainnet (chain id 8453).
-const client = new x402Client();
-client.register("eip155:8453", new ExactEvmScheme(account));
-
-// Wrap the global fetch so every request that gets a 402 response is
-// automatically paid and retried — the caller sees only the final response.
-const payingFetch = wrapFetchWithPayment(fetch, client);
-
-// ---------------------------------------------------------------------------
-// 3. Create the MCP server
+// 2. Create the MCP server
 // ---------------------------------------------------------------------------
 
 const server = new McpServer({
   name: "x402-bazaar",
-  version: "0.1.0",
+  version: "0.1.2",
 });
 
 // ---------------------------------------------------------------------------
-// 4. Fetch the catalog and register one MCP tool per service
+// 3. Fetch the catalog and register one MCP tool per service
 // ---------------------------------------------------------------------------
+// Non-fatal: if the catalog is unreachable the server still starts (with zero
+// tools) so it can be connected to and scanned by registries.
 
-let catalog;
+let services = [];
 try {
   const res = await fetch(CATALOG_URL);
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  if (res.ok) {
+    const catalog = await res.json();
+    services = catalog.services ?? catalog ?? [];
+  } else {
+    process.stderr.write(`[x402-bazaar-mcp] WARN: catalog HTTP ${res.status}\n`);
   }
-  catalog = await res.json();
 } catch (err) {
-  process.stderr.write(
-    `[x402-bazaar-mcp] ERROR: Could not fetch catalog from ${CATALOG_URL}: ${err.message}\n`
-  );
-  process.exit(1);
+  process.stderr.write(`[x402-bazaar-mcp] WARN: catalog fetch failed: ${err.message}\n`);
 }
-
-// The catalog is expected to have a "services" array.
-const services = catalog.services ?? catalog;
-if (!Array.isArray(services) || services.length === 0) {
-  process.stderr.write(
-    "[x402-bazaar-mcp] WARNING: Catalog returned no services. No tools will be registered.\n"
-  );
-}
+if (!Array.isArray(services)) services = [];
 
 for (const service of services) {
   // MCP tool names must use underscores (not dashes).
@@ -129,7 +114,7 @@ for (const service of services) {
     // Call the endpoint; x402 payment is handled transparently.
     let response;
     try {
-      response = await payingFetch(url.toString());
+      response = await getPayingFetch()(url.toString());
     } catch (err) {
       return {
         content: [
