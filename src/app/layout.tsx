@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import { getBaseAppId } from "@/lib/config";
+
+const baseAppId = getBaseAppId();
 
 export const metadata: Metadata = {
   title: "x402 Bazaar — Pay-per-call API marketplace on Base",
   description:
     "A pay-per-call API marketplace powered by x402 and Base Builder Codes. Every payment is attributed onchain via ERC-8021.",
+  // Base App verification / discovery tag (base:app_id). Distinct from the
+  // x402 Builder Code; set via NEXT_PUBLIC_BASE_APP_ID.
+  other: baseAppId ? { "base:app_id": baseAppId } : {},
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

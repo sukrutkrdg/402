@@ -36,7 +36,15 @@ interface BuyResult {
 const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
-function ServiceCard({ service }: { service: ServiceMeta }) {
+function ServiceCard({
+  service,
+  buyerEnabled,
+  token,
+}: {
+  service: ServiceMeta;
+  buyerEnabled: boolean;
+  token: string;
+}) {
   const [params, setParams] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +58,7 @@ function ServiceCard({ service }: { service: ServiceMeta }) {
       const res = await fetch("/api/buy", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ serviceId: service.id, params }),
+        body: JSON.stringify({ serviceId: service.id, params, token: token || undefined }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
@@ -101,8 +109,12 @@ function ServiceCard({ service }: { service: ServiceMeta }) {
         </div>
       )}
 
-      <button className="btn-primary" onClick={buy} disabled={loading}>
-        {loading ? "Settling payment…" : `Pay ${service.price} & call`}
+      <button className="btn-primary" onClick={buy} disabled={loading || !buyerEnabled}>
+        {!buyerEnabled
+          ? "Buying disabled (showcase)"
+          : loading
+            ? "Settling payment…"
+            : `Pay ${service.price} & call`}
       </button>
 
       {error && (
@@ -165,6 +177,10 @@ function ServiceCard({ service }: { service: ServiceMeta }) {
 
 export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const status = useStatus();
+  const [token, setToken] = useState("");
+
+  const buyerEnabled = status?.buyerEnabled ?? true;
+  const tokenRequired = status?.buyTokenRequired ?? false;
 
   return (
     <div className="flex flex-col gap-8">
@@ -184,11 +200,32 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           </p>
         </div>
         <StatusBar status={status} />
+        {!buyerEnabled && (
+          <div className="card px-4 py-3 text-xs text-amber-300">
+            🔒 Showcase mode: paying is disabled on this deployment. Browse the services and use the{" "}
+            <a className="underline" href="/dashboard">
+              attribution dashboard
+            </a>{" "}
+            to decode any settlement on-chain.
+          </div>
+        )}
+        {buyerEnabled && tokenRequired && (
+          <label className="card flex flex-col gap-1 px-4 py-3">
+            <span className="label">Access token (required to pay)</span>
+            <input
+              type="password"
+              className="rounded-lg border border-base-line bg-black/40 px-3 py-2 text-sm outline-none focus:border-base-blue"
+              placeholder="Enter the shared access token"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </label>
+        )}
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {services.map((s) => (
-          <ServiceCard key={s.id} service={s} />
+          <ServiceCard key={s.id} service={s} buyerEnabled={buyerEnabled} token={token} />
         ))}
       </section>
     </div>

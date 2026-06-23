@@ -37,6 +37,10 @@ export interface AppConfig {
   cdpApiKeySecret: string | undefined;
   /** Optional RPC override for reading settlement calldata. */
   rpcUrl: string | undefined;
+  /** Master switch for the demo buyer (`/api/buy`). Off → view-only showcase. */
+  enableBuyer: boolean;
+  /** Optional shared secret required to call `/api/buy` when set. */
+  buyAccessToken: string | undefined;
 }
 
 export function getConfig(): AppConfig {
@@ -48,7 +52,15 @@ export function getConfig(): AppConfig {
     cdpApiKeyId: process.env.CDP_API_KEY_ID?.trim() || undefined,
     cdpApiKeySecret: process.env.CDP_API_KEY_SECRET?.trim() || undefined,
     rpcUrl: process.env.BASE_RPC_URL?.trim() || undefined,
+    // Default ON locally; set ENABLE_BUYER=false on public deploys to disable spending.
+    enableBuyer: process.env.ENABLE_BUYER?.trim().toLowerCase() !== "false",
+    buyAccessToken: process.env.BUY_ACCESS_TOKEN?.trim() || undefined,
   };
+}
+
+/** Public Base App id for the `base:app_id` verification meta tag (safe to expose). */
+export function getBaseAppId(): string | undefined {
+  return process.env.NEXT_PUBLIC_BASE_APP_ID?.trim() || undefined;
 }
 
 /** True when the server is fully wired to settle real payments on mainnet. */

@@ -15,15 +15,43 @@ import { getPayingFetch } from "@/lib/x402-client";
 import { getService } from "@/lib/services";
 import { recordPayment } from "@/lib/store";
 import { getConfig } from "@/lib/config";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  let body: { serviceId?: string; params?: Record<string, string> };
+  const cfg = getConfig();
+
+  // 1) Master switch — disable spending entirely on public/showcase deploys.
+  if (!cfg.enableBuyer) {
+    return NextResponse.json(
+      { error: "Buying is disabled on this deployment (view-only showcase)." },
+      { status: 403 },
+    );
+  }
+
+  let body: { serviceId?: string; params?: Record<string, string>; token?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  // 2) Optional shared-secret gate so a public URL can't drain the buyer wallet.
+  if (cfg.buyAccessToken) {
+    const provided = req.headers.get("x-buy-token") || body.token || "";
+    if (provided !== cfg.buyAccessToken) {
+      return NextResponse.json({ error: "Invalid or missing access token." }, { status: 401 });
+    }
+  }
+
+  // 3) Per-IP rate limit (best-effort) to blunt spamming of the spend endpoint.
+  const rl = rateLimit(`buy:${clientIp(req)}`, 5, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: `Rate limit: try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` },
+      { status: 429, headers: { "retry-after": String(Math.ceil(rl.retryAfterMs / 1000)) } },
+    );
   }
 
   const service = getService(body.serviceId || "");
@@ -31,7 +59,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unknown service" }, { status: 404 });
   }
 
-  const cfg = getConfig();
   const origin = new URL(req.url).origin;
   const target = new URL(`/api/x402/${service.id}`, origin);
   for (const p of service.params) {

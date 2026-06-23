@@ -60,6 +60,8 @@ const attribution = parseBuilderCodeSuffixFromCalldata(tx.input); // { a, w, s }
    - `PAY_TO_ADDRESS` — wallet that receives USDC
    - `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` — from [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) (needed for **mainnet** settlement)
    - `BUYER_PRIVATE_KEY` — a wallet with USDC + a little ETH on Base, used by the demo *Pay & call* button
+   - `NEXT_PUBLIC_BASE_APP_ID` — your `base:app_id` (renders the Base App verification meta tag). **Not** the Builder Code — that's a separate short code under base.dev → Settings → Builder Code.
+   - `ENABLE_BUYER` (`true`/`false`) and `BUY_ACCESS_TOKEN` — public-deploy safety (see below)
 
 4. **Run**
    ```bash
@@ -69,6 +71,24 @@ const attribution = parseBuilderCodeSuffixFromCalldata(tx.input); // { a, w, s }
 
 > **Mainnet = real money.** Prices are tiny ($0.001–$0.002 USDC) but every *Pay & call* is a real
 > onchain settlement. Keep the buyer wallet funded with only what you need.
+
+## Deploy to Vercel
+
+The repo is Vercel-ready. Import `sukrutkrdg/402` in Vercel, add the env vars
+above in **Project → Settings → Environment Variables**, and deploy.
+
+**Before exposing it publicly, read this:**
+
+- 🔑 **The buyer wallet spends real USDC.** `/api/buy` is the demo spend endpoint.
+  On a public URL, anyone could trigger payments. Protect it:
+  - `ENABLE_BUYER=false` → fully view-only showcase (browse + on-chain dashboard, no spending), **or**
+  - `BUY_ACCESS_TOKEN=<secret>` → callers must supply the token (UI field / `x-buy-token` header).
+  - A per-IP rate limit (5/min) is always on as a backstop.
+  - Keep only a small balance in the buyer wallet regardless.
+- 💾 **Recent settlements are not durable on serverless.** The store keeps an
+  in-memory cache + best-effort temp file; it won't persist across instances on
+  Vercel. The dashboard's on-chain lookup is unaffected. For durable history,
+  swap `src/lib/store.ts` for Vercel KV / Upstash (same function signatures).
 
 ## Verifying attribution
 

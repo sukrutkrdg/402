@@ -26,5 +26,7 @@ export async function GET() {
     buyerAddress: buyerAddress || null,
     seller,
     buyer,
+    buyerEnabled: cfg.enableBuyer,
+    buyTokenRequired: Boolean(cfg.buyAccessToken),
   });
 }

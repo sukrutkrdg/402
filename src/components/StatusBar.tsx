@@ -10,6 +10,8 @@ export interface StatusInfo {
   buyerAddress: string | null;
   seller: { ok: boolean; missing: string[] };
   buyer: { ok: boolean; missing: string[] };
+  buyerEnabled: boolean;
+  buyTokenRequired: boolean;
 }
 
 export function useStatus() {

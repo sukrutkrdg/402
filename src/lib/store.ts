@@ -1,13 +1,19 @@
 /**
- * Tiny append-only payment log persisted to ./data/payments.json.
+ * Recent-payments log.
  *
- * This is intentionally a flat file (not a DB) so the demo has zero
- * infrastructure. It records every successful buy so the dashboard can show
- * recent settlements and their onchain Builder Code attribution.
+ * Serverless-safe by design: a module-level in-memory cache is the source of
+ * truth within a warm instance, and we *best-effort* persist to a writable temp
+ * file. On read-only/ephemeral platforms (e.g. Vercel) the file write may fail
+ * or not survive across invocations — that's fine, we never throw, and the
+ * attribution dashboard's on-chain lookup is unaffected.
+ *
+ * For durable, cross-instance history, swap `recordPayment`/`listPayments` for a
+ * KV store (Vercel KV / Upstash Redis). The call sites stay identical.
  */
 
 import "server-only";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 export interface PaymentRecord {
@@ -18,34 +24,51 @@ export interface PaymentRecord {
   txHash: string;
   network: string;
   payer?: string;
-  /** Builder codes as sent / echoed at request time. */
   appCode: string;
   clientCode: string;
   createdAt: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const FILE = path.join(DATA_DIR, "payments.json");
 const MAX = 200;
 
-async function readAll(): Promise<PaymentRecord[]> {
+// In-memory cache — primary store within a single (warm) instance.
+const memory: PaymentRecord[] = [];
+
+// Writable location: project ./data locally, OS temp dir on serverless.
+const onServerless = Boolean(process.env.VERCEL || process.env.AWS_REGION);
+const DATA_DIR = onServerless ? path.join(os.tmpdir(), "x402-bazaar") : path.join(process.cwd(), "data");
+const FILE = path.join(DATA_DIR, "payments.json");
+
+let hydrated = false;
+
+async function hydrateOnce(): Promise<void> {
+  if (hydrated) return;
+  hydrated = true;
   try {
     const raw = await fs.readFile(FILE, "utf8");
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) {
+      for (const r of parsed) if (!memory.find((m) => m.id === r.id)) memory.push(r);
+    }
   } catch {
-    return [];
+    // no file yet — fine
   }
 }
 
 export async function recordPayment(rec: PaymentRecord): Promise<void> {
-  const all = await readAll();
-  all.unshift(rec);
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(all.slice(0, MAX), null, 2), "utf8");
+  await hydrateOnce();
+  memory.unshift(rec);
+  if (memory.length > MAX) memory.length = MAX;
+  // best-effort persist; swallow any FS errors (read-only / ephemeral)
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(FILE, JSON.stringify(memory, null, 2), "utf8");
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function listPayments(limit = 50): Promise<PaymentRecord[]> {
-  const all = await readAll();
-  return all.slice(0, limit);
+  await hydrateOnce();
+  return memory.slice(0, limit);
 }
