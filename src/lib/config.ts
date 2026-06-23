@@ -23,6 +23,14 @@ export const BUILDER_CODE_CHECKER = "https://buildercode-checker.vercel.app/";
 /** Builder Code pattern enforced by ERC-8021 / the x402 extension. */
 export const BUILDER_CODE_PATTERN = /^[a-z0-9_]{1,32}$/;
 
+/**
+ * This project's Base Builder Code (from base.dev → Settings → Builder Code).
+ * Public by design — it is written into settlement calldata on-chain. Used as the
+ * default for both the app code (`a`) and client code (`s`); override via env to
+ * reuse this project under a different code.
+ */
+const DEFAULT_BUILDER_CODE = "bc_0438m5ng";
+
 export interface AppConfig {
   /** App builder code (`a`) — declared by the seller on every paid route. */
   appBuilderCode: string;
@@ -45,8 +53,8 @@ export interface AppConfig {
 
 export function getConfig(): AppConfig {
   return {
-    appBuilderCode: process.env.APP_BUILDER_CODE?.trim() || "x402_bazaar",
-    clientBuilderCode: process.env.CLIENT_BUILDER_CODE?.trim() || "x402_bazaar_cli",
+    appBuilderCode: process.env.APP_BUILDER_CODE?.trim() || DEFAULT_BUILDER_CODE,
+    clientBuilderCode: process.env.CLIENT_BUILDER_CODE?.trim() || DEFAULT_BUILDER_CODE,
     payTo: process.env.PAY_TO_ADDRESS?.trim() || "",
     buyerPrivateKey: process.env.BUYER_PRIVATE_KEY?.trim() || undefined,
     cdpApiKeyId: process.env.CDP_API_KEY_ID?.trim() || undefined,
