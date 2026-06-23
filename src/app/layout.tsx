@@ -21,8 +21,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="sticky top-0 z-20 border-b border-base-line/70 bg-black/40 backdrop-blur">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
             <Link href="/" className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-base-blue text-sm font-black text-white">
-                ×4
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-base-blue to-[#0036aa] shadow-md shadow-base-blue/30">
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-b from-white to-[#cfddff] text-[9px] font-black leading-none text-[#0046e6] shadow-inner">
+                  x4
+                </span>
               </span>
               <div className="leading-tight">
                 <div className="text-sm font-bold tracking-tight">x402 Bazaar</div>
