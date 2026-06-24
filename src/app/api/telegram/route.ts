@@ -136,6 +136,17 @@ async function buildAiReport(address: string): Promise<string> {
   const L: string[] = [`🔬 <b>AI Token Report</b>`, `<code>${esc(address)}</code>`];
   L.push(`\n${VERDICT_EMOJI[r.verdict] ?? "⚪"} <b>Verdict:</b> ${esc(r.verdict)}`);
   if (r.summary) L.push(esc(r.summary));
+  const d = r.data as {
+    risk?: { riskScore?: number } | null;
+    holders?: { top10Pct?: number } | null;
+    price?: { liquidityUsd?: number | null } | null;
+  };
+  const facts: string[] = [];
+  if (typeof d.risk?.riskScore === "number") facts.push(`risk ${d.risk.riskScore}/100`);
+  if (typeof d.holders?.top10Pct === "number") facts.push(`top10 ${d.holders.top10Pct}%`);
+  if (typeof d.price?.liquidityUsd === "number")
+    facts.push(`liq $${Math.round(d.price.liquidityUsd).toLocaleString()}`);
+  if (facts.length) L.push(`📊 ${facts.join(" · ")}`);
   if (r.risks?.length) L.push(`\n⚠️ <b>Risks</b>\n${r.risks.slice(0, 5).map((x) => "• " + esc(x)).join("\n")}`);
   if (r.positives?.length)
     L.push(`\n✅ <b>Positives</b>\n${r.positives.slice(0, 5).map((x) => "• " + esc(x)).join("\n")}`);
