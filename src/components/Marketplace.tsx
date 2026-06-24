@@ -366,6 +366,38 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         </section>
       )}
 
+      {/* How it works */}
+      <section className="flex flex-col gap-3">
+        <div className="label">How it works</div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            { n: "1", t: "Discover", d: "Agents read the machine catalog at /.well-known/x402 or add the MCP server — every endpoint, price & schema." },
+            { n: "2", t: "Call & pay", d: "Hit an endpoint; on HTTP 402 the agent pays a tiny USDC micro-payment over x402. Gasless for the payer." },
+            { n: "3", t: "Get data", d: "Settlement is attributed onchain via Builder Codes; the agent gets the result instantly. No keys, no signup." },
+          ].map((s) => (
+            <div key={s.n} className="card p-4">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-base-blue/20 text-sm font-bold text-sky-300">
+                {s.n}
+              </div>
+              <div className="mt-2 font-semibold">{s.t}</div>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">{s.d}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <a className="pill hover:text-white" href="https://www.npmjs.com/package/x402-bazaar-mcp" target="_blank" rel="noreferrer">
+            📦 npm: x402-bazaar-mcp
+          </a>
+          <span className="pill">🗂️ Official MCP Registry</span>
+          <a className="pill hover:text-white" href="/openapi.json" target="_blank" rel="noreferrer">
+            📄 OpenAPI
+          </a>
+          <a className="pill hover:text-white" href="/.well-known/x402" target="_blank" rel="noreferrer">
+            🔎 Catalog
+          </a>
+        </div>
+      </section>
+
       {/* Service groups */}
       {groups.map(({ category, items }) => (
         <section key={category} className="flex flex-col gap-3">
