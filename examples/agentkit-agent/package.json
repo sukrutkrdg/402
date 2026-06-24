@@ -1,0 +1,14 @@
+{
+  "name": "x402-bazaar-agentkit-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Starter: a Coinbase AgentKit agent on Base that uses x402 Bazaar for onchain data & AI reports, paid per call over x402.",
+  "dependencies": {
+    "@coinbase/agentkit": "^0.6.0",
+    "@x402/fetch": "^2.16.0",
+    "@x402/evm": "^2.16.0",
+    "viem": "^2.21.0",
+    "zod": "^3.23.0"
+  }
+}
