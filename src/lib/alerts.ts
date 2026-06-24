@@ -209,8 +209,12 @@ export async function registerAlert(
     fired: false,
   };
 
-  await kvSet(`alert:${id}`, JSON.stringify(alert), ALERT_TTL);
-  await kvSAdd("alerts:active", id);
+  try {
+    await kvSet(`alert:${id}`, JSON.stringify(alert), ALERT_TTL);
+    await kvSAdd("alerts:active", id);
+  } catch (err) {
+    throw new Error(`Failed to register alert: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   return {
     alertId: id,

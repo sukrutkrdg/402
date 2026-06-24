@@ -15,7 +15,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
-import { kvLPush, kvLRange } from "@/lib/kv";
+import { kvLPush, kvLRange, kvIncr } from "@/lib/kv";
+import { safeEqual } from "@/lib/secure";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +56,7 @@ const WELCOME =
 
 async function recordScan(address: string, symbol: string) {
   try {
-    await kvLPush("bot:recent", JSON.stringify({ a: address, s: symbol || "", t: Date.now() }), 50);
+    await kvLPush("bot:recent", JSON.stringify({ a: address, s: (symbol || "").slice(0, 20), t: Date.now() }), 50);
   } catch {
     /* best-effort */
   }
@@ -176,15 +178,15 @@ async function buildReport(address: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  if (!TOKEN) {
+  // Secret is MANDATORY — without it the webhook would accept anyone's POST.
+  if (!TOKEN || !SECRET) {
     return NextResponse.json({ error: "Bot not configured" }, { status: 503 });
   }
-  // Verify Telegram's secret header (set via setWebhook secret_token).
-  if (SECRET && req.headers.get("x-telegram-bot-api-secret-token") !== SECRET) {
+  if (!safeEqual(req.headers.get("x-telegram-bot-api-secret-token") ?? "", SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let update: { message?: { chat?: { id?: number }; text?: string } };
+  let update: { update_id?: number; message?: { chat?: { id?: number }; text?: string } };
   try {
     update = await req.json();
   } catch {
@@ -194,6 +196,18 @@ export async function POST(req: NextRequest) {
   const chatId = update.message?.chat?.id;
   const text = (update.message?.text || "").trim();
   if (typeof chatId !== "number") return NextResponse.json({ ok: true });
+
+  // Per-chat rate limit (blunt abuse — each scan fans out to RPC/GoPlus/DexScreener).
+  if (!rateLimit(`tg:${chatId}`, 12, 60_000).ok) {
+    await send(chatId, "⏳ Rate limit — please wait a minute.");
+    return NextResponse.json({ ok: true });
+  }
+
+  // Dedupe Telegram retries (it resends if we don't 200 within 5s) by update_id.
+  if (typeof update.update_id === "number") {
+    const seen = await kvIncr(`tg:upd:${update.update_id}`, 300);
+    if (seen > 1) return NextResponse.json({ ok: true });
+  }
 
   if (/^\/start|^\/help/i.test(text)) {
     await send(chatId, WELCOME);

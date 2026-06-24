@@ -39,9 +39,12 @@ export async function newTokens(_params: Record<string, string>) {
       tokenAddress: t.tokenAddress ?? null,
       description:
         typeof t.description === "string" ? t.description.trim().slice(0, 160) || null : null,
-      url: t.url ?? null,
+      url: typeof t.url === "string" && t.url.startsWith("https://") ? t.url : null,
       links: Array.isArray(t.links)
-        ? t.links.map((l) => l.url).filter((u): u is string => typeof u === "string").slice(0, 5)
+        ? t.links
+            .map((l) => l.url)
+            .filter((u): u is string => typeof u === "string" && u.startsWith("https://"))
+            .slice(0, 5)
         : [],
     }));
 

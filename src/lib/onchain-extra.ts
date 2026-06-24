@@ -199,9 +199,10 @@ export async function multiTokenPrice(params: Record<string, string>) {
   const list = (params.addresses || "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean)
+    .filter((s) => /^0x[0-9a-fA-F]{40}$/.test(s))
     .slice(0, 10);
-  if (list.length === 0) throw new Error("Provide 'addresses' — comma-separated 0x… token addresses");
+  if (list.length === 0)
+    throw new Error("Provide 'addresses' — comma-separated valid 0x… token addresses");
 
   const results = await Promise.all(
     list.map(async (a) => {
@@ -218,6 +219,11 @@ export async function multiTokenPrice(params: Record<string, string>) {
       }
     }),
   );
+
+  // Don't charge if nothing resolved (e.g. upstream down for the whole batch).
+  if (results.every((r) => "error" in r)) {
+    throw new Error("No price data for any of the provided tokens");
+  }
 
   return { count: results.length, results, checkedAt: new Date().toISOString() };
 }

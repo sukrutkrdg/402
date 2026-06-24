@@ -6,12 +6,11 @@ export interface StatusInfo {
   network: string;
   appBuilderCode: string;
   clientBuilderCode: string;
-  payTo: string | null;
-  buyerAddress: string | null;
-  seller: { ok: boolean; missing: string[] };
-  buyer: { ok: boolean; missing: string[] };
+  seller: { ok: boolean };
+  buyer: { ok: boolean };
   buyerEnabled: boolean;
   buyTokenRequired: boolean;
+  kv?: boolean;
 }
 
 export function useStatus() {

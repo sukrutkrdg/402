@@ -56,7 +56,10 @@ async function cmd<T = unknown>(args: (string | number)[]): Promise<T | null> {
 export async function kvIncr(key: string, ttlSeconds?: number): Promise<number> {
   if (kvConfigured()) {
     const n = (await cmd<number>(["INCR", key])) ?? 0;
-    if (n === 1 && ttlSeconds) await cmd(["EXPIRE", key, ttlSeconds]);
+    // Always (re)set TTL when requested so a key never persists without expiry
+    // (a missed EXPIRE would otherwise leak it forever). Daily reset is handled
+    // by the date embedded in the key, so refreshing TTL is harmless.
+    if (ttlSeconds) await cmd(["EXPIRE", key, ttlSeconds]);
     return n;
   }
   const e = memValid(key);
