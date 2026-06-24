@@ -22,7 +22,7 @@ import { aiTokenReport } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
-import { walletNetworth, walletSummary, walletActivity } from "./covalent";
+import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts } from "./covalent";
 import { aiWalletReport } from "./ai-report";
 
 export interface ServiceParam {
@@ -442,6 +442,45 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletActivity,
+  },
+  {
+    id: "token-approvals",
+    name: "Token Approval Risk",
+    tagline: "Open allowances & USD at risk for a wallet",
+    description:
+      "Lists a wallet's active token approvals — which contracts can spend its tokens, the allowance, USD value at risk and a risk factor (revoke.cash-style). Essential wallet-security check for agents and users.",
+    price: "$0.01",
+    icon: "🔓",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: tokenApprovals,
+  },
+  {
+    id: "historical-price",
+    name: "Historical Token Price",
+    tagline: "USD price of a Base token on a given date",
+    description:
+      "Returns the USD price of a Base token on a specific date (YYYY-MM-DD) via Covalent. For agents computing cost basis, backtests, or P&L.",
+    price: "$0.005",
+    icon: "📅",
+    category: "Markets",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "date", label: "Date (YYYY-MM-DD)", placeholder: "2026-06-01", required: true },
+    ],
+    handler: historicalPrice,
+  },
+  {
+    id: "wallet-nfts",
+    name: "Wallet NFT Holdings",
+    tagline: "NFT collections held by a wallet (+ floor)",
+    description:
+      "Lists the NFT collections a Base wallet holds — name, count and floor value — spam-filtered, via Covalent. For agents profiling a wallet's NFT exposure.",
+    price: "$0.01",
+    icon: "🖼️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: walletNfts,
   },
   {
     id: "ai-wallet-report",

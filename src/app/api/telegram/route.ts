@@ -15,8 +15,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
-import { aiTokenReport } from "@/lib/ai-report";
+import { aiTokenReport, aiWalletReport } from "@/lib/ai-report";
 import { walletPortfolio, nftFloor } from "@/lib/alchemy";
+import { walletNetworth } from "@/lib/covalent";
 import { kvLPush, kvLRange, kvIncr } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
 import { rateLimit } from "@/lib/rate-limit";
@@ -65,7 +66,7 @@ async function send(chatId: number, text: string, withButtons = false) {
 const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
   "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
-  "Commands: /scan · /ai (AI verdict) · /portfolio · /nft · /recent · /help\n\n" +
+  "Commands: /scan · /ai (token verdict) · /networth · /wallet (wallet verdict) · /portfolio · /nft · /recent · /help\n\n" +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
 
 async function recordScan(address: string, symbol: string) {
@@ -138,6 +139,48 @@ const VERDICT_EMOJI: Record<string, string> = {
   neutral: "⚪",
   favorable: "🟢",
 };
+
+async function buildNetworth(address: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof walletNetworth>>;
+  try {
+    r = await walletNetworth({ address });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "Net worth failed")}`;
+  }
+  const L: string[] = [`🏦 <b>Wallet Net Worth</b>`, `<code>${esc(address)}</code>`];
+  L.push(`\n<b>Total: $${esc(r.totalUsd)}</b> · ${r.tokenCount} tokens`);
+  for (const h of r.holdings.slice(0, 10)) {
+    const bal = Number(h.balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
+    L.push(`• ${esc(h.symbol || "?")}: ${esc(bal)}${h.usdValue != null ? ` ($${esc(h.usdValue)})` : ""}`);
+  }
+  if (r.holdings.length === 0) L.push("No token holdings found.");
+  L.push(`\n<a href="${SITE}/agents">Wallet Net Worth API →</a>`);
+  return L.join("\n");
+}
+
+const WALLET_VERDICT: Record<string, string> = {
+  fresh_or_risky: "🔴",
+  new: "🟠",
+  normal: "⚪",
+  established: "🟢",
+  power_user: "🟢",
+};
+
+async function buildWalletReport(address: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof aiWalletReport>>;
+  try {
+    r = await aiWalletReport({ address });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "Wallet report failed")}`;
+  }
+  const L: string[] = [`🧠 <b>AI Wallet Report</b>`, `<code>${esc(address)}</code>`];
+  L.push(`\n${WALLET_VERDICT[r.verdict] ?? "⚪"} <b>${esc(r.verdict)}</b>`);
+  if (r.summary) L.push(esc(r.summary));
+  if (r.observations?.length)
+    L.push(`\n${r.observations.slice(0, 5).map((x) => "• " + esc(x)).join("\n")}`);
+  L.push(`\n<a href="${SITE}/agents">AI Wallet Report API →</a>`);
+  return L.join("\n");
+}
 
 async function buildAiReport(address: string): Promise<string> {
   let r: Awaited<ReturnType<typeof aiTokenReport>>;
@@ -327,6 +370,27 @@ export async function POST(req: NextRequest) {
   if (/^\/nft\b/i.test(text)) {
     const m = text.match(/0x[0-9a-fA-F]{40}/);
     await send(chatId, m ? await buildNft(m[0]) : "Usage: <code>/nft 0x…</code> — floor price for an NFT collection.", Boolean(m));
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/networth\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    await send(chatId, m ? await buildNetworth(m[0]) : "Usage: <code>/networth 0x…</code> — full wallet net worth in USD.", Boolean(m));
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/wallet\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    if (!m) {
+      await send(chatId, "Usage: <code>/wallet 0x…</code> — Claude-written profile of a wallet.");
+      return NextResponse.json({ ok: true });
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    if ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15) {
+      await send(chatId, "Daily AI limit reached (15). Use /networth for a free instant breakdown.");
+      return NextResponse.json({ ok: true });
+    }
+    await send(chatId, await buildWalletReport(m[0]), true);
     return NextResponse.json({ ok: true });
   }
 

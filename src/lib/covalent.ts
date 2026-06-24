@@ -180,3 +180,107 @@ export async function walletActivity(params: Record<string, string>) {
   });
   return { address, count: transactions.length, transactions, checkedAt: new Date().toISOString() };
 }
+
+// ---------------------------------------------------------------------------
+// Token approvals (allowance risk — revoke.cash style)
+// ---------------------------------------------------------------------------
+
+interface CovSpender {
+  spender_address?: string;
+  spender_address_label?: string | null;
+  allowance?: string;
+  value_at_risk_quote?: number | null;
+  risk_factor?: string | null;
+}
+interface CovApproval {
+  token_address?: string;
+  ticker_symbol?: string;
+  value_at_risk_quote?: number | null;
+  spenders?: CovSpender[];
+}
+
+export async function tokenApprovals(params: Record<string, string>) {
+  const address = reqAddr(params.address || "");
+  const data = await cov<{ items?: CovApproval[] }>(
+    `/${CHAIN}/approvals/${address}/`,
+    `appr:${address.toLowerCase()}`,
+    120,
+  );
+  const approvals = (data.items ?? [])
+    .map((i) => ({
+      token: i.ticker_symbol ?? null,
+      tokenAddress: i.token_address ?? null,
+      usdAtRisk: typeof i.value_at_risk_quote === "number" ? +i.value_at_risk_quote.toFixed(2) : null,
+      spenders: (i.spenders ?? []).map((s) => ({
+        spender: s.spender_address ?? null,
+        label: s.spender_address_label ?? null,
+        allowance: s.allowance ?? null,
+        usdAtRisk: typeof s.value_at_risk_quote === "number" ? +s.value_at_risk_quote.toFixed(2) : null,
+        riskFactor: s.risk_factor ?? null,
+      })),
+    }))
+    .filter((a) => a.spenders.length > 0)
+    .sort((a, b) => (b.usdAtRisk ?? 0) - (a.usdAtRisk ?? 0))
+    .slice(0, 30);
+  const totalUsdAtRisk = +approvals.reduce((s, a) => s + (a.usdAtRisk ?? 0), 0).toFixed(2);
+  return {
+    address,
+    approvalCount: approvals.length,
+    totalUsdAtRisk,
+    approvals,
+    note: "Revoke unused approvals (e.g. at revoke.cash) to reduce risk.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Historical token price (USD at a date)
+// ---------------------------------------------------------------------------
+
+export async function historicalPrice(params: Record<string, string>) {
+  const token = reqAddr(params.address || params.token || "");
+  const date = (params.date || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Provide 'date' as YYYY-MM-DD");
+  const data = await cov<Array<{ prices?: Array<{ date?: string; price?: number }> }>>(
+    `/pricing/historical_by_addresses_v2/${CHAIN}/USD/${token}/?from=${date}&to=${date}`,
+    `hp:${token.toLowerCase()}:${date}`,
+    86400,
+  );
+  const prices = data?.[0]?.prices ?? [];
+  const match = prices.find((p) => p.date === date) ?? prices[0];
+  if (!match || typeof match.price !== "number") throw new Error("No price for that token/date");
+  return { token, date, priceUsd: match.price, checkedAt: new Date().toISOString() };
+}
+
+// ---------------------------------------------------------------------------
+// Wallet NFT holdings
+// ---------------------------------------------------------------------------
+
+interface CovNft {
+  contract_name?: string;
+  contract_ticker_symbol?: string;
+  contract_address?: string;
+  is_spam?: boolean;
+  balance?: string;
+  floor_price_quote?: number | null;
+}
+
+export async function walletNfts(params: Record<string, string>) {
+  const address = reqAddr(params.address || "");
+  const data = await cov<{ items?: CovNft[] }>(
+    `/${CHAIN}/address/${address}/balances_nft/?no-spam=true&page-size=20`,
+    `nft:${address.toLowerCase()}`,
+    120,
+  );
+  const collections = (data.items ?? [])
+    .filter((i) => !i.is_spam && i.contract_address)
+    .map((i) => ({
+      name: i.contract_name ?? null,
+      symbol: i.contract_ticker_symbol ?? null,
+      address: i.contract_address ?? null,
+      count: Number(i.balance ?? 0),
+      floorEth: typeof i.floor_price_quote === "number" ? i.floor_price_quote : null,
+    }))
+    .slice(0, 30);
+  return { address, collectionCount: collections.length, collections, checkedAt: new Date().toISOString() };
+}
