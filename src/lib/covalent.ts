@@ -284,3 +284,59 @@ export async function walletNfts(params: Record<string, string>) {
     .slice(0, 30);
   return { address, collectionCount: collections.length, collections, checkedAt: new Date().toISOString() };
 }
+
+// ---------------------------------------------------------------------------
+// Token transfer history (a wallet's in/out transfers of one token)
+// ---------------------------------------------------------------------------
+
+interface CovTransfer {
+  transfer_type?: string;
+  delta?: string;
+  delta_quote?: number | null;
+  from_address?: string;
+  to_address?: string;
+  tx_hash?: string;
+  block_signed_at?: string;
+  contract_decimals?: number;
+  contract_ticker_symbol?: string;
+}
+
+export async function tokenTransfers(params: Record<string, string>) {
+  const wallet = reqAddr(params.address || "");
+  const tokenRaw = (params.token || params.contract || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(tokenRaw)) {
+    throw new Error("Provide 'token' — a 0x… token contract address");
+  }
+  const token = getAddress(tokenRaw);
+  const data = await cov<{ items?: Array<{ transfers?: CovTransfer[] }> }>(
+    `/${CHAIN}/address/${wallet}/transfers_v2/?contract-address=${token}&page-size=15`,
+    `xfer:${wallet.toLowerCase()}:${token.toLowerCase()}`,
+    60,
+  );
+  const all = (data.items ?? []).flatMap((it) => it.transfers ?? []);
+  const transfers = all.slice(0, 20).map((t) => {
+    let amount = "0";
+    try {
+      amount = t.delta ? formatUnits(BigInt(t.delta), t.contract_decimals ?? 18) : "0";
+    } catch {
+      amount = "0";
+    }
+    return {
+      type: t.transfer_type ?? null, // IN | OUT
+      amount,
+      usd: typeof t.delta_quote === "number" ? +t.delta_quote.toFixed(2) : null,
+      from: t.from_address ?? null,
+      to: t.to_address ?? null,
+      txHash: t.tx_hash ?? null,
+      time: t.block_signed_at ?? null,
+    };
+  });
+  return {
+    wallet,
+    token,
+    symbol: all[0]?.contract_ticker_symbol ?? null,
+    count: transfers.length,
+    transfers,
+    checkedAt: new Date().toISOString(),
+  };
+}
