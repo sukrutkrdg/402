@@ -78,19 +78,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
             </Link>
-            <nav className="flex items-center gap-1.5 text-sm">
-              <Link href="/" className="rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white">
+            <nav className="-mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 text-sm">
+              <Link href="/" className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white">
                 Marketplace
               </Link>
               <Link
                 href="/dashboard"
-                className="rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
+                className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
               >
-                Attribution
+                Dashboard
               </Link>
               <Link
                 href="/agents"
-                className="rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
+                className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
               >
                 For agents
               </Link>
@@ -98,7 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 href="https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes"
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
+                className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
               >
                 Docs ↗
               </a>
@@ -120,6 +120,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             ·{" "}
             <a className="text-sky-400 hover:underline" href="https://t.me/Bazaar402_bot" target="_blank" rel="noreferrer">
               Telegram bot
+            </a>{" "}
+            ·{" "}
+            <a className="text-sky-400 hover:underline" href="https://github.com/sukrutkrdg/x402-bazaar-mcp" target="_blank" rel="noreferrer">
+              GitHub
             </a>
           </p>
         </footer>

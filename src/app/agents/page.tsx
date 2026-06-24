@@ -64,44 +64,54 @@ console.log(await res.json());`}</Code>
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">3. Use as MCP tools</h2>
+        <h2 className="text-lg font-semibold">3. Use as MCP tools (easiest)</h2>
         <p className="text-sm text-gray-400">
-          Drop this minimal MCP server into your agent (Claude Desktop, Cursor, custom) to expose
-          these endpoints as tools your model can call. It pays per call with your wallet:
+          Every service appears as a tool in Claude Desktop, Cursor, or any MCP client — via the
+          published{" "}
+          <a
+            className="text-sky-400 hover:underline"
+            href="https://www.npmjs.com/package/x402-bazaar-mcp"
+            target="_blank"
+            rel="noreferrer"
+          >
+            x402-bazaar-mcp
+          </a>{" "}
+          package. No code to write:
         </p>
-        <Code>{`// x402-bazaar-mcp.mjs — run with: node x402-bazaar-mcp.mjs
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
-import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { privateKeyToAccount } from "viem/accounts";
-import { z } from "zod";
-
-const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY);
-const client = new x402Client();
-client.register("eip155:8453", new ExactEvmScheme(account));
-const pay = wrapFetchWithPayment(fetch, client);
-
-const server = new McpServer({ name: "x402-bazaar", version: "1.0.0" });
-
-// Auto-register every service from the live catalog as a tool
-const catalog = await (await fetch("${SITE_URL}/api/catalog")).json();
-for (const s of catalog.services) {
-  server.tool(s.id.replace(/-/g, "_"), s.description,
-    Object.fromEntries(Object.keys(s.input).map((k) => [k, z.string()])),
-    async (args) => {
-      const url = new URL(s.endpoint);
-      for (const [k, v] of Object.entries(args)) if (v) url.searchParams.set(k, v);
-      const r = await pay(url.toString());
-      return { content: [{ type: "text", text: await r.text() }] };
-    });
-}
-await server.connect(new StdioServerTransport());`}</Code>
+        <Code>{`{
+  "mcpServers": {
+    "x402-bazaar": {
+      "command": "npx",
+      "args": ["-y", "x402-bazaar-mcp"],
+      "env": { "AGENT_PRIVATE_KEY": "0xYOUR_BASE_WALLET_KEY" }
+    }
+  }
+}`}</Code>
         <p className="text-xs text-gray-500">
-          Needs <code className="codechip">@modelcontextprotocol/sdk</code>,{" "}
-          <code className="codechip">@x402/fetch</code>, <code className="codechip">@x402/evm</code>,{" "}
-          <code className="codechip">viem</code>, <code className="codechip">zod</code>. Set{" "}
-          <code className="codechip">AGENT_PRIVATE_KEY</code> to a Base wallet funded with USDC.
+          Add to <code className="codechip">claude_desktop_config.json</code> (or your client&apos;s MCP
+          config), restart, and the tools appear. The wallet needs only USDC on Base — the key never
+          leaves your machine. Also on the{" "}
+          <a
+            className="text-sky-400 hover:underline"
+            href="https://github.com/sukrutkrdg/x402-bazaar-mcp"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub repo
+          </a>{" "}
+          &amp; the official MCP Registry.
+        </p>
+        <p className="text-xs text-gray-500">
+          Prefer to build your own? See the{" "}
+          <a
+            className="text-sky-400 hover:underline"
+            href="https://github.com/sukrutkrdg/402/tree/main/examples"
+            target="_blank"
+            rel="noreferrer"
+          >
+            examples folder
+          </a>{" "}
+          for a direct <code className="codechip">@x402/fetch</code> caller and a custom AgentKit action.
         </p>
       </section>
 

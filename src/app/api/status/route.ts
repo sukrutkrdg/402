@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     buyerEnabled: cfg.enableBuyer,
     buyTokenRequired: Boolean(cfg.buyAccessToken),
     aiReady: aiConfigured(),
+    alchemyReady: Boolean(process.env.ALCHEMY_API_KEY?.trim()),
     kv: kvConfigured(),
     freeTier: await freeRemaining(`free:${clientIp(req)}`),
   });

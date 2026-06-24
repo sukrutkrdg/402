@@ -38,7 +38,7 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
 // Category display order — earlier index = rendered first.
-const CATEGORY_ORDER = ["Onchain", "AI", "Markets", "Data", "Fun", "Utility"];
+const CATEGORY_ORDER = ["Onchain", "AI", "Markets", "Data", "Utility", "Fun", "Demo"];
 
 const TRUST_PILLS = [
   { label: "USDC on Base" },
@@ -310,13 +310,14 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         {!buyerEnabled && (
           <div className="card px-4 py-3 text-xs text-gray-400">
             🤖 These APIs are built for agents — they call the endpoints directly and pay per call in
-            USDC. See{" "}
+            USDC. <strong className="text-gray-200">First 3 calls/day per service are free</strong>{" "}
+            (non-AI) — no wallet needed to try. See{" "}
             <a className="text-sky-400 hover:underline" href="/agents">
               For agents
             </a>{" "}
             to integrate, or the{" "}
             <a className="text-sky-400 hover:underline" href="/dashboard">
-              attribution dashboard
+              dashboard
             </a>{" "}
             to decode any settlement on-chain.
           </div>
@@ -388,7 +389,9 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           <a className="pill hover:text-white" href="https://www.npmjs.com/package/x402-bazaar-mcp" target="_blank" rel="noreferrer">
             📦 npm: x402-bazaar-mcp
           </a>
-          <span className="pill">🗂️ Official MCP Registry</span>
+          <a className="pill hover:text-white" href="https://github.com/sukrutkrdg/x402-bazaar-mcp" target="_blank" rel="noreferrer">
+            🗂️ MCP server (Registry)
+          </a>
           <a className="pill hover:text-white" href="/openapi.json" target="_blank" rel="noreferrer">
             📄 OpenAPI
           </a>

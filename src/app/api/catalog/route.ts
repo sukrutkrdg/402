@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
 export function GET() {
   const cfg = getConfig();
   const SITE_URL = getSiteUrl();
-  return Response.json({
+  return Response.json(
+    {
     name: "x402 Bazaar",
     description:
       "Pay-per-call API marketplace on Base. Call any endpoint over HTTP; pay a USDC micro-payment via x402 (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
@@ -30,6 +31,8 @@ export function GET() {
       name: s.name,
       description: s.description,
       category: s.category,
+      demo: s.category === "Demo",
+      requiresAI: s.category === "AI",
       price: s.price,
       method: "GET",
       x402: true,
@@ -41,5 +44,7 @@ export function GET() {
         ]),
       ),
     })),
-  });
+    },
+    { headers: { "cache-control": "public, max-age=300" } },
+  );
 }
