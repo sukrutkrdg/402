@@ -1,6 +1,6 @@
 ---
 title: "x402 Bazaar Plugin"
-description: "Read-only onchain data & AI reports for Base (token risk, wallet intelligence, OFAC sanctions, prices, NFTs) via the x402-bazaar-mcp server; paid per call in USDC over x402. Returns data only — makes no Base MCP transaction."
+description: "The onchain intelligence layer for Base agents: 43+ read-only APIs — token safety & rug detection, wallet net worth/age/risk, OFAC sanctions screening, prices & momentum, NFTs — plus two Claude-written AI reports (token & wallet). Reached via the x402-bazaar-mcp server; paid per call in USDC over x402. Returns data only — no transactions (Submission: none)."
 tags: [data, token-risk, wallet-intel, compliance, x402]
 name: x402-bazaar
 version: 0.1.0
@@ -23,15 +23,29 @@ risk: []
 
 ## Overview
 
-x402 Bazaar is a pay-per-call API marketplace on Base exposing 40+ read-only
-services — token safety (risk, honeypot, rug score), wallet intelligence (net
-worth, age/activity, approvals, transfers, NFTs), OFAC sanctions screening,
-prices/momentum/pools, and Claude-written AI token & wallet reports. It is
-reached through the **`x402-bazaar-mcp`** server. Each call settles a tiny USDC
-micro-payment over **x402** on Base (gasless for the payer; the wallet key never
-leaves the caller's machine). It complements Base MCP: Base MCP lets an agent
-*act*, x402 Bazaar lets it *know what to act on*. No onchain transaction is
-produced, so no `send_calls` handoff occurs.
+**x402 Bazaar is the onchain intelligence layer for Base agents** — the data an
+agent should consult *before* it acts. It exposes **43+ read-only services** on
+Base across five areas:
+
+- **Token safety** — risk score, honeypot/tax checks, holder concentration,
+  **rug-probability score**, contract verification/ABI.
+- **Wallet intelligence** — net worth (accurate USD), age & activity (sybil/rug
+  screening), token approvals (allowance risk), transfers, NFT holdings.
+- **Compliance** — OFAC sanctions screening (single & batch), combined verdict.
+- **Markets** — price, 1h/6h/24h momentum, pools, historical price, trending &
+  newly-listed tokens, gas & chain status.
+- **AI flagships (Claude-written)** — **AI Token Report** and **AI Wallet
+  Report**: aggregate the raw signals into a single structured verdict with
+  reasons (the kind of synthesis you can't get from a raw data feed).
+
+Reached through the **`x402-bazaar-mcp`** server (also on the official MCP
+registry). Each call settles a tiny **USDC micro-payment over x402** on Base —
+no API keys, gasless for the payer, and the wallet key never leaves the caller's
+machine. Every settlement is attributed onchain via Builder Codes (ERC-8021).
+
+It complements Base MCP cleanly: **Base MCP lets an agent *act*; x402 Bazaar lets
+it *know what to act on*.** No onchain transaction is produced here, so there is
+no `send_calls` handoff — this is a pure read/intelligence skill.
 
 ## Detection
 
@@ -82,7 +96,9 @@ MCP submission tool (`send_calls`/`swap`/`sign`).
 
 ## Example Prompts
 
-1. "Is `0x…` a safe token to buy on Base?" → call `ai_token_report` (or `token_risk` + `token_price`), summarize the verdict and risks.
-2. "Screen `0x…` for OFAC sanctions before I send funds." → call `sanctions` (or `compliance_check`); report blocked/clear.
-3. "Profile wallet `0x…` — net worth, age, what can drain it." → call `wallet_networth`, `wallet_summary`, `token_approvals`; summarize.
-4. "What's the 24h price & momentum of `0x…`?" → call `token_momentum`; report price and 1h/6h/24h change.
+1. "Is `0x…` a safe token to buy on Base?" → call `ai_token_report` (or `token_risk` + `rug_score` + `token_price`), summarize the verdict and risks.
+2. "Before I swap into `0x…`, check it's safe and not sanctioned." → run `ai_token_report` + `sanctions`; only if it's clear, hand the swap off to Base MCP.
+3. "Profile wallet `0x…` — net worth, age, what can drain it." → call `wallet_networth`, `wallet_summary`, `token_approvals`; summarize risk.
+4. "Is this counterparty `0x…` OK to send funds to?" → call `compliance_check`; report blocked / review / clear.
+5. "What's the 24h price & momentum of `0x…`?" → call `token_momentum`; report price and 1h/6h/24h change.
+6. "Give me a verdict on wallet `0x…` — sybil or established?" → call `ai_wallet_report`.
