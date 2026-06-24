@@ -22,6 +22,8 @@ import { aiTokenReport } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
+import { walletNetworth, walletSummary, walletActivity } from "./covalent";
+import { aiWalletReport } from "./ai-report";
 
 export interface ServiceParam {
   name: string;
@@ -404,6 +406,54 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletPortfolio,
+  },
+  {
+    id: "wallet-networth",
+    name: "Wallet Net Worth",
+    tagline: "All tokens + USD value (reliable pricing)",
+    description:
+      "Complete ERC-20 portfolio for a Base address with accurate USD values from Covalent (handles stablecoins & long-tail tokens). Spam-filtered, sorted by value, with a total. The reliable portfolio endpoint.",
+    price: "$0.01",
+    icon: "🏦",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: walletNetworth,
+  },
+  {
+    id: "wallet-summary",
+    name: "Wallet Age & Activity",
+    tagline: "Tx count, first/last activity, wallet age",
+    description:
+      "Total transaction count, first & last activity timestamps, and wallet age in days for any Base address. Built for sybil/rug screening and counterparty trust checks.",
+    price: "$0.01",
+    icon: "🕰️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: walletSummary,
+  },
+  {
+    id: "wallet-activity",
+    name: "Wallet Activity",
+    tagline: "Recent transactions for an address",
+    description:
+      "The latest transactions for a Base address — hash, time, from/to, ETH value, success — via Covalent. For agents tracking what a wallet is doing.",
+    price: "$0.01",
+    icon: "📜",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: walletActivity,
+  },
+  {
+    id: "ai-wallet-report",
+    name: "AI Wallet Report",
+    tagline: "Claude-written verdict on any wallet",
+    description:
+      "The flagship wallet report: aggregates net worth, age/activity and recent transactions, then Claude synthesizes a verdict (e.g. fresh/risky → established/active) with key observations. One call, agent-ready wallet intelligence.",
+    price: "$0.03",
+    icon: "🧠",
+    category: "AI",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: aiWalletReport,
   },
   {
     id: "ai-token-report",

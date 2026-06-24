@@ -13,6 +13,7 @@ import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { tokenPrice } from "./onchain-extra";
 import { sanctionsCheck } from "./compliance";
+import { walletNetworth, walletSummary, walletActivity } from "./covalent";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
@@ -90,6 +91,67 @@ export async function aiTokenReport(params: Record<string, string>) {
     summary: parsed.summary ?? "",
     risks: parsed.risks ?? [],
     positives: parsed.positives ?? [],
+    data,
+    model: MODEL,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * AI Wallet Report — flagship wallet intelligence. Aggregates net worth, age/
+ * activity and recent transactions, then Claude synthesizes a verdict.
+ */
+export async function aiWalletReport(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… address");
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+  }
+
+  const [networth, summary, activity] = await Promise.allSettled([
+    walletNetworth({ address }),
+    walletSummary({ address }),
+    walletActivity({ address }),
+  ]);
+  const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
+  const data = { networth: val(networth), summary: val(summary), activity: val(activity) };
+  if (!data.networth && !data.summary) throw new Error("No wallet data available for this address");
+
+  const facts = JSON.stringify(data).slice(0, 6000);
+  const schema = {
+    type: "object",
+    properties: {
+      verdict: { type: "string", enum: ["fresh_or_risky", "new", "normal", "established", "power_user"] },
+      summary: { type: "string" },
+      observations: { type: "array", items: { type: "string" } },
+    },
+    required: ["verdict", "summary", "observations"],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 600,
+    system:
+      "You are a wallet analyst for an autonomous agent. Given JSON facts (net worth, age/activity, recent txs), " +
+      "produce a concise neutral profile: is this wallet fresh/new (possible sybil or throwaway), normal, or an " +
+      "established/active user? Note net worth, age in days, activity level, and anything notable. Not financial advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `Wallet ${address} facts:\n${facts}` }],
+  });
+
+  let parsed: { verdict?: string; summary?: string; observations?: string[] };
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    address,
+    verdict: parsed.verdict ?? "normal",
+    summary: parsed.summary ?? "",
+    observations: parsed.observations ?? [],
     data,
     model: MODEL,
     generatedAt: new Date().toISOString(),
