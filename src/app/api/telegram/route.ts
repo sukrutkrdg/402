@@ -16,6 +16,7 @@ import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
 import { aiTokenReport } from "@/lib/ai-report";
+import { walletPortfolio, nftFloor } from "@/lib/alchemy";
 import { kvLPush, kvLRange, kvIncr } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
 import { rateLimit } from "@/lib/rate-limit";
@@ -52,7 +53,7 @@ async function send(chatId: number, text: string) {
 const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
   "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
-  "Commands: /scan &lt;address&gt; · /ai &lt;address&gt; (AI verdict) · /recent · /help\n\n" +
+  "Commands: /scan · /ai (AI verdict) · /portfolio · /nft · /recent · /help\n\n" +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
 
 async function recordScan(address: string, symbol: string) {
@@ -151,6 +152,39 @@ async function buildAiReport(address: string): Promise<string> {
   if (r.positives?.length)
     L.push(`\n✅ <b>Positives</b>\n${r.positives.slice(0, 5).map((x) => "• " + esc(x)).join("\n")}`);
   L.push(`\n<a href="${SITE}/agents">AI Token Report API →</a>`);
+  return L.join("\n");
+}
+
+async function buildPortfolio(address: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof walletPortfolio>>;
+  try {
+    r = await walletPortfolio({ address });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "Portfolio failed")}`;
+  }
+  const L: string[] = [`💰 <b>Wallet Portfolio</b>`, `<code>${esc(address)}</code>`];
+  L.push(`\n<b>Total: $${esc(r.totalUsd)}</b> · ${r.tokenCount} tokens`);
+  for (const h of r.holdings.slice(0, 8)) {
+    const bal = Number(h.balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
+    L.push(`• ${esc(h.symbol || "?")}: ${esc(bal)}${h.usdValue != null ? ` ($${esc(h.usdValue)})` : ""}`);
+  }
+  if (r.holdings.length === 0) L.push("No token holdings found.");
+  L.push(`\n<a href="${SITE}/agents">Wallet Portfolio API →</a>`);
+  return L.join("\n");
+}
+
+async function buildNft(contract: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof nftFloor>>;
+  try {
+    r = await nftFloor({ contract });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "NFT floor failed")}`;
+  }
+  const L: string[] = [`🖼️ <b>NFT Floor Price</b>`, `<code>${esc(contract)}</code>`];
+  if (r.floorPriceEth != null) L.push(`\n💎 Floor: <b>${esc(r.floorPriceEth)} ETH</b>`);
+  if (r.openSea) L.push(`OpenSea: ${esc(r.openSea.floorPrice)} ${esc(r.openSea.currency)}`);
+  if (r.looksRare) L.push(`LooksRare: ${esc(r.looksRare.floorPrice)} ${esc(r.looksRare.currency)}`);
+  L.push(`\n<a href="${SITE}/agents">NFT Floor API →</a>`);
   return L.join("\n");
 }
 
@@ -269,6 +303,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     await send(chatId, await buildAiReport(m[0]));
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/portfolio\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    await send(chatId, m ? await buildPortfolio(m[0]) : "Usage: <code>/portfolio 0x…</code> — full wallet holdings + USD.");
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/nft\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    await send(chatId, m ? await buildNft(m[0]) : "Usage: <code>/nft 0x…</code> — floor price for an NFT collection.");
     return NextResponse.json({ ok: true });
   }
 
