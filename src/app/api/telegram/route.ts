@@ -262,6 +262,12 @@ export async function POST(req: NextRequest) {
       await send(chatId, "Usage: <code>/ai 0x…</code> — Claude-written due-diligence verdict for a token.");
       return NextResponse.json({ ok: true });
     }
+    // /ai calls Claude (real cost) — cap per chat per day.
+    const day = new Date().toISOString().slice(0, 10);
+    if ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15) {
+      await send(chatId, "Daily /ai limit reached (15). Use /scan for a free instant report anytime.");
+      return NextResponse.json({ ok: true });
+    }
     await send(chatId, await buildAiReport(m[0]));
     return NextResponse.json({ ok: true });
   }

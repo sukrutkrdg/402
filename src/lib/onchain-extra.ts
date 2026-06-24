@@ -102,6 +102,8 @@ interface DexScreenerPair {
   priceChange?: { h24?: number };
   liquidity?: { usd?: number };
   volume?: { h24?: number };
+  txns?: { h24?: { buys?: number; sells?: number } };
+  fdv?: number;
 }
 
 interface DexScreenerResponse {
@@ -226,6 +228,45 @@ export async function multiTokenPrice(params: Record<string, string>) {
   }
 
   return { count: results.length, results, checkedAt: new Date().toISOString() };
+}
+
+/**
+ * DEX pair (pool) info for a specific Base pair address: price, liquidity,
+ * 24h volume, buy/sell counts, FDV. For agents analysing a specific pool.
+ *
+ * params.pair — the pair/pool contract address (0x…40-hex).
+ */
+export async function pairInfo(params: Record<string, string>) {
+  const pair = (params.pair || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(pair)) throw new Error("Provide a valid 0x… pair address");
+
+  let data: { pairs?: DexScreenerPair[] | null; pair?: DexScreenerPair | null };
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/pairs/base/${pair}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    throw new Error(`Pair fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const p = (Array.isArray(data.pairs) ? data.pairs[0] : data.pair) ?? null;
+  if (!p) throw new Error("No data found for this pair");
+
+  return {
+    pairAddress: pair,
+    dexId: p.dexId ?? null,
+    baseToken: { name: p.baseToken?.name ?? null, symbol: p.baseToken?.symbol ?? null, address: p.baseToken?.address ?? null },
+    quoteToken: { symbol: p.quoteToken?.symbol ?? null, address: p.quoteToken?.address ?? null },
+    priceUsd: p.priceUsd ?? null,
+    priceChange24h: p.priceChange?.h24 ?? null,
+    liquidityUsd: p.liquidity?.usd ?? null,
+    volume24h: p.volume?.h24 ?? null,
+    txns24h: p.txns?.h24 ? { buys: p.txns.h24.buys ?? null, sells: p.txns.h24.sells ?? null } : null,
+    fdv: p.fdv ?? null,
+    checkedAt: new Date().toISOString(),
+  };
 }
 
 // ---------------------------------------------------------------------------
