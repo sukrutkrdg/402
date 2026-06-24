@@ -19,6 +19,13 @@ const erc20Abi = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
 ] as const;
 
+// Known USD pegs (DexScreener prices stablecoins poorly — they sit on the quote side).
+const KNOWN_USD: Record<string, number> = {
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 1, // USDC
+  "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": 1, // USDbC
+  "0x50c5725949a6f0c72e6c4a641f24049a917db0cb": 1, // DAI
+};
+
 // Fallback token set (major Base tokens) when Alchemy is unavailable/rate-limited.
 const CURATED: Address[] = [
   "0x4200000000000000000000000000000000000006", // WETH
@@ -94,7 +101,10 @@ export async function nftFloor(params: Record<string, string>) {
   let data: { openSea?: FloorMarket; looksRare?: FloorMarket };
   try {
     const res = await fetchRetry(`${NFT}/${k}/getFloorPrice?contractAddress=${contract}`);
-    if (!res.ok) throw new Error(`Alchemy responded ${res.status}`);
+    if (!res.ok) {
+      const body = (await res.text().catch(() => "")).slice(0, 200);
+      throw new Error(`Alchemy ${res.status}${body ? ` — ${body}` : ""}`);
+    }
     data = (await res.json()) as { openSea?: FloorMarket; looksRare?: FloorMarket };
   } catch (err) {
     throw new Error(`NFT floor unavailable: ${err instanceof Error ? err.message : String(err)}`);
@@ -106,7 +116,11 @@ export async function nftFloor(params: Record<string, string>) {
       : null;
   const openSea = pick(data.openSea);
   const looksRare = pick(data.looksRare);
-  if (!openSea && !looksRare) throw new Error("No floor price found for this collection");
+  if (!openSea && !looksRare) {
+    throw new Error(
+      "No floor price found — Alchemy's floor feed is OpenSea/LooksRare based and has limited Base coverage. Make sure it's a Base NFT collection contract with active OpenSea listings.",
+    );
+  }
 
   return {
     contract,
@@ -224,7 +238,7 @@ export async function walletPortfolio(params: Record<string, string>) {
       } catch {
         bal = 0;
       }
-      const price = priceMap.get(addr.toLowerCase());
+      const price = priceMap.get(addr.toLowerCase()) ?? KNOWN_USD[addr.toLowerCase()];
       const usdValue = price !== undefined ? +(bal * price).toFixed(2) : null;
       return {
         symbol,
@@ -233,7 +247,7 @@ export async function walletPortfolio(params: Record<string, string>) {
         usdValue,
       };
     })
-    .filter((h) => parseFloat(h.balance) > 0)
+    .filter((h) => parseFloat(h.balance) > 1e-9) // drop dust
     .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0));
 
   let ethBalance = 0;
