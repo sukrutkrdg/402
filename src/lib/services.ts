@@ -21,6 +21,7 @@ import { newTokens } from "./onchain-extra4";
 import { aiTokenReport } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
+import { nftFloor, walletPortfolio } from "./alchemy";
 
 export interface ServiceParam {
   name: string;
@@ -379,6 +380,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [],
     handler: newTokens,
+  },
+  {
+    id: "nft-floor",
+    name: "NFT Floor Price",
+    tagline: "Live floor price for a Base NFT collection",
+    description:
+      "Current floor price for a Base NFT collection (OpenSea / LooksRare) via Alchemy. Pass the collection contract address. For agents tracking NFT markets.",
+    price: "$0.01",
+    icon: "🖼️",
+    category: "Markets",
+    params: [{ name: "contract", label: "Collection contract address", placeholder: "0x… collection", required: true }],
+    handler: nftFloor,
+  },
+  {
+    id: "wallet-portfolio",
+    name: "Full Wallet Portfolio",
+    tagline: "All ERC-20 holdings of a wallet with USD value",
+    description:
+      "Complete ERC-20 portfolio for a Base address — every non-zero token with balance, metadata and live USD value, plus a total. Powered by Alchemy (beyond the curated wallet-tokens list).",
+    price: "$0.01",
+    icon: "💰",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: walletPortfolio,
   },
   {
     id: "ai-token-report",
