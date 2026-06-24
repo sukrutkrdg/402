@@ -2,24 +2,36 @@
  * Per-service usage analytics (KV-backed, durable when KV is configured).
  *
  * Logged on every served call so the private /stats dashboard can show which
- * services are called and how often (paid vs free trial).
+ * services are called, how often, paid vs free, WHEN, and from how many distinct
+ * sources (a hashed IP) — so the owner can tell their own test calls apart from
+ * real external/agent traffic.
  */
 
 import "server-only";
-import { kvIncr, kvGetNumber, kvLPush, kvLRange } from "./kv";
+import { createHash } from "node:crypto";
+import { kvIncr, kvGetNumber, kvLPush, kvLRange, kvSAdd, kvSMembers } from "./kv";
 
-export async function logUsage(serviceId: string, paid: boolean): Promise<void> {
+const day = () => new Date().toISOString().slice(0, 10);
+
+/** Short, pseudonymous source id from an IP (so distinct callers are countable). */
+export function srcHash(ip: string): string {
+  return createHash("sha256").update(ip || "unknown").digest("hex").slice(0, 6);
+}
+
+export async function logUsage(serviceId: string, paid: boolean, source = "?"): Promise<void> {
   try {
     await kvIncr(`usage:total:${serviceId}`);
     if (paid) await kvIncr(`usage:paid:${serviceId}`);
-    await kvIncr("usage:calls:total"); // cheap global counter for the public strip
-    await kvLPush("usage:recent", JSON.stringify({ s: serviceId, paid, t: Date.now() }), 100);
+    await kvIncr("usage:calls:total");
+    await kvIncr(`usage:day:${day()}`, 60 * 60 * 24 * 8); // today's calls (8d ttl)
+    await kvSAdd(`usage:src:${day()}`, source); // distinct sources today
+    await kvLPush("usage:recent", JSON.stringify({ s: serviceId, p: paid, t: Date.now(), src: source }), 100);
   } catch {
     /* never let analytics break a request */
   }
 }
 
-/** Single cheap read for the public "N calls served" strip (no per-service fan-out). */
+/** Single cheap read for the public "N calls served" strip. */
 export async function getCallsServed(): Promise<number> {
   try {
     return await kvGetNumber("usage:calls:total");
@@ -33,12 +45,20 @@ export interface UsageRow {
   total: number;
   paid: number;
 }
+export interface RecentCall {
+  s: string;
+  p: boolean;
+  t: number;
+  src: string;
+}
 
 export async function getUsage(serviceIds: string[]): Promise<{
   per: UsageRow[];
-  recent: Array<{ s: string; paid: boolean; t: number }>;
+  recent: RecentCall[];
   totalCalls: number;
   totalPaid: number;
+  today: number;
+  sourcesToday: number;
 }> {
   const per = await Promise.all(
     serviceIds.map(async (id) => ({
@@ -47,18 +67,34 @@ export async function getUsage(serviceIds: string[]): Promise<{
       paid: await kvGetNumber(`usage:paid:${id}`),
     })),
   );
-  const recentRaw = await kvLRange("usage:recent", 0, 49);
+  const recentRaw = await kvLRange("usage:recent", 0, 29);
   const recent = recentRaw
     .map((s) => {
       try {
-        return JSON.parse(s) as { s: string; paid: boolean; t: number };
+        return JSON.parse(s) as RecentCall;
       } catch {
         return null;
       }
     })
-    .filter((x): x is { s: string; paid: boolean; t: number } => x !== null);
+    .filter((x): x is RecentCall => x !== null);
 
   const totalCalls = per.reduce((a, r) => a + r.total, 0);
   const totalPaid = per.reduce((a, r) => a + r.paid, 0);
-  return { per: per.sort((a, b) => b.total - a.total), recent, totalCalls, totalPaid };
+  let today = 0;
+  let sourcesToday = 0;
+  try {
+    today = await kvGetNumber(`usage:day:${day()}`);
+    sourcesToday = (await kvSMembers(`usage:src:${day()}`)).length;
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    per: per.filter((r) => r.total > 0).sort((a, b) => b.total - a.total),
+    recent,
+    totalCalls,
+    totalPaid,
+    today,
+    sourcesToday,
+  };
 }

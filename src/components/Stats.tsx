@@ -28,10 +28,28 @@ interface UsageRow {
   total: number;
   paid: number;
 }
+interface RecentCall {
+  s: string;
+  name?: string;
+  p: boolean;
+  t: number;
+  src: string;
+}
 interface Usage {
   per: UsageRow[];
+  recent: RecentCall[];
   totalCalls: number;
   totalPaid: number;
+  today: number;
+  sourcesToday: number;
+}
+
+function timeAgo(t: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 export default function Stats() {
@@ -222,31 +240,86 @@ export default function Stats() {
         )}
       </section>
 
-      {usage && usage.per.some((r) => r.total > 0) && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">
-            Service usage{" "}
-            <span className="text-sm font-normal text-gray-500">
-              ({usage.totalCalls} calls · {usage.totalPaid} paid)
-            </span>
-          </h2>
-          <div className="card divide-y divide-base-line/60">
-            {usage.per
-              .filter((r) => r.total > 0)
-              .map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <div className="truncate text-sm">{r.name}</div>
-                  <div className="flex shrink-0 items-center gap-3 text-xs">
-                    <span className="text-emerald-300">{r.paid} paid</span>
-                    <span className="text-gray-500">{r.total - r.paid} free</span>
-                    <span className="font-mono font-bold">{r.total}</span>
-                  </div>
-                </div>
-              ))}
+      {usage && (usage.totalCalls > 0 || usage.recent.length > 0) && (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold">Usage &amp; activity</h2>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="card p-4">
+              <div className="label">Total calls</div>
+              <div className="mt-1 font-mono text-2xl font-bold">{usage.totalCalls}</div>
+            </div>
+            <div className="card p-4">
+              <div className="label">Paid (real agents)</div>
+              <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">{usage.totalPaid}</div>
+              <div className="text-[10px] text-gray-500">USDC settled</div>
+            </div>
+            <div className="card p-4">
+              <div className="label">Sources today</div>
+              <div className="mt-1 font-mono text-2xl font-bold">{usage.sourcesToday}</div>
+              <div className="text-[10px] text-gray-500">distinct callers</div>
+            </div>
+            <div className="card p-4">
+              <div className="label">Calls today</div>
+              <div className="mt-1 font-mono text-2xl font-bold">{usage.today}</div>
+            </div>
           </div>
-          <p className="text-[11px] text-gray-500">
-            Durable counts require KV (UPSTASH_REDIS_REST_URL/TOKEN); otherwise they reset on cold start.
-          </p>
+
+          <div className="rounded-lg border border-base-line/60 bg-black/20 px-3 py-2 text-[11px] text-gray-400">
+            {usage.totalPaid > 0
+              ? "💰 You have PAID calls — real agents are paying. Genuine traction."
+              : usage.sourcesToday > 1
+                ? "👀 Multiple distinct sources today — someone besides you may be trying it."
+                : "🧪 Free calls from few sources — likely your own tests. Watch 'Paid' and 'Sources today' grow."}
+          </div>
+
+          {usage.recent.length > 0 && (
+            <div>
+              <div className="label mb-1.5">Recent activity</div>
+              <div className="card max-h-64 divide-y divide-base-line/60 overflow-auto">
+                {usage.recent.map((r, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          r.p ? "bg-emerald-500/15 text-emerald-300" : "bg-white/5 text-gray-400"
+                        }`}
+                      >
+                        {r.p ? "PAID" : "free"}
+                      </span>
+                      <span className="truncate">{r.name ?? r.s}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 text-gray-500">
+                      <span className="font-mono">src {r.src}</span>
+                      <span>{timeAgo(r.t)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-gray-500">
+                “src” = pseudonymous caller id (hashed IP). Same src across calls = same caller (likely you).
+              </p>
+            </div>
+          )}
+
+          {usage.per.length > 0 && (
+            <div>
+              <div className="label mb-1.5">By service</div>
+              <div className="card divide-y divide-base-line/60">
+                {usage.per.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="truncate text-sm">{r.name}</div>
+                    <div className="flex shrink-0 items-center gap-3 text-xs">
+                      <span className="text-emerald-300">{r.paid} paid</span>
+                      <span className="text-gray-500">{r.total - r.paid} free</span>
+                      <span className="font-mono font-bold">{r.total}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-[11px] text-gray-500">Durable analytics require KV (UPSTASH_REDIS_REST_URL/TOKEN).</p>
         </section>
       )}
 

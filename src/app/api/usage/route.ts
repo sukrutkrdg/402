@@ -26,5 +26,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ...data,
     per: data.per.map((r) => ({ ...r, name: nameById[r.id] ?? r.id })),
+    recent: data.recent.map((r) => ({ ...r, name: nameById[r.s] ?? r.s })),
   });
 }
