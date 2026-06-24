@@ -22,7 +22,7 @@ import { aiTokenReport } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
-import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts } from "./covalent";
+import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
 import { aiWalletReport } from "./ai-report";
 
 export interface ServiceParam {
@@ -469,6 +469,21 @@ export const SERVICES: ServiceDef[] = [
       { name: "date", label: "Date (YYYY-MM-DD)", placeholder: "2026-06-01", required: true },
     ],
     handler: historicalPrice,
+  },
+  {
+    id: "token-transfers",
+    name: "Token Transfer History",
+    tagline: "A wallet's in/out transfers of a token",
+    description:
+      "Recent transfers of a specific token for a wallet — direction (in/out), amount, USD value, counterparty, tx hash and time, via Covalent. For agents tracking token flows and cost basis.",
+    price: "$0.01",
+    icon: "🔁",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true },
+      { name: "token", label: "Token contract", placeholder: "0x… token", required: true },
+    ],
+    handler: tokenTransfers,
   },
   {
     id: "wallet-nfts",
