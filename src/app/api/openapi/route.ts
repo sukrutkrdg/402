@@ -35,15 +35,18 @@ export function GET() {
     };
   }
 
-  return Response.json({
-    openapi: "3.1.0",
-    info: {
-      title: "x402 Bazaar",
-      version: "1.0.0",
-      description:
-        "Pay-per-call APIs on Base via the x402 protocol. Each endpoint returns HTTP 402 with payment requirements; an x402 client pays a USDC micro-payment and retries.",
+  return Response.json(
+    {
+      openapi: "3.1.0",
+      info: {
+        title: "x402 Bazaar",
+        version: "1.0.0",
+        description:
+          "Pay-per-call APIs on Base via the x402 protocol. Each endpoint returns HTTP 402 with payment requirements; an x402 client pays a USDC micro-payment and retries.",
+      },
+      servers: [{ url: site }],
+      paths,
     },
-    servers: [{ url: site }],
-    paths,
-  });
+    { headers: { "cache-control": "public, max-age=300" } },
+  );
 }

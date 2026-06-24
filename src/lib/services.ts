@@ -165,7 +165,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Token Price Alert",
     tagline: "Webhook when a Base token crosses your target",
     description:
-      "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A polling cron checks DexScreener and POSTs your webhook the moment it crosses. Expires after 30 days.",
+      "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A polling cron (daily by default; configurable to ~minutes) checks DexScreener and POSTs your webhook when it crosses. Expires after 30 days.",
     price: "$0.05",
     icon: "🔔",
     category: "Onchain",
@@ -386,7 +386,7 @@ export const SERVICES: ServiceDef[] = [
     name: "NFT Floor Price",
     tagline: "Live floor price for a Base NFT collection",
     description:
-      "Current floor price for a Base NFT collection (OpenSea / LooksRare) via Alchemy. Pass the collection contract address. For agents tracking NFT markets.",
+      "Current floor price for a Base NFT collection (OpenSea / LooksRare) via Alchemy. Pass the collection contract address. Coverage is limited to marketplace-listed collections. For agents tracking NFT markets.",
     price: "$0.01",
     icon: "🖼️",
     category: "Markets",
@@ -460,13 +460,13 @@ export const SERVICES: ServiceDef[] = [
   },
   {
     id: "market-snapshot",
-    name: "Market Snapshot",
-    tagline: "Live-style price board for top assets",
+    name: "Market Snapshot (demo)",
+    tagline: "DEMO — synthetic price board, not live data",
     description:
-      "Returns a snapshot of major crypto assets with a pseudo-random intraday move. One USDC micro-payment per call.",
+      "DEMO/synthetic endpoint: returns deterministic pseudo-prices for top assets to test the x402 wire format. NOT live market data — use token-price / token-momentum for real prices.",
     price: "$0.001",
     icon: "📈",
-    category: "Markets",
+    category: "Demo",
     params: [],
     handler: async () => {
       const now = Date.now();
@@ -480,13 +480,13 @@ export const SERVICES: ServiceDef[] = [
   },
   {
     id: "weather",
-    name: "Weather Oracle",
-    tagline: "Current conditions for any city",
+    name: "Weather Oracle (demo)",
+    tagline: "DEMO — synthetic weather, not real data",
     description:
-      "Pass a city and get a structured weather report. Mirrors the canonical x402 `/weather` example so you can compare wire formats.",
+      "DEMO/synthetic endpoint mirroring the canonical x402 `/weather` example for wire-format testing. Output is deterministic from the city name — NOT real weather.",
     price: "$0.001",
     icon: "🌦️",
-    category: "Data",
+    category: "Demo",
     params: [{ name: "city", label: "City", placeholder: "Istanbul", required: true }],
     handler: async (p) => {
       const city = (p.city || "Istanbul").slice(0, 40);
@@ -504,12 +504,12 @@ export const SERVICES: ServiceDef[] = [
   },
   {
     id: "quote",
-    name: "Alpha Quote",
-    tagline: "One sharp line of market wisdom",
-    description: "A rotating quote feed. The cheapest possible paid endpoint — perfect for testing your wiring.",
+    name: "Alpha Quote (demo)",
+    tagline: "DEMO — rotating quote, for wiring tests",
+    description: "DEMO endpoint: a rotating quote. The cheapest possible paid call — perfect for testing your x402 wiring.",
     price: "$0.001",
     icon: "💬",
-    category: "Fun",
+    category: "Demo",
     params: [],
     handler: async () => {
       const seed = hash(String(Math.floor(Date.now() / 30000)));
