@@ -82,9 +82,9 @@ export async function complianceCheck(params: Record<string, string>) {
     addressIntel({ address }),
   ]);
   const sancV = sancR.status === "fulfilled" ? sancR.value : null;
-  const intelV = intelR.status === "fulfilled" ? (intelR.value as { isContract?: boolean }) : null;
+  const intelV = intelR.status === "fulfilled" ? (intelR.value as { type?: string }) : null;
   const sanctioned = sancV ? sancV.sanctioned : null;
-  const isContract = intelV?.isContract ?? null;
+  const isContract = intelV ? intelV.type === "contract" : null;
 
   let token: { riskLevel: string; riskScore: number; flags: string[] } | null = null;
   if (isContract) {
