@@ -6,6 +6,7 @@ import { getBuyerAddress } from "@/lib/x402-client";
 import { aiConfigured } from "@/lib/ai";
 import { freeRemaining } from "@/lib/free-tier";
 import { clientIp } from "@/lib/rate-limit";
+import { kvConfigured } from "@/lib/kv";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
     buyerEnabled: cfg.enableBuyer,
     buyTokenRequired: Boolean(cfg.buyAccessToken),
     aiReady: aiConfigured(),
+    kv: kvConfigured(),
     freeTier: await freeRemaining(`free:${clientIp(req)}`),
   });
 }
