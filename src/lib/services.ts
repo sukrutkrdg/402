@@ -10,13 +10,13 @@
 
 import { aiSummarize, aiExtract, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
-import { gasOracle, tokenPrice, txDecode, multiTokenPrice } from "./onchain-extra";
+import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo } from "./onchain-extra";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector } from "./onchain-extra3";
 import { basenameResolve } from "./basename";
-import { sanctionsCheck, complianceCheck } from "./compliance";
+import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport } from "./ai-report";
 import { rugScore } from "./scores";
@@ -258,6 +258,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Address to screen", placeholder: "0x… wallet or contract", required: true }],
     handler: complianceCheck,
+  },
+  {
+    id: "sanctions-batch",
+    name: "Batch Sanctions Screening",
+    tagline: "Screen up to 25 addresses against OFAC at once",
+    description:
+      "Pass a comma-separated list of up to 25 addresses and get an OFAC sanctions result for each, plus the flagged subset. Built for compliance agents vetting whole counterparty lists in one call.",
+    price: "$0.02",
+    icon: "⚖️",
+    category: "Onchain",
+    params: [{ name: "addresses", label: "Addresses (comma-separated)", placeholder: "0x…, 0x…", required: true }],
+    handler: sanctionsBatch,
+  },
+  {
+    id: "pair-info",
+    name: "DEX Pair Info",
+    tagline: "Pool price, liquidity, volume & buy/sell counts",
+    description:
+      "Given a Base DEX pair (pool) address, returns price, liquidity, 24h volume, buy/sell transaction counts and FDV from DexScreener. For agents analysing a specific pool's depth and activity.",
+    price: "$0.01",
+    icon: "💧",
+    category: "Markets",
+    params: [{ name: "pair", label: "Pair (pool) address", placeholder: "0x… pair", required: true }],
+    handler: pairInfo,
   },
   {
     id: "rug-score",

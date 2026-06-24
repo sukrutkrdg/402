@@ -112,6 +112,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Contact:{" "}
             <a className="text-sky-400 hover:underline" href="mailto:sukrutkrdg@gmail.com">
               sukrutkrdg@gmail.com
+            </a>{" "}
+            ·{" "}
+            <a className="text-sky-400 hover:underline" href="https://x.com/sukrutkrdg" target="_blank" rel="noreferrer">
+              X @sukrutkrdg
+            </a>{" "}
+            ·{" "}
+            <a className="text-sky-400 hover:underline" href="https://t.me/Bazaar402_bot" target="_blank" rel="noreferrer">
+              Telegram bot
             </a>
           </p>
         </footer>

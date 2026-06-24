@@ -68,6 +68,35 @@ export async function sanctionsCheck(params: Record<string, string>) {
 }
 
 /**
+ * Batch sanctions screening — screen up to 25 addresses against the OFAC list in
+ * one call. Built for compliance agents vetting a whole counterparty list at once.
+ */
+export async function sanctionsBatch(params: Record<string, string>) {
+  const list = (params.addresses || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => /^0x[0-9a-f]{40}$/.test(s))
+    .slice(0, 25);
+  if (list.length === 0) throw new Error("Provide 'addresses' — comma-separated 0x… addresses");
+
+  const { set, size, fetchedAt, stale } = await loadList();
+  const results = list.map((a) => ({ address: getAddress(a), sanctioned: set.has(a) }));
+  const flagged = results.filter((r) => r.sanctioned).map((r) => r.address);
+
+  return {
+    count: results.length,
+    sanctionedCount: flagged.length,
+    flagged,
+    results,
+    source: "OFAC SDN — sanctioned digital currency addresses",
+    listSize: size,
+    listFetchedAt: new Date(fetchedAt).toISOString(),
+    stale,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+/**
  * Compliance check — combined screening for an address: OFAC sanctions (direct)
  * + address profile + (for contracts) risk flags, with a single recommendation.
  * Built for compliance agents that must vet a counterparty before transacting.
