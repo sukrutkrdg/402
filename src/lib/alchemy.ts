@@ -16,7 +16,18 @@ import { getConfig } from "./config";
 const erc20Abi = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
   { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
 ] as const;
+
+// Fallback token set (major Base tokens) when Alchemy is unavailable/rate-limited.
+const CURATED: Address[] = [
+  "0x4200000000000000000000000000000000000006", // WETH
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC
+  "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA", // USDbC
+  "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", // DAI
+  "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22", // cbETH
+  "0x940181a94A35A4569E4529A3CDfB74e38FD98631", // AERO
+];
 
 const NFT = "https://base-mainnet.g.alchemy.com/nft/v3";
 const rpcUrl = (k: string) => `https://base-mainnet.g.alchemy.com/v2/${k}`;
@@ -117,35 +128,52 @@ interface TokenBalances {
 export async function walletPortfolio(params: Record<string, string>) {
   const address = reqAddr(params.address || "") as Address;
   const k = key();
-
-  // 1) Token list via Alchemy — a SINGLE call (no per-token fan-out → no 429 burst).
-  let balData: TokenBalances;
-  try {
-    balData = await rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]);
-  } catch (err) {
-    throw new Error(`Portfolio unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const nonZero = (balData.tokenBalances ?? [])
-    .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
-    .slice(0, 20);
-  const tokenAddrs = nonZero.map((b) => b.contractAddress as Address);
-
-  // 2) decimals + symbol via ONE multicall (our Base RPC) + native ETH balance.
   const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+
+  // 1) Token list. Prefer Alchemy (full list, single call); if it's rate-limited
+  //    or down, fall back to a curated major-token set via our own RPC so the
+  //    service still returns a useful answer.
+  let tokenAddrs: Address[] = [];
+  let source = "alchemy";
+  try {
+    const balData = await rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]);
+    tokenAddrs = (balData.tokenBalances ?? [])
+      .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
+      .slice(0, 20)
+      .map((b) => b.contractAddress as Address);
+  } catch {
+    source = "curated";
+    try {
+      const balRes = await c.multicall({
+        contracts: CURATED.map((a) => ({ address: a, abi: erc20Abi, functionName: "balanceOf", args: [address] }) as const),
+        allowFailure: true,
+      });
+      tokenAddrs = CURATED.filter((_, i) => {
+        const r = balRes[i];
+        return r?.status === "success" && (r.result as bigint) > 0n;
+      });
+    } catch (err) {
+      throw new Error(`Portfolio unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // 2) balance + decimals + symbol via ONE multicall (our Base RPC) + native ETH.
+  const c2 = c;
   let meta: Array<{ status: "success"; result: unknown } | { status: "failure"; error: Error }> = [];
   let ethWei = 0n;
   try {
     const [mc, eb] = await Promise.all([
       tokenAddrs.length
-        ? c.multicall({
+        ? c2.multicall({
             contracts: tokenAddrs.flatMap((a) => [
+              { address: a, abi: erc20Abi, functionName: "balanceOf", args: [address] } as const,
               { address: a, abi: erc20Abi, functionName: "decimals" } as const,
               { address: a, abi: erc20Abi, functionName: "symbol" } as const,
             ]),
             allowFailure: true,
           })
         : Promise.resolve([]),
-      c.getBalance({ address }),
+      c2.getBalance({ address }),
     ]);
     meta = mc as typeof meta;
     ethWei = eb;
@@ -183,23 +211,24 @@ export async function walletPortfolio(params: Record<string, string>) {
     /* USD optional */
   }
 
-  const holdings = nonZero
-    .map((b, i) => {
-      const dRes = meta[i * 2];
-      const sRes = meta[i * 2 + 1];
+  const holdings = tokenAddrs
+    .map((addr, i) => {
+      const bRes = meta[i * 3];
+      const dRes = meta[i * 3 + 1];
+      const sRes = meta[i * 3 + 2];
       const decimals = dRes?.status === "success" ? Number(dRes.result) : 18;
       const symbol = sRes?.status === "success" ? (sRes.result as string) : null;
       let bal = 0;
       try {
-        bal = parseFloat(formatUnits(BigInt(b.tokenBalance as string), decimals));
+        if (bRes?.status === "success") bal = parseFloat(formatUnits(bRes.result as bigint, decimals));
       } catch {
         bal = 0;
       }
-      const price = priceMap.get((b.contractAddress || "").toLowerCase());
+      const price = priceMap.get(addr.toLowerCase());
       const usdValue = price !== undefined ? +(bal * price).toFixed(2) : null;
       return {
         symbol,
-        address: b.contractAddress as string,
+        address: addr,
         balance: bal > 0 ? String(bal) : "0",
         usdValue,
       };
@@ -222,6 +251,7 @@ export async function walletPortfolio(params: Record<string, string>) {
     tokenCount: holdings.length,
     totalUsd,
     holdings: holdings.slice(0, 50),
+    source, // "alchemy" (full) or "curated" (fallback when Alchemy rate-limited)
     checkedAt: new Date().toISOString(),
   };
 }
