@@ -31,7 +31,18 @@ function esc(s: unknown): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-async function send(chatId: number, text: string) {
+// Inline buttons appended to report replies — site, agent docs, and a share link.
+const REPORT_BUTTONS = {
+  inline_keyboard: [
+    [
+      { text: "🌐 402.com.tr", url: SITE },
+      { text: "🤖 For agents", url: `${SITE}/agents` },
+    ],
+    [{ text: "🔗 Share this bot", url: "https://t.me/Bazaar402_bot" }],
+  ],
+};
+
+async function send(chatId: number, text: string, withButtons = false) {
   if (!TOKEN) return;
   try {
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -42,6 +53,7 @@ async function send(chatId: number, text: string) {
         text,
         parse_mode: "HTML",
         disable_web_page_preview: true,
+        ...(withButtons ? { reply_markup: REPORT_BUTTONS } : {}),
       }),
       signal: AbortSignal.timeout(8000),
     });
@@ -302,19 +314,19 @@ export async function POST(req: NextRequest) {
       await send(chatId, "Daily /ai limit reached (15). Use /scan for a free instant report anytime.");
       return NextResponse.json({ ok: true });
     }
-    await send(chatId, await buildAiReport(m[0]));
+    await send(chatId, await buildAiReport(m[0]), true);
     return NextResponse.json({ ok: true });
   }
 
   if (/^\/portfolio\b/i.test(text)) {
     const m = text.match(/0x[0-9a-fA-F]{40}/);
-    await send(chatId, m ? await buildPortfolio(m[0]) : "Usage: <code>/portfolio 0x…</code> — full wallet holdings + USD.");
+    await send(chatId, m ? await buildPortfolio(m[0]) : "Usage: <code>/portfolio 0x…</code> — full wallet holdings + USD.", Boolean(m));
     return NextResponse.json({ ok: true });
   }
 
   if (/^\/nft\b/i.test(text)) {
     const m = text.match(/0x[0-9a-fA-F]{40}/);
-    await send(chatId, m ? await buildNft(m[0]) : "Usage: <code>/nft 0x…</code> — floor price for an NFT collection.");
+    await send(chatId, m ? await buildNft(m[0]) : "Usage: <code>/nft 0x…</code> — floor price for an NFT collection.", Boolean(m));
     return NextResponse.json({ ok: true });
   }
 
@@ -324,6 +336,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  await send(chatId, await buildReport(match[0]));
+  await send(chatId, await buildReport(match[0]), true);
   return NextResponse.json({ ok: true });
 }
