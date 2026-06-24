@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
+import { aiTokenReport } from "@/lib/ai-report";
 import { kvLPush, kvLRange, kvIncr } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
 import { rateLimit } from "@/lib/rate-limit";
@@ -51,7 +52,7 @@ async function send(chatId: number, text: string) {
 const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
   "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
-  "Commands: /scan &lt;address&gt; · /recent · /help\n\n" +
+  "Commands: /scan &lt;address&gt; · /ai &lt;address&gt; (AI verdict) · /recent · /help\n\n" +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
 
 async function recordScan(address: string, symbol: string) {
@@ -116,6 +117,31 @@ interface PriceValue {
 }
 
 const n = (x: unknown) => (typeof x === "number" ? Math.round(x).toLocaleString() : null);
+
+const VERDICT_EMOJI: Record<string, string> = {
+  avoid: "🔴",
+  high_caution: "🟠",
+  caution: "🟡",
+  neutral: "⚪",
+  favorable: "🟢",
+};
+
+async function buildAiReport(address: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof aiTokenReport>>;
+  try {
+    r = await aiTokenReport({ address });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "AI report failed")}`;
+  }
+  const L: string[] = [`🔬 <b>AI Token Report</b>`, `<code>${esc(address)}</code>`];
+  L.push(`\n${VERDICT_EMOJI[r.verdict] ?? "⚪"} <b>Verdict:</b> ${esc(r.verdict)}`);
+  if (r.summary) L.push(esc(r.summary));
+  if (r.risks?.length) L.push(`\n⚠️ <b>Risks</b>\n${r.risks.slice(0, 5).map((x) => "• " + esc(x)).join("\n")}`);
+  if (r.positives?.length)
+    L.push(`\n✅ <b>Positives</b>\n${r.positives.slice(0, 5).map((x) => "• " + esc(x)).join("\n")}`);
+  L.push(`\n<a href="${SITE}/agents">AI Token Report API →</a>`);
+  return L.join("\n");
+}
 
 async function buildReport(address: string): Promise<string> {
   const [risk, price, sanctions] = await Promise.allSettled([
@@ -216,6 +242,16 @@ export async function POST(req: NextRequest) {
 
   if (/^\/recent/i.test(text)) {
     await send(chatId, await recentList());
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/ai\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    if (!m) {
+      await send(chatId, "Usage: <code>/ai 0x…</code> — Claude-written due-diligence verdict for a token.");
+      return NextResponse.json({ ok: true });
+    }
+    await send(chatId, await buildAiReport(m[0]));
     return NextResponse.json({ ok: true });
   }
 

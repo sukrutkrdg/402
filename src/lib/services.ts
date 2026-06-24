@@ -18,6 +18,7 @@ import { contractAbi, decodeSelector } from "./onchain-extra3";
 import { basenameResolve } from "./basename";
 import { sanctionsCheck } from "./compliance";
 import { newTokens } from "./onchain-extra4";
+import { aiTokenReport } from "./ai-report";
 
 export interface ServiceParam {
   name: string;
@@ -256,6 +257,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [],
     handler: newTokens,
+  },
+  {
+    id: "ai-token-report",
+    name: "AI Token Report",
+    tagline: "Claude-written due-diligence verdict for a Base token",
+    description:
+      "The flagship report: aggregates token risk, holder concentration, price/liquidity and OFAC sanctions, then Claude synthesizes a structured verdict (avoid → favorable) with key risks and positives. One call, agent-ready intelligence you can't get free.",
+    price: "$0.03",
+    icon: "🔬",
+    category: "AI",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: aiTokenReport,
   },
   {
     id: "ai-summarize",
