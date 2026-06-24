@@ -104,13 +104,22 @@ writing it includes:
 | Tool | Price | What it does |
 |---|---|---|
 | `token_risk` | $0.02 | Token safety score (honeypot, taxes, ownership, holders) for any Base token |
-| `address_intel` | $0.01 | EOA/contract, ETH+USDC balance, activity for any address |
-| `gas_oracle` | $0.005 | Live Base gas estimates (slow/normal/fast) |
+| `sanctions` | $0.01 | Screen an address against the OFAC sanctions list |
+| `holders` | $0.01 | Top holders, concentration (whale risk) & LP lock for a token |
 | `token_price` | $0.01 | DEX price + liquidity for a Base token |
-| `tx_decode` | $0.01 | Structural decode of a Base transaction |
+| `multi_price` | $0.01 | Prices for up to 10 Base tokens in one call |
+| `address_intel` | $0.01 | EOA/contract, ETH+USDC balance, activity for any address |
 | `wallet_tokens` | $0.01 | Portfolio of major Base tokens + USD value |
-| `trending_tokens` | $0.005 | Currently boosted/trending Base tokens |
+| `gas_oracle` | $0.005 | Live Base gas estimates (slow/normal/fast) |
+| `tx_decode` | $0.01 | Structural decode of a Base transaction |
+| `contract_abi` | $0.01 | Is a contract verified? Get its ABI (Sourcify) |
+| `decode_selector` | $0.005 | Resolve a 4-byte selector to function signatures |
+| `basename` | $0.005 | Resolve Basenames ↔ addresses on Base |
+| `trending_tokens` / `new_tokens` | $0.005 | Trending & freshly listed Base tokens |
+| `price_alert` | $0.05 | Register a webhook alert when a token crosses a price |
 | `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
+
+…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (22+ services).
 
 ### Example
 
