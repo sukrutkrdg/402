@@ -13,7 +13,25 @@
  */
 
 import "server-only";
-import { getAddress, type Address } from "viem";
+import { getAddress, toFunctionSelector, type Address } from "viem";
+
+/**
+ * Encode a function signature to its 4-byte selector (the inverse of
+ * decodeSelector). params.signature — e.g. "transfer(address,uint256)".
+ */
+export async function encodeSelector(params: Record<string, string>) {
+  const sig = (params.signature || "").trim();
+  if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*\([^)]*\)$/.test(sig)) {
+    throw new Error("Provide a function signature like transfer(address,uint256)");
+  }
+  let selector: string;
+  try {
+    selector = toFunctionSelector(sig);
+  } catch {
+    throw new Error("Invalid function signature");
+  }
+  return { signature: sig, selector, checkedAt: new Date().toISOString() };
+}
 
 // ---------------------------------------------------------------------------
 // Shared helper
