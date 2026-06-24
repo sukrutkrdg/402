@@ -9,7 +9,14 @@
  */
 
 import "server-only";
-import { getAddress, formatUnits, formatEther } from "viem";
+import { createPublicClient, http, getAddress, formatUnits, formatEther, type Address } from "viem";
+import { base } from "viem/chains";
+import { getConfig } from "./config";
+
+const erc20Abi = [
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+] as const;
 
 const NFT = "https://base-mainnet.g.alchemy.com/nft/v3";
 const rpcUrl = (k: string) => `https://base-mainnet.g.alchemy.com/v2/${k}`;
@@ -106,46 +113,50 @@ export async function nftFloor(params: Record<string, string>) {
 interface TokenBalances {
   tokenBalances?: Array<{ contractAddress?: string; tokenBalance?: string }>;
 }
-interface TokenMeta {
-  decimals?: number;
-  symbol?: string;
-  name?: string;
-}
 
 export async function walletPortfolio(params: Record<string, string>) {
-  const address = reqAddr(params.address || "");
+  const address = reqAddr(params.address || "") as Address;
   const k = key();
 
-  let balData: TokenBalances, ethHex: string;
+  // 1) Token list via Alchemy — a SINGLE call (no per-token fan-out → no 429 burst).
+  let balData: TokenBalances;
   try {
-    [balData, ethHex] = await Promise.all([
-      rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]),
-      rpc<string>(k, "eth_getBalance", [address, "latest"]),
+    balData = await rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]);
+  } catch (err) {
+    throw new Error(`Portfolio unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const nonZero = (balData.tokenBalances ?? [])
+    .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
+    .slice(0, 20);
+  const tokenAddrs = nonZero.map((b) => b.contractAddress as Address);
+
+  // 2) decimals + symbol via ONE multicall (our Base RPC) + native ETH balance.
+  const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  let meta: Array<{ status: "success"; result: unknown } | { status: "failure"; error: Error }> = [];
+  let ethWei = 0n;
+  try {
+    const [mc, eb] = await Promise.all([
+      tokenAddrs.length
+        ? c.multicall({
+            contracts: tokenAddrs.flatMap((a) => [
+              { address: a, abi: erc20Abi, functionName: "decimals" } as const,
+              { address: a, abi: erc20Abi, functionName: "symbol" } as const,
+            ]),
+            allowFailure: true,
+          })
+        : Promise.resolve([]),
+      c.getBalance({ address }),
     ]);
+    meta = mc as typeof meta;
+    ethWei = eb;
   } catch (err) {
     throw new Error(`Portfolio unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const nonZero = (balData.tokenBalances ?? [])
-    .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
-    .slice(0, 12);
-
-  // Token metadata (decimals/symbol) in parallel.
-  const metas = await Promise.all(
-    nonZero.map(async (b) => {
-      try {
-        const m = await rpc<TokenMeta>(k, "alchemy_getTokenMetadata", [b.contractAddress]);
-        return { addr: b.contractAddress as string, hex: b.tokenBalance as string, ...m };
-      } catch {
-        return { addr: b.contractAddress as string, hex: b.tokenBalance as string, decimals: 18, symbol: undefined, name: undefined };
-      }
-    }),
-  );
-
-  // USD prices via one batched DexScreener call.
+  // 3) USD via one batched DexScreener call.
   const priceMap = new Map<string, number>();
   try {
-    const addrs = metas.map((m) => m.addr).join(",");
+    const addrs = tokenAddrs.join(",");
     if (addrs) {
       const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addrs}`, {
         signal: AbortSignal.timeout(8000),
@@ -172,21 +183,23 @@ export async function walletPortfolio(params: Record<string, string>) {
     /* USD optional */
   }
 
-  const holdings = metas
-    .map((m) => {
-      const decimals = typeof m.decimals === "number" ? m.decimals : 18;
+  const holdings = nonZero
+    .map((b, i) => {
+      const dRes = meta[i * 2];
+      const sRes = meta[i * 2 + 1];
+      const decimals = dRes?.status === "success" ? Number(dRes.result) : 18;
+      const symbol = sRes?.status === "success" ? (sRes.result as string) : null;
       let bal = 0;
       try {
-        bal = parseFloat(formatUnits(BigInt(m.hex), decimals));
+        bal = parseFloat(formatUnits(BigInt(b.tokenBalance as string), decimals));
       } catch {
         bal = 0;
       }
-      const price = priceMap.get((m.addr || "").toLowerCase());
+      const price = priceMap.get((b.contractAddress || "").toLowerCase());
       const usdValue = price !== undefined ? +(bal * price).toFixed(2) : null;
       return {
-        symbol: m.symbol ?? null,
-        name: m.name ?? null,
-        address: m.addr,
+        symbol,
+        address: b.contractAddress as string,
         balance: bal > 0 ? String(bal) : "0",
         usdValue,
       };
@@ -196,7 +209,7 @@ export async function walletPortfolio(params: Record<string, string>) {
 
   let ethBalance = 0;
   try {
-    ethBalance = parseFloat(formatEther(BigInt(ethHex)));
+    ethBalance = parseFloat(formatEther(ethWei));
   } catch {
     ethBalance = 0;
   }
@@ -209,7 +222,6 @@ export async function walletPortfolio(params: Record<string, string>) {
     tokenCount: holdings.length,
     totalUsd,
     holdings: holdings.slice(0, 50),
-    note: nonZero.length >= 12 ? "Showing top 12 tokens by holding." : undefined,
     checkedAt: new Date().toISOString(),
   };
 }
