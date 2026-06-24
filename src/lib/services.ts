@@ -10,12 +10,12 @@
 
 import { aiSummarize, aiExtract, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
-import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo } from "./onchain-extra";
+import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo, tokenPools } from "./onchain-extra";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
-import { contractAbi, decodeSelector } from "./onchain-extra3";
-import { basenameResolve } from "./basename";
+import { contractAbi, decodeSelector, encodeSelector } from "./onchain-extra3";
+import { basenameResolve, ensResolve } from "./basename";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport } from "./ai-report";
@@ -211,6 +211,42 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "query", label: "Basename or address", placeholder: "jesse.base.eth or 0x…", required: true }],
     handler: basenameResolve,
+  },
+  {
+    id: "token-pools",
+    name: "Token Pools",
+    tagline: "All DEX pools for a token, deepest first",
+    description:
+      "Lists every DEX pool for a Base token (pair address, DEX, quote symbol, price, liquidity, 24h volume), sorted by liquidity. Tells agents where — and how deep — a token can be traded.",
+    price: "$0.01",
+    icon: "🏊",
+    category: "Markets",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: tokenPools,
+  },
+  {
+    id: "ens-resolve",
+    name: "ENS Resolver",
+    tagline: "Resolve .eth names ↔ addresses (Ethereum)",
+    description:
+      "Forward + reverse ENS resolution on Ethereum mainnet: turn vitalik.eth into an address, or an address into its primary ENS name. Complements the Basename resolver for Base.",
+    price: "$0.005",
+    icon: "🔤",
+    category: "Onchain",
+    params: [{ name: "query", label: "ENS name or address", placeholder: "vitalik.eth or 0x…", required: true }],
+    handler: ensResolve,
+  },
+  {
+    id: "encode-selector",
+    name: "Function Selector Encoder",
+    tagline: "Function signature → 4-byte selector",
+    description:
+      "Computes the 4-byte selector for a function signature (e.g. transfer(address,uint256) → 0xa9059cbb). The inverse of the decoder — useful for agents building or matching calldata.",
+    price: "$0.005",
+    icon: "🔣",
+    category: "Onchain",
+    params: [{ name: "signature", label: "Function signature", placeholder: "transfer(address,uint256)", required: true }],
+    handler: encodeSelector,
   },
   {
     id: "sanctions",

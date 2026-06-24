@@ -269,6 +269,42 @@ export async function pairInfo(params: Record<string, string>) {
   };
 }
 
+/**
+ * All DEX pools for a Base token, sorted by liquidity — so agents know where
+ * (and how deep) a token can be traded. params.address — token address.
+ */
+export async function tokenPools(params: Record<string, string>) {
+  const address = requireAddress(params.address || "");
+  let data: DexScreenerResponse;
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
+    data = (await res.json()) as DexScreenerResponse;
+  } catch (err) {
+    throw new Error(`Pools fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const pairs = (data.pairs ?? []).filter(Boolean);
+  if (pairs.length === 0) throw new Error("No pools found for this token");
+
+  const addrLc = address.toLowerCase();
+  const pools = pairs
+    .map((p) => ({
+      pairAddress: p.pairAddress ?? null,
+      dexId: p.dexId ?? null,
+      quoteSymbol:
+        (p.baseToken?.address?.toLowerCase() === addrLc ? p.quoteToken?.symbol : p.baseToken?.symbol) ?? null,
+      priceUsd: p.priceUsd ?? null,
+      liquidityUsd: p.liquidity?.usd ?? null,
+      volume24h: p.volume?.h24 ?? null,
+    }))
+    .sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0))
+    .slice(0, 10);
+
+  return { address, poolCount: pools.length, pools, checkedAt: new Date().toISOString() };
+}
+
 // ---------------------------------------------------------------------------
 // 3. txDecode — structural decode of a Base transaction
 // ---------------------------------------------------------------------------

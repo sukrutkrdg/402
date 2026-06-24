@@ -17,7 +17,8 @@ import {
   getAddress,
   type Address,
 } from "viem";
-import { base } from "viem/chains";
+import { base, mainnet } from "viem/chains";
+import { normalize } from "viem/ens";
 import { getConfig } from "./config";
 
 // Base mainnet Basenames L2 Resolver.
@@ -113,6 +114,51 @@ export async function basenameResolve(params: Record<string, string>) {
     basename: name,
     address: resolved ? (getAddress(addr) as Address) : null,
     resolved,
+    checkedAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ENS (Ethereum mainnet) resolution — complements Basenames.
+// ---------------------------------------------------------------------------
+
+function mainnetClient() {
+  return createPublicClient({ chain: mainnet, transport: http(undefined, { timeout: 8000 }) });
+}
+
+/**
+ * ensResolve — resolve a mainnet ENS name to an address, or an address to its
+ * primary ENS name. Pass either in `query` (or `name` / `address`).
+ */
+export async function ensResolve(params: Record<string, string>) {
+  const q = (params.query || params.name || params.address || "").trim();
+  if (!q) throw new Error("Provide a 'query' — a .eth name or 0x address");
+  const c = mainnetClient();
+  const checkedAt = new Date().toISOString();
+
+  if (/^0x[0-9a-fA-F]{40}$/.test(q)) {
+    const address = getAddress(q);
+    let name: string | null = null;
+    try {
+      name = await c.getEnsName({ address });
+    } catch {
+      /* no reverse record */
+    }
+    return { query: q, direction: "reverse" as const, address, ensName: name || null, resolved: Boolean(name), checkedAt };
+  }
+
+  let address: string | null = null;
+  try {
+    address = await c.getEnsAddress({ name: normalize(q.toLowerCase()) });
+  } catch {
+    /* unresolved */
+  }
+  return {
+    query: q,
+    direction: "forward" as const,
+    ensName: q.toLowerCase(),
+    address: address ? (getAddress(address) as Address) : null,
+    resolved: Boolean(address),
     checkedAt,
   };
 }
