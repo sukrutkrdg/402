@@ -258,6 +258,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   }, []);
 
   const groups = groupByCategory(services);
+  const flagship = services.find((s) => s.id === "ai-token-report");
 
   return (
     <div className="flex flex-col gap-10">
@@ -334,6 +335,36 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           </label>
         )}
       </section>
+
+      {/* Flagship — AI Token Report */}
+      {flagship && (
+        <section className="flex flex-col gap-3">
+          <div className="label">Featured</div>
+          <div className="card relative overflow-hidden border-base-blue/40 bg-gradient-to-br from-base-blue/15 via-black/20 to-black/10 p-5">
+            <span className="pill mb-2 w-fit border-base-blue/40 bg-base-blue/10 text-sky-200">⭐ Flagship</span>
+            <div className="flex items-start gap-3">
+              <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-base-line bg-black/40 text-2xl">
+                {flagship.icon}
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold">{flagship.name}</h2>
+                <p className="mt-1 text-sm leading-relaxed text-gray-300">{flagship.description}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="pill">verdict: avoid → favorable</span>
+                  <span className="pill">risks + positives</span>
+                  <span className="font-mono font-bold text-emerald-300">{flagship.price}/call</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a href="/agents" className="btn-primary !py-2 !text-xs">Use in your agent →</a>
+                  <a href="https://t.me/Bazaar402_bot" target="_blank" rel="noreferrer" className="btn-ghost !py-2 !text-xs">
+                    Try free in Telegram: /ai
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Service groups */}
       {groups.map(({ category, items }) => (

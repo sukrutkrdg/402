@@ -16,9 +16,10 @@ import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector } from "./onchain-extra3";
 import { basenameResolve } from "./basename";
-import { sanctionsCheck } from "./compliance";
+import { sanctionsCheck, complianceCheck } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport } from "./ai-report";
+import { rugScore } from "./scores";
 
 export interface ServiceParam {
   name: string;
@@ -245,6 +246,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "addresses", label: "Token addresses (comma-separated)", placeholder: "0x…, 0x…", required: true }],
     handler: multiTokenPrice,
+  },
+  {
+    id: "compliance-check",
+    name: "Compliance Check",
+    tagline: "OFAC + profile + risk → one verdict",
+    description:
+      "Combined counterparty screening for an address: direct OFAC sanctions match, EOA/contract profile, and (for contracts) risk flags — rolled into a single recommendation (blocked / review / clear). Built for compliance agents.",
+    price: "$0.02",
+    icon: "🧾",
+    category: "Onchain",
+    params: [{ name: "address", label: "Address to screen", placeholder: "0x… wallet or contract", required: true }],
+    handler: complianceCheck,
+  },
+  {
+    id: "rug-score",
+    name: "Rug Probability Score",
+    tagline: "One 0-100 risk gate (security + holders + liquidity)",
+    description:
+      "Deterministic 0-100 rug-probability score combining security flags, holder concentration, LP lock and liquidity depth — with the exact signals that drove it. A fast numeric gate for trading agents. Higher = riskier.",
+    price: "$0.01",
+    icon: "📉",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: rugScore,
   },
   {
     id: "new-tokens",

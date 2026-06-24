@@ -12,6 +12,7 @@
 
 import "server-only";
 import { getAddress } from "viem";
+import { addressIntel, tokenRisk } from "./onchain";
 
 // Maintained mirror of OFAC-sanctioned ETH-format addresses (applies to Base too,
 // since addresses share the EVM address space).
@@ -62,6 +63,50 @@ export async function sanctionsCheck(params: Record<string, string>) {
     note: sanctioned
       ? "Address is on the OFAC sanctions list — do not transact."
       : "No direct match on the OFAC list (direct-address match only; does not trace indirect exposure).",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Compliance check — combined screening for an address: OFAC sanctions (direct)
+ * + address profile + (for contracts) risk flags, with a single recommendation.
+ * Built for compliance agents that must vet a counterparty before transacting.
+ */
+export async function complianceCheck(params: Record<string, string>) {
+  const raw = (params.address || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide a valid 0x… address");
+  const address = getAddress(raw);
+
+  const [sancR, intelR] = await Promise.allSettled([
+    sanctionsCheck({ address }),
+    addressIntel({ address }),
+  ]);
+  const sancV = sancR.status === "fulfilled" ? sancR.value : null;
+  const intelV = intelR.status === "fulfilled" ? (intelR.value as { isContract?: boolean }) : null;
+  const sanctioned = sancV ? sancV.sanctioned : null;
+  const isContract = intelV?.isContract ?? null;
+
+  let token: { riskLevel: string; riskScore: number; flags: string[] } | null = null;
+  if (isContract) {
+    try {
+      const tr = (await tokenRisk({ address })) as { riskLevel: string; riskScore: number; flags: string[] };
+      token = { riskLevel: tr.riskLevel, riskScore: tr.riskScore, flags: tr.flags };
+    } catch {
+      /* contract risk optional */
+    }
+  }
+
+  const recommendation =
+    sanctioned === true ? "blocked" : token?.riskLevel === "high" ? "review" : "clear";
+
+  return {
+    address,
+    recommendation,
+    sanctioned,
+    sanctionsStale: sancV?.stale ?? null,
+    addressType: isContract === null ? "unknown" : isContract ? "contract" : "eoa",
+    token,
+    note: "Direct OFAC screening + address profile + (for contracts) risk flags. Indirect exposure tracing not included.",
     checkedAt: new Date().toISOString(),
   };
 }
