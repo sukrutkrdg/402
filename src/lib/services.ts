@@ -20,6 +20,7 @@ import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport } from "./ai-report";
 import { rugScore } from "./scores";
+import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 
 export interface ServiceParam {
   name: string;
@@ -294,6 +295,42 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: rugScore,
+  },
+  {
+    id: "token-momentum",
+    name: "Token Momentum",
+    tagline: "Price & volume trend across 1h / 6h / 24h",
+    description:
+      "Price change and trading volume across 1h, 6h and 24h windows for a Base token, plus a trend read (strong_up → strong_down). Lets agents gauge momentum, not just a single 24h number.",
+    price: "$0.01",
+    icon: "📊",
+    category: "Markets",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: tokenMomentum,
+  },
+  {
+    id: "token-info",
+    name: "Token Info & Socials",
+    tagline: "Name, logo, website & socials for a token",
+    description:
+      "Metadata for a Base token: name, symbol, logo image, official website and social links (X/Telegram/etc.) plus price & liquidity — from DexScreener. For agents and UIs enriching a token.",
+    price: "$0.005",
+    icon: "🪪",
+    category: "Data",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: tokenInfo,
+  },
+  {
+    id: "chain-status",
+    name: "Base Chain Status",
+    tagline: "Block, base fee, ETH price & transfer cost in USD",
+    description:
+      "Live Base chain snapshot: latest block, base fee + priority fee (Gwei), current ETH price, and the estimated USD cost of a simple ETH transfer. For agents timing or budgeting transactions.",
+    price: "$0.005",
+    icon: "⛓️",
+    category: "Onchain",
+    params: [],
+    handler: chainStatus,
   },
   {
     id: "new-tokens",
