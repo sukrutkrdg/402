@@ -26,6 +26,16 @@ export default function AgentsPage() {
           your agent pays a tiny USDC micro-payment per call on Base and gets the result. Built for
           autonomous agents and bots.
         </p>
+        <div className="card mt-1 flex flex-col gap-1 border-base-blue/30 bg-base-blue/10 p-4">
+          <div className="text-sm font-semibold text-sky-200">🟦 Works with Base MCP & the Base agent economy</div>
+          <p className="text-xs leading-relaxed text-gray-300">
+            x402 is a first-class payment rail for Base agents — the same one{" "}
+            <strong className="text-gray-200">Base MCP</strong> uses. Drop the{" "}
+            <code className="codechip">x402-bazaar-mcp</code> server into any MCP client (or call the
+            HTTP endpoints directly) and your agent gets onchain data + AI reports it can pay for
+            per-call, right alongside its Base Account actions. No keys held, gasless for the payer.
+          </p>
+        </div>
       </section>
 
       <section className="flex flex-col gap-3">
