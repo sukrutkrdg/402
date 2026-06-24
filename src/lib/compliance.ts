@@ -21,8 +21,8 @@ const TTL_MS = 6 * 60 * 60 * 1000;
 
 let cache: { set: Set<string>; size: number; fetchedAt: number } | null = null;
 
-async function loadList(): Promise<{ set: Set<string>; size: number }> {
-  if (cache && Date.now() - cache.fetchedAt < TTL_MS) return cache;
+async function loadList(): Promise<{ set: Set<string>; size: number; fetchedAt: number; stale: boolean }> {
+  if (cache && Date.now() - cache.fetchedAt < TTL_MS) return { ...cache, stale: false };
   try {
     const res = await fetch(LIST_URL, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`list responded ${res.status}`);
@@ -33,11 +33,12 @@ async function loadList(): Promise<{ set: Set<string>; size: number }> {
         .map((l) => l.trim().toLowerCase())
         .filter((l) => /^0x[0-9a-f]{40}$/.test(l)),
     );
-    if (set.size === 0) throw new Error("empty list");
+    // Sanity: an implausibly small list signals tampering/truncation — don't trust it.
+    if (set.size < 10) throw new Error("list implausibly small — possible tampering");
     cache = { set, size: set.size, fetchedAt: Date.now() };
-    return cache;
+    return { ...cache, stale: false };
   } catch (err) {
-    if (cache) return cache; // serve stale rather than fail
+    if (cache) return { ...cache, stale: true }; // serve stale (flagged) rather than fail
     throw new Error(`Sanctions list unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
@@ -47,7 +48,7 @@ export async function sanctionsCheck(params: Record<string, string>) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide a valid 0x… address");
   const address = getAddress(raw);
 
-  const { set, size } = await loadList();
+  const { set, size, fetchedAt, stale } = await loadList();
   const sanctioned = set.has(address.toLowerCase());
 
   return {
@@ -56,6 +57,8 @@ export async function sanctionsCheck(params: Record<string, string>) {
     matchType: sanctioned ? "direct" : "none",
     source: "OFAC SDN — sanctioned digital currency addresses",
     listSize: size,
+    listFetchedAt: new Date(fetchedAt).toISOString(),
+    stale,
     note: sanctioned
       ? "Address is on the OFAC sanctions list — do not transact."
       : "No direct match on the OFAC list (direct-address match only; does not trace indirect exposure).",

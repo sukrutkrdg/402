@@ -68,10 +68,7 @@ export async function contractAbi(params: Record<string, string>) {
         `https://repo.sourcify.dev/contracts/${match}/8453/${address}/metadata.json`,
         { signal: AbortSignal.timeout(8000) },
       );
-      if (res.status === 404) {
-        serverError = null; // clean "not under this match" — not a server failure
-        continue;
-      }
+      if (res.status === 404) continue; // not under this match (don't clear a prior server error)
       if (!res.ok) {
         serverError = `Sourcify responded ${res.status}`;
         continue;

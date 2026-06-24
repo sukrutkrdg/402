@@ -2,7 +2,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getConfig, sellerReady, buyerReady } from "@/lib/config";
-import { getBuyerAddress } from "@/lib/x402-client";
 import { aiConfigured } from "@/lib/ai";
 import { freeRemaining } from "@/lib/free-tier";
 import { clientIp } from "@/lib/rate-limit";
@@ -15,21 +14,14 @@ export async function GET(req: NextRequest) {
   const seller = sellerReady(cfg);
   const buyer = buyerReady(cfg);
 
-  let buyerAddress: string | undefined;
-  try {
-    buyerAddress = getBuyerAddress();
-  } catch {
-    buyerAddress = undefined;
-  }
-
+  // Public endpoint — expose only non-sensitive booleans (no wallet addresses,
+  // no list of which env vars are unset).
   return NextResponse.json({
     network: "Base mainnet (eip155:8453)",
     appBuilderCode: cfg.appBuilderCode,
     clientBuilderCode: cfg.clientBuilderCode,
-    payTo: cfg.payTo || null,
-    buyerAddress: buyerAddress || null,
-    seller,
-    buyer,
+    seller: { ok: seller.ok },
+    buyer: { ok: buyer.ok },
     buyerEnabled: cfg.enableBuyer,
     buyTokenRequired: Boolean(cfg.buyAccessToken),
     aiReady: aiConfigured(),

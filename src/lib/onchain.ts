@@ -74,7 +74,12 @@ export async function tokenRisk(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
   const c = client();
 
-  const code = await c.getCode({ address });
+  let code: `0x${string}` | undefined;
+  try {
+    code = await c.getCode({ address });
+  } catch (err) {
+    throw new Error(`Token data unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
   if (!code || code === "0x") {
     return {
       address,
@@ -278,11 +283,16 @@ export async function addressIntel(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
   const c = client();
 
-  const [code, balance, nonce] = await Promise.all([
-    c.getCode({ address }),
-    c.getBalance({ address }),
-    c.getTransactionCount({ address }),
-  ]);
+  let code, balance, nonce;
+  try {
+    [code, balance, nonce] = await Promise.all([
+      c.getCode({ address }),
+      c.getBalance({ address }),
+      c.getTransactionCount({ address }),
+    ]);
+  } catch (err) {
+    throw new Error(`Address data unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
   const isContract = Boolean(code && code !== "0x");
 
   let usdc: bigint | undefined;

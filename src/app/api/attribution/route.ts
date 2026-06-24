@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const cfg = getConfig();
   const client = createPublicClient({
     chain: base,
-    transport: http(cfg.rpcUrl),
+    transport: http(cfg.rpcUrl, { timeout: 8000 }),
   });
 
   let tx;

@@ -124,7 +124,12 @@ export async function walletTokens(params: Record<string, string>) {
   const c = client();
 
   // ── 1a. Native ETH balance ──────────────────────────────────────────────
-  const ethBalance = await c.getBalance({ address });
+  let ethBalance: bigint;
+  try {
+    ethBalance = await c.getBalance({ address });
+  } catch (err) {
+    throw new Error(`Wallet data unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
   const ethBalanceFormatted = formatEther(ethBalance);
 
   // ── 1b. ERC-20 balances (one readContract call per token, errors skipped) ─

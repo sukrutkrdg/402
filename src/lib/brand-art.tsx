@@ -355,7 +355,7 @@ export function thumbArt() {
             color: "#ffffff",
           }}
         >
-          x4
+          402
         </div>
         <div style={{ display: "flex", fontSize: 28, fontWeight: 600, color: "#7e8aa0", letterSpacing: 4 }}>
           BUILDER CODES · BASE

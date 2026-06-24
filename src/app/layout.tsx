@@ -32,6 +32,21 @@ export const metadata: Metadata = {
   title: "x402 Bazaar — Pay-per-call API marketplace on Base",
   description:
     "A pay-per-call API marketplace powered by x402 and Base Builder Codes. Every payment is attributed onchain via ERC-8021.",
+  applicationName: "x402 Bazaar",
+  alternates: { canonical: SITE_URL },
+  openGraph: {
+    type: "website",
+    siteName: "x402 Bazaar",
+    url: SITE_URL,
+    title: "x402 Bazaar — Pay-per-call API marketplace on Base",
+    description:
+      "Pay-per-call APIs for AI agents on Base. Pay a tiny USDC micro-payment per call over x402 — no keys, no signup.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "x402 Bazaar — Pay-per-call APIs on Base",
+    description: "Pay-per-call APIs for AI agents. USDC over x402, no keys. MCP-ready.",
+  },
   other: {
     // Base App verification / discovery tag. Distinct from the x402 Builder Code.
     ...(baseAppId ? { "base:app_id": baseAppId } : {}),
@@ -40,6 +55,8 @@ export const metadata: Metadata = {
     "fc:frame": JSON.stringify(frameEmbed),
   },
 };
+
+export const viewport = { themeColor: "#0052ff" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -89,8 +106,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-5 py-8">{children}</main>
-        <footer className="mx-auto max-w-6xl px-5 py-10 text-center text-xs text-gray-600">
-          Built with x402 v2 + Base Builder Codes (ERC-8021). Payments settle in USDC on Base mainnet.
+        <footer className="mx-auto max-w-6xl px-5 py-10 text-center text-xs text-gray-500">
+          <p>Built with x402 v2 + Base Builder Codes (ERC-8021). Payments settle in USDC on Base mainnet.</p>
+          <p className="mt-2">
+            Contact:{" "}
+            <a className="text-sky-400 hover:underline" href="mailto:sukrutkrdg@gmail.com">
+              sukrutkrdg@gmail.com
+            </a>
+          </p>
         </footer>
       </body>
     </html>

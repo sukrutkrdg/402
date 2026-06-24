@@ -85,7 +85,7 @@ function ServiceCard({
     <div className="card flex flex-col gap-4 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-base-line bg-black/40 text-xl">
+          <span aria-hidden="true" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-base-line bg-black/40 text-xl">
             {service.icon}
           </span>
           <div>
@@ -132,7 +132,7 @@ function ServiceCard({
 
       {buyerEnabled ? (
         <button className="btn-primary" onClick={buy} disabled={loading}>
-          {loading ? "Settling payment…" : `Pay ${service.price} & call`}
+          {loading ? "Processing…" : `Pay ${service.price} & call`}
         </button>
       ) : (
         <div className="flex flex-col gap-2">
@@ -245,7 +245,8 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const status = useStatus();
   const [token, setToken] = useState("");
 
-  const buyerEnabled = status?.buyerEnabled ?? true;
+  // Default to false until status loads so the Pay button can't be clicked early.
+  const buyerEnabled = status !== null && (status.buyerEnabled ?? false);
   const tokenRequired = status?.buyTokenRequired ?? false;
 
   const [callsServed, setCallsServed] = useState<number | null>(null);
