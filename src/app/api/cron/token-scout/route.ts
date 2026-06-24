@@ -63,9 +63,10 @@ export async function GET(req: NextRequest) {
     if (await kvGet(seenKey)) continue;
     await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
 
-    let scored: { rugScore?: number; level?: string; signals?: string[] } | null = null;
+    type Scored = { rugScore?: number; level?: string; signals?: string[] };
+    let scored: Scored | null = null;
     try {
-      scored = (await rugScore({ address: addr })) as typeof scored;
+      scored = (await rugScore({ address: addr })) as unknown as Scored;
     } catch {
       scored = null;
     }
