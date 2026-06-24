@@ -17,7 +17,7 @@ import { getService } from "@/lib/services";
 import { NETWORK, getConfig } from "@/lib/config";
 import { consumeFree } from "@/lib/free-tier";
 import { clientIp } from "@/lib/rate-limit";
-import { logUsage } from "@/lib/usage";
+import { logUsage, srcHash } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     if (free.allowed) {
       try {
         const data = await service.handler(paramsFrom(req, service));
-        await logUsage(service.id, false);
+        await logUsage(service.id, false, srcHash(ip));
         return NextResponse.json(
           { service: service.id, builderCode: cfg.appBuilderCode, data, freeTier: true, freeRemaining: free.remaining },
           { headers: { "x-free-tier": "true", "x-free-remaining": String(free.remaining) } },
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // The business logic that runs once payment is verified.
   const handler = async (request: NextRequest) => {
     const data = await service.handler(paramsFrom(request, service));
-    await logUsage(service.id, true);
+    await logUsage(service.id, true, srcHash(clientIp(request)));
     return NextResponse.json({
       service: service.id,
       builderCode: cfg.appBuilderCode,
