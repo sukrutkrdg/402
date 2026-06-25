@@ -24,6 +24,7 @@ import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
 import { aiWalletReport } from "./ai-report";
+import { batchRisk } from "./batch";
 
 export interface ServiceParam {
   name: string;
@@ -334,6 +335,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: rugScore,
+  },
+  {
+    id: "batch-risk",
+    name: "Batch Token Risk Scan",
+    tagline: "Rug-score up to 10 tokens in one call",
+    description:
+      "Screen up to 10 Base tokens in a single paid call — each gets a 0-100 rug-probability score, risk level and top signals, sorted riskiest-first. Built for agents triaging a watchlist or portfolio without paying per token.",
+    price: "$0.03",
+    icon: "🗂️",
+    category: "Onchain",
+    params: [{ name: "addresses", label: "Token addresses (comma-separated, up to 10)", placeholder: "0x…, 0x…, 0x…", required: true }],
+    handler: batchRisk,
   },
   {
     id: "token-momentum",
