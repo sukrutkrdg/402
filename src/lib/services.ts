@@ -23,7 +23,7 @@ import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
-import { aiWalletReport } from "./ai-report";
+import { aiWalletReport, aiWalletSecurity, aiTxExplain } from "./ai-report";
 import { batchRisk } from "./batch";
 
 export interface ServiceParam {
@@ -545,6 +545,30 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [],
     handler: aiMarketBrief,
+  },
+  {
+    id: "ai-wallet-security",
+    name: "AI Wallet Security Audit",
+    tagline: "What can drain this wallet — and what to revoke",
+    description:
+      "Pulls a wallet's active token approvals and Claude writes a security audit: overall risk level, USD at risk, and concrete revoke recommendations (which token/spender and why). The wallet-safety check agents and users run before trusting an address.",
+    price: "$0.04",
+    icon: "🛡️",
+    category: "AI",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: aiWalletSecurity,
+  },
+  {
+    id: "ai-tx-explain",
+    name: "AI Transaction Explainer",
+    tagline: "Plain-English explanation of any Base transaction",
+    description:
+      "Give a Base transaction hash and Claude explains what it actually did in plain English — the action, a risk read (failed tx, risky approval, high-value transfer), and notes. Turns raw calldata into an answer agents and humans can use.",
+    price: "$0.03",
+    icon: "💬",
+    category: "AI",
+    params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
+    handler: aiTxExplain,
   },
   {
     id: "ai-summarize",
