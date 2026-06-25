@@ -10,12 +10,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiMarketBrief } from "@/lib/ai-report";
 import { safeEqual } from "@/lib/secure";
+import { kvIncr } from "@/lib/kv";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const BOT = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT = process.env.TELEGRAM_SCOUT_CHAT;
+const NEYNAR_KEY = process.env.NEYNAR_API_KEY;
+const NEYNAR_SIGNER = process.env.NEYNAR_SIGNER_UUID;
+
+// Post the brief to Farcaster (the user's account) — best-effort.
+async function postCast(text: string): Promise<boolean> {
+  if (!NEYNAR_KEY || !NEYNAR_SIGNER) return false;
+  try {
+    const r = await fetch("https://api.neynar.com/v2/farcaster/cast", {
+      method: "POST",
+      headers: { "x-api-key": NEYNAR_KEY, "content-type": "application/json" },
+      body: JSON.stringify({ signer_uuid: NEYNAR_SIGNER, text: text.slice(0, 1000) }),
+      signal: AbortSignal.timeout(8000),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
 
 const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -76,5 +95,34 @@ export async function GET(req: NextRequest) {
     .join("\n");
 
   const posted = await post(text);
-  return NextResponse.json({ posted, mood: r.mood });
+
+  // ── Farcaster cross-post: quality-gated + once per calendar day ──
+  // Skip thin/quiet days so the personal account never posts low-value casts.
+  const substance = (r.highlights?.length ?? 0) + (r.newAndNotable?.length ?? 0) + (r.cautions?.length ?? 0);
+  const worthCasting = r.mood !== "quiet" && substance >= 2;
+  let casted = false;
+  let castSkipped = "not-substantive";
+  if (worthCasting && NEYNAR_KEY && NEYNAR_SIGNER) {
+    const day = new Date().toISOString().slice(0, 10);
+    const n = await kvIncr(`fcbrief:${day}`, 60 * 60 * 25); // 1 cast/day max
+    if (n === 1) {
+      const line = (emoji: string, items?: string[]) => (items && items[0] ? `\n${emoji} ${items[0]}` : "");
+      const cast = [
+        `🗞️ Base Market Brief`,
+        ``,
+        `${MOOD[r.mood] ?? "⚪"} ${r.mood}${r.summary ? ` — ${r.summary}` : ""}`,
+        line("🔥", r.highlights),
+        line("🆕", r.newAndNotable),
+        line("⚠️", r.cautions),
+        ``,
+        `via x402 Bazaar · 402.com.tr`,
+      ].join("\n");
+      casted = await postCast(cast);
+      castSkipped = casted ? "" : "post-failed";
+    } else {
+      castSkipped = "already-cast-today";
+    }
+  }
+
+  return NextResponse.json({ posted, casted, castSkipped, mood: r.mood });
 }
