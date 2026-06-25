@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
 
   const blocksParam = url.searchParams.get("blocks");
   const blocks = blocksParam ? parseInt(blocksParam, 10) : 5000;
-  const data = await getRevenue(Number.isFinite(blocks) ? blocks : 5000);
+  const safeBlocks = Number.isFinite(blocks) ? Math.min(Math.max(blocks, 1), 50000) : 5000;
+  const data = await getRevenue(safeBlocks);
   return NextResponse.json(data);
 }
