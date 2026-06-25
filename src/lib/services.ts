@@ -18,7 +18,7 @@ import { contractAbi, decodeSelector, encodeSelector } from "./onchain-extra3";
 import { basenameResolve, ensResolve } from "./basename";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
-import { aiTokenReport } from "./ai-report";
+import { aiTokenReport, aiMarketBrief } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
@@ -533,6 +533,18 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: aiTokenReport,
+  },
+  {
+    id: "ai-market-brief",
+    name: "AI Market Brief",
+    tagline: "Claude-written situational brief of the Base token market",
+    description:
+      "The zoom-out flagship: aggregates trending and newly-listed Base tokens, then Claude writes a concise market brief — mood, highlights, new & notable launches, and cautions (fresh/unknown tokens flagged for rug risk). One call gives a trading agent market context instead of dozens of lookups.",
+    price: "$0.05",
+    icon: "🗞️",
+    category: "AI",
+    params: [],
+    handler: aiMarketBrief,
   },
   {
     id: "ai-summarize",

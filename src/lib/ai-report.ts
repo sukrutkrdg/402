@@ -14,6 +14,8 @@ import { holderDistribution } from "./holders";
 import { tokenPrice } from "./onchain-extra";
 import { sanctionsCheck } from "./compliance";
 import { walletNetworth, walletSummary, walletActivity } from "./covalent";
+import { trendingTokens } from "./onchain-extra2";
+import { newTokens } from "./onchain-extra4";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
@@ -57,7 +59,7 @@ export async function aiTokenReport(params: Record<string, string>) {
     type: "object",
     properties: {
       verdict: { type: "string", enum: ["avoid", "high_caution", "caution", "neutral", "favorable"] },
-      safetyScore: { type: "integer", minimum: 0, maximum: 100 },
+      safetyScore: { type: "integer" },
       confidence: { type: "string", enum: ["low", "medium", "high"] },
       summary: { type: "string" },
       factors: {
@@ -185,6 +187,79 @@ export async function aiWalletReport(params: Record<string, string>) {
     summary: parsed.summary ?? "",
     observations: parsed.observations ?? [],
     data,
+    model: MODEL,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * AI Market Brief — second flagship. A zoom-OUT companion to AI Token Report:
+ * aggregates trending + newly-listed Base tokens and has Claude write a concise
+ * situational brief (mood, highlights, new & notable, cautions). Lets an agent
+ * get market context in one paid call instead of many.
+ */
+export async function aiMarketBrief(_params: Record<string, string>) {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+  }
+
+  const [trending, fresh] = await Promise.allSettled([trendingTokens({}), newTokens({})]);
+  const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
+  const data = { trending: val(trending), newTokens: val(fresh) };
+  if (!data.trending && !data.newTokens) {
+    throw new Error("No market data available right now");
+  }
+
+  const facts = JSON.stringify(data).slice(0, 6500);
+  const schema = {
+    type: "object",
+    properties: {
+      mood: { type: "string", enum: ["bullish", "active", "mixed", "quiet", "risky"] },
+      summary: { type: "string" },
+      highlights: { type: "array", items: { type: "string" } },
+      newAndNotable: { type: "array", items: { type: "string" } },
+      cautions: { type: "array", items: { type: "string" } },
+    },
+    required: ["mood", "summary", "highlights", "newAndNotable", "cautions"],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 900,
+    system:
+      "You are a Base onchain market analyst for autonomous agents. Given JSON facts " +
+      "(trending tokens with boost amounts/descriptions, and newly-listed tokens with descriptions), " +
+      "write a concise situational brief: overall market mood, key highlights (what's getting attention), " +
+      "new & notable launches, and cautions. Treat freshly-listed/unknown tokens as carrying rug risk and " +
+      "flag them in cautions. Be factual, never hype. This is not financial advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `Base market snapshot:\n${facts}` }],
+  });
+
+  let parsed: {
+    mood?: string;
+    summary?: string;
+    highlights?: string[];
+    newAndNotable?: string[];
+    cautions?: string[];
+  };
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    mood: parsed.mood ?? "mixed",
+    summary: parsed.summary ?? "",
+    highlights: parsed.highlights ?? [],
+    newAndNotable: parsed.newAndNotable ?? [],
+    cautions: parsed.cautions ?? [],
+    sources: {
+      trending: data.trending ? (data.trending as { count?: number }).count ?? 0 : 0,
+      newTokens: data.newTokens ? (data.newTokens as { count?: number }).count ?? 0 : 0,
+    },
     model: MODEL,
     generatedAt: new Date().toISOString(),
   };
