@@ -119,7 +119,7 @@ writing it includes:
 | `price_alert` | $0.05 | Register a webhook alert when a token crosses a price |
 | `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
 
-…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (22+ services).
+…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (43+ services).
 
 ### Example
 

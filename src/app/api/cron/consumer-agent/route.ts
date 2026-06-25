@@ -11,6 +11,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPayingFetch, getBuyerAddress } from "@/lib/x402-client";
 import { safeEqual } from "@/lib/secure";
+import { kvIncr } from "@/lib/kv";
+
+// Hard safety ceiling on paid calls per day (normal usage ~4). Protects the
+// buyer wallet if the cron is ever misconfigured to a high frequency.
+const DAILY_CAP = 12;
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -52,9 +57,15 @@ export async function GET(req: NextRequest) {
     { service: pick(SERVICES), address: pick(TOKENS) },
   ];
 
+  const day = new Date().toISOString().slice(0, 10);
   const results: Array<{ service: string; address: string; status: number | string }> = [];
   let settled = 0;
   for (const job of plan) {
+    const spentToday = await kvIncr(`consumer:day:${day}`, 60 * 60 * 25);
+    if (spentToday > DAILY_CAP) {
+      results.push({ service: job.service, address: job.address, status: "daily-cap-reached" });
+      break;
+    }
     try {
       const res = await pay(`${ORIGIN}/api/x402/${job.service}?address=${job.address}`);
       results.push({ service: job.service, address: job.address, status: res.status });

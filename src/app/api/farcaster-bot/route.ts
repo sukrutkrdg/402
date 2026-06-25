@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "node:crypto";
 import { aiTokenReport } from "@/lib/ai-report";
+import { safeEqual } from "@/lib/secure";
 
 export const dynamic = "force-dynamic";
 
@@ -45,13 +46,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Farcaster bot not configured" }, { status: 503 });
   }
 
+  // Webhook signature is mandatory — never process unauthenticated casts
+  // (they trigger paid AI calls + outbound Neynar posts).
+  if (!WEBHOOK_SECRET) {
+    return NextResponse.json({ error: "Webhook secret not configured" }, { status: 503 });
+  }
   const raw = await req.text();
-
-  // Verify Neynar webhook signature when a secret is set.
-  if (WEBHOOK_SECRET) {
-    const sig = req.headers.get("x-neynar-signature") ?? "";
-    const expected = createHmac("sha512", WEBHOOK_SECRET).update(raw).digest("hex");
-    if (sig !== expected) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sig = req.headers.get("x-neynar-signature") ?? "";
+  const expected = createHmac("sha512", WEBHOOK_SECRET).update(raw).digest("hex");
+  if (!safeEqual(sig, expected)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: { type?: string; data?: { hash?: string; text?: string } };
