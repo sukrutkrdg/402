@@ -12,6 +12,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { tokenPrice, txDecode } from "./onchain-extra";
+import { contractAbi } from "./onchain-extra3";
 import { sanctionsCheck } from "./compliance";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals } from "./covalent";
 import { trendingTokens } from "./onchain-extra2";
@@ -400,6 +401,95 @@ export async function aiTxExplain(params: Record<string, string>) {
     risk: parsed.risk ?? "none",
     notes: parsed.notes ?? [],
     data: decoded,
+    model: MODEL,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * AI Contract Risk Explainer — combines security flags (GoPlus) with the
+ * verified ABI's function names, and Claude explains what dangerous capabilities
+ * the contract has (mint, pause, blacklist, ownership, upgradeable) in plain English.
+ */
+export async function aiContractRisk(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… contract address");
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+
+  const [risk, abi] = await Promise.allSettled([tokenRisk({ address }), contractAbi({ address })]);
+  const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
+  const riskData = val(risk);
+  const abiData = val(abi) as { matchType?: string | null; abi?: Array<{ type: string; name?: string }> } | null;
+  if (!riskData && !abiData) throw new Error("No contract data available for this address");
+
+  const functions = (abiData?.abi ?? [])
+    .filter((x) => x.type === "function" && x.name)
+    .map((x) => x.name as string)
+    .slice(0, 60);
+  const facts = JSON.stringify({
+    securityFlags: riskData,
+    verified: abiData?.matchType ?? null,
+    functions,
+  }).slice(0, 6000);
+
+  const schema = {
+    type: "object",
+    properties: {
+      dangerLevel: { type: "string", enum: ["safe", "caution", "dangerous", "critical"] },
+      verified: { type: "boolean" },
+      summary: { type: "string" },
+      dangerousCapabilities: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            capability: { type: "string" },
+            detail: { type: "string" },
+          },
+          required: ["capability", "detail"],
+          additionalProperties: false,
+        },
+      },
+      observations: { type: "array", items: { type: "string" } },
+    },
+    required: ["dangerLevel", "verified", "summary", "dangerousCapabilities", "observations"],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 900,
+    system:
+      "You are a smart-contract risk analyst for an autonomous agent. Given JSON facts (security flags such as " +
+      "mintable/pausable/blacklist/hidden-owner/proxy/honeypot, whether the source is verified, and the contract's " +
+      "function names), identify dangerous capabilities in plain English (e.g. owner can mint unlimited supply, can " +
+      "pause transfers, can blacklist holders, is an upgradeable proxy, can self-destruct). Set dangerLevel by the " +
+      "worst capability. Unverified source + powerful owner functions => higher danger. Be factual; not financial " +
+      "advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `Contract ${address} facts:\n${facts}` }],
+  });
+
+  let parsed: {
+    dangerLevel?: string;
+    verified?: boolean;
+    summary?: string;
+    dangerousCapabilities?: Array<{ capability: string; detail: string }>;
+    observations?: string[];
+  };
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    address,
+    dangerLevel: parsed.dangerLevel ?? "caution",
+    verified: parsed.verified ?? Boolean(abiData?.matchType),
+    summary: parsed.summary ?? "",
+    dangerousCapabilities: parsed.dangerousCapabilities ?? [],
+    observations: parsed.observations ?? [],
     model: MODEL,
     generatedAt: new Date().toISOString(),
   };

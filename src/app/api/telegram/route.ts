@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
-import { aiTokenReport, aiWalletReport, aiMarketBrief } from "@/lib/ai-report";
+import { aiTokenReport, aiWalletReport, aiMarketBrief, aiWalletSecurity, aiTxExplain, aiContractRisk } from "@/lib/ai-report";
 import { walletPortfolio, nftFloor } from "@/lib/alchemy";
 import { walletNetworth } from "@/lib/covalent";
 import { kvLPush, kvLRange, kvIncr } from "@/lib/kv";
@@ -66,7 +66,10 @@ async function send(chatId: number, text: string, withButtons = false) {
 const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
   "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
-  "Commands: /scan · /ai (token verdict) · /market (Base market brief) · /networth · /wallet · /portfolio · /nft · /recent · /help\n\n" +
+  "Commands:\n" +
+  "• Token: /scan · /ai · /contract (AI risk) · /nft\n" +
+  "• Wallet: /networth · /wallet · /security (AI audit) · /portfolio\n" +
+  "• Market: /market · /recent · /tx (explain a tx) · /help\n\n" +
   `📡 Auto rug-score alerts + daily briefs: <a href="https://t.me/x402scout">@x402scout</a>\n` +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
 
@@ -188,6 +191,60 @@ async function buildMarketBrief(): Promise<string> {
   if (r.newAndNotable?.length) L.push(`\n<b>New &amp; notable</b>\n${r.newAndNotable.slice(0, 4).map((x) => "• " + esc(x)).join("\n")}`);
   if (r.cautions?.length) L.push(`\n<b>⚠️ Cautions</b>\n${r.cautions.slice(0, 4).map((x) => "• " + esc(x)).join("\n")}`);
   L.push(`\n<a href="${SITE}/agents">AI Market Brief API →</a>`);
+  return L.join("\n");
+}
+
+async function buildSecurity(address: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof aiWalletSecurity>>;
+  try {
+    r = await aiWalletSecurity({ address });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "Security audit failed")}`;
+  }
+  const E: Record<string, string> = { low: "🟢", medium: "🟡", high: "🟠", critical: "🔴" };
+  const L: string[] = [`🛡️ <b>AI Wallet Security Audit</b>`, `<code>${esc(address)}</code>`];
+  L.push(`\n${E[r.riskLevel] ?? "⚪"} Risk: <b>${esc(r.riskLevel)}</b> · $${esc(r.totalUsdAtRisk)} at risk · ${esc(r.approvalCount)} approvals`);
+  if (r.summary) L.push(esc(r.summary));
+  if (r.revokeRecommendations?.length) {
+    L.push(`\n<b>Revoke:</b>`);
+    for (const x of r.revokeRecommendations.slice(0, 5)) L.push(`• ${esc(x.token)} → ${esc(x.reason)}`);
+  }
+  L.push(`\n<a href="${SITE}/agents">AI Wallet Security API →</a>`);
+  return L.join("\n");
+}
+
+async function buildTxExplain(hash: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof aiTxExplain>>;
+  try {
+    r = await aiTxExplain({ hash });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "TX explain failed")}`;
+  }
+  const E: Record<string, string> = { none: "⚪", low: "🟢", medium: "🟡", high: "🔴" };
+  const L: string[] = [`💬 <b>${esc(r.action)}</b>`, `<code>${esc(hash)}</code>`];
+  if (r.plainEnglish) L.push(`\n${esc(r.plainEnglish)}`);
+  L.push(`\n${E[r.risk] ?? "⚪"} Risk: <b>${esc(r.risk)}</b>`);
+  if (r.notes?.length) L.push(r.notes.slice(0, 3).map((x) => "• " + esc(x)).join("\n"));
+  L.push(`\n<a href="https://basescan.org/tx/${esc(hash)}">BaseScan</a> · <a href="${SITE}/agents">API →</a>`);
+  return L.join("\n");
+}
+
+async function buildContractRisk(address: string): Promise<string> {
+  let r: Awaited<ReturnType<typeof aiContractRisk>>;
+  try {
+    r = await aiContractRisk({ address });
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "Contract analysis failed")}`;
+  }
+  const E: Record<string, string> = { safe: "🟢", caution: "🟡", dangerous: "🟠", critical: "🔴" };
+  const L: string[] = [`📜 <b>AI Contract Risk</b>`, `<code>${esc(address)}</code>`];
+  L.push(`\n${E[r.dangerLevel] ?? "⚪"} <b>${esc(r.dangerLevel)}</b> · ${r.verified ? "verified ✓" : "unverified"}`);
+  if (r.summary) L.push(esc(r.summary));
+  if (r.dangerousCapabilities?.length) {
+    L.push(`\n<b>Capabilities:</b>`);
+    for (const x of r.dangerousCapabilities.slice(0, 5)) L.push(`• ${esc(x.capability)}: ${esc(x.detail)}`);
+  }
+  L.push(`\n<a href="${SITE}/agents">AI Contract Risk API →</a>`);
   return L.join("\n");
 }
 
@@ -427,6 +484,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     await send(chatId, await buildMarketBrief(), true);
+    return NextResponse.json({ ok: true });
+  }
+
+  const aiCapHit = async (): Promise<boolean> => {
+    const day = new Date().toISOString().slice(0, 10);
+    return (await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15;
+  };
+
+  if (/^\/security\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    if (!m) {
+      await send(chatId, "Usage: <code>/security 0x…</code> — what can drain a wallet + what to revoke.");
+      return NextResponse.json({ ok: true });
+    }
+    if (await aiCapHit()) {
+      await send(chatId, "Daily AI limit reached (15). Try again tomorrow.");
+      return NextResponse.json({ ok: true });
+    }
+    await send(chatId, await buildSecurity(m[0]), true);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/contract\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{40}/);
+    if (!m) {
+      await send(chatId, "Usage: <code>/contract 0x…</code> — AI explains a contract's dangerous powers.");
+      return NextResponse.json({ ok: true });
+    }
+    if (await aiCapHit()) {
+      await send(chatId, "Daily AI limit reached (15). Try again tomorrow.");
+      return NextResponse.json({ ok: true });
+    }
+    await send(chatId, await buildContractRisk(m[0]), true);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/tx\b/i.test(text)) {
+    const m = text.match(/0x[0-9a-fA-F]{64}/);
+    if (!m) {
+      await send(chatId, "Usage: <code>/tx 0x…</code> — plain-English explanation of a Base transaction (66-char hash).");
+      return NextResponse.json({ ok: true });
+    }
+    if (await aiCapHit()) {
+      await send(chatId, "Daily AI limit reached (15). Try again tomorrow.");
+      return NextResponse.json({ ok: true });
+    }
+    await send(chatId, await buildTxExplain(m[0]), true);
     return NextResponse.json({ ok: true });
   }
 
