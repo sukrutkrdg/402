@@ -63,22 +63,36 @@ export async function GET(req: NextRequest) {
     if (await kvGet(seenKey)) continue;
     await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
 
-    type Scored = { rugScore?: number; level?: string; signals?: string[] };
+    type Scored = {
+      rugScore?: number;
+      level?: string;
+      signals?: string[];
+      inputs?: { liquidityUsd?: number | null };
+    };
     let scored: Scored | null = null;
     try {
       scored = (await rugScore({ address: addr })) as unknown as Scored;
     } catch {
       scored = null;
     }
+
+    // Signal gate — only post what's worth a subscriber's attention:
+    //   a high rug risk (warning value) OR meaningful liquidity (worth knowing).
+    // Everything else is noise and is skipped (kept in seen-set so we don't recheck).
+    const liq = scored?.inputs?.liquidityUsd ?? 0;
+    const notable = Boolean(scored) && (scored!.level === "high" || liq >= 20000);
+    if (!notable) continue;
+
     const emoji = scored?.level === "high" ? "🔴" : scored?.level === "medium" ? "🟡" : "🟢";
     const lines = [
-      `🔭 <b>New Base token spotted</b>`,
+      `🔭 <b>New Base token</b>`,
       `<code>${esc(addr)}</code>`,
       scored ? `${emoji} Rug score: <b>${esc(scored.rugScore)}/100</b> (${esc(scored.level)})` : "Rug score: n/a",
     ];
+    if (liq > 0) lines.push(`💧 Liquidity: ~$${esc(Math.round(liq).toLocaleString())}`);
     if (scored?.signals?.length) lines.push(`⚠️ ${scored.signals.slice(0, 4).map(esc).join(", ")}`);
     if (t.description) lines.push(esc(String(t.description).slice(0, 140)));
-    lines.push(`🔗 <a href="https://402.com.tr/agents">More via x402 Bazaar</a>`);
+    lines.push(`🔗 Check any token: <a href="https://t.me/Bazaar402_bot">@Bazaar402_bot</a> · 402.com.tr`);
 
     await post(lines.join("\n"));
     posted++;

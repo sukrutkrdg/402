@@ -67,6 +67,7 @@ const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
   "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
   "Commands: /scan · /ai (token verdict) · /market (Base market brief) · /networth · /wallet · /portfolio · /nft · /recent · /help\n\n" +
+  `📡 Auto rug-score alerts + daily briefs: <a href="https://t.me/x402scout">@x402scout</a>\n` +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
 
 async function recordScan(address: string, symbol: string) {
@@ -324,6 +325,7 @@ async function buildReport(address: string): Promise<string> {
   }
 
   L.push(`\n🔗 <a href="https://basescan.org/token/${esc(address)}">BaseScan</a> · <a href="${SITE}/agents">Use these APIs in your agent →</a>`);
+  L.push(`📡 Auto alerts: <a href="https://t.me/x402scout">@x402scout</a>`);
   return L.join("\n");
 }
 
