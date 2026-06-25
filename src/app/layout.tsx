@@ -122,6 +122,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Telegram bot
             </a>{" "}
             ·{" "}
+            <a className="text-sky-400 hover:underline" href="https://t.me/x402scout" target="_blank" rel="noreferrer">
+              Token radar
+            </a>{" "}
+            ·{" "}
             <a className="text-sky-400 hover:underline" href="https://github.com/sukrutkrdg/x402-bazaar-mcp" target="_blank" rel="noreferrer">
               GitHub
             </a>
