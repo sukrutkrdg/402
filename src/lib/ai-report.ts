@@ -11,9 +11,9 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
-import { tokenPrice } from "./onchain-extra";
+import { tokenPrice, txDecode } from "./onchain-extra";
 import { sanctionsCheck } from "./compliance";
-import { walletNetworth, walletSummary, walletActivity } from "./covalent";
+import { walletNetworth, walletSummary, walletActivity, tokenApprovals } from "./covalent";
 import { trendingTokens } from "./onchain-extra2";
 import { newTokens } from "./onchain-extra4";
 
@@ -260,6 +260,146 @@ export async function aiMarketBrief(_params: Record<string, string>) {
       trending: data.trending ? (data.trending as { count?: number }).count ?? 0 : 0,
       newTokens: data.newTokens ? (data.newTokens as { count?: number }).count ?? 0 : 0,
     },
+    model: MODEL,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * AI Wallet Security Audit — pulls a wallet's token approvals and has Claude
+ * produce a security report: what can drain it, which approvals to revoke, why.
+ */
+export async function aiWalletSecurity(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… wallet address");
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+
+  let approvals: Awaited<ReturnType<typeof tokenApprovals>>;
+  try {
+    approvals = await tokenApprovals({ address });
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : "Approval data unavailable");
+  }
+
+  const facts = JSON.stringify(approvals).slice(0, 6000);
+  const schema = {
+    type: "object",
+    properties: {
+      riskLevel: { type: "string", enum: ["low", "medium", "high", "critical"] },
+      summary: { type: "string" },
+      revokeRecommendations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            token: { type: "string" },
+            spender: { type: "string" },
+            reason: { type: "string" },
+          },
+          required: ["token", "spender", "reason"],
+          additionalProperties: false,
+        },
+      },
+      observations: { type: "array", items: { type: "string" } },
+    },
+    required: ["riskLevel", "summary", "revokeRecommendations", "observations"],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 900,
+    system:
+      "You are a wallet-security auditor for an autonomous agent. Given JSON facts about a wallet's active " +
+      "token approvals (spenders, allowances, USD value at risk, risk factors), produce a security audit. " +
+      "Recommend revoking: unlimited/very large allowances, approvals to unverified or suspicious spenders, " +
+      "and any allowance with high USD value at risk. Set riskLevel by the worst exposure. Be concrete and " +
+      "actionable; reference token + spender. Not financial advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `Wallet ${address} approvals:\n${facts}` }],
+  });
+
+  let parsed: {
+    riskLevel?: string;
+    summary?: string;
+    revokeRecommendations?: Array<{ token: string; spender: string; reason: string }>;
+    observations?: string[];
+  };
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    address,
+    riskLevel: parsed.riskLevel ?? "low",
+    totalUsdAtRisk: (approvals as { totalUsdAtRisk?: number }).totalUsdAtRisk ?? 0,
+    approvalCount: (approvals as { approvalCount?: number }).approvalCount ?? 0,
+    summary: parsed.summary ?? "",
+    revokeRecommendations: parsed.revokeRecommendations ?? [],
+    observations: parsed.observations ?? [],
+    model: MODEL,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * AI Transaction Explainer — decodes a Base tx and has Claude explain in plain
+ * English what it did, plus a risk read. Turns raw calldata into an answer.
+ */
+export async function aiTxExplain(params: Record<string, string>) {
+  const hash = (params.hash || "").trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error("Provide a valid 0x… transaction hash");
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+
+  let decoded: Awaited<ReturnType<typeof txDecode>>;
+  try {
+    decoded = await txDecode({ hash });
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : "Transaction not found");
+  }
+
+  const facts = JSON.stringify(decoded).slice(0, 6000);
+  const schema = {
+    type: "object",
+    properties: {
+      action: { type: "string" },
+      plainEnglish: { type: "string" },
+      risk: { type: "string", enum: ["none", "low", "medium", "high"] },
+      notes: { type: "array", items: { type: "string" } },
+    },
+    required: ["action", "plainEnglish", "risk", "notes"],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 700,
+    system:
+      "You explain Base transactions for an autonomous agent. Given JSON facts (from, to, ETH value, status, " +
+      "gas, method selector), infer what the transaction did and write a one-paragraph plain-English explanation. " +
+      "Recognize common selectors (0x095ea7b3 = ERC-20 approve, 0xa9059cbb = transfer, router/swap selectors). " +
+      "Flag risk: a failed tx, an approval (especially unlimited) to an unknown spender, or a high-value transfer. " +
+      "If the method is unknown, say so honestly. Not financial advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `Transaction ${hash} facts:\n${facts}` }],
+  });
+
+  let parsed: { action?: string; plainEnglish?: string; risk?: string; notes?: string[] };
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    hash,
+    action: parsed.action ?? "unknown",
+    plainEnglish: parsed.plainEnglish ?? "",
+    risk: parsed.risk ?? "none",
+    notes: parsed.notes ?? [],
+    data: decoded,
     model: MODEL,
     generatedAt: new Date().toISOString(),
   };
