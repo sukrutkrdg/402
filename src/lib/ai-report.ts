@@ -57,28 +57,57 @@ export async function aiTokenReport(params: Record<string, string>) {
     type: "object",
     properties: {
       verdict: { type: "string", enum: ["avoid", "high_caution", "caution", "neutral", "favorable"] },
+      safetyScore: { type: "integer", minimum: 0, maximum: 100 },
+      confidence: { type: "string", enum: ["low", "medium", "high"] },
       summary: { type: "string" },
+      factors: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            status: { type: "string", enum: ["good", "neutral", "warning", "critical"] },
+            note: { type: "string" },
+          },
+          required: ["name", "status", "note"],
+          additionalProperties: false,
+        },
+      },
       risks: { type: "array", items: { type: "string" } },
       positives: { type: "array", items: { type: "string" } },
     },
-    required: ["verdict", "summary", "risks", "positives"],
+    required: ["verdict", "safetyScore", "confidence", "summary", "factors", "risks", "positives"],
     additionalProperties: false,
   };
 
   const msg = await new Anthropic().messages.create({
     model: MODEL,
-    max_tokens: 700,
+    max_tokens: 900,
     system:
       "You are a Base token due-diligence analyst for an autonomous trading agent. " +
       "Given JSON facts (risk score/flags, holder concentration, price/liquidity, OFAC sanctions), " +
-      "produce a concise neutral assessment. Be conservative: honeypot, unverified source, high holder " +
-      "concentration, very low liquidity, mintable/pausable, or any OFAC sanction => 'avoid' or 'high_caution'. " +
-      "Describe risk factually; this is not financial advice. Keep summary to 1-2 sentences. JSON only.",
+      "produce a concise, structured assessment with:\n" +
+      "- safetyScore: integer 0-100 (0 = certain scam/honeypot, 100 = clean & safe). Be conservative.\n" +
+      "- confidence: how complete the underlying data is (low if key signals are missing).\n" +
+      "- factors: one entry per dimension you can assess — e.g. 'Contract safety', 'Holder concentration', " +
+      "'Liquidity', 'Sanctions', 'Price/Momentum' — each with a status (good/neutral/warning/critical) and a one-line note.\n" +
+      "- verdict, summary (1-2 sentences), risks, positives.\n" +
+      "Be conservative: honeypot, unverified source, high holder concentration, very low liquidity, " +
+      "mintable/pausable, or any OFAC sanction => low score + 'avoid'/'high_caution'. " +
+      "Describe risk factually; this is not financial advice. JSON only.",
     output_config: { format: { type: "json_schema", schema } },
     messages: [{ role: "user", content: `Token ${address} facts:\n${facts}` }],
   });
 
-  let parsed: { verdict?: string; summary?: string; risks?: string[]; positives?: string[] };
+  let parsed: {
+    verdict?: string;
+    safetyScore?: number;
+    confidence?: string;
+    summary?: string;
+    factors?: Array<{ name: string; status: string; note: string }>;
+    risks?: string[];
+    positives?: string[];
+  };
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
@@ -88,7 +117,10 @@ export async function aiTokenReport(params: Record<string, string>) {
   return {
     address,
     verdict: parsed.verdict ?? "neutral",
+    safetyScore: typeof parsed.safetyScore === "number" ? parsed.safetyScore : null,
+    confidence: parsed.confidence ?? "low",
     summary: parsed.summary ?? "",
+    factors: parsed.factors ?? [],
     risks: parsed.risks ?? [],
     positives: parsed.positives ?? [],
     data,

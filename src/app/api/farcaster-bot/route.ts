@@ -78,14 +78,16 @@ export async function POST(req: NextRequest) {
   try {
     const r = (await aiTokenReport({ address: m[0] })) as {
       verdict?: string;
+      safetyScore?: number;
       summary?: string;
       risks?: string[];
     };
     const v = VERDICT[r.verdict ?? "neutral"] ?? "⚪";
     const label = (r.verdict ?? "?").replace(/_/g, " ").toUpperCase();
+    const score = typeof r.safetyScore === "number" ? ` · safety ${r.safetyScore}/100` : "";
     const risks = (r.risks ?? []).slice(0, 2).map((x) => `⚠️ ${x}`).join("\n");
     const text = [
-      `${v} ${label}`,
+      `${v} ${label}${score}`,
       "",
       r.summary ?? "",
       ...(risks ? ["", risks] : []),
