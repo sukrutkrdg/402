@@ -78,8 +78,17 @@ export async function POST(req: NextRequest) {
       risks?: string[];
     };
     const v = VERDICT[r.verdict ?? "neutral"] ?? "⚪";
-    const risk = r.risks?.length ? `\n⚠️ ${r.risks.slice(0, 2).join("; ")}` : "";
-    await reply(hash, `${v} ${r.verdict ?? "?"} — ${r.summary ?? ""}${risk}\n\nvia x402 Bazaar · 402.com.tr`);
+    const label = (r.verdict ?? "?").replace(/_/g, " ").toUpperCase();
+    const risks = (r.risks ?? []).slice(0, 2).map((x) => `⚠️ ${x}`).join("\n");
+    const text = [
+      `${v} ${label}`,
+      "",
+      r.summary ?? "",
+      ...(risks ? ["", risks] : []),
+      "",
+      "via x402 Bazaar · 402.com.tr",
+    ].join("\n");
+    await reply(hash, text);
   } catch (e) {
     await reply(hash, `Couldn't analyze that token right now. → 402.com.tr/agents`);
     void e;
