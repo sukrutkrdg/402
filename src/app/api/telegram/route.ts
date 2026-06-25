@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { tokenRisk } from "@/lib/onchain";
 import { tokenPrice } from "@/lib/onchain-extra";
 import { sanctionsCheck } from "@/lib/compliance";
-import { aiTokenReport, aiWalletReport } from "@/lib/ai-report";
+import { aiTokenReport, aiWalletReport, aiMarketBrief } from "@/lib/ai-report";
 import { walletPortfolio, nftFloor } from "@/lib/alchemy";
 import { walletNetworth } from "@/lib/covalent";
 import { kvLPush, kvLRange, kvIncr } from "@/lib/kv";
@@ -66,7 +66,7 @@ async function send(chatId: number, text: string, withButtons = false) {
 const WELCOME =
   "🛡️ <b>Base Token Safety Bot</b>\n\n" +
   "Send me any <b>Base token address</b> (0x…) — or <code>/scan 0x…</code> in groups — and I'll return a risk + sanctions + price report.\n\n" +
-  "Commands: /scan · /ai (token verdict) · /networth · /wallet (wallet verdict) · /portfolio · /nft · /recent · /help\n\n" +
+  "Commands: /scan · /ai (token verdict) · /market (Base market brief) · /networth · /wallet · /portfolio · /nft · /recent · /help\n\n" +
   `Powered by <a href="${SITE}">x402 Bazaar</a> — pay-per-call APIs for agents.`;
 
 async function recordScan(address: string, symbol: string) {
@@ -165,6 +165,30 @@ const WALLET_VERDICT: Record<string, string> = {
   established: "🟢",
   power_user: "🟢",
 };
+
+const MOOD: Record<string, string> = {
+  bullish: "🟢",
+  active: "🔵",
+  mixed: "⚪",
+  quiet: "⚫",
+  risky: "🔴",
+};
+
+async function buildMarketBrief(): Promise<string> {
+  let r: Awaited<ReturnType<typeof aiMarketBrief>>;
+  try {
+    r = await aiMarketBrief({});
+  } catch (e) {
+    return `⚠️ ${esc(e instanceof Error ? e.message : "Market brief failed")}`;
+  }
+  const L: string[] = [`🗞️ <b>AI Market Brief — Base</b>`, `${MOOD[r.mood] ?? "⚪"} Mood: <b>${esc(r.mood)}</b>`];
+  if (r.summary) L.push(`\n${esc(r.summary)}`);
+  if (r.highlights?.length) L.push(`\n<b>Highlights</b>\n${r.highlights.slice(0, 4).map((x) => "• " + esc(x)).join("\n")}`);
+  if (r.newAndNotable?.length) L.push(`\n<b>New &amp; notable</b>\n${r.newAndNotable.slice(0, 4).map((x) => "• " + esc(x)).join("\n")}`);
+  if (r.cautions?.length) L.push(`\n<b>⚠️ Cautions</b>\n${r.cautions.slice(0, 4).map((x) => "• " + esc(x)).join("\n")}`);
+  L.push(`\n<a href="${SITE}/agents">AI Market Brief API →</a>`);
+  return L.join("\n");
+}
 
 async function buildWalletReport(address: string): Promise<string> {
   let r: Awaited<ReturnType<typeof aiWalletReport>>;
@@ -391,6 +415,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     await send(chatId, await buildWalletReport(m[0]), true);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (/^\/market\b/i.test(text)) {
+    const day = new Date().toISOString().slice(0, 10);
+    if ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15) {
+      await send(chatId, "Daily AI limit reached (15). Try again tomorrow.");
+      return NextResponse.json({ ok: true });
+    }
+    await send(chatId, await buildMarketBrief(), true);
     return NextResponse.json({ ok: true });
   }
 
