@@ -38,7 +38,17 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
 // Category display order — earlier index = rendered first.
-const CATEGORY_ORDER = ["Onchain", "AI", "Markets", "Data", "Utility", "Fun", "Demo"];
+const CATEGORY_ORDER = ["AI", "Onchain", "Markets", "Data", "Utility", "Fun", "Demo"];
+
+// The AI synthesis suite — the differentiated moat, featured up top.
+const AI_FLAGSHIP_IDS = [
+  "ai-token-report",
+  "ai-wallet-report",
+  "ai-market-brief",
+  "ai-wallet-security",
+  "ai-contract-risk",
+  "ai-tx-explain",
+];
 
 const TRUST_PILLS = [
   { label: "USDC on Base" },
@@ -259,6 +269,9 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
 
   const groups = groupByCategory(services);
   const flagship = services.find((s) => s.id === "ai-token-report");
+  const aiSuite = AI_FLAGSHIP_IDS.map((id) => services.find((s) => s.id === id)).filter(
+    (s): s is ServiceMeta => Boolean(s),
+  );
 
   return (
     <div className="flex flex-col gap-10">
@@ -363,6 +376,29 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* AI intelligence suite — the moat */}
+      {aiSuite.length > 1 && (
+        <section className="flex flex-col gap-3">
+          <div className="label">AI intelligence — synthesis you can&apos;t get from a raw feed</div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {aiSuite.map((s) => (
+              <div key={s.id} className="card p-3">
+                <div className="flex items-center gap-2">
+                  <span aria-hidden="true" className="text-xl">
+                    {s.icon}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{s.name}</div>
+                    <div className="font-mono text-xs text-emerald-300">{s.price}</div>
+                  </div>
+                </div>
+                <p className="mt-1 text-xs leading-snug text-gray-400">{s.tagline}</p>
+              </div>
+            ))}
           </div>
         </section>
       )}

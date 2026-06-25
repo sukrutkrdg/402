@@ -23,7 +23,7 @@ import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
-import { aiWalletReport, aiWalletSecurity, aiTxExplain } from "./ai-report";
+import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk } from "./ai-report";
 import { batchRisk } from "./batch";
 
 export interface ServiceParam {
@@ -569,6 +569,18 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
     handler: aiTxExplain,
+  },
+  {
+    id: "ai-contract-risk",
+    name: "AI Contract Risk Explainer",
+    tagline: "What dangerous powers a contract has, in plain English",
+    description:
+      "Combines security flags with the verified ABI's function names, then Claude explains the contract's dangerous capabilities — owner can mint, pause, blacklist, upgrade or self-destruct — with a danger level. Goes beyond raw flags to read what the contract can actually do.",
+    price: "$0.03",
+    icon: "📜",
+    category: "AI",
+    params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
+    handler: aiContractRisk,
   },
   {
     id: "ai-summarize",
