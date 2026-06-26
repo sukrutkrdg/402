@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPayingFetch } from "@/lib/x402-client";
 import { safeEqual } from "@/lib/secure";
 import { SERVICES } from "@/lib/services";
+import { kvGet, kvSet } from "@/lib/kv";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -77,11 +78,19 @@ export async function GET(req: NextRequest) {
       results.push({ service: s.id, status: "skipped-no-sample" });
       continue;
     }
+    // Idempotent: don't re-pay a service already indexed (lets you re-run to finish).
+    if (await kvGet(`idx:${s.id}`)) {
+      results.push({ service: s.id, status: "already-indexed" });
+      continue;
+    }
     const qs = new URLSearchParams(params).toString();
     try {
       const res = await pay(`${ORIGIN}/api/x402/${s.id}${qs ? `?${qs}` : ""}`);
       results.push({ service: s.id, status: res.status });
-      if (res.ok) indexed++;
+      if (res.ok) {
+        indexed++;
+        await kvSet(`idx:${s.id}`, "1", 60 * 60 * 24 * 30); // 30-day memory
+      }
     } catch (e) {
       results.push({ service: s.id, status: e instanceof Error ? e.message.slice(0, 60) : "error" });
     }
