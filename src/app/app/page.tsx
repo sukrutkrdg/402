@@ -21,7 +21,11 @@ type TypedData = {
 };
 
 // Build the minimal ClientEvmSigner x402 needs from the mini-app wallet provider.
-function makeSigner(provider: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> }, address: `0x${string}`) {
+function makeSigner(
+  provider: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> },
+  address: `0x${string}`,
+  onSigning?: () => void,
+) {
   const domainType = (d: Record<string, unknown>) => {
     const f: Array<{ name: string; type: string }> = [];
     if (d.name !== undefined) f.push({ name: "name", type: "string" });
@@ -43,6 +47,7 @@ function makeSigner(provider: { request: (a: { method: string; params?: unknown[
       // EIP-712 uint fields arrive as BigInt — JSON can't serialize those, and
       // eth_signTypedData_v4 wants them as decimal strings.
       const json = JSON.stringify(typedData, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+      onSigning?.();
       return (await provider.request({
         method: "eth_signTypedData_v4",
         params: [address, json],
@@ -56,6 +61,7 @@ export default function MiniApp() {
   const [busy, setBusy] = useState<"free" | "paid" | null>(null);
   const [out, setOut] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [step, setStep] = useState<string | null>(null);
   const [hasWallet, setHasWallet] = useState(false);
 
   useEffect(() => {
@@ -87,29 +93,44 @@ export default function MiniApp() {
     if (!valid) return;
     setErr(null);
     setOut(null);
+    setStep(null);
     setBusy("paid");
+    const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
+      setStep("Connecting wallet…");
       const provider = await sdk.wallet.getEthereumProvider();
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+      setStep("Requesting wallet account…");
+      const accounts = (await withTimeout(
+        provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>,
+        30000,
+        "wallet account",
+      )) as string[];
       const address = accounts?.[0] as `0x${string}`;
       if (!address) throw new Error("No wallet account found");
 
       const client = new x402Client();
-      client.register("eip155:8453", new ExactEvmScheme(makeSigner(provider, address)));
+      client.register(
+        "eip155:8453",
+        new ExactEvmScheme(makeSigner(provider, address, () => setStep("✍️ Approve the signature in your wallet…"))),
+      );
       client.registerExtension(new BuilderCodeClientExtension("x402_bazaar_cli"));
       const pay = wrapFetchWithPayment(fetch, client);
 
-      const r = await pay(`/api/x402/ai-token-report?address=${addr.trim()}`);
+      setStep("Building payment…");
+      const r = await withTimeout(pay(`/api/x402/ai-token-report?address=${addr.trim()}`), 90000, "payment/settlement");
+      setStep("Reading report…");
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Payment or report failed");
       const d = j.data;
       const factors = (d.factors || []).map((f: { name: string; status: string }) => `• ${f.name}: ${f.status}`).join("\n");
       setOut(`${d.verdict?.toUpperCase()} · safety ${d.safetyScore}/100\n\n${d.summary}\n\n${factors}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed");
+      setErr(`${e instanceof Error ? e.message : "Failed"}${step ? ` (at: ${step})` : ""}`);
     } finally {
       setBusy(null);
+      setStep(null);
     }
   }
 
@@ -141,6 +162,9 @@ export default function MiniApp() {
 
       {!hasWallet && (
         <p className="text-center text-[11px] text-gray-500">Open in the Base App to pay with your wallet.</p>
+      )}
+      {busy === "paid" && step && (
+        <div className="card border-base-blue/30 bg-base-blue/10 p-3 text-xs text-sky-200">{step}</div>
       )}
       {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
       {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
