@@ -60,9 +60,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skipped: "BUYER_PRIVATE_KEY not configured" });
   }
 
+  // Cap paid settlements per invocation so the function returns under the
+  // serverless timeout (each x402 settlement takes a few seconds). Re-run until
+  // remaining = 0; the KV skip makes it idempotent.
+  const MAX_PER_RUN = 8;
   const results: Array<{ service: string; status: number | string }> = [];
   let indexed = 0;
+  let attempts = 0;
   for (const s of SERVICES) {
+    if (attempts >= MAX_PER_RUN) {
+      results.push({ service: s.id, status: "deferred-next-run" });
+      continue;
+    }
     // Build sample params; skip the service if a required param can't be sampled.
     const params: Record<string, string> = {};
     let skip = false;
@@ -84,6 +93,7 @@ export async function GET(req: NextRequest) {
       continue;
     }
     const qs = new URLSearchParams(params).toString();
+    attempts++;
     try {
       const res = await pay(`${ORIGIN}/api/x402/${s.id}${qs ? `?${qs}` : ""}`);
       results.push({ service: s.id, status: res.status });
