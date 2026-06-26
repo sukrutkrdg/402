@@ -32,7 +32,7 @@ export function GET() {
       description:
         "A pay-per-call API marketplace on Base. Pay tiny USDC micro-payments over x402 and get results instantly — every payment attributed onchain with Builder Codes.",
       iconUrl: `${SITE_URL}/brand/icon`,
-      homeUrl: SITE_URL,
+      homeUrl: `${SITE_URL}/app`,
       splashImageUrl: `${SITE_URL}/brand/splash`,
       splashBackgroundColor: "#07080a",
       heroImageUrl: `${SITE_URL}/brand/thumbnail`,
