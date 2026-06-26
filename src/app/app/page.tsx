@@ -40,9 +40,12 @@ function makeSigner(provider: { request: (a: { method: string; params?: unknown[
         primaryType: msg.primaryType,
         message: msg.message,
       };
+      // EIP-712 uint fields arrive as BigInt — JSON can't serialize those, and
+      // eth_signTypedData_v4 wants them as decimal strings.
+      const json = JSON.stringify(typedData, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
       return (await provider.request({
         method: "eth_signTypedData_v4",
-        params: [address, JSON.stringify(typedData)],
+        params: [address, json],
       })) as `0x${string}`;
     },
   };
