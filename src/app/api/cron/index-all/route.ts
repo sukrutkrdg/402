@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   // Cap paid settlements per invocation so the function returns under the
   // serverless timeout (each x402 settlement takes a few seconds). Re-run until
   // remaining = 0; the KV skip makes it idempotent.
-  const MAX_PER_RUN = 8;
+  const MAX_PER_RUN = 4;
   const results: Array<{ service: string; status: number | string }> = [];
   let indexed = 0;
   let attempts = 0;
