@@ -14,7 +14,7 @@
 import "server-only";
 import net from "node:net";
 import { lookup } from "node:dns/promises";
-import { kvSet, kvGet, kvSAdd, kvSRem, kvSMembers } from "@/lib/kv";
+import { kvSet, kvGet, kvSAdd, kvSRem, kvSMembers, kvConfigured } from "@/lib/kv";
 
 // ---------------------------------------------------------------------------
 // SSRF protection for caller-supplied webhook URLs
@@ -165,6 +165,13 @@ async function fetchTokenPrice(token: string): Promise<number> {
 export async function registerAlert(
   params: Record<string, string>,
 ): Promise<unknown> {
+  // Alerts are fired by a separate cron invocation, so they require durable KV —
+  // otherwise registration "succeeds" but the alert can never fire. Throw before
+  // any work (pre-settlement) so the buyer is never charged for a dead alert.
+  if (!kvConfigured()) {
+    throw new Error("Alerts unavailable: durable storage not configured");
+  }
+
   // ---- Validate token ----
   const token = (params.token || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(token)) {
