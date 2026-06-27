@@ -66,7 +66,12 @@ export default function MiniApp() {
 
   useEffect(() => {
     sdk.actions.ready().catch(() => {});
-    sdk.wallet.getEthereumProvider().then((p) => setHasWallet(Boolean(p))).catch(() => setHasWallet(false));
+    // Synchronous provider handle — the async getter can hang in some hosts.
+    try {
+      setHasWallet(Boolean(sdk.wallet.ethereumProvider));
+    } catch {
+      setHasWallet(false);
+    }
   }, []);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
@@ -99,13 +104,15 @@ export default function MiniApp() {
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
       setStep("Connecting wallet…");
-      const provider = await sdk.wallet.getEthereumProvider();
+      const provider = sdk.wallet.ethereumProvider as unknown as {
+        request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
+      } | undefined;
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      setStep("Requesting wallet account…");
+      setStep("Requesting wallet account… (approve in your wallet)");
       const accounts = (await withTimeout(
         provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>,
-        30000,
-        "wallet account",
+        45000,
+        "wallet account (no response — is a wallet connected?)",
       )) as string[];
       const address = accounts?.[0] as `0x${string}`;
       if (!address) throw new Error("No wallet account found");
