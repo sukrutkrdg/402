@@ -1,0 +1,14 @@
+{
+  "name": "x402-bazaar-game-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "x402 Bazaar plugin for the Virtuals GAME framework — onchain data & AI reports for Base agents, paid per call over x402.",
+  "dependencies": {
+    "@virtuals-protocol/game": "^0.1.0",
+    "@x402/fetch": "^2.16.0",
+    "@x402/evm": "^2.16.0",
+    "@x402/extensions": "^2.16.0",
+    "viem": "^2.21.0"
+  }
+}
