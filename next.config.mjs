@@ -7,6 +7,11 @@ const nextConfig = {
       { source: "/.well-known/farcaster.json", destination: "/api/farcaster-manifest" },
       // Machine-readable x402 service catalog for agent/indexer discovery.
       { source: "/.well-known/x402", destination: "/api/catalog" },
+      // Extra discovery filenames various scanners/directories crawl.
+      { source: "/.well-known/x402.json", destination: "/api/catalog" },
+      { source: "/.well-known/x402-bazaar.json", destination: "/api/catalog" },
+      { source: "/.well-known/agent.json", destination: "/api/agent-card" },
+      { source: "/.well-known/mcp.json", destination: "/api/mcp-manifest" },
       // AI/agent discovery files.
       { source: "/llms.txt", destination: "/api/llms" },
       { source: "/openapi.json", destination: "/api/openapi" },
@@ -18,7 +23,7 @@ const nextConfig = {
     // (revenue, usage, payments, buy, cron) are deliberately NOT listed.
     return [
       {
-        source: "/api/:path(catalog|openapi|llms|status|public-stats)",
+        source: "/api/:path(catalog|openapi|llms|status|public-stats|agent-card|mcp-manifest)",
         headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
       },
       {
