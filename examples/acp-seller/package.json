@@ -1,0 +1,15 @@
+{
+  "name": "x402-bazaar-acp-seller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "x402 Bazaar ACP (Agent Commerce Protocol) seller service — lets Virtuals agents hire & pay x402 Bazaar for onchain intelligence.",
+  "scripts": {
+    "start": "node seller.mjs"
+  },
+  "dependencies": {
+    "@virtuals-protocol/game": "^0.1.7",
+    "@virtuals-protocol/game-acp-plugin": "^0.1.0",
+    "@virtuals-protocol/acp-node": "^0.3.0-beta.40"
+  }
+}
