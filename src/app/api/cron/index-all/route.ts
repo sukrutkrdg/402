@@ -64,10 +64,16 @@ export async function GET(req: NextRequest) {
   // serverless timeout (each x402 settlement takes a few seconds). Re-run until
   // remaining = 0; the KV skip makes it idempotent.
   const MAX_PER_RUN = 2;
+  // Optional ?only=id1,id2 → index just those services (skips earlier erroring ones).
+  const only = (new URL(req.url).searchParams.get("only") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const pool = only.length ? SERVICES.filter((s) => only.includes(s.id)) : SERVICES;
   const results: Array<{ service: string; status: number | string }> = [];
   let indexed = 0;
   let attempts = 0;
-  for (const s of SERVICES) {
+  for (const s of pool) {
     if (attempts >= MAX_PER_RUN) {
       results.push({ service: s.id, status: "deferred-next-run" });
       continue;
