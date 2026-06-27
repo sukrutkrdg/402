@@ -176,6 +176,28 @@ export default function MiniApp() {
       {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
       {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
 
+      <div className="mt-1 flex gap-2">
+        <button
+          onClick={() => sdk.actions.addMiniApp().catch(() => {})}
+          className="btn-ghost flex-1 !py-2 text-xs"
+        >
+          ➕ Add to Base App
+        </button>
+        <button
+          onClick={() =>
+            sdk.actions
+              .composeCast({
+                text: "Check any Base token's safety in seconds 🛡️ rug-score + AI verdict, pay-per-call over x402.",
+                embeds: ["https://402.com.tr/app"],
+              })
+              .catch(() => {})
+          }
+          className="btn-ghost flex-1 !py-2 text-xs"
+        >
+          ↗ Share
+        </button>
+      </div>
+
       <a href="/" className="text-center text-xs text-sky-400 hover:underline">
         Browse all 48 services →
       </a>
