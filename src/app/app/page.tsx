@@ -108,12 +108,22 @@ export default function MiniApp() {
         request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
       } | undefined;
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      setStep("Requesting wallet account… (approve in your wallet)");
-      const accounts = (await withTimeout(
-        provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>,
-        45000,
-        "wallet account (no response — is a wallet connected?)",
-      )) as string[];
+      // In a Mini App the wallet is already connected — eth_accounts returns it
+      // with no popup. Fall back to eth_requestAccounts only if none is present.
+      setStep("Reading wallet account…");
+      let accounts = (await withTimeout(
+        provider.request({ method: "eth_accounts" }) as Promise<string[]>,
+        15000,
+        "wallet (open this AS a Mini App from a cast, not a browser tab)",
+      ).catch(() => [] as string[])) as string[];
+      if (!accounts?.length) {
+        setStep("Requesting wallet account… (approve in your wallet)");
+        accounts = (await withTimeout(
+          provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>,
+          30000,
+          "wallet account (no response — open AS a Mini App)",
+        )) as string[];
+      }
       const address = accounts?.[0] as `0x${string}`;
       if (!address) throw new Error("No wallet account found");
 
