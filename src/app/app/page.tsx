@@ -83,6 +83,10 @@ export default function MiniApp() {
     setBusy("free");
     try {
       const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}`);
+      if (r.status === 402) {
+        setErr("Free daily checks used up — tap “AI report · $0.05” for a full verdict.");
+        return;
+      }
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Check failed");
       const d = j.data;
