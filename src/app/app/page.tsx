@@ -68,7 +68,7 @@ export default function MiniApp() {
     sdk.actions.ready().catch(() => {});
     // Synchronous provider handle — the async getter can hang in some hosts.
     try {
-      setHasWallet(Boolean(sdk.wallet.ethereumProvider));
+      setHasWallet(Boolean(sdk.wallet.ethProvider));
     } catch {
       setHasWallet(false);
     }
@@ -104,7 +104,7 @@ export default function MiniApp() {
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
       setStep("Connecting wallet…");
-      const provider = sdk.wallet.ethereumProvider as unknown as {
+      const provider = sdk.wallet.ethProvider as unknown as {
         request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
       } | undefined;
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
