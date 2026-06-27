@@ -28,8 +28,7 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 // The private key is needed only to PAY for a tool call — not to start the
 // server. Building it lazily lets the server boot, advertise its tools, and be
-// scanned by registries (Smithery, etc.) without a key. The key is required
-// only when a tool is actually invoked.
+// scanned by registries without a key. The key is required only on invocation.
 
 const CATALOG_URL =
   process.env.X402_BAZAAR_CATALOG ?? "https://402.com.tr/api/catalog";
@@ -51,104 +50,127 @@ function getPayingFetch() {
   return _payingFetch;
 }
 
+const log = (m) => process.stderr.write(`[x402-bazaar-mcp] ${m}\n`);
+
 // ---------------------------------------------------------------------------
 // 2. Create the MCP server
 // ---------------------------------------------------------------------------
 
-const server = new McpServer({
-  name: "x402-bazaar",
-  version: "0.1.4",
-});
+const server = new McpServer({ name: "x402-bazaar", version: "0.1.5" });
 
 // ---------------------------------------------------------------------------
-// 3. Fetch the catalog and register one MCP tool per service
+// 3. Tool registration (with POST support, typed inputs, pretty JSON output)
 // ---------------------------------------------------------------------------
-// Non-fatal: if the catalog is unreachable the server still starts (with zero
-// tools) so it can be connected to and scanned by registries.
-
-let services = [];
-try {
-  const res = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(10000) });
-  if (res.ok) {
-    const catalog = await res.json();
-    services = catalog.services ?? catalog ?? [];
-  } else {
-    process.stderr.write(`[x402-bazaar-mcp] WARN: catalog HTTP ${res.status}\n`);
-  }
-} catch (err) {
-  process.stderr.write(`[x402-bazaar-mcp] WARN: catalog fetch failed: ${err.message}\n`);
-}
-if (!Array.isArray(services)) services = [];
 
 const registeredNames = new Set();
-for (const service of services) {
+
+function registerService(service) {
   // MCP tool names must use underscores (not dashes).
   const toolName = (service.id ?? service.name ?? "unknown").replace(/-/g, "_");
-
-  // Guard against duplicate tool names (would overwrite/break registration).
-  if (registeredNames.has(toolName)) {
-    process.stderr.write(`[x402-bazaar-mcp] WARN: duplicate tool name "${toolName}" — skipping\n`);
-    continue;
-  }
+  if (registeredNames.has(toolName)) return false; // already registered
   registeredNames.add(toolName);
 
-  // Build a zod schema for each input key. The catalog's service.input entries
-  // carry { type, required, description } — honor `required` so the agent knows
-  // which params are mandatory (required → non-optional string, else optional).
+  // Build a typed zod schema per input key from the catalog's { type, required,
+  // description }. Use coercion so an agent can pass strings for number/boolean.
   const inputShape = {};
   const inputDef = service.input ?? {};
   for (const key of Object.keys(inputDef)) {
     const def = inputDef[key] ?? {};
+    const t = typeof def === "object" ? def.type : null;
     const desc = (typeof def === "object" ? def.description : def) ?? key;
-    const base = z.string().describe(typeof desc === "string" ? desc : key);
+    let base;
+    if (t === "number" || t === "integer") base = z.coerce.number();
+    else if (t === "boolean") base = z.coerce.boolean();
+    else base = z.string();
+    base = base.describe(typeof desc === "string" ? desc : key);
     inputShape[key] = def && def.required ? base : base.optional();
   }
 
   const description =
     service.description ??
     `Call the ${service.name ?? service.id} endpoint (paid via x402 on Base).`;
+  const method = (service.method ?? "GET").toUpperCase();
 
-  // Register the tool with McpServer.
-  // Signature: server.tool(name, description, zodShape, handler)
   server.tool(toolName, description, inputShape, async (args) => {
-    // Build the URL from the service's endpoint and append provided query params.
-    const url = new URL(service.endpoint);
-    for (const [key, value] of Object.entries(args)) {
-      if (value !== undefined && value !== "") {
-        url.searchParams.set(key, value);
+    let response;
+    try {
+      const pay = getPayingFetch();
+      if (method === "GET") {
+        const url = new URL(service.endpoint);
+        for (const [k, v] of Object.entries(args)) {
+          if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+        }
+        response = await pay(url.toString());
+      } else {
+        // POST/PUT/etc — send params as a JSON body.
+        response = await pay(service.endpoint, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(args),
+        });
+      }
+    } catch (err) {
+      let msg = err?.message ?? String(err);
+      if (/insufficient|balance|funds|exceeds/i.test(msg)) {
+        msg = "Insufficient USDC balance on Base — fund the agent wallet (AGENT_PRIVATE_KEY address).";
+      }
+      return { content: [{ type: "text", text: `[x402-bazaar-mcp] Request failed: ${msg}` }], isError: true };
+    }
+
+    // Pretty-print JSON so the LLM gets a readable, structured result.
+    const ct = response.headers.get("content-type") ?? "";
+    let text = await response.text();
+    if (ct.includes("application/json")) {
+      try {
+        text = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        /* leave as-is */
       }
     }
 
-    // Call the endpoint; x402 payment is handled transparently.
-    let response;
-    try {
-      response = await getPayingFetch()(url.toString());
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `[x402-bazaar-mcp] Request failed: ${err.message}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      return {
-        content: [{ type: "text", text }],
-        isError: true,
-      };
-    }
-
-    return { content: [{ type: "text", text }] };
+    return { content: [{ type: "text", text }], isError: !response.ok };
   });
 
-  process.stderr.write(`[x402-bazaar-mcp] Registered tool: ${toolName}\n`);
+  return true;
 }
+
+// ---------------------------------------------------------------------------
+// 4. Load the catalog (non-fatal) + register tools. Refresh hourly so newly
+//    listed services show up without restarting the server.
+// ---------------------------------------------------------------------------
+
+async function loadCatalog() {
+  let services = [];
+  try {
+    const res = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(10000) });
+    if (res.ok) {
+      const catalog = await res.json();
+      services = catalog.services ?? catalog ?? [];
+    } else {
+      log(`WARN: catalog HTTP ${res.status}`);
+    }
+  } catch (err) {
+    log(`WARN: catalog fetch failed: ${err.message}`);
+  }
+  if (!Array.isArray(services)) services = [];
+
+  let added = 0;
+  for (const service of services) {
+    if (registerService(service)) added++;
+  }
+  return { total: services.length, added };
+}
+
+const { total, added } = await loadCatalog();
+log(`Server starting — ${added} tool(s) registered (catalog: ${total}).`);
+
+// Hourly refresh — registers any newly listed services (idempotent via the
+// registeredNames set; the SDK emits tools/list_changed for new tools).
+setInterval(() => {
+  loadCatalog()
+    .then(({ added }) => added && log(`Catalog refresh: +${added} new tool(s).`))
+    .catch((err) => log(`Catalog refresh failed: ${err.message}`));
+}, 60 * 60 * 1000).unref?.();
 
 // ---------------------------------------------------------------------------
 // 5. Connect via stdio transport (standard MCP pattern)
@@ -156,7 +178,4 @@ for (const service of services) {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-
-process.stderr.write(
-  `[x402-bazaar-mcp] Server ready — ${services.length} tool(s) registered.\n`
-);
+log(`Server ready — ${registeredNames.size} tool(s).`);

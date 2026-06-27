@@ -1,6 +1,6 @@
 {
   "name": "x402-bazaar-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "mcpName": "io.github.sukrutkrdg/x402-bazaar-mcp",
   "description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools — pay per call in USDC on Base, no API keys needed.",
   "type": "module",
