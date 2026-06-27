@@ -21,7 +21,7 @@ typically fractions of a cent per call.
 3. The agent wallet only needs **USDC on Base**.  Gas is paid by the x402
    facilitator — it is **gasless for the payer**.
 
-First few calls per day per service may be served on the **free tier** at no
+First few calls per day per IP may be served on the **free tier** at no
 cost; subsequent calls trigger micro-payments automatically.
 
 ---
@@ -119,7 +119,7 @@ writing it includes:
 | `price_alert` | $0.05 | Register a webhook alert when a token crosses a price |
 | `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
 
-…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (43+ services).
+…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (48+ services).
 
 ### Example
 

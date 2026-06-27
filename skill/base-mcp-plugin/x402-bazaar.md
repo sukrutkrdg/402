@@ -1,6 +1,6 @@
 ---
 title: "x402 Bazaar Plugin"
-description: "The onchain intelligence layer for Base agents: 43+ read-only APIs — token safety & rug detection, wallet net worth/age/risk, OFAC sanctions screening, prices & momentum, NFTs — plus two Claude-written AI reports (token & wallet). Reached via the x402-bazaar-mcp server; paid per call in USDC over x402. Returns data only — no transactions (Submission: none)."
+description: "The onchain intelligence layer for Base agents: 48+ read-only APIs — token safety & rug detection, wallet net worth/age/risk, OFAC sanctions screening, prices & momentum, NFTs — plus six Claude-written AI reports (token, wallet, market, security, contract, tx). Reached via the x402-bazaar-mcp server; paid per call in USDC over x402. Returns data only — no transactions (Submission: none)."
 tags: [data, token-risk, wallet-intel, compliance, x402]
 name: x402-bazaar
 version: 0.1.0
@@ -24,7 +24,7 @@ risk: []
 ## Overview
 
 **x402 Bazaar is the onchain intelligence layer for Base agents** — the data an
-agent should consult *before* it acts. It exposes **43+ read-only services** on
+agent should consult *before* it acts. It exposes **48+ read-only services** on
 Base across five areas:
 
 - **Token safety** — risk score, honeypot/tax checks, holder concentration,

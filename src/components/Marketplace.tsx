@@ -323,7 +323,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         {!buyerEnabled && (
           <div className="card px-4 py-3 text-xs text-gray-400">
             🤖 These APIs are built for agents — they call the endpoints directly and pay per call in
-            USDC. <strong className="text-gray-200">First 3 calls/day per service are free</strong>{" "}
+            USDC. <strong className="text-gray-200">First 3 calls/day per IP are free</strong>{" "}
             (non-AI) — no wallet needed to try. See{" "}
             <a className="text-sky-400 hover:underline" href="/agents">
               For agents

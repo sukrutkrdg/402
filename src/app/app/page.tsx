@@ -84,7 +84,7 @@ export default function MiniApp() {
     try {
       const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}`);
       if (r.status === 402) {
-        setErr("Free daily checks used up — tap “AI report · $0.05” for a full verdict.");
+        setErr("Free daily checks used up — tap “AI report · $0.03” for a full verdict.");
         return;
       }
       const j = await r.json();
@@ -161,7 +161,7 @@ export default function MiniApp() {
         <span className="pill w-fit">🛡️ x402 Bazaar</span>
         <h1 className="text-xl font-bold">Base Token Safety</h1>
         <p className="text-xs text-gray-400">
-          Paste a Base token — get a free rug-score, or pay $0.05 in-app for a full AI verdict.
+          Paste a Base token — get a free rug-score, or pay $0.03 in-app for a full AI verdict.
         </p>
       </header>
 
@@ -177,7 +177,7 @@ export default function MiniApp() {
           {busy === "free" ? "Checking…" : "Free check"}
         </button>
         <button onClick={paidReport} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "paid" ? "Paying…" : "AI report · $0.05"}
+          {busy === "paid" ? "Paying…" : "AI report · $0.03"}
         </button>
       </div>
 

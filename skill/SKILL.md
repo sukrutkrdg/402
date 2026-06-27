@@ -1,6 +1,6 @@
 # x402 Bazaar — onchain data & intelligence skill for Base agents
 
-Give your assistant **43 pay-per-call APIs on Base** for token safety, wallet
+Give your assistant **48 pay-per-call APIs on Base** for token safety, wallet
 intelligence, compliance, prices, NFTs, and AI-written reports. Every call is a
 tiny **USDC micro-payment over x402** — no API keys, no subscriptions. Works
 alongside **Base MCP / Base Account** (x402 is a first-class Base agent payment
@@ -60,5 +60,5 @@ GET https://402.com.tr/api/x402/<service>?<params>
 
 - **x402** protocol, **USDC on Base** (`eip155:8453`), gasless for the payer.
 - The agent wallet only needs USDC; the key never leaves the caller's machine.
-- The first few calls/day per service are free (trial) for non-AI services.
+- The first few calls/day per IP are free (trial) for non-AI services.
 - Every settlement is attributed onchain via **Builder Codes (ERC-8021)**.

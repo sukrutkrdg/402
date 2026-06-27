@@ -124,6 +124,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(8000),
+        // Never follow redirects — a 3xx to an internal host would bypass the
+        // SSRF allowlist that only validated the original URL.
+        redirect: "manual",
       });
 
       if (!webhookRes.ok) {

@@ -48,5 +48,5 @@ Now the agent can call, e.g.:
 
 ## Discover services
 
-All 43+ services, prices and schemas: <https://402.com.tr/.well-known/x402> ·
+All 48+ services, prices and schemas: <https://402.com.tr/.well-known/x402> ·
 docs: <https://402.com.tr/agents>
