@@ -51,6 +51,8 @@ export interface AppConfig {
   buyAccessToken: string | undefined;
   /** Owner-only secret to view the private revenue dashboard (/stats). */
   statsToken: string | undefined;
+  /** Owner's own source hashes (your devices) so /stats can exclude them from "external visitors". */
+  ownerSources: string[];
 }
 
 export function getConfig(): AppConfig {
@@ -66,6 +68,10 @@ export function getConfig(): AppConfig {
     enableBuyer: process.env.ENABLE_BUYER?.trim().toLowerCase() !== "false",
     buyAccessToken: process.env.BUY_ACCESS_TOKEN?.trim() || undefined,
     statsToken: process.env.STATS_TOKEN?.trim() || undefined,
+    ownerSources: (process.env.OWNER_SOURCES || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 }
 

@@ -18,14 +18,30 @@ export function srcHash(ip: string): string {
   return createHash("sha256").update(ip || "unknown").digest("hex").slice(0, 6);
 }
 
-export async function logUsage(serviceId: string, paid: boolean, source = "?"): Promise<void> {
+/** Classify a caller from its User-Agent so owner/bot traffic is separable from real visitors. */
+export function classifyUa(ua: string): "browser" | "bot" | "api" {
+  const u = (ua || "").toLowerCase();
+  if (!u) return "api"; // no UA → server-to-server / scripted agent
+  if (/bot|crawl|spider|slurp|bing|google|yandex|baidu|duckduck|facebookexternal|preview|monitor|uptime|curl|wget|python-requests|axios|node-fetch|undici|go-http|headless|lighthouse|vercel/.test(u))
+    return "bot";
+  if (/mozilla|chrome|safari|firefox|edg\/|opera|mobile/.test(u)) return "browser";
+  return "api";
+}
+
+export async function logUsage(serviceId: string, paid: boolean, source = "?", ua = ""): Promise<void> {
   try {
+    const kind = classifyUa(ua);
     await kvIncr(`usage:total:${serviceId}`);
     if (paid) await kvIncr(`usage:paid:${serviceId}`);
     await kvIncr("usage:calls:total");
     await kvIncr(`usage:day:${day()}`, 60 * 60 * 24 * 8); // today's calls (8d ttl)
-    await kvSAdd(`usage:src:${day()}`, source); // distinct sources today
-    await kvLPush("usage:recent", JSON.stringify({ s: serviceId, p: paid, t: Date.now(), src: source }), 100);
+    await kvSAdd(`usage:src:${day()}`, source); // distinct sources today (all)
+    if (kind === "bot") await kvSAdd(`usage:botsrc:${day()}`, source); // bot/crawler sources today
+    await kvLPush(
+      "usage:recent",
+      JSON.stringify({ s: serviceId, p: paid, t: Date.now(), src: source, k: kind }),
+      100,
+    );
   } catch {
     /* never let analytics break a request */
   }
@@ -50,15 +66,18 @@ export interface RecentCall {
   p: boolean;
   t: number;
   src: string;
+  k?: "browser" | "bot" | "api";
 }
 
-export async function getUsage(serviceIds: string[]): Promise<{
+export async function getUsage(serviceIds: string[], ownerSources: string[] = []): Promise<{
   per: UsageRow[];
   recent: RecentCall[];
   totalCalls: number;
   totalPaid: number;
   today: number;
   sourcesToday: number;
+  botSourcesToday: number;
+  externalSourcesToday: number;
 }> {
   const per = await Promise.all(
     serviceIds.map(async (id) => ({
@@ -82,9 +101,17 @@ export async function getUsage(serviceIds: string[]): Promise<{
   const totalPaid = per.reduce((a, r) => a + r.paid, 0);
   let today = 0;
   let sourcesToday = 0;
+  let botSourcesToday = 0;
+  let externalSourcesToday = 0;
   try {
     today = await kvGetNumber(`usage:day:${day()}`);
-    sourcesToday = (await kvSMembers(`usage:src:${day()}`)).length;
+    const all = await kvSMembers(`usage:src:${day()}`);
+    const bots = new Set(await kvSMembers(`usage:botsrc:${day()}`));
+    const owner = new Set(ownerSources);
+    sourcesToday = all.length;
+    botSourcesToday = bots.size;
+    // Real external visitors = distinct sources today minus bots minus the owner's own.
+    externalSourcesToday = all.filter((s) => !bots.has(s) && !owner.has(s)).length;
   } catch {
     /* ignore */
   }
@@ -96,5 +123,7 @@ export async function getUsage(serviceIds: string[]): Promise<{
     totalPaid,
     today,
     sourcesToday,
+    botSourcesToday,
+    externalSourcesToday,
   };
 }

@@ -67,7 +67,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     if (free.allowed) {
       try {
         const data = await service.handler(paramsFrom(req, service));
-        await logUsage(service.id, false, srcHash(ip));
+        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "");
         return NextResponse.json(
           { service: service.id, builderCode: cfg.appBuilderCode, data, freeTier: true, freeRemaining: free.remaining },
           { headers: { "x-free-tier": "true", "x-free-remaining": String(free.remaining) } },
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // The business logic that runs once payment is verified.
   const handler = async (request: NextRequest) => {
     const data = await service.handler(paramsFrom(request, service));
-    await logUsage(service.id, true, srcHash(clientIp(request)));
+    await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "");
     return NextResponse.json({
       service: service.id,
       builderCode: cfg.appBuilderCode,
