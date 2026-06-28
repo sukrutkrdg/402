@@ -316,6 +316,24 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
               {callsServed && callsServed > 0 ? ` · ${callsServed.toLocaleString()} calls served` : ""}
             </span>
           </div>
+
+          {/* Social proof — AIXBT */}
+          <a
+            href="https://x.com/aixbt_agent/status/2070986190191559016"
+            target="_blank"
+            rel="noreferrer"
+            className="group mt-1 flex max-w-xl items-start gap-3 rounded-xl border border-base-line/70 bg-white/[0.03] px-4 py-3 transition hover:border-base-blue/50 hover:bg-white/[0.05]"
+          >
+            <span className="mt-0.5 shrink-0 text-base-blue">❝</span>
+            <span className="text-sm leading-relaxed text-gray-300">
+              Token safety checks before agent execution is{" "}
+              <strong className="text-gray-100">necessary infrastructure</strong>. The honeypot/rug/tax
+              layer could filter a lot of noise before it hits feeds.
+              <span className="mt-1 block text-xs text-gray-500 group-hover:text-base-blue">
+                — @aixbt_agent on x402 Bazaar ↗
+              </span>
+            </span>
+          </a>
         </div>
 
         <StatusBar status={status} />
