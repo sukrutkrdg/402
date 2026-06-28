@@ -28,7 +28,43 @@ export function classifyUa(ua: string): "browser" | "bot" | "api" {
   return "api";
 }
 
-export async function logUsage(serviceId: string, paid: boolean, source = "?", ua = ""): Promise<void> {
+/** A short, human-readable label for a User-Agent (what tool the caller used). */
+export function shortUa(ua: string): string {
+  const u = (ua || "").toLowerCase();
+  if (!u) return "no-ua";
+  if (/edg\//.test(u)) return "Edge";
+  if (/chrome|crios/.test(u) && !/edg\//.test(u)) return "Chrome";
+  if (/firefox|fxios/.test(u)) return "Firefox";
+  if (/safari/.test(u) && !/chrome/.test(u)) return "Safari";
+  if (/curl/.test(u)) return "curl";
+  if (/wget/.test(u)) return "wget";
+  if (/python|aiohttp|httpx/.test(u)) return "python";
+  if (/axios/.test(u)) return "axios";
+  if (/node-fetch|undici|bun/.test(u)) return "node";
+  if (/go-http|go-resty/.test(u)) return "go";
+  if (/postman|insomnia/.test(u)) return "api-tool";
+  if (/bot|crawl|spider|slurp|monitor|uptime|lighthouse|preview/.test(u)) return "bot";
+  if (/vercel/.test(u)) return "vercel";
+  return u.slice(0, 16);
+}
+
+/** Host of the referring page, if any (where the caller came from). */
+export function refHost(ref: string): string {
+  if (!ref) return "";
+  try {
+    return new URL(ref).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+export async function logUsage(
+  serviceId: string,
+  paid: boolean,
+  source = "?",
+  ua = "",
+  ref = "",
+): Promise<void> {
   try {
     const kind = classifyUa(ua);
     await kvIncr(`usage:total:${serviceId}`);
@@ -39,7 +75,7 @@ export async function logUsage(serviceId: string, paid: boolean, source = "?", u
     if (kind === "bot") await kvSAdd(`usage:botsrc:${day()}`, source); // bot/crawler sources today
     await kvLPush(
       "usage:recent",
-      JSON.stringify({ s: serviceId, p: paid, t: Date.now(), src: source, k: kind }),
+      JSON.stringify({ s: serviceId, p: paid, t: Date.now(), src: source, k: kind, ua: shortUa(ua), ref: refHost(ref) }),
       100,
     );
   } catch {
@@ -67,6 +103,8 @@ export interface RecentCall {
   t: number;
   src: string;
   k?: "browser" | "bot" | "api";
+  ua?: string;
+  ref?: string;
 }
 
 export async function getUsage(serviceIds: string[], ownerSources: string[] = []): Promise<{
