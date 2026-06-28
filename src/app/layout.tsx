@@ -102,6 +102,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               >
                 Docs ↗
               </a>
+              <a
+                href="https://x.com/sukrutkrdg"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="x402 Bazaar on X"
+                title="@sukrutkrdg on X"
+                className="shrink-0 grid h-8 w-8 place-items-center rounded-lg text-gray-300 hover:bg-white/5 hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817-5.97 6.817H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+                </svg>
+              </a>
             </nav>
           </div>
         </header>
