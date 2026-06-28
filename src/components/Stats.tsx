@@ -35,6 +35,8 @@ interface RecentCall {
   t: number;
   src: string;
   k?: "browser" | "bot" | "api";
+  ua?: string;
+  ref?: string;
 }
 interface Usage {
   per: UsageRow[];
@@ -318,6 +320,16 @@ export default function Stats() {
                           {who.label}
                         </span>
                         <span className="truncate">{r.name ?? r.s}</span>
+                        {r.ua && (
+                          <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-gray-400">
+                            {r.ua}
+                          </span>
+                        )}
+                        {r.ref && (
+                          <span className="shrink-0 truncate text-[10px] text-violet-300/80">
+                            ← {r.ref}
+                          </span>
+                        )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2 text-gray-500">
                         <span className="font-mono">src {r.src}</span>
