@@ -8,6 +8,7 @@
  * for an error.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { withX402, type RouteConfig } from "@x402/next";
 import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/builder-code";
@@ -33,6 +34,14 @@ function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>
   return params;
 }
 
+/** Constant-time secret compare (avoids leaking length/match via timing). */
+function secretMatches(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 export async function GET(req: NextRequest, ctx: { params: Promise<{ service: string }> }) {
   const { service: serviceId } = await ctx.params;
   const service = getService(serviceId);
@@ -51,6 +60,34 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   }
 
   const cfg = getConfig();
+
+  // Internal-auth bypass: trusted first-party services (Warden / warden402.xyz)
+  // send `X-Warden-Internal: <secret>` to call paid endpoints WITHOUT settling
+  // x402 — so our own products don't bill themselves. Only active when
+  // WARDEN_INTERNAL_SECRET is configured; compared in constant time. Still
+  // counts toward usage logs (as internal) and is rate-limited above.
+  const internalHeader = req.headers.get("x-warden-internal");
+  if (cfg.internalSecret && internalHeader && secretMatches(internalHeader, cfg.internalSecret)) {
+    try {
+      const data = await service.handler(paramsFrom(req, service));
+      const ip = clientIp(req);
+      await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "warden-internal", req.headers.get("referer") || "");
+      return NextResponse.json(
+        { service: service.id, builderCode: cfg.appBuilderCode, data, internal: true },
+        { headers: { "x-warden-internal": "ok" } },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Service error";
+      const m = message.toLowerCase();
+      const status =
+        /provide|missing|valid|invalid|required|no .*found|no .*data|no .*available|no price/.test(m)
+          ? 400
+          : /unavailable|failed|responded \d|timeout|fetch/.test(m)
+            ? 502
+            : 500;
+      return NextResponse.json({ error: message }, { status });
+    }
+  }
 
   // Free tier: an unpaid request (no payment header) that isn't the internal
   // demo buy flow gets a few free calls/day per IP, then must pay. This is the

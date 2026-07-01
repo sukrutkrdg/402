@@ -51,6 +51,12 @@ export interface AppConfig {
   buyAccessToken: string | undefined;
   /** Owner-only secret to view the private revenue dashboard (/stats). */
   statsToken: string | undefined;
+  /**
+   * Shared secret for trusted FIRST-PARTY services (e.g. Warden / warden402.xyz)
+   * to call paid endpoints WITHOUT settling x402 — so our own products don't bill
+   * themselves. Sent as the `X-Warden-Internal` header. Unset → no bypass (safe default).
+   */
+  internalSecret: string | undefined;
   /** Owner's own source hashes (your devices) so /stats can exclude them from "external visitors". */
   ownerSources: string[];
 }
@@ -68,6 +74,7 @@ export function getConfig(): AppConfig {
     enableBuyer: process.env.ENABLE_BUYER?.trim().toLowerCase() !== "false",
     buyAccessToken: process.env.BUY_ACCESS_TOKEN?.trim() || undefined,
     statsToken: process.env.STATS_TOKEN?.trim() || undefined,
+    internalSecret: process.env.WARDEN_INTERNAL_SECRET?.trim() || undefined,
     ownerSources: (process.env.OWNER_SOURCES || "")
       .split(",")
       .map((s) => s.trim())
