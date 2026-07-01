@@ -25,6 +25,7 @@ import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
 import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk } from "./ai-report";
 import { batchRisk } from "./batch";
+import { simulateTx } from "./tx-sim";
 
 export interface ServiceParam {
   name: string;
@@ -144,6 +145,24 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
     handler: txDecode,
+  },
+  {
+    id: "simulate-tx",
+    name: "Transaction Simulation",
+    tagline: "What an unsigned tx will do — before you sign it",
+    description:
+      "Simulate an UNSIGNED transaction against current Base state: what tokens leave/arrive for the sender, any approvals it grants (flags unlimited allowance & setApprovalForAll — the classic drain vector), whether it would revert, and gas. The pre-execution safety check every agent needs before signing.",
+    price: "$0.03",
+    icon: "🧪",
+    category: "Onchain",
+    params: [
+      { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
+      { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
+      { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
+      { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
+    ],
+    handler: simulateTx,
+    noFreeTier: true,
   },
   {
     id: "wallet-tokens",
