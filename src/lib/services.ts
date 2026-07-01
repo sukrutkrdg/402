@@ -32,6 +32,7 @@ import { holderForensics } from "./holder-forensics";
 import { proxyCheck } from "./proxy";
 import { approvalAdvisor } from "./approval-advisor";
 import { portfolioScan } from "./portfolio-scan";
+import { registerRugMonitor } from "./rug-monitor";
 
 export interface ServiceParam {
   name: string;
@@ -249,6 +250,23 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: portfolioScan,
+    noFreeTier: true,
+  },
+  {
+    id: "rug-monitor",
+    name: "Rug Early-Warning Monitor",
+    tagline: "Get alerted the moment liquidity is pulled",
+    description:
+      "Pay once to watch a Base token's liquidity. We snapshot a baseline and, on each monitor run, POST your webhook if liquidity collapses (a liquidity pull — the actual moment of a rug). Not price moving — the pool being drained out from under you. Expires after 30 days.",
+    price: "$0.10",
+    icon: "🚨",
+    category: "Onchain",
+    params: [
+      { name: "token", label: "Token address", placeholder: "0x… token", required: true },
+      { name: "webhook", label: "Webhook URL (https)", placeholder: "https://your-endpoint", required: true },
+      { name: "dropPct", label: "Fire on liquidity drop % (default 50)", placeholder: "50" },
+    ],
+    handler: registerRugMonitor,
     noFreeTier: true,
   },
   {
