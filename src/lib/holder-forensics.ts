@@ -89,24 +89,38 @@ export async function holderForensics(params: Record<string, string>) {
   });
 
   const top10Pct = +classified.reduce((s, h) => s + h.percent, 0).toFixed(2);
-  // The concentration that actually matters: unlabelled wallets + unknown contracts,
-  // excluding burn and known infrastructure (LP/CEX/locks).
-  const risky = classified.filter((h) => h.kind === "wallet" || h.kind === "contract");
-  const riskyConcentration = +risky.reduce((s, h) => s + h.percent, 0).toFixed(2);
-  const largestNonInfra = risky.reduce((m, h) => Math.max(m, h.percent), 0);
+  // Split the concentration by WHO holds it. An unlabelled EOA wallet is the real
+  // reflexive dump risk. A large UNLABELLED CONTRACT is different — it's usually a
+  // protocol/staking/gauge contract (benign, like veAERO) but can be a team
+  // multisig, so it's "review", not automatically "high". Known infra & burn are
+  // excluded entirely.
+  const walletHolders = classified.filter((h) => h.kind === "wallet");
+  const contractHolders = classified.filter((h) => h.kind === "contract"); // unlabelled contracts
+  const walletConcentration = +walletHolders.reduce((s, h) => s + h.percent, 0).toFixed(2);
+  const unknownContractConcentration = +contractHolders.reduce((s, h) => s + h.percent, 0).toFixed(2);
+  const largestWallet = +walletHolders.reduce((m, h) => Math.max(m, h.percent), 0).toFixed(2);
+  const largestContract = +contractHolders.reduce((m, h) => Math.max(m, h.percent), 0).toFixed(2);
+  // Combined non-infra, for reference only.
+  const riskyConcentration = +(walletConcentration + unknownContractConcentration).toFixed(2);
+  const largestNonInfra = +Math.max(largestWallet, largestContract).toFixed(2);
 
   const flags: string[] = [];
   if (creatorPct >= 5) flags.push(`creator_holds_${creatorPct.toFixed(1)}pct`);
   if (ownerPct >= 5) flags.push(`owner_holds_${ownerPct.toFixed(1)}pct`);
-  if (largestNonInfra >= 20) flags.push("single_wallet_over_20pct");
-  else if (largestNonInfra >= 10) flags.push("single_wallet_over_10pct");
-  if (riskyConcentration >= 50) flags.push("majority_in_few_wallets");
+  // Wallet concentration = direct dump risk.
+  if (largestWallet >= 20) flags.push("single_wallet_over_20pct");
+  else if (largestWallet >= 10) flags.push("single_wallet_over_10pct");
+  if (walletConcentration >= 50) flags.push("majority_in_few_wallets");
+  // Large unlabelled contract = review (protocol/staking vs team multisig).
+  if (largestContract >= 25) flags.push("large_unlabelled_contract_review");
   if (holderCount !== null && holderCount < 50) flags.push("very_few_holders");
 
+  // High is driven by WALLET concentration / creator. A big unknown contract only
+  // reaches "medium" (review) on its own — it isn't a reflexive dump like an EOA.
   const level =
-    largestNonInfra >= 20 || riskyConcentration >= 50 || creatorPct >= 20
+    largestWallet >= 20 || walletConcentration >= 50 || creatorPct >= 20
       ? "high"
-      : largestNonInfra >= 10 || riskyConcentration >= 30 || creatorPct >= 5
+      : largestWallet >= 10 || walletConcentration >= 30 || creatorPct >= 5 || largestContract >= 25
         ? "medium"
         : "low";
 
@@ -116,12 +130,19 @@ export async function holderForensics(params: Record<string, string>) {
     creatorPercent: +creatorPct.toFixed(2),
     ownerPercent: +ownerPct.toFixed(2),
     top10Percent: top10Pct,
-    riskyConcentrationPercent: riskyConcentration, // excludes LP/CEX/burn — the real dump risk
-    largestNonInfraPercent: +largestNonInfra.toFixed(2),
+    // The real reflexive dump risk — unlabelled EOA wallets only.
+    walletConcentrationPercent: walletConcentration,
+    largestWalletPercent: largestWallet,
+    // Large unlabelled contracts — usually protocol/staking (benign) but review the tag.
+    unknownContractConcentrationPercent: unknownContractConcentration,
+    largestContractPercent: largestContract,
+    riskyConcentrationPercent: riskyConcentration, // wallets + unknown contracts, excludes LP/CEX/burn
+    largestNonInfraPercent: largestNonInfra,
     topHolders: classified, // each tagged burn | infra | contract | wallet
-    concentrationRisk: level, // low | medium | high
+    concentrationRisk: level, // low | medium | high — driven by WALLET concentration
     flags,
-    note: "Separates benign concentration (LP/CEX/burn) from the wallets that could actually dump. Heuristic tagging; not financial advice.",
+    note:
+      "Wallet concentration = direct dump risk; a large unlabelled CONTRACT is usually a protocol/staking contract (benign, e.g. veAERO) but can be a team multisig — flagged as 'review', not 'high'. Known infra (LP/CEX) & burn are excluded. Heuristic; not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
