@@ -26,6 +26,7 @@ import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historic
 import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk } from "./ai-report";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
+import { exitLiquidity } from "./liquidity";
 
 export interface ServiceParam {
   name: string;
@@ -163,6 +164,21 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: simulateTx,
     noFreeTier: true,
+  },
+  {
+    id: "exit-liquidity",
+    name: "Exit Liquidity Check",
+    tagline: "Can you actually get OUT of this position?",
+    description:
+      "Give a Base token + a trade size in USD → estimated buy AND sell price impact, whether you can unwind that size without collapsing the pool, and the largest safe exit. The hidden form of a rug isn't 'you can't buy' — it's 'you can't sell'. Built for trading agents sizing positions.",
+    price: "$0.02",
+    icon: "🚪",
+    category: "Markets",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "size", label: "Trade size in USD", placeholder: "1000" },
+    ],
+    handler: exitLiquidity,
   },
   {
     id: "wallet-tokens",
