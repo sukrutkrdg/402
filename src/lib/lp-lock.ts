@@ -45,14 +45,14 @@ const isTrue = (v: unknown) => v === 1 || v === "1" || v === true;
 export async function lpLock(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
 
-  let gp: { lp_holders?: LpHolder[]; lp_total_supply?: string } | undefined;
+  let gp: { lp_holders?: LpHolder[]; lp_total_supply?: string; holder_count?: string | number } | undefined;
   try {
     const res = await fetch(
       `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
       { signal: AbortSignal.timeout(9000) },
     );
     if (!res.ok) throw new Error(`GoPlus responded ${res.status}`);
-    const j = (await res.json()) as { result?: Record<string, { lp_holders?: LpHolder[]; lp_total_supply?: string }> };
+    const j = (await res.json()) as { result?: Record<string, { lp_holders?: LpHolder[]; lp_total_supply?: string; holder_count?: string | number }> };
     gp = j.result?.[address.toLowerCase()];
   } catch (err) {
     throw new Error(`LP data unavailable: ${err instanceof Error ? err.message : String(err)}`);
@@ -83,24 +83,35 @@ export async function lpLock(params: Record<string, string>) {
 
   const securedPct = +(lockedPct + burnedPct).toFixed(2); // locked + burned = can't be pulled
   const unlockedPct = +Math.max(0, 100 - securedPct).toFixed(2);
+  const holderCount = gp.holder_count !== undefined ? Number(gp.holder_count) : null;
 
-  const level = securedPct >= 95 ? "low" : securedPct >= 50 ? "medium" : "high";
+  // Established tokens (very high holder count) usually run protocol-owned
+  // liquidity that isn't in a traditional locker — "unlocked" there is not the
+  // rug setup it is on a fresh launch. Soften the verdict + say so.
+  const established = holderCount !== null && holderCount >= 50000;
+
+  let level = securedPct >= 95 ? "low" : securedPct >= 50 ? "medium" : "high";
+  if (level === "high" && established) level = "medium";
 
   return {
     address,
+    holderCount,
     lpSecuredPercent: securedPct, // locked + burned
     lpLockedPercent: +lockedPct.toFixed(2),
     lpBurnedPercent: +burnedPct.toFixed(2),
     lpUnlockedPercent: unlockedPct, // can be pulled by whoever holds it
     lockers, // each locker with unlock date
+    likelyProtocolOwned: established && securedPct < 50, // established token, LP not in a locker → probably protocol-owned
     rugRisk: level, // low (secured) | medium | high (mostly unlocked)
     recommendation:
-      level === "high"
-        ? `${unlockedPct}% of LP is unlocked — the holder can pull liquidity at any time. High rug setup.`
-        : level === "medium"
-          ? `${securedPct}% of LP is secured; ${unlockedPct}% is still pullable. Partial protection.`
-          : `${securedPct}% of LP is locked or burned — liquidity can't be easily pulled.`,
-    note: "Locked + burned LP can't be rug-pulled; unlocked LP can. Check unlock dates — a lock expiring soon is a scheduled risk. Not financial advice.",
+      established && securedPct < 50
+        ? `${unlockedPct}% of LP isn't in a traditional lock, but this is an established token (${holderCount?.toLocaleString()} holders) — the liquidity is likely protocol-owned, not a fresh-launch rug setup. Verify for large positions.`
+        : level === "high"
+          ? `${unlockedPct}% of LP is unlocked — the holder can pull liquidity at any time. High rug setup.`
+          : level === "medium"
+            ? `${securedPct}% of LP is secured; ${unlockedPct}% is still pullable. Partial protection.`
+            : `${securedPct}% of LP is locked or burned — liquidity can't be easily pulled.`,
+    note: "Locked + burned LP can't be rug-pulled; unlocked LP can. On fresh launches this is the key rug signal; on established tokens unlocked LP is usually protocol-owned. Check unlock dates. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
