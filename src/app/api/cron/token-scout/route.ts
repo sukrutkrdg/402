@@ -35,6 +35,48 @@ async function post(text: string) {
 const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// GoPlus sell-side security — the signals that prove a scam (caught it before you aped in).
+interface Scam {
+  isScam: boolean;
+  symbol: string | null;
+  reasons: string[];
+  honeypot: boolean;
+  sellTax: number | null;
+  buyTax: number | null;
+}
+async function scamCheck(address: string): Promise<Scam | null> {
+  try {
+    const res = await fetch(
+      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!res.ok) return null;
+    const j = (await res.json()) as { result?: Record<string, Record<string, unknown>> };
+    const gp = j.result?.[address.toLowerCase()];
+    if (!gp || Object.keys(gp).length === 0) return null;
+    const t = (v: unknown) => v === 1 || v === "1" || v === true;
+    const n = (v: unknown) => {
+      const x = parseFloat(String(v ?? ""));
+      return Number.isFinite(x) ? x : null;
+    };
+    const sellTaxRaw = n(gp.sell_tax);
+    const buyTaxRaw = n(gp.buy_tax);
+    const sellTax = sellTaxRaw !== null ? Math.round(sellTaxRaw * 100) : null;
+    const buyTax = buyTaxRaw !== null ? Math.round(buyTaxRaw * 100) : null;
+    const reasons: string[] = [];
+    if (t(gp.is_honeypot)) reasons.push("honeypot — you can buy but not sell");
+    if (t(gp.cannot_sell_all)) reasons.push("can't sell your full balance");
+    if (sellTax !== null && sellTax >= 50) reasons.push(`${sellTax}% sell tax`);
+    if (t(gp.is_blacklisted)) reasons.push("owner can blacklist your wallet");
+    if (t(gp.transfer_pausable)) reasons.push("owner can pause transfers (freeze exit)");
+    if (t(gp.is_mintable)) reasons.push("owner can mint unlimited supply");
+    const isScam = t(gp.is_honeypot) || t(gp.cannot_sell_all) || (sellTax !== null && sellTax >= 50);
+    return { isScam, symbol: (gp.token_symbol as string) || null, reasons, honeypot: t(gp.is_honeypot), sellTax, buyTax };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: "CRON_SECRET not set" }, { status: 401 });
@@ -62,6 +104,27 @@ export async function GET(req: NextRequest) {
     const seenKey = `scout:seen:${addr.toLowerCase()}`;
     if (await kvGet(seenKey)) continue;
     await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
+
+    // FIRST: is it an outright scam we can showcase catching? (honeypot / can't-sell
+    // / extreme tax). This is the marketing gold — "we caught it before you aped in".
+    const scam = await scamCheck(addr);
+    if (scam?.isScam) {
+      const sym = scam.symbol ? `$${esc(scam.symbol)}` : "This new token";
+      const caught = [
+        `🚨 <b>CAUGHT: ${scam.honeypot ? "honeypot" : "unsellable token"} on Base</b>`,
+        ``,
+        `${sym} — flagged before you could ape in.`,
+        ...scam.reasons.slice(0, 4).map((r) => `🔴 ${esc(r)}`),
+        `<code>${esc(addr)}</code>`,
+        ``,
+        `x402 Bazaar flagged this in one call. Check ANY Base token before you buy 👇`,
+        `402.com.tr/app · <a href="https://t.me/Bazaar402_bot">@Bazaar402_bot</a>`,
+      ];
+      await post(caught.join("\n"));
+      posted++;
+      if (posted >= 4) break;
+      continue;
+    }
 
     type Scored = {
       rugScore?: number;
