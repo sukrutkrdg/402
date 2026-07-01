@@ -90,7 +90,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   }
 
   // Free tier: an unpaid request (no payment header) that isn't the internal
-  // demo buy flow gets a few free calls/day per IP, then must pay. This is the
+  // demo buy flow gets one free trial call/day per IP, then must pay. This is the
   // agent trial funnel.
   const hasPayment = Boolean(req.headers.get("x-payment") || req.headers.get("payment-signature"));
   const forcePay = req.headers.get("x-x402-force") === "1";

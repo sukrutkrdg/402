@@ -10,8 +10,9 @@ import "server-only";
 import { kvIncr, kvGetNumber } from "./kv";
 
 export function freeLimit(): number {
-  const n = parseInt(process.env.FREE_TIER_DAILY || "3", 10);
-  return Number.isFinite(n) && n >= 0 ? n : 3;
+  // One free trial call per IP per day — a taste to convert, not a giveaway.
+  const n = parseInt(process.env.FREE_TIER_DAILY || "1", 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
 }
 
 function dayKey(key: string): string {
