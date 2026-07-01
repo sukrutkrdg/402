@@ -17,6 +17,7 @@ import { sanctionsCheck } from "./compliance";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals } from "./covalent";
 import { trendingTokens } from "./onchain-extra2";
 import { newTokens } from "./onchain-extra4";
+import { exitLiquidity } from "./liquidity";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
@@ -126,6 +127,118 @@ export async function aiTokenReport(params: Record<string, string>) {
     factors: parsed.factors ?? [],
     risks: parsed.risks ?? [],
     positives: parsed.positives ?? [],
+    data,
+    model: MODEL,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Deep Due-Diligence — the premium flagship. One call runs the FULL battery of
+ * signals (contract risk, holder concentration, liquidity depth, EXIT liquidity,
+ * OFAC sanctions) and has Claude synthesize an institutional-grade verdict with a
+ * confidence-weighted score and an explicit tradeability read (can you buy AND
+ * sell). The moat is the orchestration + synthesis, not any single datapoint —
+ * hard to replicate, worth a premium.
+ */
+export async function aiDeepDueDiligence(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… token address");
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+  }
+
+  const [risk, holders, price, sanctions, exit] = await Promise.allSettled([
+    tokenRisk({ address }),
+    holderDistribution({ address }),
+    tokenPrice({ address }),
+    sanctionsCheck({ address }),
+    exitLiquidity({ address, size: params.size || "5000" }),
+  ]);
+  const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
+  const data = {
+    risk: val(risk),
+    holders: val(holders),
+    price: val(price),
+    sanctions: val(sanctions),
+    exitLiquidity: val(exit),
+  };
+  if (!data.risk && !data.price && !data.holders) {
+    throw new Error("No on-chain data available for this token");
+  }
+
+  const facts = JSON.stringify(data).slice(0, 8000);
+
+  const schema = {
+    type: "object",
+    properties: {
+      verdict: { type: "string", enum: ["avoid", "high_caution", "caution", "neutral", "favorable"] },
+      safetyScore: { type: "integer" },
+      confidence: { type: "string", enum: ["low", "medium", "high"] },
+      tradeability: {
+        type: "object",
+        properties: {
+          canBuy: { type: "boolean" },
+          canSell: { type: "boolean" },
+          note: { type: "string" },
+        },
+        required: ["canBuy", "canSell", "note"],
+        additionalProperties: false,
+      },
+      liquidityAssessment: { type: "string" },
+      holderAssessment: { type: "string" },
+      summary: { type: "string" },
+      factors: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            status: { type: "string", enum: ["good", "neutral", "warning", "critical"] },
+            note: { type: "string" },
+          },
+          required: ["name", "status", "note"],
+          additionalProperties: false,
+        },
+      },
+      risks: { type: "array", items: { type: "string" } },
+      positives: { type: "array", items: { type: "string" } },
+      recommendation: { type: "string" },
+    },
+    required: [
+      "verdict", "safetyScore", "confidence", "tradeability",
+      "liquidityAssessment", "holderAssessment", "summary", "factors", "risks", "positives", "recommendation",
+    ],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 1400,
+    system:
+      "You are an institutional-grade due-diligence analyst producing a full report on a Base token for an autonomous trading fund. " +
+      "You are given JSON facts: contract risk score/flags, holder concentration, price/liquidity, OFAC sanctions, and EXIT-LIQUIDITY (buy/sell price impact + whether a position can be unwound). Produce:\n" +
+      "- safetyScore: integer 0-100 (0 = certain scam/honeypot, 100 = clean & deep). Be conservative.\n" +
+      "- tradeability: canBuy / canSell booleans + note. canSell must be false if the risk flags show honeypot, cannot-sell, very high sell tax, or exit-liquidity says the position can't be unwound. Selling is where rugs hide.\n" +
+      "- liquidityAssessment & holderAssessment: one crisp sentence each, using the exit-liquidity and holder data.\n" +
+      "- confidence: low if key signals are missing.\n" +
+      "- factors: one per dimension (Contract safety, Holder concentration, Liquidity & exit, Sanctions, Price/Momentum) with status + note.\n" +
+      "- verdict, summary (2-3 sentences), risks, positives, and a one-line recommendation for the fund.\n" +
+      "Any honeypot / cannot-sell / OFAC hit / unlimited-mint => low score + 'avoid' + canSell:false. Factual, not financial advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `Token ${address} full facts:\n${facts}` }],
+  });
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    address,
+    ...parsed,
     data,
     model: MODEL,
     generatedAt: new Date().toISOString(),

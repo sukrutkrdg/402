@@ -23,7 +23,7 @@ import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
-import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk } from "./ai-report";
+import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence } from "./ai-report";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -179,6 +179,21 @@ export const SERVICES: ServiceDef[] = [
       { name: "size", label: "Trade size in USD", placeholder: "1000" },
     ],
     handler: exitLiquidity,
+  },
+  {
+    id: "deep-dd",
+    name: "Deep Due-Diligence",
+    tagline: "Institutional-grade full report on a Base token — one call",
+    description:
+      "The premium flagship. One call runs the FULL battery — contract risk, holder concentration, liquidity depth, EXIT liquidity (can you actually sell), OFAC sanctions — and Claude synthesizes an institutional verdict: safety score, explicit buy/sell tradeability, liquidity & holder assessments, factors, risks, positives and a recommendation. The value is the orchestration + AI synthesis you can't get in one call anywhere else.",
+    price: "$0.50",
+    icon: "🏛️",
+    category: "AI",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "size", label: "Position size USD (for exit check)", placeholder: "5000" },
+    ],
+    handler: aiDeepDueDiligence,
   },
   {
     id: "wallet-tokens",
