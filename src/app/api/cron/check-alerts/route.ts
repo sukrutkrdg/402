@@ -28,6 +28,7 @@ import {
 } from "@/lib/alerts";
 import { kvConfigured } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
+import { checkRugMonitors } from "@/lib/rug-monitor";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ---- Auth check ----
@@ -147,5 +148,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     fired++;
   }
 
-  return NextResponse.json({ checked, fired, errors, ...(kvWarning ? { kvWarning } : {}) });
+  // Also process rug-watch monitors (liquidity-collapse warnings).
+  let rug = { checked: 0, fired: 0 };
+  try {
+    rug = await checkRugMonitors();
+  } catch {
+    /* best-effort */
+  }
+
+  return NextResponse.json({ checked, fired, rugWatch: rug, errors, ...(kvWarning ? { kvWarning } : {}) });
 }
