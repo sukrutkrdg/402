@@ -408,7 +408,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Live floor price for a Base NFT collection",
     description:
       "Current floor price for a Base NFT collection (OpenSea / LooksRare) via Alchemy. Pass the collection contract address. Coverage is limited to marketplace-listed collections. For agents tracking NFT markets.",
-    price: "$0.01",
+    price: "$0.015",
     icon: "🖼️",
     category: "Markets",
     params: [{ name: "contract", label: "Collection contract address", placeholder: "0x… collection", required: true }],
@@ -421,7 +421,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "All ERC-20 holdings of a wallet with USD value",
     description:
       "Complete ERC-20 portfolio for a Base address — every non-zero token with balance, metadata and live USD value, plus a total. Powered by Alchemy (beyond the curated wallet-tokens list).",
-    price: "$0.01",
+    price: "$0.015",
     icon: "💰",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -434,7 +434,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "All tokens + USD value (reliable pricing)",
     description:
       "Complete ERC-20 portfolio for a Base address with accurate USD values from Covalent (handles stablecoins & long-tail tokens). Spam-filtered, sorted by value, with a total. The reliable portfolio endpoint.",
-    price: "$0.01",
+    price: "$0.02",
     icon: "🏦",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -447,7 +447,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Tx count, first/last activity, wallet age",
     description:
       "Total transaction count, first & last activity timestamps, and wallet age in days for any Base address. Built for sybil/rug screening and counterparty trust checks.",
-    price: "$0.01",
+    price: "$0.02",
     icon: "🕰️",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -460,7 +460,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Recent transactions for an address",
     description:
       "The latest transactions for a Base address — hash, time, from/to, ETH value, success — via Covalent. For agents tracking what a wallet is doing.",
-    price: "$0.01",
+    price: "$0.02",
     icon: "📜",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -473,7 +473,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Open allowances & USD at risk for a wallet",
     description:
       "Lists a wallet's active token approvals — which contracts can spend its tokens, the allowance, USD value at risk and a risk factor (revoke.cash-style). Essential wallet-security check for agents and users.",
-    price: "$0.01",
+    price: "$0.02",
     icon: "🔓",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -486,7 +486,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "USD price of a Base token on a given date",
     description:
       "Returns the USD price of a Base token on a specific date (YYYY-MM-DD) via Covalent. For agents computing cost basis, backtests, or P&L.",
-    price: "$0.005",
+    price: "$0.015",
     icon: "📅",
     category: "Markets",
     params: [
@@ -502,7 +502,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "A wallet's in/out transfers of a token",
     description:
       "Recent transfers of a specific token for a wallet — direction (in/out), amount, USD value, counterparty, tx hash and time, via Covalent. For agents tracking token flows and cost basis.",
-    price: "$0.01",
+    price: "$0.02",
     icon: "🔁",
     category: "Onchain",
     params: [
@@ -518,7 +518,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "NFT collections held by a wallet (+ floor)",
     description:
       "Lists the NFT collections a Base wallet holds — name, count and floor value — spam-filtered, via Covalent. For agents profiling a wallet's NFT exposure.",
-    price: "$0.01",
+    price: "$0.02",
     icon: "🖼️",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -531,7 +531,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Claude-written verdict on any wallet",
     description:
       "The flagship wallet report: aggregates net worth, age/activity and recent transactions, then Claude synthesizes a verdict (e.g. fresh/risky → established/active) with key observations. One call, agent-ready wallet intelligence.",
-    price: "$0.03",
+    price: "$0.06",
     icon: "🧠",
     category: "AI",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -567,7 +567,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "What can drain this wallet — and what to revoke",
     description:
       "Pulls a wallet's active token approvals and Claude writes a security audit: overall risk level, USD at risk, and concrete revoke recommendations (which token/spender and why). The wallet-safety check agents and users run before trusting an address.",
-    price: "$0.04",
+    price: "$0.06",
     icon: "🛡️",
     category: "AI",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
