@@ -29,6 +29,9 @@ import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
 import { sellability } from "./sellability";
 import { holderForensics } from "./holder-forensics";
+import { proxyCheck } from "./proxy";
+import { approvalAdvisor } from "./approval-advisor";
+import { portfolioScan } from "./portfolio-scan";
 
 export interface ServiceParam {
   name: string;
@@ -209,6 +212,44 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: holderForensics,
+  },
+  {
+    id: "proxy-check",
+    name: "Proxy / Upgrade Detector",
+    tagline: "Can this contract be changed under you?",
+    description:
+      "Reads the EIP-1967 proxy slots live: is the contract upgradeable, what's the current implementation, and WHO can upgrade it. Flags the dangerous case — an EOA admin that can swap the logic at any block with no timelock/multisig. Upgradeability is a rug vector static scans miss.",
+    price: "$0.03",
+    icon: "🔀",
+    category: "Onchain",
+    params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
+    handler: proxyCheck,
+  },
+  {
+    id: "approval-advisor",
+    name: "Approval Exposure + Revoke Advisor",
+    tagline: "Which approvals could drain you — and revoke order",
+    description:
+      "Ranks a wallet's active token approvals by USD-at-risk × unlimited-allowance × unlabelled-spender, and returns a prioritised revoke queue. Approvals are the #1 drain vector; this tells an agent exactly what to revoke first.",
+    price: "$0.05",
+    icon: "🧹",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: approvalAdvisor,
+    noFreeTier: true,
+  },
+  {
+    id: "portfolio-scan",
+    name: "Portfolio Risk Scan",
+    tagline: "Audit a whole wallet — which holdings could hurt you",
+    description:
+      "Pulls a wallet's holdings and runs a risk check on each, flagging which positions are honeypots / high-risk / illiquid and the USD sitting in risky tokens. One call audits the whole wallet — 'which of the things you already hold could hurt you'.",
+    price: "$0.15",
+    icon: "📋",
+    category: "Onchain",
+    params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: portfolioScan,
+    noFreeTier: true,
   },
   {
     id: "deep-dd",
