@@ -45,6 +45,12 @@ export interface ServiceDef {
   category: string;
   params: ServiceParam[];
   handler: (params: Record<string, string>) => Promise<unknown>;
+  /**
+   * Exclude from the free tier — payment always required. Set on services backed
+   * by a metered/paid upstream (e.g. Covalent) so free calls can't drain credits
+   * for zero revenue. AI services are already paid-only via their category.
+   */
+  noFreeTier?: boolean;
 }
 
 // ---- tiny deterministic helpers so demo output looks alive but stays cheap ----
@@ -407,6 +413,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [{ name: "contract", label: "Collection contract address", placeholder: "0x… collection", required: true }],
     handler: nftFloor,
+    noFreeTier: true,
   },
   {
     id: "wallet-portfolio",
@@ -419,6 +426,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletPortfolio,
+    noFreeTier: true,
   },
   {
     id: "wallet-networth",
@@ -431,6 +439,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNetworth,
+    noFreeTier: true,
   },
   {
     id: "wallet-summary",
@@ -443,6 +452,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletSummary,
+    noFreeTier: true,
   },
   {
     id: "wallet-activity",
@@ -455,6 +465,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletActivity,
+    noFreeTier: true,
   },
   {
     id: "token-approvals",
@@ -467,6 +478,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: tokenApprovals,
+    noFreeTier: true,
   },
   {
     id: "historical-price",
@@ -482,6 +494,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "date", label: "Date (YYYY-MM-DD)", placeholder: "2026-06-01", required: true },
     ],
     handler: historicalPrice,
+    noFreeTier: true,
   },
   {
     id: "token-transfers",
@@ -497,6 +510,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "token", label: "Token contract", placeholder: "0x… token", required: true },
     ],
     handler: tokenTransfers,
+    noFreeTier: true,
   },
   {
     id: "wallet-nfts",
@@ -509,6 +523,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNfts,
+    noFreeTier: true,
   },
   {
     id: "ai-wallet-report",
