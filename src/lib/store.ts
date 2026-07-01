@@ -1,20 +1,15 @@
 /**
  * Recent-payments log.
  *
- * Serverless-safe by design: a module-level in-memory cache is the source of
- * truth within a warm instance, and we *best-effort* persist to a writable temp
- * file. On read-only/ephemeral platforms (e.g. Vercel) the file write may fail
- * or not survive across invocations — that's fine, we never throw, and the
- * attribution dashboard's on-chain lookup is unaffected.
- *
- * For durable, cross-instance history, swap `recordPayment`/`listPayments` for a
- * KV store (Vercel KV / Upstash Redis). The call sites stay identical.
+ * Durable when KV is configured (Upstash Redis / Vercel KV): payments persist
+ * across serverless instances and deploys. An in-memory list is kept as a fast
+ * warm-instance cache and as a fallback when KV isn't configured. Nothing here
+ * ever throws — the attribution dashboard's on-chain lookup is the ultimate
+ * source of truth, so a missed write is cosmetic, never data loss.
  */
 
 import "server-only";
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { kvConfigured, kvLPush, kvLRange } from "./kv";
 
 export interface PaymentRecord {
   id: string;
@@ -30,45 +25,42 @@ export interface PaymentRecord {
 }
 
 const MAX = 200;
+const KEY = "payments:recent";
 
-// In-memory cache — primary store within a single (warm) instance.
+// In-memory cache — fast path within a single warm instance + fallback when
+// KV isn't configured.
 const memory: PaymentRecord[] = [];
 
-// Writable location: project ./data locally, OS temp dir on serverless.
-const onServerless = Boolean(process.env.VERCEL || process.env.AWS_REGION);
-const DATA_DIR = onServerless ? path.join(os.tmpdir(), "x402-bazaar") : path.join(process.cwd(), "data");
-const FILE = path.join(DATA_DIR, "payments.json");
-
-let hydrated = false;
-
-async function hydrateOnce(): Promise<void> {
-  if (hydrated) return;
-  hydrated = true;
-  try {
-    const raw = await fs.readFile(FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      for (const r of parsed) if (!memory.find((m) => m.id === r.id)) memory.push(r);
-    }
-  } catch {
-    // no file yet — fine
-  }
-}
-
 export async function recordPayment(rec: PaymentRecord): Promise<void> {
-  await hydrateOnce();
+  // warm-instance cache
   memory.unshift(rec);
   if (memory.length > MAX) memory.length = MAX;
-  // best-effort persist; swallow any FS errors (read-only / ephemeral)
+  // durable, cross-instance persistence (best-effort; never throws)
   try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(FILE, JSON.stringify(memory, null, 2), "utf8");
+    await kvLPush(KEY, JSON.stringify(rec), MAX);
   } catch {
-    /* ignore */
+    /* ignore — memory cache still holds it */
   }
 }
 
 export async function listPayments(limit = 50): Promise<PaymentRecord[]> {
-  await hydrateOnce();
+  // Prefer KV (durable, cross-instance) when configured.
+  if (kvConfigured()) {
+    try {
+      const raw = await kvLRange(KEY, 0, limit - 1);
+      const parsed = raw
+        .map((s) => {
+          try {
+            return JSON.parse(s) as PaymentRecord;
+          } catch {
+            return null;
+          }
+        })
+        .filter((r): r is PaymentRecord => r !== null);
+      if (parsed.length > 0) return parsed;
+    } catch {
+      /* fall through to memory */
+    }
+  }
   return memory.slice(0, limit);
 }

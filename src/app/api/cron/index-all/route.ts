@@ -12,6 +12,7 @@ import { getPayingFetch } from "@/lib/x402-client";
 import { safeEqual } from "@/lib/secure";
 import { SERVICES } from "@/lib/services";
 import { kvGet, kvSet } from "@/lib/kv";
+import { getConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -52,6 +53,11 @@ export async function GET(req: NextRequest) {
   if (!secret) return NextResponse.json({ error: "CRON_SECRET not set" }, { status: 401 });
   const provided = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
   if (!safeEqual(provided, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Master spend kill-switch: ENABLE_BUYER=false disables ALL buyer spending.
+  if (!getConfig().enableBuyer) {
+    return NextResponse.json({ skipped: "spending disabled (ENABLE_BUYER=false)", indexed: 0 });
+  }
 
   let pay: ReturnType<typeof getPayingFetch>;
   try {

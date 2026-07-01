@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPayingFetch, getBuyerAddress } from "@/lib/x402-client";
 import { safeEqual } from "@/lib/secure";
 import { kvIncr } from "@/lib/kv";
+import { getConfig } from "@/lib/config";
 
 // Hard safety ceiling on paid calls per day (normal usage ~4). Protects the
 // buyer wallet if the cron is ever misconfigured to a high frequency.
@@ -43,6 +44,12 @@ export async function GET(req: NextRequest) {
   if (!secret) return NextResponse.json({ error: "CRON_SECRET not set" }, { status: 401 });
   const provided = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
   if (!safeEqual(provided, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Master spend kill-switch: ENABLE_BUYER=false disables ALL buyer spending
+  // (this cron included), so the buyer key can be neutralised with one env var.
+  if (!getConfig().enableBuyer) {
+    return NextResponse.json({ skipped: "spending disabled (ENABLE_BUYER=false)", settled: 0 });
+  }
 
   let pay: ReturnType<typeof getPayingFetch>;
   try {
