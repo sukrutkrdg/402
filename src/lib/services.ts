@@ -27,6 +27,7 @@ import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDu
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
+import { sellability } from "./sellability";
 
 export interface ServiceParam {
   name: string;
@@ -179,6 +180,22 @@ export const SERVICES: ServiceDef[] = [
       { name: "size", label: "Trade size in USD", placeholder: "1000" },
     ],
     handler: exitLiquidity,
+  },
+  {
+    id: "sellability",
+    name: "Sellability Check",
+    tagline: "Can you actually SELL it — or is it a honeypot?",
+    description:
+      "The hard honeypot question, answered three ways: security simulation (honeypot, cannot-sell-all, sell/buy tax, transfer-pausable), a LIVE transfer simulation we run ourselves from a real holder (reverts/taxed?), and exit liquidity. Returns a hard canSell verdict with reasons. Selling is where rugs hide — check before you buy.",
+    price: "$0.05",
+    icon: "🔒",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "size", label: "Position size USD (exit check)", placeholder: "5000" },
+    ],
+    handler: sellability,
+    noFreeTier: true,
   },
   {
     id: "deep-dd",
