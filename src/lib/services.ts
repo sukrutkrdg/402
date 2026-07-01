@@ -28,6 +28,7 @@ import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
 import { sellability } from "./sellability";
+import { holderForensics } from "./holder-forensics";
 
 export interface ServiceParam {
   name: string;
@@ -196,6 +197,18 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: sellability,
     noFreeTier: true,
+  },
+  {
+    id: "holder-forensics",
+    name: "Holder Forensics",
+    tagline: "Benign vs dangerous concentration — who can dump",
+    description:
+      "Goes past 'top-10 = X%' to classify the holder base: how much the creator & owner still hold, which top holders are infrastructure (LP/CEX/bridge — benign) vs unlabelled wallets (the concentration that can actually dump the price), and the largest non-infra wallet. Separating benign from dangerous concentration is the analysis others skip.",
+    price: "$0.03",
+    icon: "🧬",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: holderForensics,
   },
   {
     id: "deep-dd",
