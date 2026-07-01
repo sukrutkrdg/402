@@ -33,6 +33,8 @@ import { proxyCheck } from "./proxy";
 import { approvalAdvisor } from "./approval-advisor";
 import { portfolioScan } from "./portfolio-scan";
 import { registerRugMonitor } from "./rug-monitor";
+import { contractDanger } from "./contract-danger";
+import { lpLock } from "./lp-lock";
 
 export interface ServiceParam {
   name: string;
@@ -225,6 +227,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
     handler: proxyCheck,
+  },
+  {
+    id: "contract-danger",
+    name: "Contract Danger Scanner",
+    tagline: "What can the owner do to you?",
+    description:
+      "Reads a verified contract's ABI and flags owner-callable abuse functions: mint (dilute), pause (freeze exit), blacklist (block your wallet), setFee/setTax (tax you after entry), withdraw/sweep (pull funds), upgrade (swap logic). An unverified contract is itself a red flag. Diligence a price feed can't give.",
+    price: "$0.04",
+    icon: "⚠️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
+    handler: contractDanger,
+  },
+  {
+    id: "lp-lock",
+    name: "LP Lock Details",
+    tagline: "Is liquidity locked, how much, until when?",
+    description:
+      "Surfaces the LP holders, how much of the LP supply is locked or burned vs pullable, the lockers, and unlock dates. Unlocked liquidity is the clearest rug setup — this shows the detail a one-line 'LP locked: yes/no' hides.",
+    price: "$0.02",
+    icon: "🔐",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: lpLock,
   },
   {
     id: "approval-advisor",
