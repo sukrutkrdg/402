@@ -26,7 +26,7 @@ function reqAddr(raw: string): string {
   return getAddress(v);
 }
 
-async function cov<T>(path: string, cacheKey: string, ttl = 60): Promise<T> {
+async function cov<T>(path: string, cacheKey: string, ttl = 300): Promise<T> {
   try {
     const cached = await kvGet(`cov:${cacheKey}`);
     if (cached) return JSON.parse(cached) as T;

@@ -447,7 +447,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Tx count, first/last activity, wallet age",
     description:
       "Total transaction count, first & last activity timestamps, and wallet age in days for any Base address. Built for sybil/rug screening and counterparty trust checks.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "🕰️",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -460,7 +460,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Recent transactions for an address",
     description:
       "The latest transactions for a Base address — hash, time, from/to, ETH value, success — via Covalent. For agents tracking what a wallet is doing.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "📜",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -502,7 +502,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "A wallet's in/out transfers of a token",
     description:
       "Recent transfers of a specific token for a wallet — direction (in/out), amount, USD value, counterparty, tx hash and time, via Covalent. For agents tracking token flows and cost basis.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "🔁",
     category: "Onchain",
     params: [

@@ -69,7 +69,12 @@ export async function GET(req: NextRequest) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const pool = only.length ? SERVICES.filter((s) => only.includes(s.id)) : SERVICES;
+  // Default: skip metered-upstream services (Covalent/Alchemy) so our own
+  // indexing round-trip never burns paid API credits. They get discovered
+  // organically on the first real external payment, or force via ?only=<id>.
+  const pool = only.length
+    ? SERVICES.filter((s) => only.includes(s.id))
+    : SERVICES.filter((s) => !s.noFreeTier);
   const results: Array<{ service: string; status: number | string }> = [];
   let indexed = 0;
   let attempts = 0;
