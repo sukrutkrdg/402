@@ -152,22 +152,26 @@ export default function MiniApp() {
         request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
       } | undefined;
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      setStep("Reading wallet account…");
-      let accounts = (await withTimeout(
-        provider.request({ method: "eth_accounts" }) as Promise<string[]>,
-        15000,
-        "wallet (open this AS a Mini App from a cast, not a browser tab)",
-      ).catch(() => [] as string[])) as string[];
-      if (!accounts?.length) {
-        setStep("Requesting wallet account… (approve in your wallet)");
-        accounts = (await withTimeout(
-          provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>,
-          30000,
-          "wallet account (no response — open AS a Mini App)",
-        )) as string[];
+      // Fast silent read first (short), then request with one retry. Mini-app
+      // wallets are sometimes slow/flaky to respond on the first call.
+      let address: `0x${string}` | undefined;
+      const readAccounts = async (method: string, ms: number) => {
+        const a = (await withTimeout(
+          provider.request({ method }) as Promise<string[]>,
+          ms,
+          "wallet",
+        ).catch(() => [] as string[])) as string[];
+        return a?.[0] as `0x${string}` | undefined;
+      };
+      setStep("Reading wallet…");
+      address = await readAccounts("eth_accounts", 5000);
+      for (let attempt = 1; attempt <= 2 && !address; attempt++) {
+        setStep(attempt === 1 ? "Connecting wallet…" : "Retrying wallet…");
+        address = await readAccounts("eth_requestAccounts", 20000);
       }
-      const address = accounts?.[0] as `0x${string}`;
-      if (!address) throw new Error("No wallet account found");
+      if (!address) {
+        throw new Error("Wallet didn't respond — close this mini app and reopen it from the cast, then try again.");
+      }
 
       const client = new x402Client();
       client.register(
