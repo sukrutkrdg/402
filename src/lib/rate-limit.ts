@@ -6,6 +6,8 @@
  * For hard guarantees on a public deploy, front it with a shared store.
  */
 
+import { kvIncr, kvConfigured } from "./kv";
+
 const hits = new Map<string, number[]>();
 
 export function rateLimit(key: string, limit: number, windowMs: number): { ok: boolean; retryAfterMs: number } {
@@ -18,6 +20,35 @@ export function rateLimit(key: string, limit: number, windowMs: number): { ok: b
   }
   arr.push(now);
   hits.set(key, arr);
+  return { ok: true, retryAfterMs: 0 };
+}
+
+/**
+ * Durable, cross-instance rate limiter backed by the KV/Redis layer (fixed
+ * window). Falls back to the per-instance in-memory limiter when KV isn't
+ * configured, so behaviour degrades gracefully instead of failing open on a
+ * broken KV. Use this for security-relevant limits (spend + paid routes) where
+ * the per-instance limiter's `limit × instances` effective cap is too weak.
+ */
+export async function rateLimitKv(
+  key: string,
+  limit: number,
+  windowSec: number,
+): Promise<{ ok: boolean; retryAfterMs: number }> {
+  if (!kvConfigured()) return rateLimit(key, limit, windowSec * 1000);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const bucket = Math.floor(nowSec / windowSec);
+  let n: number;
+  try {
+    n = await kvIncr(`rl:${key}:${bucket}`, windowSec);
+  } catch {
+    // KV hiccup → don't hard-fail the request; fall back to in-memory.
+    return rateLimit(key, limit, windowSec * 1000);
+  }
+  if (n > limit) {
+    const retryAfterMs = (windowSec - (nowSec % windowSec)) * 1000;
+    return { ok: false, retryAfterMs };
+  }
   return { ok: true, retryAfterMs: 0 };
 }
 

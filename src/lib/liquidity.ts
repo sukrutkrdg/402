@@ -29,7 +29,8 @@ function reqAddr(raw: string): string {
 
 // Price impact of trading `size` USD against a one-sided reserve `reserveUsd`,
 // using the constant-product relation impact ≈ size / (reserve + size).
-function impactPct(sizeUsd: number, reserveUsd: number): number {
+// Exported for unit tests.
+export function impactPct(sizeUsd: number, reserveUsd: number): number {
   if (reserveUsd <= 0) return 100;
   return +((100 * sizeUsd) / (reserveUsd + sizeUsd)).toFixed(2);
 }

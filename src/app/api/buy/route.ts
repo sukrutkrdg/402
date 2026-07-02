@@ -15,7 +15,7 @@ import { getPayingFetch } from "@/lib/x402-client";
 import { getService } from "@/lib/services";
 import { recordPayment } from "@/lib/store";
 import { getConfig } from "@/lib/config";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimitKv, clientIp } from "@/lib/rate-limit";
 import { safeEqual } from "@/lib/secure";
 
 export const dynamic = "force-dynamic";
@@ -47,8 +47,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) Per-IP rate limit (best-effort) to blunt spamming of the spend endpoint.
-  const rl = rateLimit(`buy:${clientIp(req)}`, 5, 60_000);
+  // 3) Per-IP rate limit to blunt spamming of the spend endpoint. KV-backed so
+  // the cap is shared across serverless instances (not `limit × instances`).
+  const ip = clientIp(req);
+  const rl = await rateLimitKv(`buy:${ip}`, 5, 60);
   if (!rl.ok) {
     return NextResponse.json(
       { error: `Rate limit: try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` },
@@ -59,6 +61,24 @@ export async function POST(req: NextRequest) {
   const service = getService(body.serviceId || "");
   if (!service) {
     return NextResponse.json({ error: "Unknown service" }, { status: 404 });
+  }
+
+  // 4) Extra guard on the expensive/metered services. Without a configured
+  // BUY_ACCESS_TOKEN a public URL lets anyone drive AI (Anthropic-cost) and
+  // metered-upstream calls; cap those hard per IP so the demo stays open for the
+  // cheap onchain calls but the cost-drain vector is bounded. Setting
+  // BUY_ACCESS_TOKEN or ENABLE_BUYER=false remains the full lockdown.
+  if (!cfg.buyAccessToken && (service.category === "AI" || service.noFreeTier)) {
+    const rlAi = await rateLimitKv(`buy-costly:${ip}`, 3, 3600);
+    if (!rlAi.ok) {
+      return NextResponse.json(
+        {
+          error:
+            "This service is rate-limited on the public demo. Set an access token for unrestricted use.",
+        },
+        { status: 429, headers: { "retry-after": String(Math.ceil(rlAi.retryAfterMs / 1000)) } },
+      );
+    }
   }
 
   const origin = new URL(req.url).origin;

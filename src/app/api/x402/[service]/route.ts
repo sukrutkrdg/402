@@ -17,7 +17,7 @@ import { getResourceServer } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
 import { NETWORK, getConfig } from "@/lib/config";
 import { consumeFree } from "@/lib/free-tier";
-import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
 
   // Generous per-IP cap to blunt DoS (each call can fan out to RPC/GoPlus/DexScreener
   // before payment is even validated). Legit agents stay well under this.
-  const rl = rateLimit(`x402:${clientIp(req)}`, 60, 60_000);
+  const rl = await rateLimitKv(`x402:${clientIp(req)}`, 60, 60);
   if (!rl.ok) {
     return NextResponse.json(
       { error: `Rate limit — retry in ${Math.ceil(rl.retryAfterMs / 1000)}s` },
