@@ -67,11 +67,11 @@ async function scamCheck(address: string): Promise<Scam | null> {
     const reasons: string[] = [];
     if (t(gp.is_honeypot)) reasons.push("honeypot — you can buy but not sell");
     if (t(gp.cannot_sell_all)) reasons.push("can't sell your full balance");
-    if (sellTax !== null && sellTax >= 50) reasons.push(`${sellTax}% sell tax`);
+    if (sellTax !== null && sellTax >= 30) reasons.push(`${sellTax}% sell tax — you keep little on exit`);
     if (t(gp.is_blacklisted)) reasons.push("owner can blacklist your wallet");
     if (t(gp.transfer_pausable)) reasons.push("owner can pause transfers (freeze exit)");
     if (t(gp.is_mintable)) reasons.push("owner can mint unlimited supply");
-    const isScam = t(gp.is_honeypot) || t(gp.cannot_sell_all) || (sellTax !== null && sellTax >= 50);
+    const isScam = t(gp.is_honeypot) || t(gp.cannot_sell_all) || (sellTax !== null && sellTax >= 30);
     return { isScam, symbol: (gp.token_symbol as string) || null, reasons, honeypot: t(gp.is_honeypot), sellTax, buyTax };
   } catch {
     return null;
@@ -148,7 +148,9 @@ export async function GET(req: NextRequest) {
     //   a high rug risk (warning value) OR meaningful liquidity (worth knowing).
     // Everything else is noise and is skipped (kept in seen-set so we don't recheck).
     const liq = scored?.inputs?.liquidityUsd ?? 0;
-    const notable = Boolean(scored) && (scored!.level === "high" || liq >= 20000);
+    // Only post genuinely high-risk tokens — no clean-token noise. The channel is
+    // a risk/scam feed, not a new-listing firehose. (CAUGHT scams are handled above.)
+    const notable = Boolean(scored) && scored!.level === "high";
     if (!notable) continue;
 
     const emoji = scored?.level === "high" ? "🔴" : scored?.level === "medium" ? "🟡" : "🟢";
