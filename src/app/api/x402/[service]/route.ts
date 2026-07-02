@@ -21,6 +21,10 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
+// AI services aggregate several upstreams + Claude, and x402 settlement adds a few
+// seconds — well over the serverless default. Give the handler room so paid AI
+// reports (e.g. the mini-app) don't time out AFTER the buyer has paid.
+export const maxDuration = 60;
 
 function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>) {
   const url = new URL(request.url);
