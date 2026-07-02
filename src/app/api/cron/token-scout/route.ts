@@ -12,6 +12,7 @@ import { newTokens } from "@/lib/onchain-extra4";
 import { rugScore } from "@/lib/scores";
 import { safeEqual } from "@/lib/secure";
 import { kvGet, kvSet } from "@/lib/kv";
+import { attestScam } from "@/lib/eas-attest";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +111,9 @@ export async function GET(req: NextRequest) {
     const scam = await scamCheck(addr);
     if (scam?.isScam) {
       const sym = scam.symbol ? `$${esc(scam.symbol)}` : "This new token";
+      const scamType = scam.honeypot ? "honeypot" : scam.reasons[0]?.includes("sell tax") ? "extreme_tax" : "unsellable";
+      // Publish a verifiable on-chain attestation to Base EAS (best-effort).
+      const att = await attestScam({ token: addr, symbol: scam.symbol, scamType, reasons: scam.reasons });
       const caught = [
         `🚨 <b>CAUGHT: ${scam.honeypot ? "honeypot" : "unsellable token"} on Base</b>`,
         ``,
@@ -117,6 +121,7 @@ export async function GET(req: NextRequest) {
         ...scam.reasons.slice(0, 4).map((r) => `🔴 ${esc(r)}`),
         `<code>${esc(addr)}</code>`,
         ``,
+        ...(att ? [`📜 On-chain proof: <a href="${esc(att.scanUrl)}">Base EAS attestation</a>`] : []),
         `x402 Bazaar flagged this in one call. Check ANY Base token before you buy 👇`,
         `402.com.tr/app · <a href="https://t.me/Bazaar402_bot">@Bazaar402_bot</a>`,
       ];
