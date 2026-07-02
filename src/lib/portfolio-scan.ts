@@ -20,11 +20,16 @@ interface Holding {
   address?: string;
   usdValue?: number | null;
 }
-interface RiskShape {
-  score?: number;
-  level?: string;
+interface SecurityShape {
   isHoneypot?: boolean;
-  sellTaxPct?: number;
+  sellTaxPct?: number | null;
+}
+interface RiskShape {
+  // tokenRisk() exposes the score/level at the TOP level and the honeypot/tax
+  // fields nested under `security`. Read them from the correct shape.
+  riskScore?: number;
+  riskLevel?: string;
+  security?: SecurityShape;
   flags?: string[];
 }
 
@@ -46,14 +51,15 @@ export async function portfolioScan(params: Record<string, string>) {
     const r = risks[i];
     const risk = (r.status === "fulfilled" ? r.value : null) as RiskShape | null;
     const flags = risk?.flags ?? [];
-    const honeypot = Boolean(risk?.isHoneypot) || flags.includes("honeypot");
-    const sellTax = typeof risk?.sellTaxPct === "number" ? risk.sellTaxPct : null;
-    const level = honeypot ? "critical" : (risk?.level as string) ?? "unknown";
+    const sec = risk?.security;
+    const honeypot = Boolean(sec?.isHoneypot) || flags.includes("honeypot");
+    const sellTax = typeof sec?.sellTaxPct === "number" ? sec.sellTaxPct : null;
+    const level = honeypot ? "critical" : (risk?.riskLevel as string) ?? "unknown";
     return {
       symbol: h.symbol ?? null,
       address: h.address,
       usdValue: h.usdValue ?? null,
-      riskScore: typeof risk?.score === "number" ? risk.score : null,
+      riskScore: typeof risk?.riskScore === "number" ? risk.riskScore : null,
       riskLevel: level, // low | medium | high | critical | unknown
       honeypot,
       sellTaxPct: sellTax,

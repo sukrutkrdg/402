@@ -532,16 +532,15 @@ export async function aiContractRisk(params: Record<string, string>) {
   const [risk, abi] = await Promise.allSettled([tokenRisk({ address }), contractAbi({ address })]);
   const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
   const riskData = val(risk);
-  const abiData = val(abi) as { matchType?: string | null; abi?: Array<{ type: string; name?: string }> } | null;
+  const abiData = val(abi) as { verified?: boolean; matchType?: string | null; functions?: string[] } | null;
   if (!riskData && !abiData) throw new Error("No contract data available for this address");
 
-  const functions = (abiData?.abi ?? [])
-    .filter((x) => x.type === "function" && x.name)
-    .map((x) => x.name as string)
-    .slice(0, 60);
+  // contractAbi() returns a ready `functions: string[]` (not a raw `abi` array).
+  // Reading `.abi` yielded [] → Claude got no function names to analyse.
+  const functions = (abiData?.functions ?? []).slice(0, 60);
   const facts = JSON.stringify({
     securityFlags: riskData,
-    verified: abiData?.matchType ?? null,
+    verified: abiData?.verified ?? null,
     functions,
   }).slice(0, 6000);
 

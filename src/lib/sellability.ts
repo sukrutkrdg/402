@@ -72,11 +72,17 @@ async function simulateTransfer(
   }
 }
 
-interface RiskShape {
+interface SecurityShape {
   isHoneypot?: boolean;
-  buyTaxPct?: number;
-  sellTaxPct?: number;
+  buyTaxPct?: number | null;
+  sellTaxPct?: number | null;
   transferPausable?: boolean;
+}
+interface RiskShape {
+  // tokenRisk() nests honeypot/tax/pausable under `security`; only `flags` is
+  // top-level. Reading these off the top level silently yields null → the
+  // high-tax verdict never fires. Read from `security`.
+  security?: SecurityShape;
   flags?: string[];
 }
 
@@ -102,11 +108,12 @@ export async function sellability(params: Record<string, string>) {
   const sim = holderAddr ? await simulateTransfer(token, holderAddr) : { ran: false, note: "No usable holder for transfer simulation." };
 
   const flags = risk?.flags || [];
-  const honeypot = Boolean(risk?.isHoneypot) || flags.includes("honeypot");
+  const sec = risk?.security;
+  const honeypot = Boolean(sec?.isHoneypot) || flags.includes("honeypot");
   const cannotSellAll = flags.includes("cannot_sell_all");
-  const sellTax = typeof risk?.sellTaxPct === "number" ? risk.sellTaxPct : null;
-  const buyTax = typeof risk?.buyTaxPct === "number" ? risk.buyTaxPct : null;
-  const transferPausable = Boolean(risk?.transferPausable) || flags.includes("transfer_pausable");
+  const sellTax = typeof sec?.sellTaxPct === "number" ? sec.sellTaxPct : null;
+  const buyTax = typeof sec?.buyTaxPct === "number" ? sec.buyTaxPct : null;
+  const transferPausable = Boolean(sec?.transferPausable) || flags.includes("transfer_pausable");
   const canExit = exit ? Boolean((exit as { canExit?: boolean }).canExit) : null;
 
   const reasons: string[] = [];

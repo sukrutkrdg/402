@@ -184,9 +184,24 @@ export default function MiniApp() {
       setStep(`Running ${check.label}…`);
       const r = await withTimeout(pay(`/api/x402/${selected}?address=${addr.trim()}`), 90000, "payment/settlement");
       setStep("Reading report…");
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "Payment or report failed");
-      setOut(formatResult(selected, j.data as Record<string, unknown>));
+      const text = await r.text();
+      if (!r.ok) {
+        // Surface the real reason (HTTP status + server body) so failures are diagnosable.
+        let msg = text.slice(0, 220) || "no body";
+        try {
+          msg = (JSON.parse(text).error as string) || msg;
+        } catch {
+          /* keep raw text */
+        }
+        throw new Error(`Payment failed — server ${r.status}: ${msg}`);
+      }
+      let parsed: { data?: Record<string, unknown> };
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error(`Unexpected response: ${text.slice(0, 160)}`);
+      }
+      setOut(formatResult(selected, (parsed.data ?? parsed) as Record<string, unknown>));
     } catch (e) {
       setErr(`${e instanceof Error ? e.message : "Failed"}${step ? ` (at: ${step})` : ""}`);
     } finally {
