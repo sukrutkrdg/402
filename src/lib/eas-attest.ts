@@ -101,6 +101,17 @@ export function easEnabled(): boolean {
   return Boolean(process.env.EAS_SCHEMA_UID?.trim() && signerKey());
 }
 
+/** The signer address that pays gas for attestations — fund this with ETH on Base. */
+export function signerAddress(): string | null {
+  const key = signerKey();
+  if (!key) return null;
+  try {
+    return privateKeyToAccount(key).address;
+  } catch {
+    return null;
+  }
+}
+
 export interface ScamAttestation {
   uid: string;
   txHash: string;
