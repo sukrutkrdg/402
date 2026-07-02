@@ -18,23 +18,37 @@ interface TokenProfile {
 }
 
 export async function newTokens(_params: Record<string, string>) {
-  let raw: TokenProfile[];
-  try {
-    const res = await fetch("https://api.dexscreener.com/token-profiles/latest/v1", {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    raw = (await res.json()) as TokenProfile[];
-  } catch (err) {
-    throw new Error(`New-token feed unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  if (!Array.isArray(raw)) {
-    throw new Error("New-token feed unavailable: unexpected response format");
+  // Pull from BOTH free DexScreener feeds — profiles (listed) + boosts (promoted)
+  // — to widen the Base candidate set the scout screens. More candidates = more
+  // scams caught for the on-chain registry.
+  const feeds = [
+    "https://api.dexscreener.com/token-profiles/latest/v1",
+    "https://api.dexscreener.com/token-boosts/latest/v1",
+  ];
+  const results = await Promise.allSettled(
+    feeds.map(async (u) => {
+      const res = await fetch(u, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
+      return (await res.json()) as TokenProfile[];
+    }),
+  );
+  const raw: TokenProfile[] = results.flatMap((r) =>
+    r.status === "fulfilled" && Array.isArray(r.value) ? r.value : [],
+  );
+  if (raw.length === 0) {
+    throw new Error("New-token feed unavailable: both DexScreener feeds returned nothing");
   }
 
+  const seen = new Set<string>();
   const tokens = raw
     .filter((t) => t.chainId === "base" && typeof t.tokenAddress === "string")
-    .slice(0, 20)
+    .filter((t) => {
+      const a = (t.tokenAddress || "").toLowerCase();
+      if (seen.has(a)) return false;
+      seen.add(a);
+      return true;
+    })
+    .slice(0, 30)
     .map((t) => ({
       tokenAddress: t.tokenAddress ?? null,
       description:
@@ -52,7 +66,7 @@ export async function newTokens(_params: Record<string, string>) {
     chain: "base",
     count: tokens.length,
     tokens,
-    source: "DexScreener token-profiles",
+    source: "DexScreener token-profiles + boosts",
     checkedAt: new Date().toISOString(),
   };
 }

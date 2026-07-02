@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/check-alerts",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/token-scout",
+      "schedule": "0 12 * * *"
     }
   ]
 }
