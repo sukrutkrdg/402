@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { safeEqual } from "@/lib/secure";
-import { registerScamSchema, computeSchemaUid, easEnabled } from "@/lib/eas-attest";
+import { registerScamSchema, computeSchemaUid, easEnabled, signerAddress } from "@/lib/eas-attest";
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +20,26 @@ export async function GET(req: NextRequest) {
   if (!safeEqual(provided, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const schemaUid = computeSchemaUid();
+  const signer = signerAddress();
   const dryRun = new URL(req.url).searchParams.get("dry") === "1";
   if (dryRun) {
-    return NextResponse.json({ schemaUid, note: "Deterministic schema UID. Register once, then set EAS_SCHEMA_UID to this." });
+    return NextResponse.json({
+      schemaUid,
+      signerAddress: signer,
+      fundThisWithEth: signer,
+      note: "Fund signerAddress with a little ETH on Base for gas, then call without ?dry=1 to register. Then set EAS_SCHEMA_UID to schemaUid.",
+    });
   }
 
   const result = await registerScamSchema();
   if (!result) {
     return NextResponse.json(
-      { error: "Register failed — check signer key is set and funded with ETH on Base", schemaUid },
+      {
+        error: "Register failed — fund the signer with ETH on Base for gas",
+        schemaUid,
+        signerAddress: signer,
+        fundThisWithEth: signer,
+      },
       { status: 500 },
     );
   }
