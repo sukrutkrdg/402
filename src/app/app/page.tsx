@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Base App mini-app experience: a mobile token-safety checker.
+ * Base App mini-app: a mobile Base token-safety suite.
  *  - Free instant rug-score check (free tier, no wallet needed).
- *  - Full AI report paid in-app over x402 using the user's Base wallet
- *    (gasless EIP-3009 signature) — a real transacting user → Base App WTU.
+ *  - Several paid checks (AI verdict, sellability, deep DD, holder forensics,
+ *    exit liquidity, contract danger) paid in-app over x402 using the user's
+ *    Base wallet (gasless EIP-3009 signature) — a real transacting Base App user.
  */
 
 import { useEffect, useState } from "react";
@@ -19,6 +20,17 @@ type TypedData = {
   primaryType: string;
   message: Record<string, unknown>;
 };
+
+// Consumer-friendly "paste a token → get an answer" checks for the mini-app.
+const CHECKS = [
+  { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.05" },
+  { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.05" },
+  { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.50" },
+  { id: "holder-forensics", label: "🧬 Holder Forensics", price: "$0.03" },
+  { id: "exit-liquidity", label: "🚪 Exit Liquidity", price: "$0.02" },
+  { id: "contract-danger", label: "⚠️ Contract Danger", price: "$0.04" },
+  { id: "token-risk", label: "🔎 Token Risk", price: "$0.03" },
+] as const;
 
 // Build the minimal ClientEvmSigner x402 needs from the mini-app wallet provider.
 function makeSigner(
@@ -44,8 +56,6 @@ function makeSigner(
         primaryType: msg.primaryType,
         message: msg.message,
       };
-      // EIP-712 uint fields arrive as BigInt — JSON can't serialize those, and
-      // eth_signTypedData_v4 wants them as decimal strings.
       const json = JSON.stringify(typedData, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
       onSigning?.();
       return (await provider.request({
@@ -56,8 +66,38 @@ function makeSigner(
   };
 }
 
+// A compact, readable summary of any check's result data.
+function formatResult(id: string, d: Record<string, unknown>): string {
+  const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+  const factors = Array.isArray(d.factors)
+    ? (d.factors as Array<{ name?: string; status?: string }>).map((f) => `• ${f.name}: ${f.status}`).join("\n")
+    : "";
+  const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
+  switch (id) {
+    case "ai-token-report":
+      return `${s(d.verdict).toUpperCase()} · safety ${s(d.safetyScore)}/100\n\n${s(d.summary)}${factors ? "\n\n" + factors : ""}`;
+    case "deep-dd": {
+      const tr = d.tradeability as { canBuy?: boolean; canSell?: boolean } | undefined;
+      return `${s(d.verdict).toUpperCase()} · safety ${s(d.safetyScore)}/100\nBuy: ${tr?.canBuy} · Sell: ${tr?.canSell}\n\n${s(d.summary)}\n\n➡️ ${s(d.recommendation)}`;
+    }
+    case "sellability":
+      return `${d.canSell ? "✅ SELLABLE" : "🚫 CANNOT SELL"} (${s(d.verdict)})\nSell tax: ${s(d.sellTaxPct)}% · Buy tax: ${s(d.buyTaxPct)}%${reasons ? "\n\n" + reasons : ""}`;
+    case "holder-forensics":
+      return `Concentration risk: ${s(d.concentrationRisk).toUpperCase()}\nLargest wallet: ${s(d.largestWalletPercent)}% · Creator: ${s(d.creatorPercent)}%\nHolders: ${s(d.holderCount)}\nFlags: ${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "none"}`;
+    case "exit-liquidity":
+      return `Exit risk: ${s(d.exitRisk).toUpperCase()} · Can exit: ${d.canExit}\nLiquidity: $${s(d.liquidityUsd)}\nSell impact: ${s(d.estSellImpactPct)}% · Max safe exit: $${s(d.maxSafeExitUsd)}`;
+    case "contract-danger":
+      return `Danger: ${s(d.dangerLevel).toUpperCase()}\n${(Array.isArray(d.dangerCategories) ? d.dangerCategories : []).join(", ") || "no dangerous owner functions"}\n\n➡️ ${s(d.recommendation)}`;
+    case "token-risk":
+      return `Risk: ${s(d.level).toUpperCase()} (${s(d.score)}/100)\n${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "no flags"}`;
+    default:
+      return JSON.stringify(d, null, 2).slice(0, 800);
+  }
+}
+
 export default function MiniApp() {
   const [addr, setAddr] = useState("");
+  const [selected, setSelected] = useState<string>(CHECKS[0].id);
   const [busy, setBusy] = useState<"free" | "paid" | null>(null);
   const [out, setOut] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -66,7 +106,6 @@ export default function MiniApp() {
 
   useEffect(() => {
     sdk.actions.ready().catch(() => {});
-    // Synchronous provider handle — the async getter can hang in some hosts.
     try {
       setHasWallet(Boolean(sdk.wallet.ethProvider));
     } catch {
@@ -75,6 +114,7 @@ export default function MiniApp() {
   }, []);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
+  const check = CHECKS.find((c) => c.id === selected) ?? CHECKS[0];
 
   async function freeCheck() {
     if (!valid) return;
@@ -84,7 +124,7 @@ export default function MiniApp() {
     try {
       const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}`);
       if (r.status === 402) {
-        setErr("Free daily checks used up — tap “AI report · $0.03” for a full verdict.");
+        setErr("Free daily check used — pick a check below and pay in-app for a full report.");
         return;
       }
       const j = await r.json();
@@ -112,8 +152,6 @@ export default function MiniApp() {
         request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
       } | undefined;
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      // In a Mini App the wallet is already connected — eth_accounts returns it
-      // with no popup. Fall back to eth_requestAccounts only if none is present.
       setStep("Reading wallet account…");
       let accounts = (await withTimeout(
         provider.request({ method: "eth_accounts" }) as Promise<string[]>,
@@ -139,14 +177,12 @@ export default function MiniApp() {
       client.registerExtension(new BuilderCodeClientExtension("x402_bazaar_cli"));
       const pay = wrapFetchWithPayment(fetch, client);
 
-      setStep("Building payment…");
-      const r = await withTimeout(pay(`/api/x402/ai-token-report?address=${addr.trim()}`), 90000, "payment/settlement");
+      setStep(`Running ${check.label}…`);
+      const r = await withTimeout(pay(`/api/x402/${selected}?address=${addr.trim()}`), 90000, "payment/settlement");
       setStep("Reading report…");
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Payment or report failed");
-      const d = j.data;
-      const factors = (d.factors || []).map((f: { name: string; status: string }) => `• ${f.name}: ${f.status}`).join("\n");
-      setOut(`${d.verdict?.toUpperCase()} · safety ${d.safetyScore}/100\n\n${d.summary}\n\n${factors}`);
+      setOut(formatResult(selected, j.data as Record<string, unknown>));
     } catch (e) {
       setErr(`${e instanceof Error ? e.message : "Failed"}${step ? ` (at: ${step})` : ""}`);
     } finally {
@@ -159,9 +195,9 @@ export default function MiniApp() {
     <main className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6">
       <header className="flex flex-col gap-1">
         <span className="pill w-fit">🛡️ x402 Bazaar</span>
-        <h1 className="text-xl font-bold">Base Token Safety</h1>
+        <h1 className="text-xl font-bold">Base Token Safety Suite</h1>
         <p className="text-xs text-gray-400">
-          Paste a Base token — get a free rug-score, or pay $0.03 in-app for a full AI verdict.
+          Paste a Base token — free rug-score, or pick a full check and pay in-app over x402.
         </p>
       </header>
 
@@ -172,12 +208,24 @@ export default function MiniApp() {
         className="w-full rounded-lg border border-base-line bg-black/40 px-3 py-2 font-mono text-sm outline-none focus:border-base-blue"
       />
 
+      <select
+        value={selected}
+        onChange={(e) => setSelected(e.target.value)}
+        className="w-full rounded-lg border border-base-line bg-black/40 px-3 py-2 text-sm outline-none focus:border-base-blue"
+      >
+        {CHECKS.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.label} · {c.price}
+          </option>
+        ))}
+      </select>
+
       <div className="flex gap-2">
         <button onClick={freeCheck} disabled={!valid || busy !== null} className="btn-ghost flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "free" ? "Checking…" : "Free check"}
+          {busy === "free" ? "Checking…" : "Free rug-score"}
         </button>
         <button onClick={paidReport} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "paid" ? "Paying…" : "AI report · $0.03"}
+          {busy === "paid" ? "Paying…" : `Run · ${check.price}`}
         </button>
       </div>
 
@@ -201,7 +249,7 @@ export default function MiniApp() {
           onClick={() =>
             sdk.actions
               .composeCast({
-                text: "Check any Base token's safety in seconds 🛡️ rug-score + AI verdict, pay-per-call over x402.",
+                text: "Check any Base token before you ape in 🛡️ honeypot, sellability, holder & liquidity checks — pay-per-call over x402.",
                 embeds: ["https://402.com.tr/app"],
               })
               .catch(() => {})
@@ -213,7 +261,7 @@ export default function MiniApp() {
       </div>
 
       <a href="/" className="text-center text-xs text-sky-400 hover:underline">
-        Browse all 48 services →
+        Browse all 59 services →
       </a>
     </main>
   );
