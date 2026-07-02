@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
   }
 
   let posted = 0;
-  for (const t of tokens.slice(0, 8)) {
+  for (const t of tokens.slice(0, 20)) {
     const addr = t.tokenAddress;
     if (!addr || !/^0x[0-9a-fA-F]{40}$/.test(addr)) continue;
 
