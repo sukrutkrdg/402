@@ -35,6 +35,14 @@ import { portfolioScan } from "./portfolio-scan";
 import { registerRugMonitor } from "./rug-monitor";
 import { contractDanger } from "./contract-danger";
 import { lpLock } from "./lp-lock";
+import { deployerReputation } from "./deployer-rep";
+import { preSignPreflight } from "./pre-sign";
+import { swapRoute } from "./swap-route";
+import { tokenUnlock } from "./token-unlock";
+import { volumeCheck } from "./volume-check";
+import { positionHealth } from "./position-health";
+import { tokenCompare } from "./token-compare";
+import { revokeBuilder } from "./revoke-builder";
 
 export interface ServiceParam {
   name: string;
@@ -251,6 +259,119 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: lpLock,
+  },
+  {
+    id: "deployer-rep",
+    name: "Deployer Reputation",
+    tagline: "Who created this token — and can you trust them?",
+    description:
+      "Profiles the token's creator wallet: how much history it has, how much of the supply the creator still holds, and whether ownership is renounced — rolled into a 0-100 reputation score with signals. A fresh wallet holding 20% of supply with no renounce is the classic rug setup; this is the forensics layer other checks skip.",
+    price: "$0.04",
+    icon: "🕵️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: deployerReputation,
+  },
+  {
+    id: "pre-sign",
+    name: "Pre-Sign Preflight",
+    tagline: "Should your agent sign THIS transaction? One call, one verdict",
+    description:
+      "The go/no-go check for the instant before signing: a live simulation of the unsigned tx (what leaves, what approvals it grants, whether it reverts), a danger scan of the destination contract (owner abuse powers), and an OFAC screen of the destination — combined into a deterministic allow / caution / would_fail / block decision with reasons. The single highest-stakes moment for an autonomous agent, covered in one call.",
+    price: "$0.08",
+    icon: "✍️",
+    category: "Onchain",
+    params: [
+      { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
+      { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
+      { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
+      { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
+    ],
+    handler: preSignPreflight,
+    noFreeTier: true,
+  },
+  {
+    id: "swap-route",
+    name: "Swap Route + Safety",
+    tagline: "Where to trade it, the impact, and whether it's safe to receive",
+    description:
+      "Give a token and a trade size in USD → the deepest Base pool to route through, estimated price impact, a suggested slippage tolerance + minimum-out, all gated on a honeypot/sell-tax check of the token you'd receive (no point routing into something you can't sell). Moves an agent from analysis to action in one call.",
+    price: "$0.03",
+    icon: "🧭",
+    category: "Markets",
+    params: [
+      { name: "tokenOut", label: "Token to receive", placeholder: "0x… token", required: true },
+      { name: "amountUsd", label: "Trade size in USD", placeholder: "1000" },
+    ],
+    handler: swapRoute,
+  },
+  {
+    id: "token-unlock",
+    name: "Token Unlock Calendar",
+    tagline: "When does locked LP unlock — is a cliff coming?",
+    description:
+      "Turns raw LP-lock data into a forward calendar: each unlock with its date, the % of LP it frees, the locker (UNCX / Team Finance labelled), and days away — flagging imminent unlocks (<30 days). An LP unlock is a scheduled price event: the moment a rug becomes possible. For agents managing open positions.",
+    price: "$0.02",
+    icon: "📆",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: tokenUnlock,
+  },
+  {
+    id: "volume-check",
+    name: "Volume Authenticity Check",
+    tagline: "Is this trading volume real — or painted on by bots?",
+    description:
+      "Reads the deepest pool's 24h volume, buy/sell counts, liquidity and price move, and scores how organic the activity looks. Volume 10×+ the pool's liquidity, near-perfect buy/sell symmetry, or big volume that moves the price nowhere are the classic wash-trading signatures used to bait buyers. Returns a 0-100 suspicion score and verdict.",
+    price: "$0.02",
+    icon: "🎭",
+    category: "Markets",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: volumeCheck,
+  },
+  {
+    id: "position-health",
+    name: "Position Health Check",
+    tagline: "You're IN the token — should you stay in?",
+    description:
+      "The post-trade check everything else skips: given a token, your position size and (optionally) entry price, returns live price & P&L, whether the position can still be EXITED at that size, and the token's current rug score — combined into a healthy / watch / exit_now verdict with reasons. The risk that changes after you buy is exactly the risk holders miss.",
+    price: "$0.04",
+    icon: "🩺",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "size", label: "Position size USD", placeholder: "1000" },
+      { name: "entryPrice", label: "Entry price USD (optional, enables P&L)", placeholder: "0.0012" },
+    ],
+    handler: positionHealth,
+  },
+  {
+    id: "token-compare",
+    name: "Token Compare",
+    tagline: "2-5 candidates in, one ranked pick out",
+    description:
+      "Agents choose between tokens, not around them. Pass 2-5 Base token addresses → each gets a 0-100 quality score (safety-weighted: rug score first, then liquidity depth, then momentum), ranked best-first, with a named pick — or an honest 'none pass the gate'. One call returns a decision instead of a dozen data dumps.",
+    price: "$0.05",
+    icon: "⚖️",
+    category: "Onchain",
+    params: [{ name: "addresses", label: "Token addresses (comma-separated, 2-5)", placeholder: "0x…, 0x…", required: true }],
+    handler: tokenCompare,
+  },
+  {
+    id: "revoke-builder",
+    name: "Revoke Calldata Builder",
+    tagline: "The exact ready-to-sign tx that kills an approval",
+    description:
+      "approval-advisor tells you WHAT to revoke; this builds the HOW: the ready-to-sign transaction (to + calldata) for approve(spender, 0) on a token, plus the live current allowance read from Base (flags unlimited, or 'already revoked'). Hand the result straight to a wallet or agent signer — the action half of approval hygiene.",
+    price: "$0.02",
+    icon: "✂️",
+    category: "Utility",
+    params: [
+      { name: "token", label: "Token contract", placeholder: "0x… token", required: true },
+      { name: "spender", label: "Spender to revoke", placeholder: "0x… spender contract", required: true },
+      { name: "wallet", label: "Your wallet (optional, reads live allowance)", placeholder: "0x… wallet" },
+    ],
+    handler: revokeBuilder,
   },
   {
     id: "approval-advisor",
