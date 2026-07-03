@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // @x402/next runtime-imports "@x402/extensions/bazaar" with webpackIgnore, so
+  // the package must exist as real files in the serverless bundle — otherwise
+  // every request logs "Failed to load bazaar extension: Cannot find package".
+  // Keeping it external makes Next trace it into node_modules instead of
+  // bundling it away.
+  serverExternalPackages: ["@x402/extensions"],
   async rewrites() {
     return [
       // Serve the Farcaster Mini App manifest at the well-known path.

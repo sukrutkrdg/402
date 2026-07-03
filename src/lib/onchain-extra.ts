@@ -137,7 +137,7 @@ export async function tokenPrice(params: Record<string, string>) {
 
   const pairs = data.pairs?.filter(Boolean) ?? [];
   if (pairs.length === 0) {
-    throw new Error("No price data found for this token");
+    throw new Error("No price data found for this token — it isn't trading on any Base DEX yet (too new, unlisted, or not a token contract)");
   }
 
   const addrLc = address.toLowerCase();

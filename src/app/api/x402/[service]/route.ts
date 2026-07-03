@@ -46,6 +46,23 @@ function secretMatches(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+/**
+ * Map a handler error to an honest HTTP response: 400 for bad/missing input or
+ * no data for this input, 502 for upstream unavailability, 500 otherwise.
+ * Used on every serve path — a data error must never surface as a blanket 503.
+ */
+function handlerErrorResponse(err: unknown): NextResponse {
+  const message = err instanceof Error ? err.message : "Service error";
+  const m = message.toLowerCase();
+  const status =
+    /provide|missing|valid|invalid|required|no .*found|no .*data|no .*available|no price/.test(m)
+      ? 400
+      : /unavailable|failed|responded \d|timeout|fetch/.test(m)
+        ? 502
+        : 500;
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET(req: NextRequest, ctx: { params: Promise<{ service: string }> }) {
   const { service: serviceId } = await ctx.params;
   const service = getService(serviceId);
@@ -81,15 +98,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         { headers: { "x-warden-internal": "ok" } },
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Service error";
-      const m = message.toLowerCase();
-      const status =
-        /provide|missing|valid|invalid|required|no .*found|no .*data|no .*available|no price/.test(m)
-          ? 400
-          : /unavailable|failed|responded \d|timeout|fetch/.test(m)
-            ? 502
-            : 500;
-      return NextResponse.json({ error: message }, { status });
+      return handlerErrorResponse(err);
     }
   }
 
@@ -114,23 +123,23 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
           { headers: { "x-free-tier": "true", "x-free-remaining": String(free.remaining) } },
         );
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Service error";
-        // 400 for bad input, 502 for upstream unavailability, 500 otherwise.
-        const m = message.toLowerCase();
-        const status =
-          /provide|missing|valid|invalid|required|no .*found|no .*data|no .*available|no price/.test(m)
-            ? 400
-            : /unavailable|failed|responded \d|timeout|fetch/.test(m)
-              ? 502
-              : 500;
-        return NextResponse.json({ error: message }, { status });
+        return handlerErrorResponse(err);
       }
     }
   }
 
-  // The business logic that runs once payment is verified.
+  // The business logic that runs once payment is verified. Handler errors are
+  // mapped to an honest 400/502/500 HERE (a >=400 response means withX402 does
+  // NOT settle — the buyer is never charged for an error). Without this, any
+  // data error (e.g. a token with no DEX pairs) escaped to the outer catch and
+  // surfaced as a misleading blanket 503 "payment failed".
   const handler = async (request: NextRequest) => {
-    const data = await service.handler(paramsFrom(request, service));
+    let data: unknown;
+    try {
+      data = await service.handler(paramsFrom(request, service));
+    } catch (err) {
+      return handlerErrorResponse(err);
+    }
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "");
     return NextResponse.json({
       service: service.id,

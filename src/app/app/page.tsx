@@ -211,7 +211,13 @@ export default function MiniApp() {
         } catch {
           /* keep raw text */
         }
-        throw new Error(`Payment failed — server ${r.status}: ${msg}`);
+        // 4xx = the CHECK failed (bad input / token has no data), not the payment.
+        // x402 only settles on success, so the wallet was NOT charged.
+        throw new Error(
+          r.status >= 400 && r.status < 500 && r.status !== 402
+            ? `Check failed (${r.status}): ${msg} — you were NOT charged.`
+            : `Payment failed — server ${r.status}: ${msg}`,
+        );
       }
       let parsed: { data?: Record<string, unknown> };
       try {
