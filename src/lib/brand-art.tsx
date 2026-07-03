@@ -230,9 +230,9 @@ export function screenMarket() {
 /** Screen 3 — onchain attribution. */
 export function screenAttribution() {
   const rows = [
-    { k: "a", label: "App (your endpoint)", v: "bc_0438m5ng" },
+    { k: "a", label: "App (your endpoint)", v: "bc_pa0gqlv1" },
     { k: "w", label: "Wallet (facilitator)", v: "cdp_facil1" },
-    { k: "s", label: "Service (client)", v: "bc_0438m5ng" },
+    { k: "s", label: "Service (client)", v: "bc_pa0gqlv1" },
   ];
   return (
     <div style={SCREEN_BG}>

@@ -24,12 +24,17 @@ export const BUILDER_CODE_CHECKER = "https://buildercode-checker.vercel.app/";
 export const BUILDER_CODE_PATTERN = /^[a-z0-9_]{1,32}$/;
 
 /**
- * This project's Base Builder Code (from base.dev → Settings → Builder Code).
- * Public by design — it is written into settlement calldata on-chain. Used as the
- * default for both the app code (`a`) and client code (`s`); override via env to
- * reuse this project under a different code.
+ * This project's Base Builder Code (from dashboard.base.org → Settings → Builder
+ * Codes). Public by design — it is written into settlement calldata on-chain.
+ * Used as the default for both the app code (`a`) and client code (`s`);
+ * override via env to reuse this project under a different code.
+ *
+ * IMPORTANT: Builder Codes are issued PER VERIFIED DOMAIN. This is the code for
+ * 402.com.tr (the production domain). bc_0438m5ng belongs to the old
+ * 402-eight.vercel.app domain — using it while serving from 402.com.tr credits
+ * the volume to the wrong domain entry on the Base dashboard.
  */
-const DEFAULT_BUILDER_CODE = "bc_0438m5ng";
+const DEFAULT_BUILDER_CODE = "bc_pa0gqlv1";
 
 export interface AppConfig {
   /** App builder code (`a`) — declared by the seller on every paid route. */

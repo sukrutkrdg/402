@@ -194,7 +194,9 @@ export default function MiniApp() {
         "eip155:8453",
         new ExactEvmScheme(makeSigner(provider, address, () => setStep("✍️ Approve the signature in your wallet…"))),
       );
-      client.registerExtension(new BuilderCodeClientExtension("x402_bazaar_cli"));
+      // Client (`s`) code — use the registered 402.com.tr Builder Code so
+      // mini-app payments attribute to this app on the Base dashboard.
+      client.registerExtension(new BuilderCodeClientExtension("bc_pa0gqlv1"));
       const pay = wrapFetchWithPayment(fetch, client);
 
       setStep(`Running ${check.label}…`);
