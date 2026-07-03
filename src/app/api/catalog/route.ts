@@ -44,6 +44,19 @@ export function GET() {
         ]),
       ),
     })),
+    // First-party partner services (same owner, separate host) — listed so
+    // agents discovering the Bazaar also find them; they settle via x402 too.
+    partners: [
+      {
+        name: "Warden",
+        description:
+          "Pre-execution security for agents on Base: token/address/tx risk verdicts (block/review/clear), calldata decode + simulation. x402-paid guard API + free-tier firewall keys.",
+        baseUrl: "https://warden402.xyz",
+        catalog: "https://warden402.xyz/.well-known/x402",
+        x402: true,
+        network: "eip155:8453",
+      },
+    ],
     },
     { headers: { "cache-control": "public, max-age=300" } },
   );
