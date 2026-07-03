@@ -26,8 +26,11 @@ const CHECKS = [
   { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.05" },
   { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.05" },
   { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.50" },
+  { id: "position-health", label: "🩺 Position Health (I'm in it)", price: "$0.04" },
+  { id: "deployer-rep", label: "🕵️ Deployer Reputation", price: "$0.04" },
   { id: "holder-forensics", label: "🧬 Holder Forensics", price: "$0.03" },
   { id: "exit-liquidity", label: "🚪 Exit Liquidity", price: "$0.02" },
+  { id: "token-unlock", label: "📆 LP Unlock Calendar", price: "$0.02" },
   { id: "contract-danger", label: "⚠️ Contract Danger", price: "$0.04" },
   { id: "token-risk", label: "🔎 Token Risk", price: "$0.03" },
 ] as const;
@@ -86,6 +89,19 @@ function formatResult(id: string, d: Record<string, unknown>): string {
       return `Concentration risk: ${s(d.concentrationRisk).toUpperCase()}\nLargest wallet: ${s(d.largestWalletPercent)}% · Creator: ${s(d.creatorPercent)}%\nHolders: ${s(d.holderCount)}\nFlags: ${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "none"}`;
     case "exit-liquidity":
       return `Exit risk: ${s(d.exitRisk).toUpperCase()} · Can exit: ${d.canExit}\nLiquidity: $${s(d.liquidityUsd)}\nSell impact: ${s(d.estSellImpactPct)}% · Max safe exit: $${s(d.maxSafeExitUsd)}`;
+    case "position-health": {
+      const exit = d.exit as { canExit?: boolean | null; estSellImpactPct?: number | null; maxSafeExitUsd?: number | null } | null;
+      const rug = d.rug as { score?: number | null; level?: string | null } | null;
+      return `${s(d.verdict).toUpperCase().replace("_", " ")}\nPrice: $${s(d.currentPriceUsd)} · Liquidity: $${s(d.liquidityUsd)}\nExit: ${exit?.canExit ? "✅" : "🚫"} (impact ${s(exit?.estSellImpactPct)}% · max safe $${s(exit?.maxSafeExitUsd)})\nRug score: ${s(rug?.score)}/100 (${s(rug?.level)})${reasons ? "\n\n" + reasons : ""}\n\n➡️ ${s(d.recommendation)}`;
+    }
+    case "deployer-rep": {
+      const sig = Array.isArray(d.signals) ? (d.signals as string[]).map((x) => `• ${x}`).join("\n") : "";
+      return `Deployer: ${s(d.reputation).toUpperCase().replace("_", " ")} (${s(d.reputationScore)}/100)\nCreator holds: ${d.creatorHoldingPct ?? "?"}% · Renounced: ${d.ownershipRenounced === true ? "✅" : d.ownershipRenounced === false ? "❌" : "?"}${sig ? "\n\n" + sig : ""}\n\n➡️ ${s(d.recommendation)}`;
+    }
+    case "token-unlock": {
+      const next = d.nextUnlock as { daysUntil?: number; percentOfLp?: number | null; lockerLabel?: string | null } | null;
+      return `${d.hasImminentUnlock ? `🚨 ${s(d.imminentUnlockPct)}% of LP unlocks within 30 days` : "No imminent LP unlock"}\nLP secured: ${s(d.lpSecuredPercent)}% · Scheduled unlocks: ${s(d.unlockCount)}${next ? `\nNext: in ${next.daysUntil}d (${next.percentOfLp ?? "?"}%${next.lockerLabel ? ` · ${next.lockerLabel}` : ""})` : ""}\n\n➡️ ${s(d.recommendation)}`;
+    }
     case "contract-danger":
       return `Danger: ${s(d.dangerLevel).toUpperCase()}\n${(Array.isArray(d.dangerCategories) ? d.dangerCategories : []).join(", ") || "no dangerous owner functions"}\n\n➡️ ${s(d.recommendation)}`;
     case "token-risk":
