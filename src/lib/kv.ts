@@ -52,15 +52,44 @@ async function cmd<T = unknown>(args: (string | number)[]): Promise<T | null> {
   }
 }
 
-/** Increment a counter; set TTL (seconds) when it's first created. Returns new value. */
-export async function kvIncr(key: string, ttlSeconds?: number): Promise<number> {
+/**
+ * Run several commands in ONE REST round trip (Upstash /pipeline endpoint).
+ * Returns per-command results, or null when the whole request failed. Use for
+ * multi-write paths (analytics) so each request costs one round trip, not N.
+ */
+export async function kvPipeline(commands: (string | number)[][]): Promise<unknown[] | null> {
+  if (!kvConfigured()) return null;
+  try {
+    const res = await fetch(`${URL_ENV}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN_ENV}`, "content-type": "application/json" },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as Array<{ result?: unknown }>;
+    return j.map((r) => r.result ?? null);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Increment a counter; set TTL (seconds) when requested. Returns the new value,
+ * or NULL when KV is configured but unreachable — callers guarding money or
+ * quota MUST treat null as "deny" (fail closed), never as 0. A silent 0 here is
+ * what previously turned every KV outage into an unlimited free tier.
+ */
+export async function kvIncr(key: string, ttlSeconds?: number): Promise<number | null> {
   if (kvConfigured()) {
-    const n = (await cmd<number>(["INCR", key])) ?? 0;
-    // Always (re)set TTL when requested so a key never persists without expiry
-    // (a missed EXPIRE would otherwise leak it forever). Daily reset is handled
-    // by the date embedded in the key, so refreshing TTL is harmless.
-    if (ttlSeconds) await cmd(["EXPIRE", key, ttlSeconds]);
-    return n;
+    // Single round trip: INCR + EXPIRE pipelined. TTL is always (re)set so a key
+    // never persists without expiry; daily reset comes from the date in the key.
+    if (ttlSeconds) {
+      const results = await kvPipeline([["INCR", key], ["EXPIRE", key, ttlSeconds]]);
+      const n = results?.[0];
+      return typeof n === "number" ? n : null;
+    }
+    return await cmd<number>(["INCR", key]);
   }
   const e = memValid(key);
   const n = (e ? parseInt(e.value, 10) || 0 : 0) + 1;

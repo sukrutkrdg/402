@@ -38,13 +38,10 @@ export async function rateLimitKv(
   if (!kvConfigured()) return rateLimit(key, limit, windowSec * 1000);
   const nowSec = Math.floor(Date.now() / 1000);
   const bucket = Math.floor(nowSec / windowSec);
-  let n: number;
-  try {
-    n = await kvIncr(`rl:${key}:${bucket}`, windowSec);
-  } catch {
-    // KV hiccup → don't hard-fail the request; fall back to in-memory.
-    return rateLimit(key, limit, windowSec * 1000);
-  }
+  const n = await kvIncr(`rl:${key}:${bucket}`, windowSec);
+  // KV unreachable (kvIncr never throws — it returns null) → fall back to the
+  // per-instance limiter so an outage degrades to a weaker limit, not to none.
+  if (n === null) return rateLimit(key, limit, windowSec * 1000);
   if (n > limit) {
     const retryAfterMs = (windowSec - (nowSec % windowSec)) * 1000;
     return { ok: false, retryAfterMs };

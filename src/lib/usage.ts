@@ -9,7 +9,7 @@
 
 import "server-only";
 import { createHash } from "node:crypto";
-import { kvIncr, kvGetNumber, kvLPush, kvLRange, kvSAdd, kvSMembers } from "./kv";
+import { kvIncr, kvGetNumber, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured } from "./kv";
 
 const day = () => new Date().toISOString().slice(0, 10);
 
@@ -64,20 +64,50 @@ export async function logUsage(
   source = "?",
   ua = "",
   ref = "",
+  /** True for first-party calls via the internal-auth bypass (e.g. Warden) — so
+   * the dashboard can tell "our own product" apart from real free-tier trials. */
+  internal = false,
 ): Promise<void> {
   try {
     const kind = classifyUa(ua);
+    const d = day();
+    const entry = JSON.stringify({
+      s: serviceId,
+      p: paid,
+      t: Date.now(),
+      src: source,
+      k: kind,
+      ua: shortUa(ua),
+      ref: refHost(ref),
+      ...(internal ? { i: true } : {}),
+    });
+    if (kvConfigured()) {
+      // One REST round trip instead of ~7 — analytics shouldn't dominate the
+      // request's KV budget or latency.
+      const cmds: (string | number)[][] = [
+        ["INCR", `usage:total:${serviceId}`],
+        ["INCR", "usage:calls:total"],
+        ["INCR", `usage:day:${d}`],
+        ["EXPIRE", `usage:day:${d}`, 60 * 60 * 24 * 8],
+        ["SADD", `usage:src:${d}`, source],
+        ["LPUSH", "usage:recent", entry],
+        ["LTRIM", "usage:recent", 0, 99],
+      ];
+      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`]);
+      if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source]);
+      if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source]);
+      await kvPipeline(cmds);
+      return;
+    }
     await kvIncr(`usage:total:${serviceId}`);
     if (paid) await kvIncr(`usage:paid:${serviceId}`);
+    if (internal) await kvIncr(`usage:internal:${serviceId}`);
     await kvIncr("usage:calls:total");
-    await kvIncr(`usage:day:${day()}`, 60 * 60 * 24 * 8); // today's calls (8d ttl)
-    await kvSAdd(`usage:src:${day()}`, source); // distinct sources today (all)
-    if (kind === "bot") await kvSAdd(`usage:botsrc:${day()}`, source); // bot/crawler sources today
-    await kvLPush(
-      "usage:recent",
-      JSON.stringify({ s: serviceId, p: paid, t: Date.now(), src: source, k: kind, ua: shortUa(ua), ref: refHost(ref) }),
-      100,
-    );
+    await kvIncr(`usage:day:${d}`, 60 * 60 * 24 * 8); // today's calls (8d ttl)
+    await kvSAdd(`usage:src:${d}`, source); // distinct sources today (all)
+    if (internal) await kvSAdd(`usage:intsrc:${d}`, source);
+    if (kind === "bot") await kvSAdd(`usage:botsrc:${d}`, source); // bot/crawler sources today
+    await kvLPush("usage:recent", entry, 100);
   } catch {
     /* never let analytics break a request */
   }
@@ -96,6 +126,7 @@ export interface UsageRow {
   id: string;
   total: number;
   paid: number;
+  internal: number;
 }
 export interface RecentCall {
   s: string;
@@ -105,6 +136,8 @@ export interface RecentCall {
   k?: "browser" | "bot" | "api";
   ua?: string;
   ref?: string;
+  /** First-party internal-auth call (not a real visitor, not a paid buyer). */
+  i?: boolean;
 }
 
 export async function getUsage(serviceIds: string[], ownerSources: string[] = []): Promise<{
@@ -115,6 +148,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   today: number;
   sourcesToday: number;
   botSourcesToday: number;
+  internalSourcesToday: number;
   externalSourcesToday: number;
 }> {
   const per = await Promise.all(
@@ -122,6 +156,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
       id,
       total: await kvGetNumber(`usage:total:${id}`),
       paid: await kvGetNumber(`usage:paid:${id}`),
+      internal: await kvGetNumber(`usage:internal:${id}`),
     })),
   );
   const recentRaw = await kvLRange("usage:recent", 0, 29);
@@ -140,16 +175,20 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   let today = 0;
   let sourcesToday = 0;
   let botSourcesToday = 0;
+  let internalSourcesToday = 0;
   let externalSourcesToday = 0;
   try {
     today = await kvGetNumber(`usage:day:${day()}`);
     const all = await kvSMembers(`usage:src:${day()}`);
     const bots = new Set(await kvSMembers(`usage:botsrc:${day()}`));
+    const internals = new Set(await kvSMembers(`usage:intsrc:${day()}`));
     const owner = new Set(ownerSources);
     sourcesToday = all.length;
     botSourcesToday = bots.size;
-    // Real external visitors = distinct sources today minus bots minus the owner's own.
-    externalSourcesToday = all.filter((s) => !bots.has(s) && !owner.has(s)).length;
+    internalSourcesToday = internals.size;
+    // Real external visitors = distinct sources today minus bots, minus the
+    // owner's own devices, minus our own first-party services.
+    externalSourcesToday = all.filter((s) => !bots.has(s) && !owner.has(s) && !internals.has(s)).length;
   } catch {
     /* ignore */
   }
@@ -162,6 +201,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
     today,
     sourcesToday,
     botSourcesToday,
+    internalSourcesToday,
     externalSourcesToday,
   };
 }

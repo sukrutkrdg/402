@@ -27,6 +27,7 @@ interface UsageRow {
   name: string;
   total: number;
   paid: number;
+  internal?: number;
 }
 interface RecentCall {
   s: string;
@@ -37,6 +38,8 @@ interface RecentCall {
   k?: "browser" | "bot" | "api";
   ua?: string;
   ref?: string;
+  /** First-party internal-auth call (our own product, e.g. Warden). */
+  i?: boolean;
 }
 interface Usage {
   per: UsageRow[];
@@ -46,6 +49,7 @@ interface Usage {
   today: number;
   sourcesToday: number;
   botSourcesToday?: number;
+  internalSourcesToday?: number;
   externalSourcesToday?: number;
   youSource?: string;
   ownerSources?: string[];
@@ -303,9 +307,11 @@ export default function Stats() {
                   const isBot = r.k === "bot";
                   const who = isYou
                     ? { label: "you", cls: "bg-amber-500/15 text-amber-300" }
-                    : isBot
-                      ? { label: "bot", cls: "bg-white/5 text-gray-500" }
-                      : { label: "visitor", cls: "bg-sky-500/15 text-sky-300" };
+                    : r.i
+                      ? { label: "internal", cls: "bg-violet-500/15 text-violet-300" }
+                      : isBot
+                        ? { label: "bot", cls: "bg-white/5 text-gray-500" }
+                        : { label: "visitor", cls: "bg-sky-500/15 text-sky-300" };
                   return (
                     <div key={i} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
                       <div className="flex min-w-0 items-center gap-2">

@@ -415,7 +415,8 @@ export async function POST(req: NextRequest) {
   // Dedupe Telegram retries (it resends if we don't 200 within 5s) by update_id.
   if (typeof update.update_id === "number") {
     const seen = await kvIncr(`tg:upd:${update.update_id}`, 300);
-    if (seen > 1) return NextResponse.json({ ok: true });
+    // null = KV unreachable → process anyway (a rare duplicate beats a dropped message).
+    if (seen !== null && seen > 1) return NextResponse.json({ ok: true });
   }
 
   if (/^\/start|^\/help/i.test(text)) {
@@ -436,7 +437,7 @@ export async function POST(req: NextRequest) {
     }
     // /ai calls Claude (real cost) — cap per chat per day.
     const day = new Date().toISOString().slice(0, 10);
-    if ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15) {
+    if (((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) ?? 99) > 15) {
       await send(chatId, "Daily /ai limit reached (15). Use /scan for a free instant report anytime.");
       return NextResponse.json({ ok: true });
     }
@@ -469,7 +470,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     const day = new Date().toISOString().slice(0, 10);
-    if ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15) {
+    if (((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) ?? 99) > 15) {
       await send(chatId, "Daily AI limit reached (15). Use /networth for a free instant breakdown.");
       return NextResponse.json({ ok: true });
     }
@@ -479,7 +480,7 @@ export async function POST(req: NextRequest) {
 
   if (/^\/market\b/i.test(text)) {
     const day = new Date().toISOString().slice(0, 10);
-    if ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15) {
+    if (((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) ?? 99) > 15) {
       await send(chatId, "Daily AI limit reached (15). Try again tomorrow.");
       return NextResponse.json({ ok: true });
     }
@@ -489,7 +490,7 @@ export async function POST(req: NextRequest) {
 
   const aiCapHit = async (): Promise<boolean> => {
     const day = new Date().toISOString().slice(0, 10);
-    return (await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) > 15;
+    return ((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) ?? 99) > 15;
   };
 
   if (/^\/security\b/i.test(text)) {

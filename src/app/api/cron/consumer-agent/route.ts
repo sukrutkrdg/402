@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
   let settled = 0;
   for (const job of plan) {
     const spentToday = await kvIncr(`consumer:day:${day}`, 60 * 60 * 25);
-    if (spentToday > DAILY_CAP) {
+    // null = KV unreachable → can't verify the cap; don't spend (fail closed).
+    if (spentToday === null || spentToday > DAILY_CAP) {
       results.push({ service: job.service, address: job.address, status: "daily-cap-reached" });
       break;
     }

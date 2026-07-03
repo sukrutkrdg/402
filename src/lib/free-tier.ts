@@ -24,7 +24,10 @@ export async function consumeFree(key: string): Promise<{ allowed: boolean; rema
   const limit = freeLimit();
   if (limit <= 0) return { allowed: false, remaining: 0, limit };
   const n = await kvIncr(dayKey(key), 86400); // expires after 24h
-  if (n > limit) return { allowed: false, remaining: 0, limit };
+  // FAIL CLOSED: if the counter can't be read (KV outage / quota exhausted) we
+  // can't know whether this caller already used their free call — deny the
+  // freebie rather than open an unlimited free tier. Paying is unaffected.
+  if (n === null || n > limit) return { allowed: false, remaining: 0, limit };
   return { allowed: true, remaining: limit - n, limit };
 }
 

@@ -75,7 +75,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     try {
       const data = await service.handler(paramsFrom(req, service));
       const ip = clientIp(req);
-      await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "warden-internal", req.headers.get("referer") || "");
+      await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "warden-internal", req.headers.get("referer") || "", true);
       return NextResponse.json(
         { service: service.id, builderCode: cfg.appBuilderCode, data, internal: true },
         { headers: { "x-warden-internal": "ok" } },
