@@ -19,3 +19,7 @@ next-env.d.ts
 
 # locally exported brand assets (regenerated from /brand/* routes)
 base-app-assets/
+
+# Operator/strategy notes — local only, never push
+docs/KULLANIM.md
+SUBMISSIONS.md
