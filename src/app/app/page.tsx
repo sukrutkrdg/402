@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useConnect, type Connector } from "wagmi";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
@@ -121,6 +121,9 @@ export default function MiniApp() {
   const [out, setOut] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [step, setStep] = useState<string | null>(null);
+  // When a plain browser has several wallets installed, we can't guess which one
+  // to use — show these as a picker and let the user choose.
+  const [walletPicker, setWalletPicker] = useState<Connector[] | null>(null);
 
   const { address, isConnected, connector } = useAccount();
   const { connectAsync, connectors } = useConnect();
@@ -156,39 +159,48 @@ export default function MiniApp() {
     }
   }
 
-  async function paidReport() {
+  async function paidReport(chosenConnector?: Connector) {
     if (!valid) return;
     setErr(null);
     setOut(null);
     setStep(null);
+    setWalletPicker(null);
     setBusy("paid");
     const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
       setStep("Connecting wallet…");
       if (connectors.length === 0) throw new Error("No wallet connector available.");
-      // Pick the connector for the context: the Farcaster/Base App host wallet
-      // when running inside a mini-app, otherwise a normal web wallet (Coinbase
-      // Wallet / Smart Wallet, or an injected one like MetaMask). This is what
-      // lets 402.com.tr/app be paid from a plain browser, not just the Base App.
       let inMiniApp = false;
       try {
         inMiniApp = await sdk.isInMiniApp();
       } catch {
         inMiniApp = false;
       }
-      const byId = (...ids: string[]) => connectors.find((c) => ids.includes(c.id) || ids.includes(c.type));
-      // In a plain browser, prefer the wallet the user actually has INSTALLED
-      // (window.ethereum → MetaMask, Rabby, Brave, Coinbase extension) via the
-      // injected connector; only fall back to Coinbase Smart Wallet when there's
-      // no injected wallet. The old order always picked coinbaseWallet, so it
-      // only ever looked for Base/Coinbase Wallet and ignored MetaMask.
-      const hasInjected = typeof window !== "undefined" && Boolean((window as { ethereum?: unknown }).ethereum);
-      const preferred = inMiniApp
-        ? byId("farcasterMiniApp", "farcaster") ?? connectors[0]
-        : (hasInjected ? byId("injected") : undefined) ??
-          byId("coinbaseWalletSDK", "coinbaseWallet", "injected") ??
-          connectors[0];
+      const isFc = (c: Connector) => /farcaster/i.test(c.id) || /farcaster/i.test(c.type);
+
+      // Pick the connector for the context:
+      //  - explicit choice from the wallet picker wins;
+      //  - inside a mini-app → the Farcaster/Base App host wallet;
+      //  - plain browser with SEVERAL wallets → show the picker (can't guess
+      //    which window.ethereum wallet to use — that's the "wallet must have at
+      //    least one account" crash);
+      //  - plain browser with one wallet → use it directly.
+      let preferred = chosenConnector;
+      if (!preferred) {
+        if (inMiniApp) {
+          preferred = connectors.find(isFc) ?? connectors[0];
+        } else {
+          const webConnectors = connectors.filter((c) => !isFc(c));
+          if (webConnectors.length > 1) {
+            setWalletPicker(webConnectors);
+            setStep(null);
+            setBusy(null);
+            return; // re-enters paidReport(connector) once the user picks one
+          }
+          preferred = webConnectors[0] ?? connectors[0];
+        }
+      }
 
       let acct = address as `0x${string}` | undefined;
       let conn = connector;
@@ -314,13 +326,32 @@ export default function MiniApp() {
         <button onClick={freeCheck} disabled={!valid || busy !== null} className="btn-ghost flex-1 !py-2 text-sm disabled:opacity-40">
           {busy === "free" ? "Checking…" : "Free rug-score"}
         </button>
-        <button onClick={paidReport} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
+        <button onClick={() => paidReport()} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
           {busy === "paid" ? "Paying…" : `Run · ${check.price}`}
         </button>
       </div>
 
       {!hasWallet && (
-        <p className="text-center text-[11px] text-gray-500">Open in the Base App to pay with your wallet.</p>
+        <p className="text-center text-[11px] text-gray-500">Open in the Base App, or use a browser wallet, to pay.</p>
+      )}
+      {walletPicker && (
+        <div className="card space-y-2 border-base-blue/30 bg-base-blue/10 p-3">
+          <p className="text-xs text-sky-200">Choose a wallet to pay with:</p>
+          <div className="flex flex-wrap gap-2">
+            {walletPicker.map((c) => (
+              <button
+                key={c.uid}
+                onClick={() => paidReport(c)}
+                className="btn-ghost !px-3 !py-1.5 text-xs"
+              >
+                {c.name}
+              </button>
+            ))}
+            <button onClick={() => setWalletPicker(null)} className="btn-ghost !px-3 !py-1.5 text-xs opacity-60">
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       {busy === "paid" && step && (
         <div className="card border-base-blue/30 bg-base-blue/10 p-3 text-xs text-sky-200">{step}</div>
