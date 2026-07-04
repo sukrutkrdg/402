@@ -14,6 +14,7 @@ import { useAccount, useConnect, type Connector } from "wagmi";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
+import OnrampButton from "@/components/OnrampButton";
 
 type TypedData = {
   domain: Record<string, unknown>;
@@ -358,6 +359,11 @@ export default function MiniApp() {
       )}
       {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
       {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
+
+      {/* Fund the connected wallet with USDC on Base when it's short. */}
+      <div className="flex justify-center">
+        <OnrampButton />
+      </div>
 
       <div className="mt-1 flex gap-2">
         <button

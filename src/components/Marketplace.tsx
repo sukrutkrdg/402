@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Connector } from "wagmi";
 import StatusBar, { useStatus } from "./StatusBar";
 import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
+import OnrampButton from "./OnrampButton";
 
 export interface ServiceParamMeta {
   name: string;
@@ -376,6 +377,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             <a href="/dashboard" className="btn-ghost">
               Attribution →
             </a>
+            <OnrampButton className="!inline-flex" />
           </div>
 
           {/* Trust strip */}
