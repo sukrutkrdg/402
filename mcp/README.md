@@ -90,6 +90,42 @@ point it at `npx x402-bazaar-mcp` with `AGENT_PRIVATE_KEY` in the environment.
 
 ---
 
+## Use with Coinbase AgentKit, Agentic Wallet & Claude Code
+
+Because this is a standard MCP stdio server, any MCP-capable agent runtime can
+load and pay for the Bazaar's tools — including Coinbase's own agent stack, with
+no bespoke integration:
+
+### Coinbase Agentic Wallet (`npx awal`)
+
+Coinbase [Agentic Wallets](https://www.coinbase.com/developer-platform) ship
+native x402 support and an MCP interface. Point the wallet's MCP config at
+`npx x402-bazaar-mcp`, and the agent can call — and pay for — any Bazaar service
+straight from its MPC-secured wallet, gasless on Base. The x402 payment handshake
+is handled for you: `HTTP 402 → pay USDC on Base → retry → response`.
+
+### Coinbase AgentKit
+
+AgentKit agents that support MCP servers load the Bazaar tools the same way
+(`command: npx`, `args: ["-y", "x402-bazaar-mcp"]`, `AGENT_PRIVATE_KEY` in env).
+The agent gains on-chain safety/intel + AI tools as pay-per-call actions — token
+risk, honeypot/sellability checks, deployer reputation, exit liquidity, live DEX
+prices, gas, tx decode, and Claude-powered reports — without writing an action
+provider for each.
+
+### Claude Code
+
+Add it as an MCP server in one command:
+
+```bash
+claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0xYOUR_PRIVATE_KEY -- npx -y x402-bazaar-mcp
+```
+
+Then ask Claude Code to check a token, price a portfolio, or screen an address —
+it calls the right Bazaar tool and settles the micro-payment automatically.
+
+---
+
 ## Why agents use this
 
 Agents need fresh on-chain data and AI utilities but don't want to manage RPC endpoints, scrapers, security heuristics, or per-provider API keys. One MCP server plus a funded wallet gives them everything — contract safety checks, live DEX prices, gas estimates, transaction decoding, and Claude-powered text utilities — all pay-per-use, with no subscriptions or sign-up required.
@@ -119,7 +155,7 @@ writing it includes:
 | `price_alert` | $0.05 | Register a webhook alert when a token crosses a price |
 | `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
 
-…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (48+ services).
+…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (67+ services).
 
 ### Example
 
