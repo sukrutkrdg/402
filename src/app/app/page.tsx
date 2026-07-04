@@ -178,9 +178,17 @@ export default function MiniApp() {
         inMiniApp = false;
       }
       const byId = (...ids: string[]) => connectors.find((c) => ids.includes(c.id) || ids.includes(c.type));
+      // In a plain browser, prefer the wallet the user actually has INSTALLED
+      // (window.ethereum → MetaMask, Rabby, Brave, Coinbase extension) via the
+      // injected connector; only fall back to Coinbase Smart Wallet when there's
+      // no injected wallet. The old order always picked coinbaseWallet, so it
+      // only ever looked for Base/Coinbase Wallet and ignored MetaMask.
+      const hasInjected = typeof window !== "undefined" && Boolean((window as { ethereum?: unknown }).ethereum);
       const preferred = inMiniApp
         ? byId("farcasterMiniApp", "farcaster") ?? connectors[0]
-        : byId("coinbaseWalletSDK", "coinbaseWallet", "injected") ?? connectors[0];
+        : (hasInjected ? byId("injected") : undefined) ??
+          byId("coinbaseWalletSDK", "coinbaseWallet", "injected") ??
+          connectors[0];
 
       let acct = address as `0x${string}` | undefined;
       let conn = connector;

@@ -295,7 +295,10 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
 
           {/* CTAs */}
           <div className="flex flex-wrap gap-3">
-            <a href="/agents" className="btn-primary">
+            <a href="/app" className="btn-primary">
+              🛡️ Check a token →
+            </a>
+            <a href="/agents" className="btn-ghost">
               For agents &amp; API →
             </a>
             <a href="/dashboard" className="btn-ghost">
