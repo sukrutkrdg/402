@@ -80,3 +80,43 @@ body {
   background: var(--header);
   border-color: var(--line);
 }
+
+/* ---- Light-mode readability ----
+ * The UI was authored dark-first with hardcoded text-white / text-gray-* and
+ * dark panel backgrounds. These unlayered rules (which outrank Tailwind's
+ * layered utilities) remap those to readable values when .light is set, and
+ * keep white text on colored buttons. */
+html.light .text-white {
+  color: #14181f;
+}
+html.light .text-gray-100,
+html.light .text-gray-200 {
+  color: #1f2733;
+}
+html.light .text-gray-300 {
+  color: #2c3542;
+}
+html.light .text-gray-400 {
+  color: #45505f;
+}
+html.light .text-gray-500,
+html.light .text-gray-600 {
+  color: #616c7b;
+}
+/* Dark panel/overlay backgrounds → subtle light tints. */
+html.light .bg-black\/20,
+html.light .bg-black\/30,
+html.light .bg-black\/40,
+html.light .bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.035);
+}
+html.light .bg-white\/5 {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+html.light .bg-white\/10 {
+  background-color: rgba(0, 0, 0, 0.07);
+}
+/* Colored buttons/badges keep their light text (must come last to win). */
+html.light .btn-primary {
+  color: #ffffff;
+}
