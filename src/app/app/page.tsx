@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
+import { useAccount, useConnect } from "wagmi";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
@@ -36,29 +37,6 @@ const CHECKS = [
 ] as const;
 
 type EthProvider = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
-
-/**
- * Resolve the Base App wallet provider. Newer Base App builds return the
- * provider ONLY from the async getEthereumProvider() — the legacy synchronous
- * `sdk.wallet.ethProvider` is undefined there, which made the mini-app think no
- * wallet existed and never send the connect/sign request. Try the async method
- * first, then fall back to the sync property for older builds.
- */
-async function resolveEthProvider(): Promise<EthProvider | undefined> {
-  try {
-    const w = sdk.wallet as {
-      getEthereumProvider?: () => Promise<EthProvider | undefined>;
-      ethProvider?: EthProvider;
-    };
-    if (typeof w.getEthereumProvider === "function") {
-      const p = await w.getEthereumProvider();
-      if (p) return p;
-    }
-    return w.ethProvider;
-  } catch {
-    return undefined;
-  }
-}
 
 // Build the minimal ClientEvmSigner x402 needs from the mini-app wallet provider.
 function makeSigner(
@@ -143,13 +121,14 @@ export default function MiniApp() {
   const [out, setOut] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [step, setStep] = useState<string | null>(null);
-  const [hasWallet, setHasWallet] = useState(false);
+
+  const { address, isConnected, connector } = useAccount();
+  const { connectAsync, connectors } = useConnect();
+  // A wallet is available when the mini-app host exposes the connector.
+  const hasWallet = connectors.length > 0;
 
   useEffect(() => {
     sdk.actions.ready().catch(() => {});
-    // Resolve the provider the same (async-first) way the payment flow does, so
-    // the "open in Base App" hint reflects the real wallet availability.
-    resolveEthProvider().then((p) => setHasWallet(Boolean(p)));
   }, []);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
@@ -187,34 +166,29 @@ export default function MiniApp() {
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
       setStep("Connecting wallet…");
-      const provider = await resolveEthProvider();
-      if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      // Request accounts FIRST, right after the tap. The Base App / Coinbase
-      // Wallet only opens the connect prompt when eth_requestAccounts is tied to
-      // a user gesture — inserting a slow silent eth_accounts read before it
-      // (the old flow) lost the gesture, so in the Base App the prompt never
-      // appeared and the wallet "wouldn't connect". eth_requestAccounts also
-      // returns immediately when already connected, so it's safe as the first
-      // call. eth_accounts is only a fallback.
-      const readAccounts = async (method: string, ms: number) => {
-        const a = (await withTimeout(
-          provider.request({ method }) as Promise<string[]>,
-          ms,
-          "wallet",
-        ).catch(() => [] as string[])) as string[];
-        return a?.[0] as `0x${string}` | undefined;
-      };
-      let address = await readAccounts("eth_requestAccounts", 30000);
-      if (!address) address = await readAccounts("eth_accounts", 5000);
-      if (!address) address = await readAccounts("eth_requestAccounts", 20000);
-      if (!address) {
+      if (connectors.length === 0) throw new Error("Open this inside the Base App to pay with your wallet.");
+      // Connect via the wagmi mini-app connector — the path Coinbase documents
+      // as working in BOTH the Base App and Farcaster. connectAsync opens the
+      // host wallet's connect prompt (tied to this tap) and resolves once the
+      // account is available; it no-ops when already connected.
+      let acct = address as `0x${string}` | undefined;
+      let conn = connector;
+      if (!isConnected || !acct) {
+        const res = await withTimeout(connectAsync({ connector: connectors[0] }), 60000, "wallet connect");
+        acct = res.accounts?.[0];
+        conn = connectors[0];
+      }
+      if (!acct || !conn) {
         throw new Error("Wallet didn't respond — close this mini app and reopen it from the cast, then try again.");
       }
+      // Get the connected EIP-1193 provider from the connector and reuse the
+      // existing x402 signing flow unchanged.
+      const provider = (await conn.getProvider()) as EthProvider;
 
       const client = new x402Client();
       client.register(
         "eip155:8453",
-        new ExactEvmScheme(makeSigner(provider, address, () => setStep("✍️ Approve the signature in your wallet…"))),
+        new ExactEvmScheme(makeSigner(provider, acct, () => setStep("✍️ Approve the signature in your wallet…"))),
       );
       // Client (`s`) code — use the registered 402.com.tr Builder Code so
       // mini-app payments attribute to this app on the Base dashboard.
