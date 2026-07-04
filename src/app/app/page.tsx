@@ -125,6 +125,8 @@ export default function MiniApp() {
   // When a plain browser has several wallets installed, we can't guess which one
   // to use — show these as a picker and let the user choose.
   const [walletPicker, setWalletPicker] = useState<Connector[] | null>(null);
+  // True after a free teaser is shown → offer a one-tap "unlock full report".
+  const [previewShown, setPreviewShown] = useState(false);
 
   const { address, isConnected, connector } = useAccount();
   const { connectAsync, connectors } = useConnect();
@@ -151,10 +153,12 @@ export default function MiniApp() {
       if (j.preview) {
         // Daily free check used → teaser: score + how many signals, details locked.
         setOut(
-          `Rug score: ${d.rugScore}/100 (${d.level})\n🔒 ${d.signalsCount ?? 0} risk signal${(d.signalsCount ?? 0) === 1 ? "" : "s"} found — details locked.\n\n${j.unlock ?? "Pick a check below and pay in-app for the full breakdown."}`,
+          `Rug score: ${d.rugScore}/100 (${d.level})\n🔒 ${d.signalsCount ?? 0} risk signal${(d.signalsCount ?? 0) === 1 ? "" : "s"} found — details locked.`,
         );
+        setPreviewShown(true);
       } else {
         setOut(`Rug score: ${d.rugScore}/100 (${d.level})\n${(d.signals || []).join("\n")}`);
+        setPreviewShown(false);
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
@@ -169,6 +173,7 @@ export default function MiniApp() {
     setOut(null);
     setStep(null);
     setWalletPicker(null);
+    setPreviewShown(false);
     setBusy("paid");
     const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
@@ -368,6 +373,12 @@ export default function MiniApp() {
       )}
       {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
       {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
+
+      {previewShown && busy === null && (
+        <button onClick={() => paidReport()} className="btn-primary !py-2 text-sm">
+          🔓 Unlock full report · {check.label} · {check.price}
+        </button>
+      )}
 
       {/* Fund the connected wallet with USDC on Base when it's short. */}
       <div className="flex justify-center">
