@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Connector } from "wagmi";
 import StatusBar, { useStatus } from "./StatusBar";
+import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
 
 export interface ServiceParamMeta {
   name: string;
@@ -70,6 +72,9 @@ function ServiceCard({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [out, setOut] = useState<BuyResult | null>(null);
+  const [walletBusy, setWalletBusy] = useState(false);
+  const [walletData, setWalletData] = useState<unknown>(null);
+  const { pay, picker, setPicker, step } = useX402Pay();
 
   async function buy() {
     setLoading(true);
@@ -88,6 +93,46 @@ function ServiceCard({
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Pay for this service from the VISITOR's own browser wallet over x402.
+  async function payWithWallet(chosen?: Connector) {
+    const missing = service.params.find((p) => p.required && !(params[p.name] ?? "").trim());
+    if (missing) {
+      setError(`Enter ${missing.label} first.`);
+      return;
+    }
+    setWalletBusy(true);
+    setError(null);
+    setOut(null);
+    setWalletData(null);
+    try {
+      const qs = new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => (v ?? "").trim())),
+      ).toString();
+      const r = await pay(`/api/x402/${service.id}${qs ? `?${qs}` : ""}`, chosen);
+      if (r === PICK_WALLET) return; // picker is showing; user will choose
+      const text = await r.text();
+      if (!r.ok) {
+        let msg = text.slice(0, 200) || `server ${r.status}`;
+        try {
+          msg = (JSON.parse(text).error as string) || msg;
+        } catch {
+          /* keep raw */
+        }
+        throw new Error(
+          r.status >= 400 && r.status < 500 && r.status !== 402
+            ? `Check failed (${r.status}): ${msg} — you were NOT charged.`
+            : `Payment failed (${r.status}): ${msg}`,
+        );
+      }
+      const json = JSON.parse(text);
+      setWalletData(json.data ?? json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Payment failed");
+    } finally {
+      setWalletBusy(false);
     }
   }
 
@@ -114,7 +159,7 @@ function ServiceCard({
 
       <p className="text-[13px] leading-relaxed text-gray-400">{service.description}</p>
 
-      {buyerEnabled && service.params.length > 0 && (
+      {service.params.length > 0 && (
         <div className="flex flex-col gap-2">
           {service.params.map((p) => (
             <label key={p.name} className="flex flex-col gap-1">
@@ -140,24 +185,51 @@ function ServiceCard({
         </div>
       )}
 
-      {buyerEnabled ? (
-        <button className="btn-primary" onClick={buy} disabled={loading}>
-          {loading ? "Processing…" : `Pay ${service.price} & call`}
-        </button>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 overflow-hidden rounded-lg border border-base-line bg-black/40 px-3 py-2">
-            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-gray-500">GET</span>
-            <code className="truncate font-mono text-[11px] text-sky-300">/api/x402/{service.id}</code>
+      {/* Pay with the visitor's OWN browser wallet (Base App / Farcaster host,
+          or MetaMask / Coinbase in a plain browser) over x402. */}
+      <button className="btn-primary" onClick={() => payWithWallet()} disabled={walletBusy || loading}>
+        {walletBusy ? "Paying…" : `Pay ${service.price} with wallet`}
+      </button>
+
+      {picker && (
+        <div className="flex flex-col gap-2 rounded-lg border border-base-blue/30 bg-base-blue/10 p-3">
+          <span className="text-[11px] text-sky-200">Choose a wallet:</span>
+          <div className="flex flex-wrap gap-2">
+            {picker.map((c) => (
+              <button key={c.uid} onClick={() => payWithWallet(c)} className="btn-ghost !px-3 !py-1.5 text-xs">
+                {c.name}
+              </button>
+            ))}
+            <button onClick={() => setPicker(null)} className="btn-ghost !px-3 !py-1.5 text-xs opacity-60">
+              Cancel
+            </button>
           </div>
-          {service.params.length > 0 && (
-            <div className="text-[11px] text-gray-500">
-              params: {service.params.map((p) => p.name).join(", ")}
-            </div>
-          )}
-          <a href="/agents" className="btn-ghost">
-            Call from your agent →
-          </a>
+        </div>
+      )}
+      {walletBusy && step && (
+        <div className="rounded-lg border border-base-blue/30 bg-base-blue/10 px-3 py-2 text-[11px] text-sky-200">{step}</div>
+      )}
+
+      {buyerEnabled && (
+        <button className="btn-ghost !py-2 text-xs" onClick={buy} disabled={loading || walletBusy}>
+          {loading ? "Processing…" : "Demo pay (server wallet)"}
+        </button>
+      )}
+
+      <div className="flex items-center gap-2 overflow-hidden rounded-lg border border-base-line bg-black/40 px-3 py-2">
+        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-gray-500">GET</span>
+        <code className="truncate font-mono text-[11px] text-sky-300">/api/x402/{service.id}</code>
+        <a href="/agents" className="ml-auto shrink-0 text-[11px] text-sky-400 hover:underline">
+          agent →
+        </a>
+      </div>
+
+      {walletData !== null && (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <div className="label mb-1 text-emerald-300">✓ Paid · response</div>
+          <pre className="max-h-48 overflow-auto rounded-lg bg-black/50 p-3 text-[11px] leading-relaxed text-sky-200">
+            {JSON.stringify(walletData, null, 2)}
+          </pre>
         </div>
       )}
 
