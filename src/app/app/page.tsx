@@ -145,14 +145,17 @@ export default function MiniApp() {
     setBusy("free");
     try {
       const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}`);
-      if (r.status === 402) {
-        setErr("Free daily check used — pick a check below and pay in-app for a full report.");
-        return;
-      }
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Check failed");
-      const d = j.data;
-      setOut(`Rug score: ${d.rugScore}/100 (${d.level})\n${(d.signals || []).join("\n")}`);
+      const d = j.data as { rugScore?: number; level?: string; signals?: string[]; signalsCount?: number };
+      if (j.preview) {
+        // Daily free check used → teaser: score + how many signals, details locked.
+        setOut(
+          `Rug score: ${d.rugScore}/100 (${d.level})\n🔒 ${d.signalsCount ?? 0} risk signal${(d.signalsCount ?? 0) === 1 ? "" : "s"} found — details locked.\n\n${j.unlock ?? "Pick a check below and pay in-app for the full breakdown."}`,
+        );
+      } else {
+        setOut(`Rug score: ${d.rugScore}/100 (${d.level})\n${(d.signals || []).join("\n")}`);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
     } finally {

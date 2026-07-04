@@ -17,6 +17,7 @@ import { getResourceServer } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
 import { NETWORK, getConfig } from "@/lib/config";
 import { consumeFree } from "@/lib/free-tier";
+import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 
@@ -121,6 +122,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         return NextResponse.json(
           { service: service.id, builderCode: cfg.appBuilderCode, data, freeTier: true, freeRemaining: free.remaining },
           { headers: { "x-free-tier": "true", "x-free-remaining": String(free.remaining) } },
+        );
+      } catch (err) {
+        return handlerErrorResponse(err);
+      }
+    } else {
+      // Daily free full report already used → return a PREVIEW (headline scalars +
+      // "N signals found") instead of a hard 402 wall. The teaser creates the
+      // pull; the full detail is what a paid call unlocks. Rate-limited above, so
+      // it can't be scraped for free at scale; AI/metered services aren't
+      // free-eligible so they never reach here.
+      try {
+        const full = await service.handler(paramsFrom(req, service));
+        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "");
+        return NextResponse.json(
+          {
+            service: service.id,
+            builderCode: cfg.appBuilderCode,
+            data: toPreview(full),
+            preview: true,
+            unlock: `Free daily check used — this is a preview. Pay ${service.price} for the full report (all signals, details & recommendation).`,
+          },
+          { headers: { "x-preview": "true" } },
         );
       } catch (err) {
         return handlerErrorResponse(err);
