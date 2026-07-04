@@ -28,6 +28,10 @@ interface UsageRow {
   total: number;
   paid: number;
   internal?: number;
+  preview?: number;
+  price?: number;
+  revenue?: number;
+  conversionPct?: number;
 }
 interface RecentCall {
   s: string;
@@ -40,12 +44,16 @@ interface RecentCall {
   ref?: string;
   /** First-party internal-auth call (our own product, e.g. Warden). */
   i?: boolean;
+  /** Free-tier teaser (preview) response. */
+  pv?: boolean;
 }
 interface Usage {
   per: UsageRow[];
   recent: RecentCall[];
   totalCalls: number;
   totalPaid: number;
+  totalRevenue?: number;
+  paidToday?: number;
   today: number;
   sourcesToday: number;
   botSourcesToday?: number;
@@ -259,11 +267,18 @@ export default function Stats() {
             <div className="card p-4">
               <div className="label">Total calls</div>
               <div className="mt-1 font-mono text-2xl font-bold">{usage.totalCalls}</div>
+              <div className="text-[10px] text-gray-500">
+                {usage.totalCalls > 0 ? ((usage.totalPaid / usage.totalCalls) * 100).toFixed(1) : "0"}% paid
+              </div>
             </div>
             <div className="card p-4">
-              <div className="label">Paid (real agents)</div>
-              <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">{usage.totalPaid}</div>
-              <div className="text-[10px] text-gray-500">USDC settled</div>
+              <div className="label">Est. revenue</div>
+              <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">
+                ${(usage.totalRevenue ?? 0).toFixed(2)}
+              </div>
+              <div className="text-[10px] text-gray-500">
+                {usage.totalPaid} paid · {usage.paidToday ?? 0} today
+              </div>
             </div>
             <div className="card p-4">
               <div className="label">Real visitors today</div>
@@ -317,10 +332,14 @@ export default function Stats() {
                       <div className="flex min-w-0 items-center gap-2">
                         <span
                           className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                            r.p ? "bg-emerald-500/15 text-emerald-300" : "bg-white/5 text-gray-400"
+                            r.p
+                              ? "bg-emerald-500/15 text-emerald-300"
+                              : r.pv
+                                ? "bg-sky-500/15 text-sky-300"
+                                : "bg-white/5 text-gray-400"
                           }`}
                         >
-                          {r.p ? "PAID" : "free"}
+                          {r.p ? "PAID" : r.pv ? "preview" : "free"}
                         </span>
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${who.cls}`}>
                           {who.label}
@@ -353,19 +372,46 @@ export default function Stats() {
 
           {usage.per.length > 0 && (
             <div>
-              <div className="label mb-1.5">By service</div>
-              <div className="card divide-y divide-base-line/60">
-                {usage.per.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="truncate text-sm">{r.name}</div>
-                    <div className="flex shrink-0 items-center gap-3 text-xs">
-                      <span className="text-emerald-300">{r.paid} paid</span>
-                      <span className="text-gray-500">{r.total - r.paid} free</span>
-                      <span className="font-mono font-bold">{r.total}</span>
-                    </div>
+              <div className="mb-1.5 flex items-baseline justify-between">
+                <div className="label">By service</div>
+                {typeof usage.totalRevenue === "number" && (
+                  <div className="text-xs">
+                    <span className="text-gray-500">Est. revenue </span>
+                    <span className="font-mono font-bold text-emerald-300">${usage.totalRevenue.toFixed(2)}</span>
                   </div>
-                ))}
+                )}
               </div>
+              <div className="card divide-y divide-base-line/60">
+                {usage.per.map((r) => {
+                  const free = r.total - r.paid - (r.internal ?? 0);
+                  const conv = r.conversionPct ?? 0;
+                  const convCls =
+                    conv >= 20 ? "text-emerald-300" : conv >= 5 ? "text-amber-300" : "text-gray-500";
+                  return (
+                    <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div className="min-w-0 flex-1 truncate text-sm">{r.name}</div>
+                      <div className="flex shrink-0 items-center gap-2.5 text-xs">
+                        {r.revenue ? (
+                          <span className="font-mono font-semibold text-emerald-300">${r.revenue.toFixed(2)}</span>
+                        ) : null}
+                        <span className={`w-10 text-right font-mono ${convCls}`} title="conversion: paid ÷ external calls">
+                          {conv}%
+                        </span>
+                        <span className="text-emerald-300/90">{r.paid}p</span>
+                        {r.preview ? <span className="text-sky-300/80">{r.preview}👁</span> : null}
+                        <span className="text-gray-500">{free}f</span>
+                        {r.internal ? <span className="text-violet-300/70">{r.internal}i</span> : null}
+                        <span className="w-8 text-right font-mono font-bold">{r.total}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[10px] text-gray-500">
+                <span className="text-emerald-300">$</span> est. revenue (paid×price) ·{" "}
+                <span className="text-emerald-300">%</span> conversion (paid ÷ external) ·{" "}
+                <b>p</b> paid · <b>👁</b> preview/teaser · <b>f</b> free · <b>i</b> internal
+              </p>
             </div>
           )}
           <p className="text-[11px] text-gray-500">Durable analytics require KV (UPSTASH_REDIS_REST_URL/TOKEN).</p>

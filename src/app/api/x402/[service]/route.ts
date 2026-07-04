@@ -134,7 +134,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // free-eligible so they never reach here.
       try {
         const full = await service.handler(paramsFrom(req, service));
-        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "");
+        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, true);
         return NextResponse.json(
           {
             service: service.id,
