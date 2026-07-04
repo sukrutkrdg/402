@@ -333,6 +333,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const status = useStatus();
   const [token, setToken] = useState("");
   const [search, setSearch] = useState("");
+  const [cat, setCat] = useState<string | null>(null);
 
   // Default to false until status loads so the Pay button can't be clicked early.
   const buyerEnabled = status !== null && (status.buyerEnabled ?? false);
@@ -347,13 +348,18 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   }, []);
 
   const q = search.trim().toLowerCase();
-  const visible = q
-    ? services.filter((s) =>
-        `${s.name} ${s.tagline} ${s.description} ${s.category} ${s.id}`.toLowerCase().includes(q),
-      )
-    : services;
+  const visible = services.filter((s) => {
+    if (cat && s.category !== cat) return false;
+    if (q && !`${s.name} ${s.tagline} ${s.description} ${s.category} ${s.id}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
   const groups = groupByCategory(visible);
+  const cats = CATEGORY_ORDER.filter((c) => services.some((s) => s.category === c));
   const flagship = services.find((s) => s.id === "ai-token-report");
+  // Retention services — set once, get pinged later (recurring value).
+  const alertSuite = ["rug-monitor", "price-alert", "token-unlock"]
+    .map((id) => services.find((s) => s.id === id))
+    .filter((s): s is ServiceMeta => Boolean(s));
   const aiSuite = AI_FLAGSHIP_IDS.map((id) => services.find((s) => s.id === id)).filter(
     (s): s is ServiceMeta => Boolean(s),
   );
@@ -510,6 +516,29 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         </section>
       )}
 
+      {/* Retention — monitoring & alerts (set once, get pinged later) */}
+      {alertSuite.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="label">🔔 Set &amp; forget — monitoring &amp; alerts (recurring value)</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {alertSuite.map((s) => (
+              <div key={s.id} className="card p-3">
+                <div className="flex items-center gap-2">
+                  <span aria-hidden="true" className="text-xl">
+                    {s.icon}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{s.name}</div>
+                    <div className="font-mono text-xs text-emerald-300">{s.price}</div>
+                  </div>
+                </div>
+                <p className="mt-1 text-xs leading-snug text-gray-400">{s.tagline}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* How it works */}
       <section className="flex flex-col gap-3">
         <div className="label">How it works</div>
@@ -554,6 +583,23 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setCat(null)}
+            className={`pill ${cat === null ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
+          >
+            All
+          </button>
+          {cats.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCat(c === cat ? null : c)}
+              className={`pill ${c === cat ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
         {q && (
           <p className="text-[11px] text-gray-500">
             {visible.length} match{visible.length === 1 ? "" : "es"} for “{search}”

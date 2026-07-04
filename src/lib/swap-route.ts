@@ -35,6 +35,41 @@ interface RiskShape {
   security?: Security;
 }
 
+const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+/**
+ * Real 0x quote (Base) when ZEROX_API_KEY is set — exact routing + price impact
+ * for buying `tokenOut` with `amountUsd` of USDC. Returns null (→ fall back to
+ * the constant-product estimate) when unset or on any error, so the service
+ * always works without a key.
+ */
+async function zeroxQuote(
+  tokenOut: string,
+  amountUsd: number,
+): Promise<{ impactPct: number | null; buyAmount: string | null; sources: string[] } | null> {
+  const key = process.env.ZEROX_API_KEY?.trim();
+  if (!key) return null;
+  try {
+    const sellAmount = Math.round(amountUsd * 1e6).toString(); // USDC has 6 decimals
+    const url = `https://api.0x.org/swap/permit2/quote?chainId=8453&sellToken=${USDC_BASE}&buyToken=${tokenOut}&sellAmount=${sellAmount}`;
+    const res = await fetch(url, {
+      headers: { "0x-api-key": key, "0x-version": "v2" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      buyAmount?: string;
+      estimatedPriceImpact?: string;
+      route?: { fills?: Array<{ source?: string }> };
+    };
+    const impact = j.estimatedPriceImpact != null ? +parseFloat(j.estimatedPriceImpact).toFixed(2) : null;
+    const sources = [...new Set((j.route?.fills ?? []).map((f) => f.source ?? "").filter(Boolean))];
+    return { impactPct: impact, buyAmount: j.buyAmount ?? null, sources };
+  } catch {
+    return null;
+  }
+}
+
 export async function swapRoute(params: Record<string, string>) {
   const tokenOut = (params.tokenOut || params.address || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(tokenOut)) {
@@ -50,7 +85,10 @@ export async function swapRoute(params: Record<string, string>) {
 
   const liquidityUsd = best.liquidityUsd ?? 0;
   const reserveUsd = liquidityUsd / 2; // one side of a ~50/50 pool
-  const estImpact = impactPct(amountUsd, reserveUsd);
+  const cpImpact = impactPct(amountUsd, reserveUsd); // constant-product estimate
+  // Prefer a real 0x quote's impact when ZEROX_API_KEY is set; else the estimate.
+  const zerox = await zeroxQuote(tokenOut, amountUsd);
+  const estImpact = zerox?.impactPct ?? cpImpact;
   // Slippage tolerance = impact + a 1% buffer, clamped to a sane range.
   const suggestedSlippagePct = +Math.min(50, Math.max(0.5, estImpact + 1)).toFixed(2);
   const suggestedMinOutPct = +Math.max(0, 100 - suggestedSlippagePct).toFixed(2);
@@ -98,6 +136,8 @@ export async function swapRoute(params: Record<string, string>) {
     },
     poolCount: pools.length,
     estPriceImpactPct: estImpact,
+    impactSource: zerox?.impactPct != null ? "0x" : "estimate",
+    zeroxRoute: zerox ? { buyAmount: zerox.buyAmount, sources: zerox.sources } : null,
     suggestedSlippagePct,
     suggestedMinOutPct, // set your min-out to this % of the quoted amount
     safety, // honeypot / sell-tax gate on tokenOut (null if unavailable)
