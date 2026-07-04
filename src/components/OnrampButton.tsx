@@ -44,6 +44,10 @@ export default function OnrampButton({ className = "" }: { className?: string })
         {busy ? "Opening Coinbase…" : "＋ Buy USDC on Base"}
       </button>
       {err && <span className="text-[11px] text-amber-300">{err}</span>}
+      <span className="text-[10px] text-gray-500">
+        Coinbase Onramp isn’t available in every country. If it says “not supported”, buy USDC on a
+        local exchange (or another on-ramp) and withdraw to <strong className="text-gray-400">Base</strong>.
+      </span>
     </div>
   );
 }
