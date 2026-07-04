@@ -189,9 +189,13 @@ export default function MiniApp() {
       setStep("Connecting wallet…");
       const provider = await resolveEthProvider();
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
-      // Fast silent read first (short), then request with one retry. Mini-app
-      // wallets are sometimes slow/flaky to respond on the first call.
-      let address: `0x${string}` | undefined;
+      // Request accounts FIRST, right after the tap. The Base App / Coinbase
+      // Wallet only opens the connect prompt when eth_requestAccounts is tied to
+      // a user gesture — inserting a slow silent eth_accounts read before it
+      // (the old flow) lost the gesture, so in the Base App the prompt never
+      // appeared and the wallet "wouldn't connect". eth_requestAccounts also
+      // returns immediately when already connected, so it's safe as the first
+      // call. eth_accounts is only a fallback.
       const readAccounts = async (method: string, ms: number) => {
         const a = (await withTimeout(
           provider.request({ method }) as Promise<string[]>,
@@ -200,12 +204,9 @@ export default function MiniApp() {
         ).catch(() => [] as string[])) as string[];
         return a?.[0] as `0x${string}` | undefined;
       };
-      setStep("Reading wallet…");
-      address = await readAccounts("eth_accounts", 5000);
-      for (let attempt = 1; attempt <= 2 && !address; attempt++) {
-        setStep(attempt === 1 ? "Connecting wallet…" : "Retrying wallet…");
-        address = await readAccounts("eth_requestAccounts", 20000);
-      }
+      let address = await readAccounts("eth_requestAccounts", 30000);
+      if (!address) address = await readAccounts("eth_accounts", 5000);
+      if (!address) address = await readAccounts("eth_requestAccounts", 20000);
       if (!address) {
         throw new Error("Wallet didn't respond — close this mini app and reopen it from the cast, then try again.");
       }
