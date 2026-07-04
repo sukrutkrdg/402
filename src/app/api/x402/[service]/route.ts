@@ -181,34 +181,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   try {
     const server = getResourceServer();
     const guarded = withX402(handler, routeConfig, server);
-    const res = await guarded(req);
-
-    // TEMP DIAGNOSTIC: when a PAID retry (has payment header) still comes back
-    // 402, settlement failed — the x402 lib returns an empty {} body and buries
-    // the facilitator's real error. Log the full response so we can see WHY the
-    // Base facilitator rejected the settle (bad sig, insufficient balance,
-    // authorization reuse, wrong chain). Remove once the web wallet path works.
-    const isPaidRetry = Boolean(req.headers.get("x-payment") || req.headers.get("payment-signature"));
-    if (res.status === 402 && isPaidRetry) {
-      const hdrs: Record<string, string> = {};
-      res.headers.forEach((v, k) => (hdrs[k] = v));
-      let body = "";
-      try {
-        body = await res.clone().text();
-      } catch {
-        /* ignore */
-      }
-      console.error(
-        `[x402 settle-fail] service=${service.id} headers=${JSON.stringify(hdrs)} body=${body.slice(0, 600)}`,
-      );
-    }
-    return res;
+    return await guarded(req);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Server misconfigured";
-    // Also surface any thrown facilitator/settlement error for diagnosis.
-    if (req.headers.get("x-payment") || req.headers.get("payment-signature")) {
-      console.error(`[x402 settle-throw] service=${service.id} error=${message}`);
-    }
     return NextResponse.json({ error: message }, { status: 503 });
   }
 }
