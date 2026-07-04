@@ -2,13 +2,15 @@
 
 import { NextResponse } from "next/server";
 import { SERVICES } from "@/lib/services";
-import { getCallsServed } from "@/lib/usage";
+import { getCallsServed, getPaidServed } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const [callsServed, paidServed] = await Promise.all([getCallsServed(), getPaidServed()]);
   return NextResponse.json({
     services: SERVICES.length,
-    callsServed: await getCallsServed(),
+    callsServed,
+    paidServed,
   });
 }

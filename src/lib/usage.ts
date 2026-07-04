@@ -97,7 +97,7 @@ export async function logUsage(
         ["LPUSH", "usage:recent", entry],
         ["LTRIM", "usage:recent", 0, 99],
       ];
-      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", `usage:paidday:${d}`], ["EXPIRE", `usage:paidday:${d}`, 60 * 60 * 24 * 8]);
+      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ["EXPIRE", `usage:paidday:${d}`, 60 * 60 * 24 * 8]);
       if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source]);
       if (preview) cmds.push(["INCR", `usage:preview:${serviceId}`]);
       if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source]);
@@ -107,6 +107,7 @@ export async function logUsage(
     await kvIncr(`usage:total:${serviceId}`);
     if (paid) {
       await kvIncr(`usage:paid:${serviceId}`);
+      await kvIncr("usage:paid:total");
       await kvIncr(`usage:paidday:${d}`, 60 * 60 * 24 * 8);
     }
     if (internal) await kvIncr(`usage:internal:${serviceId}`);
@@ -126,6 +127,15 @@ export async function logUsage(
 export async function getCallsServed(): Promise<number> {
   try {
     return await kvGetNumber("usage:calls:total");
+  } catch {
+    return 0;
+  }
+}
+
+/** Public social-proof counter: total PAID calls (real agents that paid). */
+export async function getPaidServed(): Promise<number> {
+  try {
+    return await kvGetNumber("usage:paid:total");
   } catch {
     return 0;
   }

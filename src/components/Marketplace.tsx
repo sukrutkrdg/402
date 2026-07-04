@@ -340,10 +340,14 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const tokenRequired = status?.buyTokenRequired ?? false;
 
   const [callsServed, setCallsServed] = useState<number | null>(null);
+  const [paidServed, setPaidServed] = useState<number | null>(null);
   useEffect(() => {
     fetch("/api/public-stats")
       .then((r) => r.json())
-      .then((d) => setCallsServed(typeof d.callsServed === "number" ? d.callsServed : null))
+      .then((d) => {
+        setCallsServed(typeof d.callsServed === "number" ? d.callsServed : null);
+        setPaidServed(typeof d.paidServed === "number" ? d.paidServed : null);
+      })
       .catch(() => setCallsServed(null));
   }, []);
 
@@ -406,10 +410,15 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
               </span>
             ))}
             <span className="pill border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
               {services.length} services live
               {callsServed && callsServed > 0 ? ` · ${callsServed.toLocaleString()} calls served` : ""}
             </span>
+            {paidServed && paidServed > 0 ? (
+              <span className="pill border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                💸 {paidServed.toLocaleString()} paid by agents
+              </span>
+            ) : null}
           </div>
 
           {/* Social proof — AIXBT */}
