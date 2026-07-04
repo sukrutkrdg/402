@@ -166,20 +166,35 @@ export default function MiniApp() {
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
       setStep("Connecting wallet…");
-      if (connectors.length === 0) throw new Error("Open this inside the Base App to pay with your wallet.");
-      // Connect via the wagmi mini-app connector — the path Coinbase documents
-      // as working in BOTH the Base App and Farcaster. connectAsync opens the
-      // host wallet's connect prompt (tied to this tap) and resolves once the
-      // account is available; it no-ops when already connected.
+      if (connectors.length === 0) throw new Error("No wallet connector available.");
+      // Pick the connector for the context: the Farcaster/Base App host wallet
+      // when running inside a mini-app, otherwise a normal web wallet (Coinbase
+      // Wallet / Smart Wallet, or an injected one like MetaMask). This is what
+      // lets 402.com.tr/app be paid from a plain browser, not just the Base App.
+      let inMiniApp = false;
+      try {
+        inMiniApp = await sdk.isInMiniApp();
+      } catch {
+        inMiniApp = false;
+      }
+      const byId = (...ids: string[]) => connectors.find((c) => ids.includes(c.id) || ids.includes(c.type));
+      const preferred = inMiniApp
+        ? byId("farcasterMiniApp", "farcaster") ?? connectors[0]
+        : byId("coinbaseWalletSDK", "coinbaseWallet", "injected") ?? connectors[0];
+
       let acct = address as `0x${string}` | undefined;
       let conn = connector;
-      if (!isConnected || !acct) {
-        const res = await withTimeout(connectAsync({ connector: connectors[0] }), 60000, "wallet connect");
+      if (!isConnected || !acct || conn?.id !== preferred.id) {
+        const res = await withTimeout(connectAsync({ connector: preferred }), 60000, "wallet connect");
         acct = res.accounts?.[0];
-        conn = connectors[0];
+        conn = preferred;
       }
       if (!acct || !conn) {
-        throw new Error("Wallet didn't respond — close this mini app and reopen it from the cast, then try again.");
+        throw new Error(
+          inMiniApp
+            ? "Wallet didn't respond — close this mini app and reopen it from the cast, then try again."
+            : "Couldn't connect a wallet. Approve the connection in your wallet extension and try again.",
+        );
       }
       // Get the connected EIP-1193 provider from the connector and reuse the
       // existing x402 signing flow unchanged.
