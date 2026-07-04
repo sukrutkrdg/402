@@ -208,6 +208,34 @@ export default function MiniApp() {
       // existing x402 signing flow unchanged.
       const provider = (await conn.getProvider()) as EthProvider;
 
+      // Ensure the wallet is on Base (8453) before signing. x402 signs a payment
+      // authorization for chainId 8453 and settles on Base; if the wallet (e.g.
+      // MetaMask defaulting to Ethereum) is on another chain, the facilitator
+      // can't settle and returns an empty 402 ("Payment failed — server 402").
+      // Mini-app host wallets are already on Base, so this is a no-op there.
+      if (!inMiniApp) {
+        setStep("Switching to Base…");
+        try {
+          await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+        } catch (switchErr) {
+          if ((switchErr as { code?: number })?.code === 4902) {
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: "0x2105",
+                  chainName: "Base",
+                  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+                  rpcUrls: ["https://mainnet.base.org"],
+                  blockExplorerUrls: ["https://basescan.org"],
+                },
+              ],
+            });
+          }
+          // Other errors: proceed anyway; the wallet may already be on Base.
+        }
+      }
+
       const client = new x402Client();
       client.register(
         "eip155:8453",
