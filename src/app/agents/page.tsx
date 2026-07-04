@@ -39,6 +39,25 @@ export default function AgentsPage() {
       </section>
 
       <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">⚡ Quickstart — 30 seconds</h2>
+        <p className="text-sm text-gray-400">
+          Fastest path: add the MCP server to Claude Code (or any MCP client) — one command, then
+          just ask it to check a token:
+        </p>
+        <Code>{`claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0xYOUR_KEY -- npx -y x402-bazaar-mcp`}</Code>
+        <p className="text-sm text-gray-400">
+          Or call any endpoint directly over HTTP — the first call/day per IP is free (no wallet), so
+          you can try before wiring payments:
+        </p>
+        <Code>{`curl "${SITE_URL}/api/x402/${example.id}?${example.params.map((p) => `${p.name}=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed`).join("&")}"`}</Code>
+        <p className="text-xs text-gray-500">
+          After the free daily call you get a teaser preview + an{" "}
+          <code className="codechip">HTTP 402</code> — wire the payment below and your agent pays a
+          few cents in USDC per call, gasless on Base.
+        </p>
+      </section>
+
+      <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">1. Discover services (machine-readable)</h2>
         <p className="text-sm text-gray-400">
           Crawl the catalog for every endpoint, price, and input schema:
