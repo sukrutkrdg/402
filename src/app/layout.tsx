@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import { getBaseAppId, getSiteUrl } from "@/lib/config";
 import FarcasterReady from "@/components/FarcasterReady";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const baseAppId = getBaseAppId();
 const SITE_URL = getSiteUrl();
@@ -61,9 +62,17 @@ export const viewport = { themeColor: "#0052ff" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Apply the saved theme before paint to avoid a flash of the wrong theme. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('light',!d);}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-screen antialiased">
         <FarcasterReady />
-        <header className="sticky top-0 z-20 border-b border-base-line/70 bg-black/40 backdrop-blur">
+        <header className="site-header sticky top-0 z-20 border-b backdrop-blur">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
             <Link href="/" className="flex items-center gap-2.5">
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-base-blue to-[#0036aa] shadow-md shadow-base-blue/30">
@@ -81,6 +90,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav className="-mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 text-sm">
               <Link href="/" className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white">
                 Marketplace
+              </Link>
+              <Link
+                href="/app"
+                className="shrink-0 rounded-lg px-3 py-1.5 font-medium text-sky-300 hover:bg-white/5 hover:text-sky-200"
+              >
+                🛡️ Check a token
               </Link>
               <Link
                 href="/dashboard"
@@ -114,6 +129,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817-5.97 6.817H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
                 </svg>
               </a>
+              <ThemeToggle />
             </nav>
           </div>
         </header>

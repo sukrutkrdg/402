@@ -4,15 +4,33 @@
 
 :root {
   color-scheme: dark;
+  --bg-solid: #07080a;
+  --bg-glow1: rgba(0, 82, 255, 0.18);
+  --bg-glow2: rgba(0, 82, 255, 0.1);
+  --text: #e7eaf0;
+  --panel: rgba(18, 20, 26, 0.7);
+  --line: rgba(255, 255, 255, 0.08);
+  --header: rgba(0, 0, 0, 0.4);
+}
+
+html.light {
+  color-scheme: light;
+  --bg-solid: #f6f8fc;
+  --bg-glow1: rgba(0, 82, 255, 0.1);
+  --bg-glow2: rgba(0, 82, 255, 0.06);
+  --text: #14181f;
+  --panel: rgba(255, 255, 255, 0.85);
+  --line: rgba(0, 0, 0, 0.1);
+  --header: rgba(255, 255, 255, 0.6);
 }
 
 html,
 body {
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(0, 82, 255, 0.18), transparent 60%),
-    radial-gradient(900px 500px at -10% 10%, rgba(0, 82, 255, 0.1), transparent 55%),
-    #07080a;
-  color: #e7eaf0;
+    radial-gradient(1200px 600px at 80% -10%, var(--bg-glow1), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, var(--bg-glow2), transparent 55%),
+    var(--bg-solid);
+  color: var(--text);
 }
 
 * {
@@ -22,24 +40,43 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-base-line bg-base-panel/70 backdrop-blur;
+    @apply rounded-2xl backdrop-blur;
+    background: var(--panel);
+    border: 1px solid var(--line);
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-blue focus-visible:ring-offset-2 focus-visible:ring-offset-black;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-blue focus-visible:ring-offset-2;
   }
   .btn-primary {
     @apply btn bg-base-blue text-white hover:brightness-110 active:brightness-95;
   }
   .btn-ghost {
-    @apply btn border border-base-line bg-white/5 text-white hover:bg-white/10;
+    @apply btn text-[color:var(--text)];
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    border: 1px solid var(--line);
+  }
+  .btn-ghost:hover {
+    background: color-mix(in srgb, var(--text) 12%, transparent);
   }
   .pill {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-base-line bg-white/5 px-2.5 py-1 text-xs font-medium text-gray-300;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    border: 1px solid var(--line);
+    color: color-mix(in srgb, var(--text) 70%, transparent);
   }
   .label {
-    @apply text-[11px] font-semibold uppercase tracking-wider text-gray-500;
+    @apply text-[11px] font-semibold uppercase tracking-wider;
+    color: color-mix(in srgb, var(--text) 55%, transparent);
   }
   .codechip {
-    @apply rounded-md border border-base-line bg-black/40 px-1.5 py-0.5 font-mono text-[12px] text-sky-300;
+    @apply rounded-md px-1.5 py-0.5 font-mono text-[12px] text-sky-500;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    border: 1px solid var(--line);
   }
+}
+
+/* App header adapts to the theme. */
+.site-header {
+  background: var(--header);
+  border-color: var(--line);
 }
