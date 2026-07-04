@@ -396,19 +396,22 @@ export default function MiniApp() {
           onClick={() =>
             sdk.actions
               .composeCast({
-                text: "Check any Base token before you ape in 🛡️ honeypot, sellability, holder & liquidity checks — pay-per-call over x402.",
+                // Share the actual result when there is one → far more viral than a generic pitch.
+                text: out
+                  ? `Checked ${addr.trim().slice(0, 6)}…${addr.trim().slice(-4)} on 402.com.tr 🛡️\n${out.split("\n").slice(0, 2).join(" · ").slice(0, 140)}`
+                  : "Check any Base token before you ape in 🛡️ honeypot, sellability, holder & liquidity checks — pay-per-call over x402.",
                 embeds: ["https://402.com.tr/app"],
               })
               .catch(() => {})
           }
           className="btn-ghost flex-1 !py-2 text-xs"
         >
-          ↗ Share
+          {out ? "↗ Cast result" : "↗ Share"}
         </button>
       </div>
 
       <a href="/" className="text-center text-xs text-sky-400 hover:underline">
-        Browse all 59 services →
+        Browse all 67 services →
       </a>
     </main>
   );
