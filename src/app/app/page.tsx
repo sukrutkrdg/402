@@ -35,6 +35,31 @@ const CHECKS = [
   { id: "token-risk", label: "🔎 Token Risk", price: "$0.03" },
 ] as const;
 
+type EthProvider = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+/**
+ * Resolve the Base App wallet provider. Newer Base App builds return the
+ * provider ONLY from the async getEthereumProvider() — the legacy synchronous
+ * `sdk.wallet.ethProvider` is undefined there, which made the mini-app think no
+ * wallet existed and never send the connect/sign request. Try the async method
+ * first, then fall back to the sync property for older builds.
+ */
+async function resolveEthProvider(): Promise<EthProvider | undefined> {
+  try {
+    const w = sdk.wallet as {
+      getEthereumProvider?: () => Promise<EthProvider | undefined>;
+      ethProvider?: EthProvider;
+    };
+    if (typeof w.getEthereumProvider === "function") {
+      const p = await w.getEthereumProvider();
+      if (p) return p;
+    }
+    return w.ethProvider;
+  } catch {
+    return undefined;
+  }
+}
+
 // Build the minimal ClientEvmSigner x402 needs from the mini-app wallet provider.
 function makeSigner(
   provider: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> },
@@ -122,11 +147,9 @@ export default function MiniApp() {
 
   useEffect(() => {
     sdk.actions.ready().catch(() => {});
-    try {
-      setHasWallet(Boolean(sdk.wallet.ethProvider));
-    } catch {
-      setHasWallet(false);
-    }
+    // Resolve the provider the same (async-first) way the payment flow does, so
+    // the "open in Base App" hint reflects the real wallet availability.
+    resolveEthProvider().then((p) => setHasWallet(Boolean(p)));
   }, []);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
@@ -164,9 +187,7 @@ export default function MiniApp() {
       Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
     try {
       setStep("Connecting wallet…");
-      const provider = sdk.wallet.ethProvider as unknown as {
-        request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
-      } | undefined;
+      const provider = await resolveEthProvider();
       if (!provider) throw new Error("Open this inside the Base App to pay with your wallet.");
       // Fast silent read first (short), then request with one retry. Mini-app
       // wallets are sometimes slow/flaky to respond on the first call.
