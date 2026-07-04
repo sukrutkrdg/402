@@ -622,7 +622,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "One 0-100 risk gate (security + holders + liquidity)",
     description:
       "Deterministic 0-100 rug-probability score combining security flags, holder concentration, LP lock and liquidity depth — with the exact signals that drove it. A fast numeric gate for trading agents. Higher = riskier.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "📉",
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
@@ -829,7 +829,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Claude-written due-diligence verdict for a Base token",
     description:
       "The flagship report: aggregates token risk, holder concentration, price/liquidity and OFAC sanctions, then Claude synthesizes a structured verdict (avoid → favorable) with key risks and positives. One call, agent-ready intelligence you can't get free.",
-    price: "$0.05",
+    price: "$0.08",
     icon: "🔬",
     category: "AI",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
