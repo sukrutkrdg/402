@@ -290,7 +290,13 @@ export default function MiniApp() {
       }
       setOut(formatResult(selected, (parsed.data ?? parsed) as Record<string, unknown>));
     } catch (e) {
-      setErr(`${e instanceof Error ? e.message : "Failed"}${step ? ` (at: ${step})` : ""}`);
+      const msg = e instanceof Error ? e.message : "Failed";
+      // If the failure looks balance-related, point the user at the Buy-USDC
+      // button below (the biggest reason a ready buyer can't pay).
+      const needsUsdc = /insufficient|balance|settle|402/i.test(msg);
+      setErr(
+        `${msg}${needsUsdc ? " — you may be out of USDC on Base. Add some with “Buy USDC on Base” below, then retry." : ""}${step ? ` (at: ${step})` : ""}`,
+      );
     } finally {
       setBusy(null);
       setStep(null);
