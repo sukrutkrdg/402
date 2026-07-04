@@ -332,6 +332,7 @@ function groupByCategory(services: ServiceMeta[]): Array<{ category: string; ite
 export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const status = useStatus();
   const [token, setToken] = useState("");
+  const [search, setSearch] = useState("");
 
   // Default to false until status loads so the Pay button can't be clicked early.
   const buyerEnabled = status !== null && (status.buyerEnabled ?? false);
@@ -345,7 +346,13 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       .catch(() => setCallsServed(null));
   }, []);
 
-  const groups = groupByCategory(services);
+  const q = search.trim().toLowerCase();
+  const visible = q
+    ? services.filter((s) =>
+        `${s.name} ${s.tagline} ${s.description} ${s.category} ${s.id}`.toLowerCase().includes(q),
+      )
+    : services;
+  const groups = groupByCategory(visible);
   const flagship = services.find((s) => s.id === "ai-token-report");
   const aiSuite = AI_FLAGSHIP_IDS.map((id) => services.find((s) => s.id === id)).filter(
     (s): s is ServiceMeta => Boolean(s),
@@ -537,7 +544,24 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         </div>
       </section>
 
-      {/* Service groups */}
+      {/* Search + service groups */}
+      <section className="flex flex-col gap-2">
+        <div className="label">Browse {services.length} services</div>
+        <input
+          type="search"
+          className="rounded-xl border border-base-line bg-black/40 px-4 py-2.5 text-sm outline-none focus:border-base-blue"
+          placeholder="Search services — e.g. honeypot, wallet, sanctions, price…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {q && (
+          <p className="text-[11px] text-gray-500">
+            {visible.length} match{visible.length === 1 ? "" : "es"} for “{search}”
+            {visible.length === 0 ? " — try a different term." : ""}
+          </p>
+        )}
+      </section>
+
       {groups.map(({ category, items }) => (
         <section key={category} className="flex flex-col gap-3">
           <div className="label">{category}</div>
