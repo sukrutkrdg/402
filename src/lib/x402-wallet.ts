@@ -106,6 +106,15 @@ export function useX402Pay() {
     }
     if (!acct || !conn) throw new Error("Couldn't connect a wallet. Approve the connection and try again.");
 
+    // x402 rejects self-payments: the buyer can't equal the seller (payTo). If
+    // the connected wallet is the app's own payTo, the facilitator returns an
+    // empty 402 that looks like "out of USDC" — catch it here with a clear message.
+    if (acct.toLowerCase() === "0x973a31858f4d2125f48c880542da11a2796f12d6") {
+      throw new Error(
+        "This is the seller (payTo) wallet — x402 doesn't allow paying yourself. Connect a different wallet with USDC on Base.",
+      );
+    }
+
     const provider = (await conn.getProvider()) as EthProvider;
 
     // Ensure the wallet is on Base (8453) before signing — x402 settles on Base.
