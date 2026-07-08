@@ -925,64 +925,6 @@ export const SERVICES: ServiceDef[] = [
     handler: aiTranslate,
   },
   {
-    id: "market-snapshot",
-    name: "Market Snapshot (demo)",
-    tagline: "DEMO — synthetic price board, not live data",
-    description:
-      "DEMO/synthetic endpoint: returns deterministic pseudo-prices for top assets to test the x402 wire format. NOT live market data — use token-price / token-momentum for real prices.",
-    price: "$0.005",
-    icon: "📈",
-    category: "Demo",
-    params: [],
-    handler: async () => {
-      const now = Date.now();
-      const assets = Object.entries(ASSETS).map(([symbol, base]) => {
-        const drift = ((hash(symbol + Math.floor(now / 60000)) % 800) - 400) / 10000;
-        const price = +(base * (1 + drift)).toFixed(base < 10 ? 4 : 2);
-        return { symbol, price, change24h: +(drift * 100).toFixed(2) };
-      });
-      return { asOf: new Date(now).toISOString(), currency: "USD", assets };
-    },
-  },
-  {
-    id: "weather",
-    name: "Weather Oracle (demo)",
-    tagline: "DEMO — synthetic weather, not real data",
-    description:
-      "DEMO/synthetic endpoint mirroring the canonical x402 `/weather` example for wire-format testing. Output is deterministic from the city name — NOT real weather.",
-    price: "$0.005",
-    icon: "🌦️",
-    category: "Demo",
-    params: [{ name: "city", label: "City", placeholder: "Istanbul", required: true }],
-    handler: async (p) => {
-      const city = (p.city || "Istanbul").slice(0, 40);
-      const seed = hash(city.toLowerCase());
-      const conditions = ["Clear", "Cloudy", "Rain", "Windy", "Snow", "Fog"];
-      return {
-        city,
-        condition: pick(conditions, seed),
-        tempC: 8 + (seed % 25),
-        humidity: 40 + (seed % 55),
-        windKph: 3 + (seed % 30),
-        asOf: new Date().toISOString(),
-      };
-    },
-  },
-  {
-    id: "quote",
-    name: "Alpha Quote (demo)",
-    tagline: "DEMO — rotating quote, for wiring tests",
-    description: "DEMO endpoint: a rotating quote. The cheapest possible paid call — perfect for testing your x402 wiring.",
-    price: "$0.005",
-    icon: "💬",
-    category: "Demo",
-    params: [],
-    handler: async () => {
-      const seed = hash(String(Math.floor(Date.now() / 30000)));
-      return { quote: pick(QUOTES, seed), at: new Date().toISOString() };
-    },
-  },
-  {
     id: "secure-token",
     name: "Secure Token",
     tagline: "Cryptographically strong random IDs",

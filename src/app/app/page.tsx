@@ -15,6 +15,7 @@ import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
 import OnrampButton from "@/components/OnrampButton";
+import WalletProtect from "@/components/WalletProtect";
 
 type TypedData = {
   domain: Record<string, unknown>;
@@ -127,6 +128,8 @@ export default function MiniApp() {
   const [walletPicker, setWalletPicker] = useState<Connector[] | null>(null);
   // True after a free teaser is shown → offer a one-tap "unlock full report".
   const [previewShown, setPreviewShown] = useState(false);
+  // "token" = token-safety checks; "wallet" = approval scan + revoke.
+  const [mode, setMode] = useState<"token" | "wallet">("token");
 
   const { address, isConnected, connector } = useAccount();
   const { connectAsync, connectors } = useConnect();
@@ -318,7 +321,26 @@ export default function MiniApp() {
         </p>
       </header>
 
-      <input
+      <div className="flex gap-2">
+        <button
+          onClick={() => setMode("token")}
+          className={`btn-ghost flex-1 !py-2 text-xs ${mode === "token" ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : ""}`}
+        >
+          🪙 Token safety
+        </button>
+        <button
+          onClick={() => setMode("wallet")}
+          className={`btn-ghost flex-1 !py-2 text-xs ${mode === "wallet" ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : ""}`}
+        >
+          🛡️ Protect wallet
+        </button>
+      </div>
+
+      {mode === "wallet" ? (
+        <WalletProtect />
+      ) : (
+        <>
+          <input
         value={addr}
         onChange={(e) => setAddr(e.target.value)}
         placeholder="0x… token address"
@@ -413,6 +435,8 @@ export default function MiniApp() {
       <a href="/" className="text-center text-xs text-sky-400 hover:underline">
         Browse all 67 services →
       </a>
+        </>
+      )}
     </main>
   );
 }
