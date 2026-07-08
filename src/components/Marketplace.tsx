@@ -377,7 +377,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       >
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-amber-200">
-            🆕 B20 is now LIVE on Base — check any token
+            🆕 B20 activates tonight on Base — first B20 safety check, ready to go
           </span>
           <span className="max-w-2xl text-xs leading-relaxed text-gray-300">
             Base&apos;s native token standard lets issuers{" "}
