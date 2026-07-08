@@ -43,6 +43,7 @@ import { volumeCheck } from "./volume-check";
 import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
+import { b20Safety } from "./b20-safety";
 
 export interface ServiceParam {
   name: string;
@@ -107,6 +108,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [],
     handler: gasOracle,
+  },
+  {
+    id: "b20-safety",
+    name: "B20 Token Safety",
+    tagline: "Can this Base-native (B20) token freeze or seize your funds?",
+    description:
+      "🔜 Activates at the B20 launch (2026-07-08 18:00 UTC). B20 is Base's native precompile token standard — and unlike ERC-20, a B20 issuer can freeze holders (Policy Registry) and even SEIZE your balance (burnBlocked) at the protocol level. This reads exactly those powers — seizable, freezable, pausable, rebase, mint — into one hold/caution/avoid verdict. The first B20-aware safety check on Base.",
+    price: "$0.04",
+    icon: "🆕",
+    category: "Onchain",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Safety,
   },
   {
     id: "token-price",
