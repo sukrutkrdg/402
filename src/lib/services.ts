@@ -71,37 +71,6 @@ export interface ServiceDef {
   noFreeTier?: boolean;
 }
 
-// ---- tiny deterministic helpers so demo output looks alive but stays cheap ----
-
-function pick<T>(arr: T[], seed: number): T {
-  return arr[Math.abs(seed) % arr.length];
-}
-
-function hash(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-const QUOTES = [
-  "In crypto, patience is a position.",
-  "The chain doesn't lie; it just waits to be read.",
-  "Decentralization is a verb, not a noun.",
-  "Pay-per-call is the unit economics of the agent era.",
-  "Attribution turns anonymous traffic into a growth engine.",
-  "Settle small, settle often, settle onchain.",
-];
-
-const ASSETS: Record<string, number> = {
-  BTC: 67000,
-  ETH: 3500,
-  SOL: 165,
-  BASE: 1.0,
-};
-
 export const SERVICES: ServiceDef[] = [
   {
     id: "token-risk",
