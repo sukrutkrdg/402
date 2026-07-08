@@ -78,6 +78,8 @@ export default function Stats() {
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [authed, setAuthed] = useState(false);
+  // Recent activity defaults to real users only (hide bots + free-tier previews).
+  const [showAllActivity, setShowAllActivity] = useState(false);
 
   async function load(tok: string) {
     setLoading(true);
@@ -314,9 +316,17 @@ export default function Stats() {
 
           {usage.recent.length > 0 && (
             <div>
-              <div className="label mb-1.5">Recent activity</div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <div className="label">Recent activity{showAllActivity ? "" : " · real users only"}</div>
+                <button
+                  onClick={() => setShowAllActivity((v) => !v)}
+                  className="text-[10px] text-sky-400 hover:underline"
+                >
+                  {showAllActivity ? "hide bots & previews" : "show all"}
+                </button>
+              </div>
               <div className="card max-h-64 divide-y divide-base-line/60 overflow-auto">
-                {usage.recent.map((r, i) => {
+                {(showAllActivity ? usage.recent : usage.recent.filter((r) => r.p || (r.k !== "bot" && !r.pv))).map((r, i) => {
                   const isYou =
                     r.src === usage.youSource || (usage.ownerSources ?? []).includes(r.src);
                   const isBot = r.k === "bot";
