@@ -639,11 +639,12 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Block, base fee, ETH price & transfer cost in USD",
     description:
       "Live Base chain snapshot: latest block, base fee + priority fee (Gwei), current ETH price, and the estimated USD cost of a simple ETH transfer. For agents timing or budgeting transactions.",
-    price: "$0.01",
+    price: "$0.005",
     icon: "⛓️",
     category: "Onchain",
     params: [],
     handler: chainStatus,
+    noFreeTier: true, // paid-only: monitoring bots hammer this for free; make them pay (or leave)
   },
   {
     id: "new-tokens",
@@ -651,11 +652,12 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Freshly listed/profiled tokens on Base",
     description:
       "Returns the latest tokens profiled on Base from the DexScreener feed — address, description, and links. Great for discovery bots hunting new launches early.",
-    price: "$0.01",
+    price: "$0.005",
     icon: "🆕",
     category: "Onchain",
     params: [],
     handler: newTokens,
+    noFreeTier: true, // paid-only: discovery bots scrape this for free; make them pay (or leave)
   },
   {
     id: "nft-floor",
