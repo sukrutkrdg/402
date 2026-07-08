@@ -57,6 +57,27 @@ export interface B20Signals {
   supplyCapped: boolean;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Read one view fn with retry. Public Base RPC rate-limits parallel eth_calls, so
+ * we read sequentially and retry transport failures; a clean contract revert
+ * (e.g. Stablecoin has no multiplier) returns the fallback immediately.
+ */
+async function withRetry<T>(call: () => Promise<T>, fallback: T): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await call();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/revert/i.test(msg)) return fallback; // clean revert → fallback, don't retry
+      if (i === 2) return fallback;
+      await sleep(300);
+    }
+  }
+  return fallback;
+}
+
 async function readB20Signals(address: string): Promise<B20Signals> {
   const addr = getAddress(address);
   const empty: B20Signals = {
@@ -71,30 +92,59 @@ async function readB20Signals(address: string): Promise<B20Signals> {
   };
 
   // supplyCap() exists on every B20 and reverts on a plain ERC-20 → B20 probe.
-  let supplyCap: bigint;
-  try {
-    supplyCap = (await client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" })) as bigint;
-  } catch {
-    return empty; // not a B20 token
+  // Retry transport errors, but a revert means "not a B20".
+  let supplyCap: bigint | null = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      supplyCap = (await client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" })) as bigint;
+      break;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/revert/i.test(msg)) return empty; // not a B20 token
+      if (i === 2) return empty; // RPC kept failing — treat as not resolvable
+      await sleep(300);
+    }
   }
+  if (supplyCap === null) return empty;
 
-  // Asset variant exposes multiplier(); Stablecoin doesn't.
-  let variant: "asset" | "stablecoin" = "stablecoin";
-  try {
-    await client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" });
-    variant = "asset";
-  } catch {
-    /* stablecoin */
-  }
-
-  const [senderPol, recvPol, pT, pM, pB, symbol] = await Promise.all([
-    client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
-    client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>,
-    client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean>,
-    client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean>,
-    client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean>,
-    client.readContract({ address: addr, abi: B20_ABI, functionName: "symbol" }).catch(() => null) as Promise<string | null>,
-  ]);
+  // Sequential reads (parallel trips the public RPC rate limit).
+  await sleep(120);
+  const symbol = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "symbol" }) as Promise<string | null>,
+    null,
+  );
+  // Asset variant exposes multiplier(); Stablecoin reverts → stays "stablecoin".
+  await sleep(120);
+  const mult = await withRetry<bigint | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>,
+    null,
+  );
+  const variant: "asset" | "stablecoin" = mult !== null ? "asset" : "stablecoin";
+  await sleep(120);
+  const senderPol = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
+    0n,
+  );
+  await sleep(120);
+  const recvPol = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>,
+    0n,
+  );
+  await sleep(120);
+  const pT = await withRetry<boolean>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean>,
+    false,
+  );
+  await sleep(120);
+  const pM = await withRetry<boolean>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean>,
+    false,
+  );
+  await sleep(120);
+  const pB = await withRetry<boolean>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean>,
+    false,
+  );
 
   return {
     isB20: true,
