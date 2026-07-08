@@ -1,69 +1,60 @@
 /**
- * B20 Safety — "can this Base-native (B20) token freeze you or seize your funds?"
+ * B20 services — everything that reads Base's native B20 token precompiles.
  *
- * B20 (Base's native precompile token standard, live 2026-07-08) adds powers
- * ERC-20 never had: an issuer can gate transfers via a Policy Registry blocklist
- * and call burnBlocked() to BURN a blocked holder's balance — a protocol-level
- * seize. This reads those powers straight from the token precompile and returns
- * one hold/caution/avoid verdict.
+ * B20 (live 2026-07-08) adds powers ERC-20 never had: an issuer can gate
+ * transfers via a Policy Registry blocklist and call burnBlocked() to BURN a
+ * blocked holder's balance (protocol-level seize). These services read those
+ * powers straight from the precompiles.
  *
- * Key insight from the spec (IB20): burnBlocked only affects an address that is
- * NOT authorized under TRANSFER_SENDER_POLICY. So the seize/freeze surface is
- * exactly whether the token has a sender/receiver policy set — which we can read
- * via policyId(scope). No role enumeration needed.
+ * Public Base RPC rate-limits parallel eth_calls, so every read is sequential
+ * with a small delay + retry (a clean contract revert falls through immediately).
  */
 
 import "server-only";
-import { createPublicClient, http, getAddress, keccak256, toBytes } from "viem";
+import { createPublicClient, http, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
 import { base } from "viem/chains";
 
 // Fixed B20 precompile addresses (same on every network).
-export const B20_FACTORY = "0xB20f000000000000000000000000000000000000";
-export const B20_ACTIVATION_REGISTRY = "0x8453000000000000000000000000000000000001";
-export const B20_POLICY_REGISTRY = "0x8453000000000000000000000000000000000002";
+export const B20_FACTORY = "0xB20f000000000000000000000000000000000000" as const;
+export const B20_ACTIVATION_REGISTRY = "0x8453000000000000000000000000000000000001" as const;
+export const B20_POLICY_REGISTRY = "0x8453000000000000000000000000000000000002" as const;
 
 const client = createPublicClient({
   chain: base,
   transport: http(process.env.BASE_RPC_URL || undefined),
 });
 
-// Minimal IB20 view surface we need.
+// IB20 view surface.
 const B20_ABI = [
+  { type: "function", name: "name", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  { type: "function", name: "totalSupply", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "supplyCap", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "isPaused", stateMutability: "view", inputs: [{ type: "uint8" }], outputs: [{ type: "bool" }] },
   { type: "function", name: "policyId", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "uint64" }] },
   { type: "function", name: "multiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
 ] as const;
+
+// IPolicyRegistry: is an account authorized under a policy?
+const POLICY_ABI = [
+  { type: "function", name: "isAuthorized", stateMutability: "view", inputs: [{ type: "uint64" }, { type: "address" }], outputs: [{ type: "bool" }] },
+] as const;
+
+// B20Factory event, for the launch radar.
+const B20_CREATED = parseAbiItem(
+  "event B20Created(address indexed token, uint8 indexed variant, string name, string symbol, uint8 decimals, bytes variantEventParams)",
+);
 
 // Policy scope ids are keccak256 of the label (per B20Constants).
 const TRANSFER_SENDER_POLICY = keccak256(toBytes("TRANSFER_SENDER_POLICY"));
 const TRANSFER_RECEIVER_POLICY = keccak256(toBytes("TRANSFER_RECEIVER_POLICY"));
-// PausableFeature enum: TRANSFER=0, MINT=1, BURN=2.
+// PausableFeature enum: TRANSFER=0, MINT=1, BURN=2. B20Variant enum: Asset=0, Stablecoin=1.
 const MAX_SUPPLY_CAP = (1n << 128n) - 1n; // uint128.max == "no cap" sentinel
-
-export interface B20Signals {
-  isB20: boolean;
-  variant: "asset" | "stablecoin" | null;
-  symbol: string | null;
-  /** A transfer-sender policy is set → holders can be blocklisted AND burnBlocked (seized). */
-  canSeize: boolean;
-  /** A sender or receiver policy is set → holders can be frozen/blocklisted. */
-  transferGated: boolean;
-  paused: { transfer: boolean; mint: boolean; burn: boolean };
-  /** Asset variant → has a mutable rebase multiplier that can scale balances. */
-  rebase: boolean;
-  /** Supply cap set (not the uint128.max "no cap" sentinel). */
-  supplyCapped: boolean;
-}
+const WAD = 10n ** 18n;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Read one view fn with retry. Public Base RPC rate-limits parallel eth_calls, so
- * we read sequentially and retry transport failures; a clean contract revert
- * (e.g. Stablecoin has no multiplier) returns the fallback immediately.
- */
 async function withRetry<T>(call: () => Promise<T>, fallback: T): Promise<T> {
   for (let i = 0; i < 3; i++) {
     try {
@@ -78,21 +69,32 @@ async function withRetry<T>(call: () => Promise<T>, fallback: T): Promise<T> {
   return fallback;
 }
 
-async function readB20Signals(address: string): Promise<B20Signals> {
-  const addr = getAddress(address);
+const validAddr = (a?: string) => /^0x[0-9a-fA-F]{40}$/.test((a ?? "").trim());
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+// ---- Shared: read the core signals from a token precompile ----
+
+export interface B20Signals {
+  isB20: boolean;
+  variant: "asset" | "stablecoin" | null;
+  symbol: string | null;
+  supplyCap: bigint;
+  canSeize: boolean;
+  transferGated: boolean;
+  senderPolicyId: bigint;
+  paused: { transfer: boolean; mint: boolean; burn: boolean };
+  rebase: boolean;
+  supplyCapped: boolean;
+}
+
+async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const empty: B20Signals = {
-    isB20: false,
-    variant: null,
-    symbol: null,
-    canSeize: false,
-    transferGated: false,
-    paused: { transfer: false, mint: false, burn: false },
-    rebase: false,
-    supplyCapped: false,
+    isB20: false, variant: null, symbol: null, supplyCap: 0n, canSeize: false,
+    transferGated: false, senderPolicyId: 0n, paused: { transfer: false, mint: false, burn: false },
+    rebase: false, supplyCapped: false,
   };
 
   // supplyCap() exists on every B20 and reverts on a plain ERC-20 → B20 probe.
-  // Retry transport errors, but a revert means "not a B20".
   let supplyCap: bigint | null = null;
   for (let i = 0; i < 3; i++) {
     try {
@@ -101,117 +103,231 @@ async function readB20Signals(address: string): Promise<B20Signals> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/revert/i.test(msg)) return empty; // not a B20 token
-      if (i === 2) return empty; // RPC kept failing — treat as not resolvable
+      if (i === 2) return empty;
       await sleep(300);
     }
   }
   if (supplyCap === null) return empty;
 
-  // Sequential reads (parallel trips the public RPC rate limit).
   await sleep(120);
   const symbol = await withRetry<string | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "symbol" }) as Promise<string | null>,
-    null,
-  );
-  // Asset variant exposes multiplier(); Stablecoin reverts → stays "stablecoin".
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "symbol" }) as Promise<string | null>, null);
   await sleep(120);
   const mult = await withRetry<bigint | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>,
-    null,
-  );
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>, null);
   const variant: "asset" | "stablecoin" = mult !== null ? "asset" : "stablecoin";
   await sleep(120);
   const senderPol = await withRetry<bigint>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
-    0n,
-  );
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>, 0n);
   await sleep(120);
   const recvPol = await withRetry<bigint>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>,
-    0n,
-  );
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>, 0n);
   await sleep(120);
-  const pT = await withRetry<boolean>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean>,
-    false,
-  );
+  const pT = await withRetry<boolean>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean>, false);
   await sleep(120);
-  const pM = await withRetry<boolean>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean>,
-    false,
-  );
+  const pM = await withRetry<boolean>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean>, false);
   await sleep(120);
-  const pB = await withRetry<boolean>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean>,
-    false,
-  );
+  const pB = await withRetry<boolean>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean>, false);
 
   return {
-    isB20: true,
-    variant,
-    symbol,
+    isB20: true, variant, symbol, supplyCap,
     canSeize: senderPol > 0n,
     transferGated: senderPol > 0n || recvPol > 0n,
+    senderPolicyId: senderPol,
     paused: { transfer: pT, mint: pM, burn: pB },
     rebase: variant === "asset",
     supplyCapped: supplyCap !== MAX_SUPPLY_CAP,
   };
 }
 
+const notB20 = (address: string) => ({
+  address, isB20: false,
+  note: "Not a B20 (Base-native) token — use token-risk / contract-danger for standard ERC-20 analysis.",
+  checkedAt: new Date().toISOString(),
+});
+
+// ---- 1. B20 Token Safety — freeze/seize verdict ----
+
 export async function b20Safety(params: Record<string, string>) {
   const address = (params.address || "").trim();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… token contract address");
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… token contract address");
+  const s = await readB20Signals(getAddress(address));
+  if (!s.isB20) return notB20(address);
 
-  const s = await readB20Signals(address);
-
-  if (!s.isB20) {
-    return {
-      address,
-      isB20: false,
-      note: "Not a B20 (Base-native) token — use token-risk / contract-danger for standard ERC-20 analysis.",
-      checkedAt: new Date().toISOString(),
-    };
-  }
-
-  // ---- Risk logic (only signals we can actually read) ----
   const flags: string[] = [];
   let risk = 0;
-  const add = (n: number, why: string) => {
-    risk += n;
-    flags.push(why);
-  };
-
+  const add = (n: number, why: string) => { risk += n; flags.push(why); };
   if (s.paused.transfer) add(35, "Transfers are CURRENTLY paused — you can't move this token right now.");
   if (s.canSeize) add(35, "Sender blocklist policy is set — the issuer can block you and burnBlocked() (SEIZE) your balance.");
   if (s.transferGated) add(25, "Transfers are policy-gated — your address can be frozen/blocklisted.");
   if (s.rebase) add(15, "Asset variant with a mutable rebase multiplier — your balance can be scaled up/down.");
   if (!s.supplyCapped) add(10, "No supply cap — mintable without ceiling (dilution risk).");
-
   risk = Math.min(100, risk);
   const verdict = risk >= 60 ? "avoid" : risk >= 30 ? "caution" : "hold";
 
   return {
-    address,
-    isB20: true,
-    variant: s.variant,
-    symbol: s.symbol,
-    riskScore: risk, // 0-100, higher = more issuer control over your funds
-    verdict, // hold | caution | avoid
-    powers: {
-      seizable: s.canSeize,
-      freezable: s.transferGated,
-      pausedNow: s.paused.transfer,
-      rebase: s.rebase,
-      uncappedMint: !s.supplyCapped,
-    },
+    address, isB20: true, variant: s.variant, symbol: s.symbol, riskScore: risk, verdict,
+    powers: { seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
     flags,
     recommendation:
-      verdict === "avoid"
-        ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
-        : verdict === "caution"
-          ? "Usable but the issuer retains control (policy/rebase/uncapped). Size accordingly and re-check before large positions."
+      verdict === "avoid" ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
+        : verdict === "caution" ? "Usable but the issuer retains control (policy/rebase/uncapped). Size accordingly."
           : "No high-control powers detected — behaves close to a plain token.",
-    note: "B20 is Base's native precompile token standard. Unlike ERC-20, issuers can freeze (Policy Registry) and seize (burnBlocked) at the protocol level — this reads exactly those powers. Not financial advice.",
+    note: "B20 is Base's native token standard. Unlike ERC-20, issuers can freeze (Policy Registry) and seize (burnBlocked) at the protocol level — this reads exactly those powers. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 2. B20 Token Info — full profile (data, not verdict) ----
+
+export async function b20Info(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… token contract address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  await sleep(120);
+  const name = await withRetry<string | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>, null);
+  await sleep(120);
+  const decimals = await withRetry<number | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "decimals" }) as Promise<number | null>, null);
+  await sleep(120);
+  const totalSupply = await withRetry<bigint>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>, 0n);
+
+  return {
+    address, isB20: true, name, symbol: s.symbol, variant: s.variant, decimals,
+    totalSupply: totalSupply.toString(),
+    supplyCapped: s.supplyCapped,
+    supplyCap: s.supplyCapped ? s.supplyCap.toString() : "uncapped",
+    policies: { senderPolicyId: s.senderPolicyId.toString(), transferGated: s.transferGated },
+    paused: s.paused,
+    rebase: s.rebase,
+    note: "B20 (Base-native) token profile read from the precompile. For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 3. B20 Freeze Check — is a specific wallet blocked/seizable on this token? ----
+
+export async function b20FreezeCheck(params: Record<string, string>) {
+  const token = (params.token || params.address || "").trim();
+  const wallet = (params.wallet || "").trim();
+  if (!validAddr(token)) throw new Error("Provide a valid 0x… B20 token address (token=)");
+  if (!validAddr(wallet)) throw new Error("Provide the wallet to check (wallet=)");
+  const tokenAddr = getAddress(token);
+
+  const senderPol = await withRetry<bigint | null>(
+    () => client.readContract({ address: tokenAddr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint | null>, null);
+  if (senderPol === null) return notB20(token);
+
+  if (senderPol === 0n) {
+    return {
+      token, wallet, isB20: true, gated: false, authorized: true, verdict: "clear",
+      note: "This B20 token has no sender policy — no blocklist/allowlist applies, so your address can't be frozen or burnBlocked-seized on the send side.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  await sleep(120);
+  const authorized = await withRetry<boolean>(
+    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [senderPol, getAddress(wallet)] }) as Promise<boolean>, true);
+
+  return {
+    token, wallet, isB20: true, gated: true, senderPolicyId: senderPol.toString(), authorized,
+    verdict: authorized ? "clear" : "BLOCKED",
+    note: authorized
+      ? "Your wallet is currently authorized to transfer under this token's sender policy. (Issuer can change the policy at any time — re-check before large positions.)"
+      : "⚠️ Your wallet is NOT authorized under this token's sender policy — you cannot transfer, and the issuer can burnBlocked() (SEIZE) your balance. Exit if you can.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 4. B20 Rebase Tracker — Asset variant multiplier ----
+
+export async function b20Rebase(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+
+  const mult = await withRetry<bigint | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>, null);
+
+  if (mult === null) {
+    // Either not a B20, or a Stablecoin (no multiplier).
+    const s = await readB20Signals(addr);
+    if (!s.isB20) return notB20(address);
+    return {
+      address, isB20: true, variant: "stablecoin", rebase: false,
+      note: "Stablecoin variant — no rebase multiplier. Balances are 1:1, no scaling risk.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const ratio = Number((mult * 10000n) / WAD) / 10000; // multiplier relative to 1.0
+  return {
+    address, isB20: true, variant: "asset", rebase: true,
+    multiplier: mult.toString(), ratioToBase: ratio,
+    note: ratio === 1
+      ? "Asset variant, multiplier at baseline (1.0) — no active rebase right now, but the issuer can change it (your balance can be scaled up/down)."
+      : `Asset variant with an active rebase multiplier (${ratio}× baseline) — your on-chain balance is scaled by this factor and the issuer can change it.`,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 5. B20 Batch Safety — up to 5 tokens at once ----
+
+export async function b20Batch(params: Record<string, string>) {
+  const raw = (params.addresses || params.tokens || "").trim();
+  const list = raw.split(/[,\s]+/).filter(validAddr).slice(0, 5);
+  if (list.length === 0) throw new Error("Provide up to 5 comma-separated B20 token addresses (addresses=)");
+
+  const results = [];
+  for (const a of list) {
+    const r = await b20Safety({ address: a });
+    results.push(
+      r.isB20
+        ? { address: a, isB20: true, symbol: (r as { symbol?: string }).symbol ?? null, verdict: (r as { verdict?: string }).verdict, riskScore: (r as { riskScore?: number }).riskScore }
+        : { address: a, isB20: false },
+    );
+    await sleep(150);
+  }
+  const worst = results.reduce((m, r) => Math.max(m, ("riskScore" in r ? r.riskScore ?? 0 : 0)), 0);
+  return {
+    count: results.length, worstRiskScore: worst, results,
+    note: "Batch B20 safety scan (max 5). Each is scored for freeze/seize/pause/rebase/uncapped-mint. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 6. B20 Launch Radar — freshly created B20 tokens ----
+
+export async function b20LaunchRadar(params: Record<string, string>) {
+  const limit = Math.min(Math.max(parseInt(params.limit || "12", 10) || 12, 1), 25);
+  const latest = await client.getBlockNumber();
+  const span = 8000n; // ~4-5h on Base
+  const fromBlock = latest > span ? latest - span : 0n;
+
+  const logs = await client.getLogs({ address: B20_FACTORY, event: B20_CREATED, fromBlock, toBlock: "latest" });
+  const recent = logs.slice(-limit).reverse();
+
+  const tokens = recent.map((l) => {
+    const a = l.args as { token?: string; variant?: number; name?: string; symbol?: string; decimals?: number };
+    return {
+      token: a.token ?? null,
+      variant: a.variant === 1 ? "stablecoin" : "asset",
+      name: a.name ?? null,
+      symbol: a.symbol ?? null,
+      decimals: a.decimals ?? null,
+      block: Number(l.blockNumber),
+    };
+  });
+
+  return {
+    window: `blocks ${fromBlock}–${latest} (~last few hours)`,
+    found: logs.length,
+    showing: tokens.length,
+    tokens,
+    note: `Freshly minted B20 tokens on Base, newest first. Run b20-safety on any address before touching it — new ≠ safe. Showing up to ${limit}.`,
     checkedAt: new Date().toISOString(),
   };
 }

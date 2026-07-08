@@ -43,7 +43,7 @@ import { volumeCheck } from "./volume-check";
 import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
-import { b20Safety } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar } from "./b20-safety";
 
 export interface ServiceParam {
   name: string;
@@ -120,6 +120,69 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Safety,
+  },
+  {
+    id: "b20-launch-radar",
+    name: "B20 Launch Radar",
+    tagline: "Freshly minted B20 tokens on Base",
+    description:
+      "🆕 Lists the newest B20 tokens created on Base (from the B20Factory precompile) — variant, symbol, decimals, block. B20 is Base's native token standard and dozens launch hourly. A discovery feed for agents hunting new B20 launches early. Run b20-safety on any address before touching it — new ≠ safe.",
+    price: "$0.01",
+    icon: "📡",
+    category: "Onchain",
+    params: [{ name: "limit", label: "How many", placeholder: "12" }],
+    handler: b20LaunchRadar,
+  },
+  {
+    id: "b20-info",
+    name: "B20 Token Info",
+    tagline: "Full profile of a Base-native B20 token",
+    description:
+      "Complete B20 token profile straight from the precompile: variant (Asset/Stablecoin), name, symbol, decimals, total supply, supply cap, active transfer policies, pause states, and rebase. The data companion to b20-safety.",
+    price: "$0.02",
+    icon: "🪪",
+    category: "Onchain",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Info,
+  },
+  {
+    id: "b20-freeze-check",
+    name: "B20 Freeze Check",
+    tagline: "Is YOUR wallet blocked or seizable on this B20 token?",
+    description:
+      "Checks whether a specific wallet is authorized under a B20 token's transfer-sender policy. If it isn't, that wallet can't transfer and can be burnBlocked() (SEIZED) by the issuer. The personal companion to b20-safety — 'can this token freeze MY funds?'",
+    price: "$0.03",
+    icon: "🧊",
+    category: "Onchain",
+    params: [
+      { name: "token", label: "B20 token address", placeholder: "0x… B20 token", required: true },
+      { name: "wallet", label: "Your wallet address", placeholder: "0x… wallet", required: true },
+    ],
+    handler: b20FreezeCheck,
+  },
+  {
+    id: "b20-rebase",
+    name: "B20 Rebase Tracker",
+    tagline: "Asset-variant rebase multiplier & scaling risk",
+    description:
+      "Reads a B20 Asset token's rebase multiplier — the factor that scales every holder's balance. Flags whether balances are being scaled (invisible dilution/inflation the issuer controls). Stablecoin variants return no-rebase.",
+    price: "$0.02",
+    icon: "🔄",
+    category: "Onchain",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Rebase,
+  },
+  {
+    id: "b20-batch",
+    name: "B20 Batch Safety",
+    tagline: "Freeze/seize scan for up to 5 B20 tokens",
+    description:
+      "Runs the B20 safety verdict across up to 5 B20 tokens in one call — each scored for freeze/seize/pause/rebase/uncapped-mint, with the worst score surfaced. For portfolio holders and agents screening several B20s at once.",
+    price: "$0.06",
+    icon: "🗂️",
+    category: "Onchain",
+    params: [{ name: "addresses", label: "B20 addresses (comma-separated)", placeholder: "0x…, 0x…", required: true }],
+    handler: b20Batch,
   },
   {
     id: "token-price",
