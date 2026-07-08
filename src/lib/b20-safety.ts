@@ -1,57 +1,111 @@
 /**
  * B20 Safety — "can this Base-native (B20) token freeze you or seize your funds?"
  *
- * B20 (Base's native precompile token standard, live 2026-07-08 18:00 UTC) adds
- * powers ERC-20 never had: an issuer can gate transfers via the Policy Registry
- * (freeze/blocklist) and, worst of all, call burnBlocked() to BURN a
- * policy-denied holder's balance outright — a protocol-level seize. This service
- * reads those powers and returns one hold/caution/avoid verdict for a B20 token.
+ * B20 (Base's native precompile token standard, live 2026-07-08) adds powers
+ * ERC-20 never had: an issuer can gate transfers via a Policy Registry blocklist
+ * and call burnBlocked() to BURN a blocked holder's balance — a protocol-level
+ * seize. This reads those powers straight from the token precompile and returns
+ * one hold/caution/avoid verdict.
  *
- * The RISK LOGIC below is final and ABI-independent. Only readB20Signals() —
- * the precompile reads — is pending the confirmed precompile ABIs at activation.
+ * Key insight from the spec (IB20): burnBlocked only affects an address that is
+ * NOT authorized under TRANSFER_SENDER_POLICY. So the seize/freeze surface is
+ * exactly whether the token has a sender/receiver policy set — which we can read
+ * via policyId(scope). No role enumeration needed.
  */
 
 import "server-only";
+import { createPublicClient, http, getAddress, keccak256, toBytes } from "viem";
+import { base } from "viem/chains";
 
 // Fixed B20 precompile addresses (same on every network).
 export const B20_FACTORY = "0xB20f000000000000000000000000000000000000";
 export const B20_ACTIVATION_REGISTRY = "0x8453000000000000000000000000000000000001";
 export const B20_POLICY_REGISTRY = "0x8453000000000000000000000000000000000002";
 
+const client = createPublicClient({
+  chain: base,
+  transport: http(process.env.BASE_RPC_URL || undefined),
+});
+
+// Minimal IB20 view surface we need.
+const B20_ABI = [
+  { type: "function", name: "supplyCap", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "isPaused", stateMutability: "view", inputs: [{ type: "uint8" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "policyId", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "multiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+] as const;
+
+// Policy scope ids are keccak256 of the label (per B20Constants).
+const TRANSFER_SENDER_POLICY = keccak256(toBytes("TRANSFER_SENDER_POLICY"));
+const TRANSFER_RECEIVER_POLICY = keccak256(toBytes("TRANSFER_RECEIVER_POLICY"));
+// PausableFeature enum: TRANSFER=0, MINT=1, BURN=2.
+const MAX_SUPPLY_CAP = (1n << 128n) - 1n; // uint128.max == "no cap" sentinel
+
 export interface B20Signals {
   isB20: boolean;
   variant: "asset" | "stablecoin" | null;
-  active: boolean;
-  /** BURN_BLOCKED_ROLE is held → burnBlocked() can burn a denied holder's balance (seize). */
+  symbol: string | null;
+  /** A transfer-sender policy is set → holders can be blocklisted AND burnBlocked (seized). */
   canSeize: boolean;
-  /** A transfer sender/receiver policy is set → holders can be frozen/blocklisted. */
+  /** A sender or receiver policy is set → holders can be frozen/blocklisted. */
   transferGated: boolean;
-  /** initialAdmin == 0 and no admin can be re-added → immutable / governance-free. */
-  adminless: boolean;
-  admin: string | null;
-  /** Number of addresses that can mint (dilution surface). */
-  mintRoleHolders: number;
-  /** PAUSE_ROLE exists → transfers can be halted. */
-  pausable: boolean;
   paused: { transfer: boolean; mint: boolean; burn: boolean };
-  /** Asset variant with a mutable rebase multiplier → balances can be scaled. */
+  /** Asset variant → has a mutable rebase multiplier that can scale balances. */
   rebase: boolean;
-  /** Supply cap set → mint can't exceed it. */
+  /** Supply cap set (not the uint128.max "no cap" sentinel). */
   supplyCapped: boolean;
 }
 
-/**
- * TODO (fill at activation, 2026-07-08 18:00 UTC, once precompile ABIs confirmed):
- *   - Activation Registry (0x8453…0001): is this address an active B20? which variant?
- *     (variant is also recoverable from address byte 10 — no RPC needed for a hint).
- *   - The B20 token: hasRole(BURN_BLOCKED_ROLE) → canSeize; hasRole(MINT_ROLE) count;
- *     hasRole(PAUSE_ROLE) → pausable; paused states for TRANSFER/MINT/BURN; admin;
- *     supply cap; (Asset) rebase multiplier / whether it's mutable.
- *   - Policy Registry (0x8453…0002): TRANSFER_SENDER/RECEIVER_POLICY set → transferGated.
- * Implement via viem eth_call against the precompiles with the confirmed ABIs.
- */
-async function readB20Signals(_address: string): Promise<B20Signals> {
-  throw new Error("B20 reads pending activation (precompiles go live 2026-07-08 18:00 UTC)");
+async function readB20Signals(address: string): Promise<B20Signals> {
+  const addr = getAddress(address);
+  const empty: B20Signals = {
+    isB20: false,
+    variant: null,
+    symbol: null,
+    canSeize: false,
+    transferGated: false,
+    paused: { transfer: false, mint: false, burn: false },
+    rebase: false,
+    supplyCapped: false,
+  };
+
+  // supplyCap() exists on every B20 and reverts on a plain ERC-20 → B20 probe.
+  let supplyCap: bigint;
+  try {
+    supplyCap = (await client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" })) as bigint;
+  } catch {
+    return empty; // not a B20 token
+  }
+
+  // Asset variant exposes multiplier(); Stablecoin doesn't.
+  let variant: "asset" | "stablecoin" = "stablecoin";
+  try {
+    await client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" });
+    variant = "asset";
+  } catch {
+    /* stablecoin */
+  }
+
+  const [senderPol, recvPol, pT, pM, pB, symbol] = await Promise.all([
+    client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
+    client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>,
+    client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean>,
+    client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean>,
+    client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean>,
+    client.readContract({ address: addr, abi: B20_ABI, functionName: "symbol" }).catch(() => null) as Promise<string | null>,
+  ]);
+
+  return {
+    isB20: true,
+    variant,
+    symbol,
+    canSeize: senderPol > 0n,
+    transferGated: senderPol > 0n || recvPol > 0n,
+    paused: { transfer: pT, mint: pM, burn: pB },
+    rebase: variant === "asset",
+    supplyCapped: supplyCap !== MAX_SUPPLY_CAP,
+  };
 }
 
 export async function b20Safety(params: Record<string, string>) {
@@ -69,7 +123,7 @@ export async function b20Safety(params: Record<string, string>) {
     };
   }
 
-  // ---- Risk logic (final, ABI-independent) ----
+  // ---- Risk logic (only signals we can actually read) ----
   const flags: string[] = [];
   let risk = 0;
   const add = (n: number, why: string) => {
@@ -78,12 +132,10 @@ export async function b20Safety(params: Record<string, string>) {
   };
 
   if (s.paused.transfer) add(35, "Transfers are CURRENTLY paused — you can't move this token right now.");
-  if (s.canSeize) add(35, "Issuer can burnBlocked() — a denied holder's balance can be SEIZED (burned) at will.");
+  if (s.canSeize) add(35, "Sender blocklist policy is set — the issuer can block you and burnBlocked() (SEIZE) your balance.");
   if (s.transferGated) add(25, "Transfers are policy-gated — your address can be frozen/blocklisted.");
-  if (s.pausable && !s.paused.transfer) add(12, "Transfers are pausable — the issuer can freeze trading later.");
-  if (s.rebase) add(15, "Asset with a mutable rebase multiplier — your balance can be scaled up/down.");
-  if (!s.supplyCapped && s.mintRoleHolders > 0) add(10, "Uncapped supply with active mint role — dilution risk.");
-  if (!s.adminless && s.admin) add(8, "Has an admin — roles/policies can change under you.");
+  if (s.rebase) add(15, "Asset variant with a mutable rebase multiplier — your balance can be scaled up/down.");
+  if (!s.supplyCapped) add(10, "No supply cap — mintable without ceiling (dilution risk).");
 
   risk = Math.min(100, risk);
   const verdict = risk >= 60 ? "avoid" : risk >= 30 ? "caution" : "hold";
@@ -92,25 +144,24 @@ export async function b20Safety(params: Record<string, string>) {
     address,
     isB20: true,
     variant: s.variant,
-    active: s.active,
+    symbol: s.symbol,
     riskScore: risk, // 0-100, higher = more issuer control over your funds
     verdict, // hold | caution | avoid
     powers: {
       seizable: s.canSeize,
-      freezable: s.transferGated || s.pausable,
+      freezable: s.transferGated,
       pausedNow: s.paused.transfer,
       rebase: s.rebase,
-      mintable: s.mintRoleHolders > 0 && !s.supplyCapped,
-      adminless: s.adminless,
+      uncappedMint: !s.supplyCapped,
     },
     flags,
     recommendation:
       verdict === "avoid"
         ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
         : verdict === "caution"
-          ? "Usable but the issuer retains control (pause/policy/rebase). Size accordingly and re-check before large positions."
+          ? "Usable but the issuer retains control (policy/rebase/uncapped). Size accordingly and re-check before large positions."
           : "No high-control powers detected — behaves close to a plain token.",
-    note: "B20 is Base's native precompile token standard. Unlike ERC-20, issuers can freeze (Policy Registry) and seize (burnBlocked) at the protocol level — this checks exactly that. Not financial advice.",
+    note: "B20 is Base's native precompile token standard. Unlike ERC-20, issuers can freeze (Policy Registry) and seize (burnBlocked) at the protocol level — this reads exactly those powers. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

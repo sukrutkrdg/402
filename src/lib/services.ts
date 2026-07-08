@@ -114,7 +114,7 @@ export const SERVICES: ServiceDef[] = [
     name: "B20 Token Safety",
     tagline: "Can this Base-native (B20) token freeze or seize your funds?",
     description:
-      "🔜 Activates at the B20 launch (2026-07-08 18:00 UTC). B20 is Base's native precompile token standard — and unlike ERC-20, a B20 issuer can freeze holders (Policy Registry) and even SEIZE your balance (burnBlocked) at the protocol level. This reads exactly those powers — seizable, freezable, pausable, rebase, mint — into one hold/caution/avoid verdict. The first B20-aware safety check on Base.",
+      "🆕 Live — B20 launched 2026-07-08. B20 is Base's native precompile token standard, and unlike ERC-20 a B20 issuer can freeze holders (Policy Registry) and even SEIZE your balance (burnBlocked) at the protocol level. This reads exactly those powers — seizable, freezable, paused, rebase, uncapped-mint — into one hold/caution/avoid verdict. The first B20-aware safety check on Base.",
     price: "$0.04",
     icon: "🆕",
     category: "Onchain",
