@@ -370,6 +370,25 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
 
   return (
     <div className="flex flex-col gap-10">
+      {/* B20 launch banner */}
+      <a
+        href="/app"
+        className="flex flex-col gap-2 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 to-base-blue/10 p-4 transition hover:border-amber-400/60 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-semibold text-amber-200">
+            🆕 Tonight 21:00 (18:00 UTC) — B20 goes live on Base
+          </span>
+          <span className="max-w-2xl text-xs leading-relaxed text-gray-300">
+            Base&apos;s native token standard lets issuers{" "}
+            <strong className="text-amber-200">freeze</strong> and even{" "}
+            <strong className="text-amber-200">seize</strong> your balance at the protocol level —
+            risks no ERC-20 tool checks. We built the first B20 safety check.
+          </span>
+        </div>
+        <span className="btn-primary shrink-0 !py-2 text-sm">Check B20 safety →</span>
+      </a>
+
       {/* Hero */}
       <section className="flex flex-col gap-5">
         <div className="flex flex-col gap-4">
