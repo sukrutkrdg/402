@@ -111,8 +111,13 @@ export async function POST(req: NextRequest) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // Surface payment/verification headers so facilitator rejections are diagnosable.
+    const hdrs: Record<string, string> = {};
+    res.headers.forEach((v, k) => {
+      if (/payment|x402|error/i.test(k)) hdrs[k] = v.slice(0, 300);
+    });
     return NextResponse.json(
-      { error: `Upstream returned ${res.status}`, detail: text.slice(0, 500) },
+      { error: `Upstream returned ${res.status}`, detail: text.slice(0, 500), headers: hdrs },
       { status: 502 },
     );
   }
