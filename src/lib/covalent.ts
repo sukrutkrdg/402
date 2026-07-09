@@ -8,7 +8,8 @@
  */
 
 import "server-only";
-import { getAddress, formatUnits, formatEther } from "viem";
+import { getAddress, formatUnits, formatEther, createPublicClient, http } from "viem";
+import { base } from "viem/chains";
 import { kvGet, kvSet } from "./kv";
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { getConfig } from "./config";
@@ -165,14 +166,11 @@ interface CovTx {
  * null and the caller falls back to Covalent. receipt status isn't in
  * base.transactions, so success is null on this path.
  */
-async function cdpActivity(
-  address: string,
-): Promise<Array<{ hash: string | null; time: string | null; from: string | null; to: string | null; valueEth: string; success: null }> | null> {
+/** Run a query on the CDP SQL API. Returns rows, or null on missing keys/any error. */
+async function cdpSql<T>(sql: string): Promise<T[] | null> {
   const cfg = getConfig();
   if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return null;
   try {
-    const a = address.toLowerCase();
-    const sql = `SELECT transaction_hash, timestamp, from_address, to_address, value FROM base.transactions WHERE (from_address = '${a}' OR to_address = '${a}') AND timestamp > now() - INTERVAL 30 DAY ORDER BY timestamp DESC LIMIT 15`;
     const jwt = await generateJwt({
       apiKeyId: cfg.cdpApiKeyId,
       apiKeySecret: cfg.cdpApiKeySecret,
@@ -187,9 +185,22 @@ async function cdpActivity(
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return null;
-    const j = (await r.json()) as { result?: Array<{ transaction_hash?: string; timestamp?: string; from_address?: string; to_address?: string; value?: string }> };
-    const rows = j.result ?? [];
-    if (rows.length === 0) return null; // quiet wallet → let Covalent serve full history
+    const j = (await r.json()) as { result?: T[] };
+    return j.result ?? [];
+  } catch {
+    return null;
+  }
+}
+
+async function cdpActivity(
+  address: string,
+): Promise<Array<{ hash: string | null; time: string | null; from: string | null; to: string | null; valueEth: string; success: null }> | null> {
+  try {
+    const a = address.toLowerCase();
+    const rows = await cdpSql<{ transaction_hash?: string; timestamp?: string; from_address?: string; to_address?: string; value?: string }>(
+      `SELECT transaction_hash, timestamp, from_address, to_address, value FROM base.transactions WHERE (from_address = '${a}' OR to_address = '${a}') AND timestamp > now() - INTERVAL 30 DAY ORDER BY timestamp DESC LIMIT 15`,
+    );
+    if (!rows || rows.length === 0) return null; // quiet wallet → let Covalent serve full history
     return rows.map((t) => {
       let valueEth = "0";
       try {
@@ -365,6 +376,62 @@ interface CovTransfer {
   contract_ticker_symbol?: string;
 }
 
+/**
+ * ERC-20 transfers for wallet×token via CDP SQL (base.events, decoded Transfer
+ * params) — 30-day window for the same read-limit reason as cdpActivity.
+ * decimals/symbol come from our own RPC; USD is null on this path (no price
+ * data in events). null → caller falls back to Covalent full history.
+ */
+async function cdpTransfers(wallet: string, token: string) {
+  const w = wallet.toLowerCase();
+  const rows = await cdpSql<{ block_timestamp?: string; transaction_hash?: string; parameters?: { from?: string; to?: string; value?: string } }>(
+    `SELECT block_timestamp, transaction_hash, parameters FROM base.events WHERE address = '${token.toLowerCase()}' AND event_signature = 'Transfer(address,address,uint256)' AND (parameters['from'] = '${w}' OR parameters['to'] = '${w}') AND block_timestamp > now() - INTERVAL 30 DAY ORDER BY block_timestamp DESC LIMIT 20`,
+  );
+  if (!rows || rows.length === 0) return null;
+
+  // decimals + symbol from our own RPC (one multicall, no paid upstream).
+  let decimals = 18;
+  let symbol: string | null = null;
+  try {
+    const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 6000 }) });
+    const erc20 = [
+      { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+      { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+    ] as const;
+    const [d, s] = await c.multicall({
+      contracts: [
+        { address: token as `0x${string}`, abi: erc20, functionName: "decimals" },
+        { address: token as `0x${string}`, abi: erc20, functionName: "symbol" },
+      ],
+      allowFailure: true,
+    });
+    if (d.status === "success") decimals = d.result as number;
+    if (s.status === "success") symbol = s.result as string;
+  } catch {
+    /* keep defaults */
+  }
+
+  const transfers = rows.map((r) => {
+    const p = r.parameters ?? {};
+    let amount = "0";
+    try {
+      amount = p.value ? formatUnits(BigInt(p.value), decimals) : "0";
+    } catch {
+      amount = "0";
+    }
+    return {
+      type: (p.to ?? "").toLowerCase() === w ? "IN" : "OUT",
+      amount,
+      usd: null,
+      from: p.from ?? null,
+      to: p.to ?? null,
+      txHash: r.transaction_hash ?? null,
+      time: r.block_timestamp ?? null,
+    };
+  });
+  return { transfers, symbol };
+}
+
 export async function tokenTransfers(params: Record<string, string>) {
   const wallet = reqAddr(params.address || "");
   const tokenRaw = (params.token || params.contract || "").trim();
@@ -372,6 +439,23 @@ export async function tokenTransfers(params: Record<string, string>) {
     throw new Error("Provide 'token' — a 0x… token contract address");
   }
   const token = getAddress(tokenRaw);
+
+  // Primary: CDP SQL (no Covalent credits when it serves).
+  const viaCdp = await cdpTransfers(wallet, token);
+  if (viaCdp) {
+    return {
+      wallet,
+      token,
+      symbol: viaCdp.symbol,
+      count: viaCdp.transfers.length,
+      transfers: viaCdp.transfers,
+      source: "cdp",
+      window: "last 30 days",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  // Fallback: Covalent full history (also covers 30+ day quiet pairs).
   const data = await cov<{ items?: Array<{ transfers?: CovTransfer[] }> }>(
     `/${CHAIN}/address/${wallet}/transfers_v2/?contract-address=${token}&page-size=15`,
     `xfer:${wallet.toLowerCase()}:${token.toLowerCase()}`,
@@ -401,6 +485,7 @@ export async function tokenTransfers(params: Record<string, string>) {
     symbol: all[0]?.contract_ticker_symbol ?? null,
     count: transfers.length,
     transfers,
+    source: "covalent",
     checkedAt: new Date().toISOString(),
   };
 }
