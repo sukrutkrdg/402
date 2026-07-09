@@ -19,6 +19,9 @@ import { rateLimitKv, clientIp } from "@/lib/rate-limit";
 import { safeEqual } from "@/lib/secure";
 
 export const dynamic = "force-dynamic";
+// The paying flow (402 → sign → settle → handler) exceeds the default
+// serverless duration; without this the function 502s mid-payment.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const cfg = getConfig();
