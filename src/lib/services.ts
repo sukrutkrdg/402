@@ -232,24 +232,26 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
     handler: txDecode,
   },
-  {
-    id: "simulate-tx",
-    name: "Transaction Simulation",
-    tagline: "What an unsigned tx will do — before you sign it",
-    description:
-      "Simulate an UNSIGNED transaction against current Base state: what tokens leave/arrive for the sender, any approvals it grants (flags unlimited allowance & setApprovalForAll — the classic drain vector), whether it would revert, and gas. The pre-execution safety check every agent needs before signing.",
-    price: "$0.03",
-    icon: "🧪",
-    category: "Onchain",
-    params: [
-      { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
-      { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
-      { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
-      { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
-    ],
-    handler: simulateTx,
-    noFreeTier: true,
-  },
+  // HIDDEN until the simulation backend is replaced (Alchemy plan lacks
+  // alchemy_simulateAssetChanges on Base — 'JS Tracer is not enabled').
+  //   {
+  //     id: "simulate-tx",
+  //     name: "Transaction Simulation",
+  //     tagline: "What an unsigned tx will do — before you sign it",
+  //     description:
+  //       "Simulate an UNSIGNED transaction against current Base state: what tokens leave/arrive for the sender, any approvals it grants (flags unlimited allowance & setApprovalForAll — the classic drain vector), whether it would revert, and gas. The pre-execution safety check every agent needs before signing.",
+  //     price: "$0.03",
+  //     icon: "🧪",
+  //     category: "Onchain",
+  //     params: [
+  //       { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
+  //       { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
+  //       { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
+  //       { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
+  //     ],
+  //     handler: simulateTx,
+  //     noFreeTier: true,
+  //   },
   {
     id: "exit-liquidity",
     name: "Exit Liquidity Check",
@@ -341,24 +343,26 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: deployerReputation,
   },
-  {
-    id: "pre-sign",
-    name: "Pre-Sign Preflight",
-    tagline: "Should your agent sign THIS transaction? One call, one verdict",
-    description:
-      "The go/no-go check for the instant before signing: a live simulation of the unsigned tx (what leaves, what approvals it grants, whether it reverts), a danger scan of the destination contract (owner abuse powers), and an OFAC screen of the destination — combined into a deterministic allow / caution / would_fail / block decision with reasons. The single highest-stakes moment for an autonomous agent, covered in one call.",
-    price: "$0.08",
-    icon: "✍️",
-    category: "Onchain",
-    params: [
-      { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
-      { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
-      { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
-      { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
-    ],
-    handler: preSignPreflight,
-    noFreeTier: true,
-  },
+  // HIDDEN until the simulation backend is replaced (Alchemy plan lacks
+  // alchemy_simulateAssetChanges on Base — 'JS Tracer is not enabled').
+  //   {
+  //     id: "pre-sign",
+  //     name: "Pre-Sign Preflight",
+  //     tagline: "Should your agent sign THIS transaction? One call, one verdict",
+  //     description:
+  //       "The go/no-go check for the instant before signing: a live simulation of the unsigned tx (what leaves, what approvals it grants, whether it reverts), a danger scan of the destination contract (owner abuse powers), and an OFAC screen of the destination — combined into a deterministic allow / caution / would_fail / block decision with reasons. The single highest-stakes moment for an autonomous agent, covered in one call.",
+  //     price: "$0.08",
+  //     icon: "✍️",
+  //     category: "Onchain",
+  //     params: [
+  //       { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
+  //       { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
+  //       { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
+  //       { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
+  //     ],
+  //     handler: preSignPreflight,
+  //     noFreeTier: true,
+  //   },
   {
     id: "swap-route",
     name: "Swap Route + Safety",
