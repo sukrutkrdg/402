@@ -16,6 +16,8 @@ import "server-only";
 import { tokenPools } from "./onchain-extra";
 import { impactPct } from "./liquidity";
 import { tokenRisk } from "./onchain";
+import { CdpClient } from "@coinbase/cdp-sdk";
+import { getConfig } from "./config";
 
 interface Pool {
   pairAddress?: string | null;
@@ -70,6 +72,48 @@ async function zeroxQuote(
   }
 }
 
+// Quote routing is taker-independent; a default holder is used unless the caller
+// passes `taker` (then balance/allowance issues reflect that wallet).
+const DEFAULT_TAKER = "0x973a31858f4d2125f48c880542da11a2796f12d6";
+
+/**
+ * Real CDP Trade API quote (Base) when CDP keys are set — actual routed output
+ * (toAmount / minToAmount), gas, and simulation issues for buying `tokenOut`
+ * with `amountUsd` of USDC. Returns null on missing keys or error so the service
+ * always works without CDP.
+ */
+async function cdpQuote(
+  tokenOut: string,
+  amountUsd: number,
+  taker?: string,
+): Promise<{ liquidityAvailable: boolean; toAmount?: string; minToAmount?: string; gas?: string | null; simulationIncomplete?: boolean } | null> {
+  const cfg = getConfig();
+  if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return null;
+  try {
+    const cdp = new CdpClient({ apiKeyId: cfg.cdpApiKeyId, apiKeySecret: cfg.cdpApiKeySecret });
+    const fromAmount = BigInt(Math.round(amountUsd * 1e6)); // USDC has 6 decimals
+    const takerAddr = (/^0x[0-9a-fA-F]{40}$/.test(taker ?? "") ? taker! : DEFAULT_TAKER) as `0x${string}`;
+    const p = await cdp.evm.getSwapPrice({
+      network: "base",
+      fromToken: USDC_BASE as `0x${string}`,
+      toToken: tokenOut as `0x${string}`,
+      fromAmount,
+      taker: takerAddr,
+      slippageBps: 100,
+    });
+    if (!p.liquidityAvailable) return { liquidityAvailable: false };
+    return {
+      liquidityAvailable: true,
+      toAmount: p.toAmount.toString(),
+      minToAmount: p.minToAmount.toString(),
+      gas: p.gas != null ? p.gas.toString() : null,
+      simulationIncomplete: p.issues?.simulationIncomplete ?? false,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function swapRoute(params: Record<string, string>) {
   const tokenOut = (params.tokenOut || params.address || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(tokenOut)) {
@@ -88,6 +132,7 @@ export async function swapRoute(params: Record<string, string>) {
   const cpImpact = impactPct(amountUsd, reserveUsd); // constant-product estimate
   // Prefer a real 0x quote's impact when ZEROX_API_KEY is set; else the estimate.
   const zerox = await zeroxQuote(tokenOut, amountUsd);
+  const cdp = await cdpQuote(tokenOut, amountUsd, params.taker);
   const estImpact = zerox?.impactPct ?? cpImpact;
   // Slippage tolerance = impact + a 1% buffer, clamped to a sane range.
   const suggestedSlippagePct = +Math.min(50, Math.max(0.5, estImpact + 1)).toFixed(2);
@@ -138,6 +183,12 @@ export async function swapRoute(params: Record<string, string>) {
     estPriceImpactPct: estImpact,
     impactSource: zerox?.impactPct != null ? "0x" : "estimate",
     zeroxRoute: zerox ? { buyAmount: zerox.buyAmount, sources: zerox.sources } : null,
+    cdpRoute:
+      cdp && cdp.liquidityAvailable
+        ? { toAmount: cdp.toAmount, minToAmount: cdp.minToAmount, gasEstimate: cdp.gas, simulationIncomplete: cdp.simulationIncomplete }
+        : cdp
+          ? { liquidityAvailable: false }
+          : null,
     suggestedSlippagePct,
     suggestedMinOutPct, // set your min-out to this % of the quoted amount
     safety, // honeypot / sell-tax gate on tokenOut (null if unavailable)
@@ -148,7 +199,7 @@ export async function swapRoute(params: Record<string, string>) {
         : highImpact
           ? `Price impact ~${estImpact}% at this size — split the order or reduce size to protect your fill.`
           : `Route via ${best.dexId ?? "the deepest pool"}; set min-out to ${suggestedMinOutPct}% of the quote.`,
-    note: "Impact is a constant-product (V2-style) estimate on pool liquidity; concentrated-liquidity pools differ. Set ZEROX_API_KEY for exact routing. Not financial advice.",
+    note: "cdpRoute gives exact routed output (toAmount/minToAmount, atomic units) via the CDP Trade API when CDP keys are set; price impact is a constant-product estimate (or 0x when ZEROX_API_KEY is set). Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
