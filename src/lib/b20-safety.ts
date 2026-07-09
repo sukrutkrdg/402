@@ -302,6 +302,7 @@ export async function b20Batch(params: Record<string, string>) {
 // ---- 6b. B20 Policy Watch — did this token BECOME seizable/freezable? ----
 
 import { cdpSql } from "./covalent";
+import { kvLRange, kvGet } from "./kv";
 
 /**
  * The rug-prevention angle unique to B20: a token can launch clean and later
@@ -395,6 +396,76 @@ export async function b20PolicyWatch(params: Record<string, string>) {
         ? "No active sender policy now, but this token's policies/pauses HAVE changed — the issuer uses these controls; re-check before large positions."
         : "No policy or pause changes on record and no active sender policy — no freeze/seize surface detected.",
     note: "B20-only rug vector: a token can launch clean and later attach a blocklist (PolicyUpdated) — becoming seizable. This combines live policy state with the onchain event timeline (CDP-indexed, 45-day window). Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 6c. B20 Guard — real-time seizure alerts (CDP webhook-fed) ----
+
+interface GuardRec {
+  token: string;
+  event: string;
+  time: string;
+  scopeTopic: string | null;
+  oldPolicyId: string | null;
+  newPolicyId: string | null;
+  txHash: string | null;
+}
+
+const parseRec = (s: string): GuardRec | null => {
+  try {
+    return JSON.parse(s) as GuardRec;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Real-time layer over b20-policy-watch: a network-wide CDP webhook delivers
+ * every B20 PolicyUpdated/Paused the moment it lands; this reads those records.
+ * With `address` → live guard status for that token. Without → the recent
+ * "turned seizable / policy changed" feed across all of Base.
+ */
+export async function b20Guard(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+
+  if (address) {
+    if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address (or omit for the network feed)");
+    const a = address.toLowerCase();
+    const [rows, latest] = [await kvLRange(`b20guard:token:${a}`, 0, 19), await kvGet(`b20guard:latest:${a}`)];
+    const events = rows.map(parseRec).filter((r): r is GuardRec => !!r);
+
+    // Live confirmation (webhook feed only covers time since the guard went up).
+    const senderPol = await withRetry<bigint>(
+      () => client.readContract({ address: getAddress(address), abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
+      0n,
+    );
+
+    const last = latest ? parseRec(latest) : null;
+    return {
+      address,
+      seizableNow: senderPol > 0n,
+      lastAlert: last,
+      recentAlerts: events,
+      alertCount: events.length,
+      verdict: senderPol > 0n ? "seizable" : events.length > 0 ? "watch" : "clear",
+      note: "Real-time B20 guard: policy/pause changes are captured the moment they land (CDP webhook). Alerts cover the period since the guard went live; use b20-policy-watch for the full onchain timeline. Not financial advice.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  // Feed mode: recent policy/pause changes across all B20 tokens.
+  const rows = await kvLRange("b20guard:events", 0, 24);
+  const events = rows.map(parseRec).filter((r): r is GuardRec => !!r);
+  const turnedSeizable = events.filter(
+    (e) => e.event === "PolicyUpdated" && e.scopeTopic === TRANSFER_SENDER_POLICY && e.newPolicyId !== "0",
+  );
+  return {
+    feed: events,
+    feedCount: events.length,
+    turnedSeizable: turnedSeizable.map((e) => ({ token: e.token, time: e.time, txHash: e.txHash })),
+    turnedSeizableCount: turnedSeizable.length,
+    note: "Live feed of B20 policy/pause changes across Base (CDP webhook, sub-second capture). turnedSeizable = tokens that just attached a sender blocklist — exit checks recommended. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

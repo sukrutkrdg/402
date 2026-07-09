@@ -43,7 +43,7 @@ import { volumeCheck } from "./volume-check";
 import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard } from "./b20-safety";
 
 export interface ServiceParam {
   name: string;
@@ -144,6 +144,18 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20PolicyWatch,
+  },
+  {
+    id: "b20-guard",
+    name: "B20 Guard",
+    tagline: "Real-time alerts the moment a B20 token turns seizable",
+    description:
+      "The live layer over B20 Policy Watch: a network-wide onchain webhook captures every B20 PolicyUpdated/Paused sub-second. Pass a token address for its live guard status, or call with no address for the feed of tokens that JUST attached a sender blocklist (turned seizable) across all of Base.",
+    price: "$0.02",
+    icon: "🚨",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token (optional — omit for network feed)", placeholder: "0x… B20 token" }],
+    handler: b20Guard,
   },
   {
     id: "b20-info",
