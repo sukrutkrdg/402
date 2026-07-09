@@ -12,6 +12,7 @@ import "server-only";
 import { createPublicClient, http, getAddress, formatUnits, formatEther, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { CdpClient } from "@coinbase/cdp-sdk";
 
 const erc20Abi = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
@@ -148,26 +149,43 @@ export async function walletPortfolio(params: Record<string, string>) {
   //    or down, fall back to a curated major-token set via our own RPC so the
   //    service still returns a useful answer.
   let tokenAddrs: Address[] = [];
-  let source = "alchemy";
+  let source = "cdp";
+  const NATIVE_SENTINEL = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"; // ERC-7528 native placeholder
   try {
-    const balData = await rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]);
-    tokenAddrs = (balData.tokenBalances ?? [])
-      .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
-      .slice(0, 20)
-      .map((b) => b.contractAddress as Address);
+    // Primary: CDP Data API token balances (no Alchemy credits spent when this works).
+    const cfg = getConfig();
+    if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) throw new Error("no-cdp");
+    const cdp = new CdpClient({ apiKeyId: cfg.cdpApiKeyId, apiKeySecret: cfg.cdpApiKeySecret });
+    const res = await cdp.evm.listTokenBalances({ network: "base", address });
+    tokenAddrs = (res.balances ?? [])
+      .map((b) => b.token?.contractAddress)
+      .filter((a): a is Address => !!a && /^0x[0-9a-fA-F]{40}$/.test(a) && a.toLowerCase() !== NATIVE_SENTINEL)
+      .slice(0, 20);
+    if (tokenAddrs.length === 0) throw new Error("cdp-empty"); // fall through to Alchemy/curated
   } catch {
-    source = "curated";
+    // Fallback 1: Alchemy discovery.
+    source = "alchemy";
     try {
-      const balRes = await c.multicall({
-        contracts: CURATED.map((a) => ({ address: a, abi: erc20Abi, functionName: "balanceOf", args: [address] }) as const),
-        allowFailure: true,
-      });
-      tokenAddrs = CURATED.filter((_, i) => {
-        const r = balRes[i];
-        return r?.status === "success" && (r.result as bigint) > 0n;
-      });
-    } catch (err) {
-      throw new Error(`Portfolio unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      const balData = await rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]);
+      tokenAddrs = (balData.tokenBalances ?? [])
+        .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
+        .slice(0, 20)
+        .map((b) => b.contractAddress as Address);
+    } catch {
+      // Fallback 2: curated major-token multicall.
+      source = "curated";
+      try {
+        const balRes = await c.multicall({
+          contracts: CURATED.map((a) => ({ address: a, abi: erc20Abi, functionName: "balanceOf", args: [address] }) as const),
+          allowFailure: true,
+        });
+        tokenAddrs = CURATED.filter((_, i) => {
+          const r = balRes[i];
+          return r?.status === "success" && (r.result as bigint) > 0n;
+        });
+      } catch (err) {
+        throw new Error(`Portfolio unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 

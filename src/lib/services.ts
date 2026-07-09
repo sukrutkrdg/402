@@ -753,7 +753,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Full Wallet Portfolio",
     tagline: "All ERC-20 holdings of a wallet with USD value",
     description:
-      "Complete ERC-20 portfolio for a Base address — every non-zero token with balance, metadata and live USD value, plus a total. Powered by Alchemy (beyond the curated wallet-tokens list).",
+      "Complete ERC-20 portfolio for a Base address — every non-zero token with balance, metadata and live USD value, plus a total. Token discovery via CDP Data API (Coinbase) with Alchemy fallback; USD from DexScreener.",
     price: "$0.02",
     icon: "💰",
     category: "Onchain",
