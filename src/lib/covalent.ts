@@ -10,6 +10,8 @@
 import "server-only";
 import { getAddress, formatUnits, formatEther } from "viem";
 import { kvGet, kvSet } from "./kv";
+import { generateJwt } from "@coinbase/cdp-sdk/auth";
+import { getConfig } from "./config";
 
 const API = "https://api.covalenthq.com/v1";
 const CHAIN = "base-mainnet";
@@ -155,8 +157,70 @@ interface CovTx {
   successful?: boolean;
 }
 
+/**
+ * Recent transactions via the CDP SQL API (Data API) — free-with-CDP-account
+ * alternative to Covalent. Confined to a 30-day window: address-filtered
+ * full-history scans exceed CDP's per-query read limit, so this only serves
+ * recently-active wallets; anything else (0 rows, errors, missing keys) returns
+ * null and the caller falls back to Covalent. receipt status isn't in
+ * base.transactions, so success is null on this path.
+ */
+async function cdpActivity(
+  address: string,
+): Promise<Array<{ hash: string | null; time: string | null; from: string | null; to: string | null; valueEth: string; success: null }> | null> {
+  const cfg = getConfig();
+  if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return null;
+  try {
+    const a = address.toLowerCase();
+    const sql = `SELECT transaction_hash, timestamp, from_address, to_address, value FROM base.transactions WHERE (from_address = '${a}' OR to_address = '${a}') AND timestamp > now() - INTERVAL 30 DAY ORDER BY timestamp DESC LIMIT 15`;
+    const jwt = await generateJwt({
+      apiKeyId: cfg.cdpApiKeyId,
+      apiKeySecret: cfg.cdpApiKeySecret,
+      requestMethod: "POST",
+      requestHost: "api.cdp.coinbase.com",
+      requestPath: "/platform/v2/data/query/run",
+    });
+    const r = await fetch("https://api.cdp.coinbase.com/platform/v2/data/query/run", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ sql }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { result?: Array<{ transaction_hash?: string; timestamp?: string; from_address?: string; to_address?: string; value?: string }> };
+    const rows = j.result ?? [];
+    if (rows.length === 0) return null; // quiet wallet → let Covalent serve full history
+    return rows.map((t) => {
+      let valueEth = "0";
+      try {
+        valueEth = t.value ? formatEther(BigInt(t.value)) : "0";
+      } catch {
+        valueEth = "0";
+      }
+      return { hash: t.transaction_hash ?? null, time: t.timestamp ?? null, from: t.from_address ?? null, to: t.to_address ?? null, valueEth, success: null };
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function walletActivity(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
+
+  // Primary: CDP SQL API (no Covalent credits when it serves).
+  const cdpTx = await cdpActivity(address);
+  if (cdpTx) {
+    return {
+      address,
+      count: cdpTx.length,
+      transactions: cdpTx,
+      source: "cdp",
+      window: "last 30 days",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  // Fallback: Covalent full-history (also covers wallets quiet for 30+ days).
   const data = await cov<{ items?: CovTx[] }>(
     `/${CHAIN}/address/${address}/transactions_v3/?page-size=15&no-logs=true`,
     `tx:${address.toLowerCase()}`,
@@ -178,7 +242,7 @@ export async function walletActivity(params: Record<string, string>) {
       success: t.successful ?? null,
     };
   });
-  return { address, count: transactions.length, transactions, checkedAt: new Date().toISOString() };
+  return { address, count: transactions.length, transactions, source: "covalent", checkedAt: new Date().toISOString() };
 }
 
 // ---------------------------------------------------------------------------
