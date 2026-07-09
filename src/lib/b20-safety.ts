@@ -299,6 +299,106 @@ export async function b20Batch(params: Record<string, string>) {
   };
 }
 
+// ---- 6b. B20 Policy Watch — did this token BECOME seizable/freezable? ----
+
+import { cdpSql } from "./covalent";
+
+/**
+ * The rug-prevention angle unique to B20: a token can launch clean and later
+ * have a sender blocklist policy attached (PolicyUpdated) — silently becoming
+ * seizable via burnBlocked. This reads the token's PolicyUpdated / Paused /
+ * Unpaused event history from the CDP SQL API (which indexes all B20 events)
+ * and combines it with the live policy state.
+ */
+export async function b20PolicyWatch(params: Record<string, string>) {
+  const address = (params.address || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const a = addr.toLowerCase();
+
+  // Is it a B20 at all? (supplyCap exists on every B20, reverts on ERC-20.)
+  const cap = await withRetry<bigint | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" }) as Promise<bigint | null>,
+    null,
+  );
+  if (cap === null) return notB20(address);
+
+  // Live policy state (authoritative "now").
+  await sleep(120);
+  const senderPol = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
+    0n,
+  );
+  await sleep(120);
+  const recvPol = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>,
+    0n,
+  );
+
+  // Event history from CDP SQL (45-day window; B20 mainnet is younger than that).
+  const rows = await cdpSql<{
+    block_timestamp?: string;
+    event_signature?: string;
+    parameters?: { oldPolicyId?: string; newPolicyId?: string; features?: string; updater?: string };
+    topics?: string[];
+  }>(
+    `SELECT block_timestamp, event_signature, parameters, topics FROM base.events WHERE address = '${a}' AND event_name IN ('PolicyUpdated','Paused','Unpaused') AND block_timestamp > now() - INTERVAL 45 DAY ORDER BY block_timestamp ASC LIMIT 50`,
+  );
+
+  const scopeName = (t?: string) =>
+    t === TRANSFER_SENDER_POLICY ? "transfer-sender" : t === TRANSFER_RECEIVER_POLICY ? "transfer-receiver" : "other";
+
+  const events = (rows ?? []).map((r) => {
+    const sig = r.event_signature ?? "";
+    if (sig.startsWith("PolicyUpdated")) {
+      const oldId = r.parameters?.oldPolicyId ?? "0";
+      const newId = r.parameters?.newPolicyId ?? "0";
+      return {
+        time: r.block_timestamp ?? null,
+        type: "PolicyUpdated" as const,
+        scope: scopeName(r.topics?.[1]),
+        oldPolicyId: oldId,
+        newPolicyId: newId,
+        action: newId === "0" ? "removed" : oldId === "0" ? "set" : "changed",
+      };
+    }
+    return {
+      time: r.block_timestamp ?? null,
+      type: sig.startsWith("Unpaused") ? ("Unpaused" as const) : ("Paused" as const),
+      features: r.parameters?.features ?? null,
+      updater: r.parameters?.updater ?? null,
+    };
+  });
+
+  // When did the sender policy last get set/changed (→ became seizable)?
+  const senderSets = events.filter(
+    (e) => e.type === "PolicyUpdated" && e.scope === "transfer-sender" && e.action !== "removed",
+  );
+  const seizableSince = senderPol > 0n ? (senderSets.at(-1)?.time ?? null) : null;
+
+  const seizableNow = senderPol > 0n;
+  const verdict = seizableNow ? "seizable" : events.length > 0 ? "watch" : "clean";
+
+  return {
+    address,
+    isB20: true,
+    seizableNow,
+    seizableSince, // null when we can't pin the moment (history window/API gap)
+    transferGatedNow: senderPol > 0n || recvPol > 0n,
+    changeCount: events.length,
+    events, // chronological policy/pause timeline
+    historyAvailable: rows !== null,
+    verdict, // seizable | watch (had changes) | clean
+    recommendation: seizableNow
+      ? `Sender blocklist policy is ACTIVE${seizableSince ? ` (set ${seizableSince})` : ""} — the issuer can block and burnBlocked-seize holders. Treat as high-control.`
+      : events.length > 0
+        ? "No active sender policy now, but this token's policies/pauses HAVE changed — the issuer uses these controls; re-check before large positions."
+        : "No policy or pause changes on record and no active sender policy — no freeze/seize surface detected.",
+    note: "B20-only rug vector: a token can launch clean and later attach a blocklist (PolicyUpdated) — becoming seizable. This combines live policy state with the onchain event timeline (CDP-indexed, 45-day window). Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 // ---- 6. B20 Launch Radar — freshly created B20 tokens ----
 
 export async function b20LaunchRadar(params: Record<string, string>) {

@@ -167,7 +167,7 @@ interface CovTx {
  * base.transactions, so success is null on this path.
  */
 /** Run a query on the CDP SQL API. Returns rows, or null on missing keys/any error. */
-async function cdpSql<T>(sql: string): Promise<T[] | null> {
+export async function cdpSql<T>(sql: string): Promise<T[] | null> {
   const cfg = getConfig();
   if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return null;
   try {

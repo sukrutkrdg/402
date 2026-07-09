@@ -43,7 +43,7 @@ import { volumeCheck } from "./volume-check";
 import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch } from "./b20-safety";
 
 export interface ServiceParam {
   name: string;
@@ -132,6 +132,18 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "limit", label: "How many", placeholder: "12" }],
     handler: b20LaunchRadar,
+  },
+  {
+    id: "b20-policy-watch",
+    name: "B20 Policy Watch",
+    tagline: "Did this token BECOME seizable after launch?",
+    description:
+      "The B20-only rug vector: a token can launch clean and later attach a sender blocklist (PolicyUpdated) — silently becoming seizable via burnBlocked. This reads the token's full policy/pause event timeline (CDP-indexed onchain events) plus the live policy state, and tells you if — and exactly WHEN — it turned seizable.",
+    price: "$0.03",
+    icon: "👁️",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20PolicyWatch,
   },
   {
     id: "b20-info",
