@@ -12,6 +12,7 @@ import "server-only";
 import { createPublicClient, http, getAddress, formatUnits, formatEther, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 import { CdpClient } from "@coinbase/cdp-sdk";
 
 const erc20Abi = [
@@ -143,7 +144,7 @@ interface TokenBalances {
 export async function walletPortfolio(params: Record<string, string>) {
   const address = reqAddr(params.address || "") as Address;
   const k = key();
-  const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  const c = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
   // 1) Token list. Prefer Alchemy (full list, single call); if it's rate-limited
   //    or down, fall back to a curated major-token set via our own RPC so the

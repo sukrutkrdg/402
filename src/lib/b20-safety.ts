@@ -11,7 +11,8 @@
  */
 
 import "server-only";
-import { createPublicClient, http, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
+import { createPublicClient, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
+import { baseTransport } from "./base-transport";
 import { base } from "viem/chains";
 
 // Fixed B20 precompile addresses (same on every network).
@@ -21,7 +22,7 @@ export const B20_POLICY_REGISTRY = "0x8453000000000000000000000000000000000002" 
 
 const client = createPublicClient({
   chain: base,
-  transport: http(process.env.BASE_RPC_URL || undefined),
+  transport: baseTransport(8000),
 });
 
 // IB20 view surface.

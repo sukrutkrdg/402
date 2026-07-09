@@ -13,6 +13,7 @@ import { base } from "viem/chains";
 import { kvGet, kvSet } from "./kv";
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 
 const API = "https://api.covalenthq.com/v1";
 const CHAIN = "base-mainnet";
@@ -393,7 +394,7 @@ async function cdpTransfers(wallet: string, token: string) {
   let decimals = 18;
   let symbol: string | null = null;
   try {
-    const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 6000 }) });
+    const c = createPublicClient({ chain: base, transport: baseTransport(6000) });
     const erc20 = [
       { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
       { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },

@@ -10,6 +10,7 @@ import "server-only";
 import { createPublicClient, http, parseAbiItem, formatUnits, getAddress, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
+import { baseTransport } from "./base-transport";
 
 const transferEvent = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)",
@@ -33,7 +34,7 @@ export async function getRevenue(blocks = 5000): Promise<RevenueResult> {
     return { payTo: null, windowBlocks: 0, count: 0, totalUsdc: "0", payments: [], note: "PAY_TO_ADDRESS not set", checkedAt: now };
   }
   const payTo = getAddress(cfg.payTo) as Address;
-  const client = createPublicClient({ chain: base, transport: http(cfg.rpcUrl, { timeout: 8000 }) });
+  const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
   // Public Base RPC limits getLogs ranges; keep the window modest by default.
   // For a wider window, set BASE_RPC_URL to a dedicated RPC.

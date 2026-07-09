@@ -20,6 +20,7 @@ import {
 import { base, mainnet } from "viem/chains";
 import { normalize } from "viem/ens";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 
 // Base mainnet Basenames L2 Resolver.
 const L2_RESOLVER = "0xC6d566A56A1aFf6508b41f6c90ff131615583BCD" as const;
@@ -43,7 +44,7 @@ const resolverAbi = [
 ] as const;
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  return createPublicClient({ chain: base, transport: baseTransport(8000) });
 }
 
 // ENSIP-11 coinType for a chain id (Base mainnet 8453 → 0x80002105).

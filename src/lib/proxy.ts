@@ -14,6 +14,7 @@ import "server-only";
 import { createPublicClient, http, getAddress, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 
 // EIP-1967 storage slots.
 const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc" as const;
@@ -44,7 +45,7 @@ function slotToAddress(word?: string | null): string | null {
 
 export async function proxyCheck(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
-  const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  const c = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
   let implWord: string | undefined, adminWord: string | undefined, beaconWord: string | undefined;
   let code = "0x";

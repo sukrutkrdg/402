@@ -14,6 +14,7 @@ import "server-only";
 import { createPublicClient, http, getAddress, formatEther, formatUnits, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
+import { baseTransport } from "./base-transport";
 
 const DEAD = new Set([
   "0x0000000000000000000000000000000000000000",
@@ -36,7 +37,7 @@ const ownerAbis = [
 ] as const;
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  return createPublicClient({ chain: base, transport: baseTransport(8000) });
 }
 
 function requireAddress(raw: string): Address {

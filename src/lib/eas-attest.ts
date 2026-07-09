@@ -31,6 +31,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 
 // EAS predeploys on Base mainnet.
 const EAS = "0x4200000000000000000000000000000000000021" as const;
@@ -94,7 +95,7 @@ function wallet() {
   const key = signerKey();
   if (!key) return null;
   const account = privateKeyToAccount(key);
-  return createWalletClient({ account, chain: base, transport: http(getConfig().rpcUrl) });
+  return createWalletClient({ account, chain: base, transport: baseTransport(8000) });
 }
 
 export function easEnabled(): boolean {

@@ -9,6 +9,7 @@ import "server-only";
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 import { tokenPrice } from "./onchain-extra";
 
 const WETH = "0x4200000000000000000000000000000000000006";
@@ -96,7 +97,7 @@ export async function tokenInfo(params: Record<string, string>) {
 }
 
 export async function chainStatus(_params: Record<string, string>) {
-  const c = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  const c = createPublicClient({ chain: base, transport: baseTransport(8000) });
   let block, fees;
   try {
     [block, fees] = await Promise.all([c.getBlock({ blockTag: "latest" }), c.estimateFeesPerGas()]);

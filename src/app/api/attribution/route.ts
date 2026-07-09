@@ -7,7 +7,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, http, type Hex } from "viem";
+import { createPublicClient, type Hex } from "viem";
+import { baseTransport } from "@/lib/base-transport";
 import { base } from "viem/chains";
 import { parseBuilderCodeSuffixFromCalldata } from "@x402/extensions/builder-code";
 import { getConfig } from "@/lib/config";
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   const cfg = getConfig();
   const client = createPublicClient({
     chain: base,
-    transport: http(cfg.rpcUrl, { timeout: 8000 }),
+    transport: baseTransport(8000),
   });
 
   let tx;

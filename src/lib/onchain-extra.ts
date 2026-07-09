@@ -23,13 +23,14 @@ import {
 } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "@/lib/config";
+import { baseTransport } from "@/lib/base-transport";
 
 // ---------------------------------------------------------------------------
 // Shared helpers (mirrors onchain.ts — kept local to avoid coupling)
 // ---------------------------------------------------------------------------
 
 function client() {
-  return createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  return createPublicClient({ chain: base, transport: baseTransport(8000) });
 }
 
 /** Validates a checksummed 0x…40-hex address; throws a user-facing message on failure. */

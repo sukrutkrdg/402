@@ -13,6 +13,7 @@ import "server-only";
 import { createPublicClient, http, getAddress, encodeFunctionData, formatUnits } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { baseTransport } from "./base-transport";
 
 const ERC20_ABI = [
   {
@@ -57,7 +58,7 @@ export async function revokeBuilder(params: Record<string, string>) {
   // even if every RPC read below fails.
   const data = encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [spender, 0n] });
 
-  const client = createPublicClient({ chain: base, transport: http(getConfig().rpcUrl, { timeout: 8000 }) });
+  const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
   let symbol: string | null = null;
   let decimals: number | null = null;
