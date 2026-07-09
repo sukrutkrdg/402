@@ -302,7 +302,9 @@ export async function b20Batch(params: Record<string, string>) {
 // ---- 6b. B20 Policy Watch — did this token BECOME seizable/freezable? ----
 
 import { cdpSql } from "./covalent";
-import { kvLRange, kvGet } from "./kv";
+import { kvLRange, kvGet, kvSet, kvIncr } from "./kv";
+import { generateJwt } from "@coinbase/cdp-sdk/auth";
+import { getConfig } from "./config";
 
 /**
  * The rug-prevention angle unique to B20: a token can launch clean and later
@@ -420,11 +422,65 @@ const parseRec = (s: string): GuardRec | null => {
   }
 };
 
+const MAX_GUARD_SUBS = 100; // cap on CDP webhook subscriptions we create
+
 /**
- * Real-time layer over b20-policy-watch: a network-wide CDP webhook delivers
- * every B20 PolicyUpdated/Paused the moment it lands; this reads those records.
- * With `address` → live guard status for that token. Without → the recent
- * "turned seizable / policy changed" feed across all of Base.
+ * Ensure a per-token CDP webhook subscription exists (CDP requires a
+ * contract_address label per subscription, so guards are per-token).
+ * Idempotent via a KV flag; capped. Returns whether the guard is active.
+ */
+async function ensureGuardSubscription(token: string): Promise<{ active: boolean; since: string | null }> {
+  const flagKey = `b20guard:sub:${token}`;
+  const existing = await kvGet(flagKey);
+  if (existing) {
+    try {
+      const j = JSON.parse(existing) as { since?: string };
+      return { active: true, since: j.since ?? null };
+    } catch {
+      return { active: true, since: null };
+    }
+  }
+  const cfg = getConfig();
+  const secret = process.env.CDP_WEBHOOK_SECRET;
+  if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret || !secret) return { active: false, since: null };
+  const count = await kvIncr("b20guard:subcount", 60 * 60 * 24 * 365);
+  if (count === null || count > MAX_GUARD_SUBS) return { active: false, since: null };
+  try {
+    const path = "/platform/v2/data/webhooks/subscriptions";
+    const jwt = await generateJwt({
+      apiKeyId: cfg.cdpApiKeyId,
+      apiKeySecret: cfg.cdpApiKeySecret,
+      requestMethod: "POST",
+      requestHost: "api.cdp.coinbase.com",
+      requestPath: path,
+    });
+    const r = await fetch(`https://api.cdp.coinbase.com${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        description: `B20 Guard: ${token} PolicyUpdated`,
+        isEnabled: true,
+        eventTypes: ["onchain.activity.detected"],
+        target: { url: `https://402.com.tr/api/webhooks/cdp?key=${secret}` },
+        labels: { network: "base-mainnet", contract_address: token, event_name: "PolicyUpdated" },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return { active: false, since: null };
+    const j = (await r.json()) as { subscriptionId?: string };
+    const since = new Date().toISOString();
+    await kvSet(flagKey, JSON.stringify({ id: j.subscriptionId ?? null, since }), 60 * 60 * 24 * 365);
+    return { active: true, since };
+  } catch {
+    return { active: false, since: null };
+  }
+}
+
+/**
+ * Real-time layer over b20-policy-watch. With `address` → registers a per-token
+ * CDP webhook guard (sub-second PolicyUpdated capture) and returns live status +
+ * captured alerts. Without → network-wide feed of recent policy changes /
+ * just-turned-seizable tokens straight from CDP-indexed events.
  */
 export async function b20Guard(params: Record<string, string>) {
   const address = (params.address || "").trim();
@@ -432,10 +488,13 @@ export async function b20Guard(params: Record<string, string>) {
   if (address) {
     if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address (or omit for the network feed)");
     const a = address.toLowerCase();
-    const [rows, latest] = [await kvLRange(`b20guard:token:${a}`, 0, 19), await kvGet(`b20guard:latest:${a}`)];
+
+    const guard = await ensureGuardSubscription(a);
+    const rows = await kvLRange(`b20guard:token:${a}`, 0, 19);
+    const latest = await kvGet(`b20guard:latest:${a}`);
     const events = rows.map(parseRec).filter((r): r is GuardRec => !!r);
 
-    // Live confirmation (webhook feed only covers time since the guard went up).
+    // Live confirmation (webhook alerts only cover time since the guard went up).
     const senderPol = await withRetry<bigint>(
       () => client.readContract({ address: getAddress(address), abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>,
       0n,
@@ -444,28 +503,47 @@ export async function b20Guard(params: Record<string, string>) {
     const last = latest ? parseRec(latest) : null;
     return {
       address,
+      guardActive: guard.active,
+      guardSince: guard.since,
       seizableNow: senderPol > 0n,
       lastAlert: last,
       recentAlerts: events,
       alertCount: events.length,
       verdict: senderPol > 0n ? "seizable" : events.length > 0 ? "watch" : "clear",
-      note: "Real-time B20 guard: policy/pause changes are captured the moment they land (CDP webhook). Alerts cover the period since the guard went live; use b20-policy-watch for the full onchain timeline. Not financial advice.",
+      note: guard.active
+        ? "Guard active: this token's PolicyUpdated events are captured sub-second via an onchain webhook. Re-call anytime for the latest alerts; b20-policy-watch has the full historical timeline. Not financial advice."
+        : "Guard could not be activated (webhook capacity/config) — falling back to live state only. b20-policy-watch still covers the full timeline. Not financial advice.",
       checkedAt: new Date().toISOString(),
     };
   }
 
-  // Feed mode: recent policy/pause changes across all B20 tokens.
-  const rows = await kvLRange("b20guard:events", 0, 24);
-  const events = rows.map(parseRec).filter((r): r is GuardRec => !!r);
-  const turnedSeizable = events.filter(
-    (e) => e.event === "PolicyUpdated" && e.scopeTopic === TRANSFER_SENDER_POLICY && e.newPolicyId !== "0",
+  // Feed mode: recent policy changes across ALL B20 tokens from CDP-indexed
+  // events (network-wide query — no per-token subscription needed here).
+  const rows = await cdpSql<{ address?: string; block_timestamp?: string; parameters?: { oldPolicyId?: string; newPolicyId?: string }; topics?: string[]; transaction_hash?: string }>(
+    `SELECT address, block_timestamp, parameters, topics, transaction_hash FROM base.events WHERE event_name = 'PolicyUpdated' AND block_timestamp > now() - INTERVAL 48 HOUR ORDER BY block_timestamp DESC LIMIT 25`,
   );
+  const feed = (rows ?? []).map((r) => ({
+    token: r.address ?? null,
+    time: r.block_timestamp ?? null,
+    scope:
+      r.topics?.[1] === TRANSFER_SENDER_POLICY
+        ? "transfer-sender"
+        : r.topics?.[1] === TRANSFER_RECEIVER_POLICY
+          ? "transfer-receiver"
+          : "other",
+    oldPolicyId: r.parameters?.oldPolicyId ?? null,
+    newPolicyId: r.parameters?.newPolicyId ?? null,
+    txHash: r.transaction_hash ?? null,
+  }));
+  const turnedSeizable = feed.filter((e) => e.scope === "transfer-sender" && e.newPolicyId !== "0" && e.newPolicyId !== null);
   return {
-    feed: events,
-    feedCount: events.length,
+    windowHours: 48,
+    feed,
+    feedCount: feed.length,
     turnedSeizable: turnedSeizable.map((e) => ({ token: e.token, time: e.time, txHash: e.txHash })),
     turnedSeizableCount: turnedSeizable.length,
-    note: "Live feed of B20 policy/pause changes across Base (CDP webhook, sub-second capture). turnedSeizable = tokens that just attached a sender blocklist — exit checks recommended. Not financial advice.",
+    historyAvailable: rows !== null,
+    note: "Network-wide feed of B20 policy changes in the last 48h. turnedSeizable = tokens that just attached a sender blocklist — holders can now be burnBlocked-seized; exit checks recommended. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
