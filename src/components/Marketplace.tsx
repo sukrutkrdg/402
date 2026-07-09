@@ -395,9 +395,13 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           <span className="pill w-fit">⚡ x402 · Base mainnet · Builder Codes</span>
 
           <h1 className="max-w-2xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-            A pay-per-call API marketplace where every payment is{" "}
-            <span className="text-base-blue">attributed onchain</span>.
+            Your agent shouldn&apos;t touch a Base token{" "}
+            <span className="text-base-blue">it hasn&apos;t checked</span>.
           </h1>
+
+          <p className="max-w-xl text-base font-medium text-gray-200">
+            One call before every trade: honeypot, rug, seize risk — <span className="text-emerald-300">from $0.03 in USDC</span>, no signup, no API keys.
+          </p>
 
           <p className="max-w-xl text-sm leading-relaxed text-gray-400">
             Browse and call real APIs instantly — no signup, no API keys. Humans pay per use;

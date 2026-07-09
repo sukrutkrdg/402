@@ -50,6 +50,21 @@ export default function AgentsPage() {
           you can try before wiring payments:
         </p>
         <Code>{`curl "${SITE_URL}/api/x402/${example.id}?${example.params.map((p) => `${p.name}=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed`).join("&")}"`}</Code>
+        <p className="text-sm text-gray-400">
+          Paying from code (no MCP)? The whole x402 flow is ~10 lines — the SDK handles the 402,
+          signs a USDC payment and retries automatically:
+        </p>
+        <Code>{`import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+
+const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY);
+const client = new x402Client();
+client.register("eip155:8453", new ExactEvmScheme(account));
+const payFetch = wrapFetchWithPayment(fetch, client);
+
+const res = await payFetch("${SITE_URL}/api/x402/token-risk?address=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed");
+console.log(await res.json()); // verdict + flags — paid in USDC on Base, automatically`}</Code>
         <p className="text-xs text-gray-500">
           After the free daily call you get a teaser preview + an{" "}
           <code className="codechip">HTTP 402</code> — wire the payment below and your agent pays a
