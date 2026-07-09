@@ -189,6 +189,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       network: NETWORK,
       payTo: cfg.payTo,
     },
+    // Canonical resource URL: keeps discovery/Bazaar indexing on the real domain
+    // even when the route is reached via the vercel.app host (Cloudflare bypass).
+    resource: `${(process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "")}/api/x402/${service.id}`,
     description: service.description,
     mimeType: "application/json",
     serviceName: service.name,
