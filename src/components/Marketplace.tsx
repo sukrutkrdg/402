@@ -412,6 +412,12 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             <a href="/app" className="btn-primary">
               🛡️ Check a token →
             </a>
+            <a
+              href="/app?mode=wallet"
+              className="btn-primary !border-emerald-500/40 !bg-emerald-500/15 !text-emerald-200 hover:!bg-emerald-500/25"
+            >
+              ⚡ Protect wallet · gas-free →
+            </a>
             <a href="/agents" className="btn-ghost">
               For agents &amp; API →
             </a>
@@ -458,6 +464,27 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             </span>
           </a>
         </div>
+
+        {/* Gas-free revoke promo */}
+        <a
+          href="/app?mode=wallet"
+          className="flex flex-col gap-2 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 to-base-blue/10 p-4 transition hover:border-emerald-400/60 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold text-emerald-200">
+              ⚡ NEW — Revoke risky approvals, gas-free. All of them, one signature.
+            </span>
+            <span className="max-w-2xl text-xs leading-relaxed text-gray-300">
+              Token approvals are the #1 way wallets get drained. Scan yours for $0.05, see what can
+              drain you (USD-ranked), then revoke — <strong className="text-emerald-200">we sponsor
+              the gas</strong> on smart wallets (Base App), and “Revoke all” kills every risky
+              approval in a single tap.
+            </span>
+          </div>
+          <span className="btn-primary shrink-0 !border-emerald-500/40 !bg-emerald-500/15 !py-2 text-sm !text-emerald-200">
+            Protect my wallet →
+          </span>
+        </a>
 
         <StatusBar status={status} />
 

@@ -142,6 +142,11 @@ export default function MiniApp() {
   // "token" = token-safety checks; "wallet" = approval scan + revoke.
   const [mode, setMode] = useState<"token" | "wallet">("token");
 
+  // Deep link: /app?mode=wallet opens straight into Protect-wallet mode.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") === "wallet") setMode("wallet");
+  }, []);
+
   const { address, isConnected, connector } = useAccount();
   const { connectAsync, connectors } = useConnect();
   // A wallet is available when the mini-app host exposes the connector.
