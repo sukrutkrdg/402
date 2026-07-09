@@ -28,6 +28,7 @@ type TypedData = {
 const CHECKS = [
   { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.08" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize", price: "$0.04" },
+  { id: "b20-policy-watch", label: "👁️ B20: when did it turn seizable?", price: "$0.03" },
   { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.05" },
   { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.50" },
   { id: "position-health", label: "🩺 Position Health (I'm in it)", price: "$0.04" },
@@ -112,6 +113,10 @@ function formatResult(id: string, d: Record<string, unknown>): string {
       if (d.isB20 === false) return `Not a B20 token.\n\n${s(d.note)}`;
       const p = (d.powers ?? {}) as { seizable?: boolean; freezable?: boolean; rebase?: boolean };
       return `${s(d.verdict).toUpperCase()} · risk ${s(d.riskScore)}/100 · ${s(d.variant)}\nSeize: ${p.seizable ? "⚠️ yes" : "no"} · Freeze: ${p.freezable ? "⚠️ yes" : "no"} · Rebase: ${p.rebase ? "⚠️ yes" : "no"}\n\n➡️ ${s(d.recommendation)}`;
+    }
+    case "b20-policy-watch": {
+      if (d.isB20 === false) return `Not a B20 token.\n\n${s(d.note)}`;
+      return `${s(d.verdict).toUpperCase()}${d.seizableNow ? ` · seizable since ${s(d.seizableSince) || "before launch history"}` : ""}\nPolicy/pause changes on record: ${s(d.changeCount)}\n\n➡️ ${s(d.recommendation)}`;
     }
     case "contract-danger":
       return `Danger: ${s(d.dangerLevel).toUpperCase()}\n${(Array.isArray(d.dangerCategories) ? d.dangerCategories : []).join(", ") || "no dangerous owner functions"}\n\n➡️ ${s(d.recommendation)}`;

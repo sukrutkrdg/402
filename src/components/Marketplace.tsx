@@ -377,13 +377,13 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       >
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-amber-200">
-            🆕 B20 is LIVE — the first B20 toolkit on Base: 6 tools to check freeze/seize risk, scan new launches &amp; more
+            🚨 The B20 protection suite — 8 tools, incl. real-time seizure alerts
           </span>
           <span className="max-w-2xl text-xs leading-relaxed text-gray-300">
-            Base&apos;s native token standard lets issuers{" "}
-            <strong className="text-amber-200">freeze</strong> and even{" "}
-            <strong className="text-amber-200">seize</strong> your balance at the protocol level —
-            risks no ERC-20 tool checks. We built the first B20 safety check.
+            B20 issuers can <strong className="text-amber-200">freeze</strong> and even{" "}
+            <strong className="text-amber-200">seize</strong> your balance at the protocol level.
+            We check any token, tell you <strong className="text-amber-200">exactly when</strong> it
+            turned seizable — and B20 Guard catches the moment it happens, sub-second.
           </span>
         </div>
         <span className="btn-primary shrink-0 !py-2 text-sm">Check B20 safety →</span>
