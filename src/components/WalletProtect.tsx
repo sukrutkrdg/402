@@ -24,10 +24,43 @@ const short = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : 
  * time. Revoke is a real approve(spender, 0) transaction from the connected
  * wallet (needs a little ETH for gas on Base); the scan is the x402 micro-payment.
  */
+const approveZeroData = (spender: string) =>
+  ("0x095ea7b3" + spender.slice(2).toLowerCase().padStart(64, "0") + "0".repeat(64)) as `0x${string}`;
+
 export default function WalletProtect() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
   const { pay, picker, setPicker, step } = useX402Pay();
   const { sendTransactionAsync } = useSendTransaction();
+
+  /**
+   * Gas-free path: EIP-5792 wallet_sendCalls with our paymaster proxy as the
+   * paymasterService capability. Smart wallets (Base App / Coinbase Smart
+   * Wallet) sponsor the revoke; wallets without support return null and the
+   * caller falls back to a normal (user-pays-gas) transaction.
+   */
+  async function sendCallsGasless(calls: Array<{ to: `0x${string}`; data: `0x${string}` }>): Promise<string | null> {
+    try {
+      if (!connector || !address) return null;
+      const provider = (await connector.getProvider()) as {
+        request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
+      };
+      const res = await provider.request({
+        method: "wallet_sendCalls",
+        params: [
+          {
+            version: "1.0",
+            chainId: "0x2105",
+            from: address,
+            calls,
+            capabilities: { paymasterService: { url: `${window.location.origin}/api/paymaster` } },
+          },
+        ],
+      });
+      return typeof res === "string" ? res : ((res as { id?: string })?.id ?? "submitted");
+    } catch {
+      return null;
+    }
+  }
 
   const [addr, setAddr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,13 +119,37 @@ export default function WalletProtect() {
     setErr(null);
     try {
       // approve(spender, 0) — sets the allowance to zero, killing the approval.
-      const data = ("0x095ea7b3" +
-        item.spender.slice(2).toLowerCase().padStart(64, "0") +
-        "0".repeat(64)) as `0x${string}`;
-      await sendTransactionAsync({ to: item.tokenAddress as `0x${string}`, data });
+      const data = approveZeroData(item.spender);
+      // Gas-free first (smart wallets via paymaster); fall back to a normal tx.
+      const gasless = await sendCallsGasless([{ to: item.tokenAddress as `0x${string}`, data }]);
+      if (!gasless) await sendTransactionAsync({ to: item.tokenAddress as `0x${string}`, data });
       setDone((s) => new Set(s).add(id));
     } catch (e) {
       setErr(e instanceof Error ? e.message.slice(0, 160) : "Revoke failed");
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  /** One-signature, gas-free batch revoke (smart wallets only). */
+  async function revokeAll() {
+    if (!isConnected || !queue) return;
+    const pending = queue.filter((it) => it.tokenAddress && it.spender && !done.has(`${it.tokenAddress}-${it.spender}`));
+    if (pending.length === 0) return;
+    setRevoking("all");
+    setErr(null);
+    try {
+      const calls = pending.map((it) => ({ to: it.tokenAddress as `0x${string}`, data: approveZeroData(it.spender!) }));
+      const gasless = await sendCallsGasless(calls);
+      if (gasless) {
+        setDone((s) => {
+          const n = new Set(s);
+          for (const it of pending) n.add(`${it.tokenAddress}-${it.spender}`);
+          return n;
+        });
+      } else {
+        setErr("One-tap batch revoke needs a smart wallet (Base App). Revoke items individually instead.");
+      }
     } finally {
       setRevoking(null);
     }
@@ -105,8 +162,9 @@ export default function WalletProtect() {
     <div className="flex flex-col gap-3">
       <p className="text-[11px] leading-relaxed text-gray-400">
         Token approvals are the #1 way wallets get drained. Scan yours, then revoke anything risky —
-        one tap each. Scan costs a few cents (x402); revoking is a normal transaction from your
-        wallet (needs a little ETH for gas on Base).
+        one tap each. Scan costs a few cents (x402). Revoking is{" "}
+        <strong className="text-emerald-300">gas-free on smart wallets</strong> (Base App — we
+        sponsor it); other wallets pay normal gas.
       </p>
 
       <input
@@ -156,6 +214,16 @@ export default function WalletProtect() {
           </div>
           <p className="mt-1 text-gray-400">{summary.recommendation}</p>
         </div>
+      )}
+
+      {queue && queue.filter((it) => !done.has(`${it.tokenAddress}-${it.spender}`)).length > 1 && isConnected && (
+        <button
+          onClick={revokeAll}
+          disabled={revoking !== null}
+          className="btn-primary !py-2 text-sm disabled:opacity-40"
+        >
+          {revoking === "all" ? "Revoking all…" : "⚡ Revoke all · one signature · gas-free"}
+        </button>
       )}
 
       {queue && queue.length > 0 && (
