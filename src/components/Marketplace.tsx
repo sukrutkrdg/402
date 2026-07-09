@@ -41,7 +41,7 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
 // Category display order — earlier index = rendered first.
-const CATEGORY_ORDER = ["AI", "Onchain", "Markets", "Data", "Utility", "Fun", "Demo"];
+const CATEGORY_ORDER = ["B20", "AI", "Onchain", "Markets", "Data", "Utility", "Fun", "Demo"];
 
 // The AI synthesis suite — the differentiated moat, featured up top.
 const AI_FLAGSHIP_IDS = [
@@ -377,7 +377,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       >
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-amber-200">
-            🆕 B20 is LIVE on Base — check if any B20 token can freeze or seize your funds
+            🆕 B20 is LIVE — the first B20 toolkit on Base: 6 tools to check freeze/seize risk, scan new launches &amp; more
           </span>
           <span className="max-w-2xl text-xs leading-relaxed text-gray-300">
             Base&apos;s native token standard lets issuers{" "}
