@@ -273,7 +273,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Can you actually SELL it — or is it a honeypot?",
     description:
       "The hard honeypot question, answered three ways: security simulation (honeypot, cannot-sell-all, sell/buy tax, transfer-pausable), a LIVE transfer simulation we run ourselves from a real holder (reverts/taxed?), and exit liquidity. Returns a hard canSell verdict with reasons. Selling is where rugs hide — check before you buy.",
-    price: "$0.05",
+    price: "$0.08",
     icon: "🔒",
     category: "Onchain",
     params: [
@@ -495,7 +495,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Institutional-grade full report on a Base token — one call",
     description:
       "The premium flagship. One call runs the FULL battery — contract risk, holder concentration, liquidity depth, EXIT liquidity (can you actually sell), OFAC sanctions — and Claude synthesizes an institutional verdict: safety score, explicit buy/sell tradeability, liquidity & holder assessments, factors, risks, positives and a recommendation. The value is the orchestration + AI synthesis you can't get in one call anywhere else.",
-    price: "$0.50",
+    price: "$0.75",
     icon: "🏛️",
     category: "AI",
     params: [
@@ -707,7 +707,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Rug-score up to 10 tokens in one call",
     description:
       "Screen up to 10 Base tokens in a single paid call — each gets a 0-100 rug-probability score, risk level and top signals, sorted riskiest-first. Built for agents triaging a watchlist or portfolio without paying per token.",
-    price: "$0.03",
+    price: "$0.08",
     icon: "🗂️",
     category: "Onchain",
     params: [{ name: "addresses", label: "Token addresses (comma-separated, up to 10)", placeholder: "0x…, 0x…, 0x…", required: true }],
@@ -904,7 +904,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Claude-written due-diligence verdict for a Base token",
     description:
       "The flagship report: aggregates token risk, holder concentration, price/liquidity and OFAC sanctions, then Claude synthesizes a structured verdict (avoid → favorable) with key risks and positives. One call, agent-ready intelligence you can't get free.",
-    price: "$0.08",
+    price: "$0.12",
     icon: "🔬",
     category: "AI",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],

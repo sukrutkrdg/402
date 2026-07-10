@@ -87,7 +87,7 @@ export async function rugScore(params: Record<string, string>) {
     // Funnel: the natural next step after a raw rug score.
     upgrade: {
       service: "ai-token-report",
-      price: "$0.08",
+      price: "$0.12",
       why: "AI-written verdict on this exact token: buy/avoid call, exit plan, and these signals explained.",
       url: `https://402.com.tr/api/x402/ai-token-report?address=${address}`,
     },

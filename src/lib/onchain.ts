@@ -298,11 +298,14 @@ export async function tokenRisk(params: Record<string, string>) {
         : !renounced
           ? "Ownership renounce, or owner privileges proven inert; re-check before size."
           : "Material change in liquidity, taxes or holder concentration; re-check if stale > 1h.",
+      // Machine-readable staleness hint — riskier tokens go stale faster; agents
+      // can loop on this to know when to re-check (and re-pay).
+      recheckAfter: new Date(Date.now() + (riskLevel === "high" ? 3600_000 : riskLevel === "medium" ? 6 * 3600_000 : 24 * 3600_000)).toISOString(),
     },
     // Funnel: the natural next step after a raw risk check.
     upgrade: {
       service: "ai-token-report",
-      price: "$0.08",
+      price: "$0.12",
       why: "AI-written verdict on this exact token: buy/avoid call, exit plan, and the risks above explained.",
       url: `https://402.com.tr/api/x402/ai-token-report?address=${address}`,
     },

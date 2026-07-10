@@ -26,11 +26,11 @@ type TypedData = {
 
 // Consumer-friendly "paste a token → get an answer" checks for the mini-app.
 const CHECKS = [
-  { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.08" },
+  { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.12" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize", price: "$0.04" },
   { id: "b20-policy-watch", label: "👁️ B20: when did it turn seizable?", price: "$0.03" },
-  { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.05" },
-  { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.50" },
+  { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.08" },
+  { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.75" },
   { id: "position-health", label: "🩺 Position Health (I'm in it)", price: "$0.04" },
   { id: "deployer-rep", label: "🕵️ Deployer Reputation", price: "$0.04" },
   { id: "holder-forensics", label: "🧬 Holder Forensics", price: "$0.03" },
