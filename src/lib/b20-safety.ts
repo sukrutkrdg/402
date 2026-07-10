@@ -86,13 +86,15 @@ export interface B20Signals {
   paused: { transfer: boolean; mint: boolean; burn: boolean };
   rebase: boolean;
   supplyCapped: boolean;
+  /** True when a seize/freeze-critical read failed (RPC) — verdict must not be trusted as safe. */
+  degraded: boolean;
 }
 
 async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const empty: B20Signals = {
     isB20: false, variant: null, symbol: null, supplyCap: 0n, canSeize: false,
     transferGated: false, senderPolicyId: 0n, paused: { transfer: false, mint: false, burn: false },
-    rebase: false, supplyCapped: false,
+    rebase: false, supplyCapped: false, degraded: false,
   };
 
   // supplyCap() exists on every B20 and reverts on a plain ERC-20 → B20 probe.
@@ -117,27 +119,32 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const mult = await withRetry<bigint | null>(
     () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>, null);
   const variant: "asset" | "stablecoin" = mult !== null ? "asset" : "stablecoin";
+  // Seize/freeze-critical reads use a null sentinel so an RPC failure is NOT
+  // silently read as "no policy" (which would report a seizable token as safe).
+  let degraded = false;
   await sleep(120);
-  const senderPol = await withRetry<bigint>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint>, 0n);
+  const senderPol = await withRetry<bigint | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint | null>, null);
   await sleep(120);
-  const recvPol = await withRetry<bigint>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint>, 0n);
+  const recvPol = await withRetry<bigint | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint | null>, null);
   await sleep(120);
-  const pT = await withRetry<boolean>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean>, false);
+  const pT = await withRetry<boolean | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean | null>, null);
   await sleep(120);
-  const pM = await withRetry<boolean>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean>, false);
+  const pM = await withRetry<boolean | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean | null>, null);
   await sleep(120);
-  const pB = await withRetry<boolean>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean>, false);
+  const pB = await withRetry<boolean | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean | null>, null);
+  if (senderPol === null || recvPol === null || pT === null) degraded = true;
 
   return {
     isB20: true, variant, symbol, supplyCap,
-    canSeize: senderPol > 0n,
-    transferGated: senderPol > 0n || recvPol > 0n,
-    senderPolicyId: senderPol,
-    paused: { transfer: pT, mint: pM, burn: pB },
+    canSeize: (senderPol ?? 0n) > 0n,
+    transferGated: (senderPol ?? 0n) > 0n || (recvPol ?? 0n) > 0n,
+    senderPolicyId: senderPol ?? 0n,
+    paused: { transfer: pT ?? false, mint: pM ?? false, burn: pB ?? false },
     rebase: variant === "asset",
     supplyCapped: supplyCap !== MAX_SUPPLY_CAP,
+    degraded,
   };
 }
 
@@ -154,6 +161,14 @@ export async function b20Safety(params: Record<string, string>) {
   if (!validAddr(address)) throw new Error("Provide a valid 0x… token contract address");
   const s = await readB20Signals(getAddress(address));
   if (!s.isB20) return notB20(address);
+
+  if (s.degraded) {
+    return {
+      address, isB20: true, variant: s.variant, symbol: s.symbol, verdict: "unknown", degraded: true,
+      note: "⚠️ A seize/freeze-critical precompile read failed (RPC) — this token's risk could NOT be determined. Do not treat as safe; re-check.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
 
   const flags: string[] = [];
   let risk = 0;
@@ -230,8 +245,20 @@ export async function b20FreezeCheck(params: Record<string, string>) {
   }
 
   await sleep(120);
-  const authorized = await withRetry<boolean>(
-    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [senderPol, getAddress(wallet)] }) as Promise<boolean>, true);
+  // null sentinel = the registry read could not be completed (RPC error/revert).
+  // We must NOT fall back to "authorized: true" — that would tell a genuinely
+  // blocked wallet it is clear. On failure the answer is UNKNOWN, not clear.
+  const authorized = await withRetry<boolean | null>(
+    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [senderPol, getAddress(wallet)] }) as Promise<boolean | null>, null);
+
+  if (authorized === null) {
+    return {
+      token, wallet, isB20: true, gated: true, senderPolicyId: senderPol.toString(),
+      authorized: null, verdict: "unknown", degraded: true,
+      note: "⚠️ Could not read the Policy Registry right now (RPC error) — your authorization status is UNKNOWN, NOT confirmed clear. Do not treat this as safe; re-check before trusting it.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
 
   return {
     token, wallet, isB20: true, gated: true, senderPolicyId: senderPol.toString(), authorized,

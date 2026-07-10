@@ -43,6 +43,7 @@ import { volumeCheck } from "./volume-check";
 import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
+import { preTradeGate } from "./gate";
 import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard } from "./b20-safety";
 
 export interface ServiceParam {
@@ -84,6 +85,21 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token address", required: true }],
     handler: tokenRisk,
+  },
+  {
+    id: "pre-trade-gate",
+    name: "Pre-Trade Gate",
+    tagline: "One call before you trade — GO / HOLD / STOP",
+    description:
+      "The single call an agent makes before touching a Base token: token risk + sellability (honeypot/tax) + route/price-impact + deployer reputation, collapsed into one GO/HOLD/STOP verdict with an auditable receipt. Cheaper than the four checks à la carte. This is the tool to bind first.",
+    price: "$0.10",
+    icon: "🚦",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
+    ],
+    handler: preTradeGate,
   },
   {
     id: "address-intel",
