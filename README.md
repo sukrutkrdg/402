@@ -1,8 +1,12 @@
 # x402 Bazaar — Pay-per-call API marketplace with Base Builder Codes
 
-A full, end-to-end demo of [**x402**](https://docs.cdp.coinbase.com/x402) on **Base mainnet** with
-[**Builder Codes**](https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes) — onchain
-attribution of x402 payments via ERC-8021 Schema 2.
+A **live pay-per-call API marketplace** on **Base mainnet** — [402.com.tr](https://402.com.tr).
+70 services (token safety, the only B20 protection suite on Base incl. real-time seizure alerts,
+wallet intelligence, OFAC screening, AI-written reports) sold to AI agents and humans over
+[**x402**](https://docs.cdp.coinbase.com/x402), settled in USDC via the Coinbase CDP facilitator,
+with onchain attribution via [**Builder Codes**](https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes)
+(ERC-8021 Schema 2). Listed in the CDP x402 discovery index; consumable via MCP
+([`x402-bazaar-mcp`](https://www.npmjs.com/package/x402-bazaar-mcp)), plain HTTP, or the Farcaster/Base App mini-app.
 
 One Next.js app plays all three roles in the x402 flow:
 
@@ -14,8 +18,13 @@ One Next.js app plays all three roles in the x402 flow:
 
 ## What it does
 
-- **Marketplace** (`/`): several real x402-protected, pay-per-call endpoints. Click *Pay & call*,
-  the buyer settles a USDC micro-payment on Base, you get the data + the settlement tx.
+- **Marketplace** (`/`): 70 real x402-protected, pay-per-call endpoints — pay from your own
+  browser wallet (or the demo buyer), a USDC micro-payment settles on Base, you get the data +
+  the settlement tx. Safety responses include an auditable pre-spend `receipt` (GO/HOLD/STOP).
+- **B20 protection suite**: 8 tools reading Base's native-token precompiles — freeze/seize risk,
+  "when did it turn seizable", real-time PolicyUpdated alerts (CDP webhooks), launch radar.
+- **Protect wallet** (`/app?mode=wallet`): scan approvals, revoke the risky ones **gas-free**
+  (sponsored via CDP Paymaster; one-signature Revoke All on smart wallets).
 - **Attribution dashboard** (`/dashboard`): paste any Base settlement tx hash; we read its calldata
   and decode the `a` / `w` / `s` Builder Codes straight from chain (no DB, no trust).
 

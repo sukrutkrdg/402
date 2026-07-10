@@ -1,5 +1,6 @@
 {
   "name": "x402-bazaar",
+  "engines": { "node": ">=20" },
   "version": "0.1.0",
   "private": true,
   "description": "Pay-per-call API marketplace on Base with x402 Builder Codes (onchain attribution).",
