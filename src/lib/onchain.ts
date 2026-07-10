@@ -81,6 +81,12 @@ export async function tokenRisk(params: Record<string, string>) {
   } catch (err) {
     throw new Error(`Token data unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
+  let atBlock: string | null = null;
+  try {
+    atBlock = (await c.getBlockNumber()).toString();
+  } catch {
+    atBlock = null;
+  }
   if (!code || code === "0x") {
     return {
       address,
@@ -275,6 +281,24 @@ export async function tokenRisk(params: Record<string, string>) {
     coverage: gp
       ? "RPC base + GoPlus security (honeypot, taxes, holders, holder concentration, LP lock, creator holdings, source, ownership controls)."
       : "RPC-only (security provider unavailable): contract, ERC-20, ownership, proxy.",
+    // Pre-spend receipt — an auditable record of this check, so an agent's
+    // decision is reviewable after the payment (community-requested).
+    receipt: {
+      checked: address,
+      atBlock,
+      at: new Date().toISOString(),
+      endpoint: "token-risk",
+      decision: riskLevel === "high" ? "STOP" : riskLevel === "medium" ? "HOLD" : "GO",
+      observedRisks: flags,
+      notChecked: gp
+        ? ["offchain team/social signals", "liquidity depth vs your trade size (use swap-route)", "B20 policy powers (use b20-safety)"]
+        : ["GoPlus security feed unavailable this call: honeypot/taxes/holders NOT checked", "offchain team/social signals", "liquidity depth vs trade size"],
+      wouldChangeCall: security?.isHoneypot
+        ? "Nothing — honeypot flag is terminal; do not trade."
+        : !renounced
+          ? "Ownership renounce, or owner privileges proven inert; re-check before size."
+          : "Material change in liquidity, taxes or holder concentration; re-check if stale > 1h.",
+    },
     // Funnel: the natural next step after a raw risk check.
     upgrade: {
       service: "ai-token-report",
