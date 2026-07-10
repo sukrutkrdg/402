@@ -76,7 +76,7 @@ function isRevokeOnly(callData: string): boolean {
       return value === 0n && isZeroApprove(data);
     }
     if (decoded.functionName === "executeBatch") {
-      const [calls] = decoded.args as [ReadonlyArray<{ value: bigint; data: string }>];
+      const calls = decoded.args[0] as ReadonlyArray<{ value: bigint; data: string }>;
       return calls.length > 0 && calls.every((c) => c.value === 0n && isZeroApprove(c.data));
     }
     return false;
