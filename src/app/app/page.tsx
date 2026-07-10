@@ -120,8 +120,10 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     }
     case "contract-danger":
       return `Danger: ${s(d.dangerLevel).toUpperCase()}\n${(Array.isArray(d.dangerCategories) ? d.dangerCategories : []).join(", ") || "no dangerous owner functions"}\n\n➡️ ${s(d.recommendation)}`;
-    case "token-risk":
-      return `Risk: ${s(d.level).toUpperCase()} (${s(d.score)}/100)\n${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "no flags"}`;
+    case "token-risk": {
+      const rc = (d.receipt ?? {}) as { decision?: string; wouldChangeCall?: string };
+      return `${rc.decision ? `${rc.decision} · ` : ""}Risk: ${s(d.riskLevel).toUpperCase()} (${s(d.riskScore)}/100)\n${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "no flags"}${rc.wouldChangeCall ? `\n\n↻ ${rc.wouldChangeCall}` : ""}`;
+    }
     default:
       return JSON.stringify(d, null, 2).slice(0, 800);
   }
