@@ -275,6 +275,13 @@ export async function tokenRisk(params: Record<string, string>) {
     coverage: gp
       ? "RPC base + GoPlus security (honeypot, taxes, holders, holder concentration, LP lock, creator holdings, source, ownership controls)."
       : "RPC-only (security provider unavailable): contract, ERC-20, ownership, proxy.",
+    // Funnel: the natural next step after a raw risk check.
+    upgrade: {
+      service: "ai-token-report",
+      price: "$0.08",
+      why: "AI-written verdict on this exact token: buy/avoid call, exit plan, and the risks above explained.",
+      url: `https://402.com.tr/api/x402/ai-token-report?address=${address}`,
+    },
     checkedAt: new Date().toISOString(),
   };
 }

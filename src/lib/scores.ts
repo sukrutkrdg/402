@@ -84,6 +84,13 @@ export async function rugScore(params: Record<string, string>) {
       sellTaxPct: sellTax,
     },
     note: "Composite of security flags, holder concentration and liquidity depth. Higher = riskier. Heuristic, not financial advice.",
+    // Funnel: the natural next step after a raw rug score.
+    upgrade: {
+      service: "ai-token-report",
+      price: "$0.08",
+      why: "AI-written verdict on this exact token: buy/avoid call, exit plan, and these signals explained.",
+      url: `https://402.com.tr/api/x402/ai-token-report?address=${address}`,
+    },
     checkedAt: new Date().toISOString(),
   };
 }
