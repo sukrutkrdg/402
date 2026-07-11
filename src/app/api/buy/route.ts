@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { decodePaymentResponseHeader } from "@x402/fetch";
 import { getPayingFetch } from "@/lib/x402-client";
 import { getService } from "@/lib/services";
+import { tierPrice } from "@/lib/credits";
 import { recordPayment } from "@/lib/store";
 import { getConfig } from "@/lib/config";
 import { rateLimitKv, clientIp } from "@/lib/rate-limit";
@@ -84,6 +85,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // The amount that actually settles for a variable-price service (buy-credits is
+  // priced by `tier`) differs from the base `service.price` shown in the catalog.
+  // Log the real settled price so payment records / revenue estimates aren't wrong.
+  const settledPrice = service.id === "buy-credits" ? tierPrice(body.params?.tier || "") : service.price;
+
   const origin = new URL(req.url).origin;
   const target = new URL(`/api/x402/${service.id}`, origin);
   for (const p of service.params) {
@@ -147,7 +153,7 @@ export async function POST(req: NextRequest) {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       serviceId: service.id,
       serviceName: service.name,
-      price: service.price,
+      price: settledPrice,
       txHash,
       network,
       payer,
@@ -164,7 +170,7 @@ export async function POST(req: NextRequest) {
       txHash,
       network,
       payer,
-      price: service.price,
+      price: settledPrice,
       appCode: cfg.appBuilderCode,
       clientCode: cfg.clientBuilderCode,
     },
