@@ -1,0 +1,63 @@
+{
+  "manifest_version": "0.2",
+  "name": "x402-bazaar-mcp",
+  "display_name": "x402 Bazaar",
+  "version": "0.2.1",
+  "description": "Pay-per-call Base onchain-safety, wallet-intel & AI tools over x402 — free tier works with zero config.",
+  "long_description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools. Every tool works instantly on the free tier (one call per day per service, then a preview). Add a prepaid credit token (buy once with USDC, no wallet in the agent) or a Base wallet private key to unlock unlimited paid calls via x402 micro-payments in USDC. Token safety checks, B20 standard inspection, wallet intelligence, DeFi data and AI reports — no API keys anywhere.",
+  "author": {
+    "name": "sukrutkrdg",
+    "url": "https://402.com.tr"
+  },
+  "homepage": "https://402.com.tr/agents",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp"
+  },
+  "license": "MIT",
+  "keywords": ["x402", "base", "usdc", "pay-per-call", "onchain-safety", "b20", "agent"],
+  "server": {
+    "type": "node",
+    "entry_point": "src/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/src/index.mjs"],
+      "env": {
+        "X402_CREDIT_TOKEN": "${user_config.credit_token}",
+        "AGENT_PRIVATE_KEY": "${user_config.agent_private_key}",
+        "X402_BAZAAR_CATALOG": "${user_config.catalog_url}"
+      }
+    }
+  },
+  "user_config": {
+    "credit_token": {
+      "type": "string",
+      "title": "Prepaid credit token (recommended)",
+      "description": "A credit token (ck_…) from the buy-credits service. Each call debits your prepaid balance — no wallet or signing needed. Buy at https://402.com.tr. Leave empty to stay on the free tier.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    },
+    "agent_private_key": {
+      "type": "string",
+      "title": "Agent wallet private key (alternative)",
+      "description": "Private key of a Base wallet holding USDC, used locally to sign x402 payments (gasless for the payer). Only used if no credit token is set. Use a dedicated low-balance wallet.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    },
+    "catalog_url": {
+      "type": "string",
+      "title": "Catalog URL",
+      "description": "Override the x402 Bazaar catalog endpoint (optional).",
+      "required": false,
+      "default": "https://402.com.tr/api/catalog"
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=20"
+    }
+  }
+}
