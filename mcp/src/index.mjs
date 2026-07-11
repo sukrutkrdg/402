@@ -28,7 +28,7 @@ import { z } from "zod";
 // — free-tier and prepaid-credit callers never load it, so the server boots and
 // serves those modes even without the crypto deps present, and startup is lighter.
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
@@ -209,13 +209,29 @@ async function loadCatalog() {
   return { total: services.length, added };
 }
 
-const { total, added } = await loadCatalog();
-log(
-  `v${VERSION} — mode: ${MODE} — ${added} tool(s) registered (catalog: ${total}).` +
-    (MODE === "free"
-      ? " Free tier active (1 call/day/service, then preview). Set X402_CREDIT_TOKEN or AGENT_PRIVATE_KEY for paid calls."
-      : ""),
-);
+// Kick the catalog load off immediately and give it a few seconds to populate the
+// tool list BEFORE we connect — so a client/registry scanner sees the full list.
+// But never let a slow or blocked catalog delay (or fail) the MCP `initialize`
+// handshake: some registry scanners (e.g. Smithery) abort init if it stalls. If
+// the fetch is still running when we connect, it finishes in the background and
+// the SDK emits tools/list_changed.
+const catalogReady = loadCatalog()
+  .then(({ total, added }) =>
+    log(
+      `v${VERSION} — mode: ${MODE} — ${added} tool(s) registered (catalog: ${total}).` +
+        (MODE === "free" ? " Free tier active; set X402_CREDIT_TOKEN or AGENT_PRIVATE_KEY for paid calls." : ""),
+    ),
+  )
+  .catch((err) => log(`Catalog load failed (server still starts): ${err.message}`));
+await Promise.race([catalogReady, new Promise((r) => setTimeout(r, 4000))]);
+
+// ---------------------------------------------------------------------------
+// 5. Connect via stdio transport (standard MCP pattern)
+// ---------------------------------------------------------------------------
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+log(`Server connected — ${registeredNames.size} tool(s) so far.`);
 
 // Hourly refresh — registers any newly listed services (idempotent via the
 // registeredNames set; the SDK emits tools/list_changed for new tools).
@@ -224,11 +240,3 @@ setInterval(() => {
     .then(({ added }) => added && log(`Catalog refresh: +${added} new tool(s).`))
     .catch((err) => log(`Catalog refresh failed: ${err.message}`));
 }, 60 * 60 * 1000).unref?.();
-
-// ---------------------------------------------------------------------------
-// 5. Connect via stdio transport (standard MCP pattern)
-// ---------------------------------------------------------------------------
-
-const transport = new StdioServerTransport();
-await server.connect(transport);
-log(`Server ready — ${registeredNames.size} tool(s).`);

@@ -18,6 +18,8 @@ const nextConfig = {
       { source: "/.well-known/x402-bazaar.json", destination: "/api/catalog" },
       { source: "/.well-known/agent.json", destination: "/api/agent-card" },
       { source: "/.well-known/mcp.json", destination: "/api/mcp-manifest" },
+      // MCP server card — lets registries (Smithery) list our tools without scanning.
+      { source: "/.well-known/mcp/server-card.json", destination: "/api/mcp-server-card" },
       // AI/agent discovery files.
       { source: "/llms.txt", destination: "/api/llms" },
       { source: "/openapi.json", destination: "/api/openapi" },
@@ -29,7 +31,7 @@ const nextConfig = {
     // (revenue, usage, payments, buy, cron) are deliberately NOT listed.
     return [
       {
-        source: "/api/:path(catalog|openapi|llms|status|public-stats|agent-card|mcp-manifest)",
+        source: "/api/:path(catalog|openapi|llms|status|public-stats|agent-card|mcp-manifest|mcp-server-card)",
         headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
       },
       {
