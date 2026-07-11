@@ -451,7 +451,7 @@ export default function MiniApp() {
       </div>
 
       <a href="/" className="text-center text-xs text-sky-400 hover:underline">
-        Browse all 67 services →
+        Browse all services →
       </a>
         </>
       )}

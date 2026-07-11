@@ -4,7 +4,7 @@ import { Providers } from "./app/providers";
 
 export default function Home() {
   // Strip the server-only handler before handing the catalog to the client.
-  const services: ServiceMeta[] = SERVICES.map((s) => ({
+  const services: ServiceMeta[] = SERVICES.filter((s) => !s.hidden).map((s) => ({
     id: s.id,
     name: s.name,
     tagline: s.tagline,

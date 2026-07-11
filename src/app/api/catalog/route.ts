@@ -26,7 +26,7 @@ export function GET() {
     builderCode: cfg.appBuilderCode,
     baseUrl: SITE_URL,
     docs: `${SITE_URL}/agents`,
-    services: SERVICES.map((s) => ({
+    services: SERVICES.filter((s) => !s.hidden).map((s) => ({
       id: s.id,
       name: s.name,
       description: s.description,

@@ -71,6 +71,8 @@ export interface ServiceDef {
    * for zero revenue. AI services are already paid-only via their category.
    */
   noFreeTier?: boolean;
+  /** Hidden from the marketplace UI + public catalog listing (still callable/indexed). */
+  hidden?: boolean;
 }
 
 export const SERVICES: ServiceDef[] = [
@@ -584,6 +586,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "selector", label: "Function selector", placeholder: "0x70a08231", required: true }],
     handler: decodeSelector,
+    hidden: true,
   },
   {
     id: "basename",
@@ -620,6 +623,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "query", label: "ENS name or address", placeholder: "vitalik.eth or 0x…", required: true }],
     handler: ensResolve,
+    hidden: true,
   },
   {
     id: "encode-selector",
@@ -632,6 +636,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "signature", label: "Function signature", placeholder: "transfer(address,uint256)", required: true }],
     handler: encodeSelector,
+    hidden: true,
   },
   {
     id: "sanctions",
@@ -913,6 +918,7 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: aiWalletReport,
+    hidden: true,
   },
   {
     id: "ai-token-report",
@@ -985,6 +991,7 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "text", label: "Text to summarize", placeholder: "Paste an article, email, or notes…", required: true, multiline: true }],
     handler: aiSummarize,
+    hidden: true,
   },
   {
     id: "ai-extract",
@@ -1000,6 +1007,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "fields", label: "Fields (comma-separated)", placeholder: "name, email, company, date" },
     ],
     handler: aiExtract,
+    hidden: true,
   },
   {
     id: "ai-translate",
@@ -1014,6 +1022,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "to", label: "Target language", placeholder: "English" },
     ],
     handler: aiTranslate,
+    hidden: true,
   },
   {
     id: "secure-token",
@@ -1034,6 +1043,7 @@ export const SERVICES: ServiceDef[] = [
       });
       return { count, tokens, generatedAt: new Date().toISOString() };
     },
+    hidden: true,
   },
 ];
 
