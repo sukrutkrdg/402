@@ -44,6 +44,7 @@ import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
+import { whaleFlow } from "./whale-flow";
 import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard } from "./b20-safety";
 
 export interface ServiceParam {
@@ -102,6 +103,21 @@ export const SERVICES: ServiceDef[] = [
       { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
     ],
     handler: preTradeGate,
+  },
+  {
+    id: "whale-flow",
+    name: "Whale Flow",
+    tagline: "Is size moving to the exits right now?",
+    description:
+      "Flow, not snapshot: the largest transfers of a Base token in the last 24h, classified by whether whales are sending INTO DEX pools (sell pressure) or pulling OUT (accumulation) — a net sell-pressure read that decays in hours. Complements holder-forensics ('who could dump') with 'is anyone dumping now'. CDP-indexed events.",
+    price: "$0.04",
+    icon: "🐋",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "hours", label: "Window in hours (default 24, max 72)", placeholder: "24" },
+    ],
+    handler: whaleFlow,
   },
   {
     id: "address-intel",
