@@ -20,6 +20,7 @@ import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
+import { kvGet, kvSet, kvDel } from "@/lib/kv";
 
 export const dynamic = "force-dynamic";
 // AI services aggregate several upstreams + Claude, and x402 settlement adds a few
@@ -164,6 +165,21 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       return handlerErrorResponse(err);
     }
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "");
+    // Funnel coupon: paying the entry check (token-risk/rug-score) discounts the
+    // AI report on the SAME token for 1h; redeeming it consumes the coupon.
+    try {
+      const addr = String((data as { address?: string } | null)?.address ?? "").toLowerCase();
+      if (/^0x[0-9a-f]{40}$/.test(addr)) {
+        const src = srcHash(clientIp(request));
+        if (service.id === "token-risk" || service.id === "rug-score") {
+          await kvSet(`coupon:${src}:${addr}`, "1", 3600);
+        } else if (service.id === "ai-token-report") {
+          await kvDel(`coupon:${src}:${addr}`);
+        }
+      }
+    } catch {
+      /* coupon bookkeeping is best-effort — never blocks the paid response */
+    }
     return NextResponse.json({
       service: service.id,
       builderCode: cfg.appBuilderCode,
@@ -182,10 +198,25 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         }
       : undefined;
 
+  // Coupon-discounted price: a caller who just paid the entry check on this token
+  // gets the AI report for less. Checked at challenge time by src+token; falls
+  // back to full price if absent — never cheaper without a real prior purchase.
+  let effectivePrice = service.price;
+  if (service.id === "ai-token-report") {
+    try {
+      const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
+      if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) {
+        effectivePrice = "$0.05";
+      }
+    } catch {
+      /* fall back to full price */
+    }
+  }
+
   const routeConfig: RouteConfig = {
     accepts: {
       scheme: "exact",
-      price: service.price,
+      price: effectivePrice,
       network: NETWORK,
       payTo: cfg.payTo,
     },

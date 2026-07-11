@@ -88,7 +88,7 @@ export async function rugScore(params: Record<string, string>) {
     upgrade: {
       service: "ai-token-report",
       price: "$0.12",
-      why: "AI-written verdict on this exact token: buy/avoid call, exit plan, and these signals explained.",
+      why: "AI-written verdict on this token: buy/avoid call, exit plan, signals explained. If you just paid this check, the full report is $0.05 (not $0.12) on this token for the next hour.",
       url: `https://402.com.tr/api/x402/ai-token-report?address=${address}`,
     },
     checkedAt: new Date().toISOString(),
