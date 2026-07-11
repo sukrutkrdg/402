@@ -101,6 +101,17 @@ export async function debitCredit(token: string, priceCents: number): Promise<De
   return { ok: true, remaining: after };
 }
 
+/**
+ * Return `cents` to a token's balance — used to undo a debit when the handler
+ * fails AFTER we've already charged (debit-first ordering avoids the double-spend
+ * race, so the refund is the compensating action on the error path).
+ */
+export async function refundCredit(token: string, cents: number): Promise<void> {
+  const t = (token || "").trim();
+  if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return;
+  await kvIncrBy(keyFor(t), cents);
+}
+
 /** Read-only balance for a token (cents). 0 when unknown/expired/no-KV. */
 export async function creditBalance(token: string): Promise<number> {
   const t = (token || "").trim();

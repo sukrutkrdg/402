@@ -71,6 +71,25 @@ interface Usage {
   youSource?: string;
   ownerSources?: string[];
 }
+interface PayerWallet {
+  wallet: string;
+  txCount: number;
+  totalUsdc: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  firstService?: string | null;
+  txs: { txHash: string | null; usdc: number; at: string | null }[];
+}
+interface Payers {
+  date: string;
+  available: boolean;
+  payTo?: string;
+  walletCount?: number;
+  txCount?: number;
+  totalUsdc?: number;
+  wallets?: PayerWallet[];
+  note?: string;
+}
 
 function timeAgo(t: number): string {
   const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
@@ -89,6 +108,25 @@ export default function Stats() {
   const [authed, setAuthed] = useState(false);
   // Recent activity defaults to real users only (hide bots + free-tier previews).
   const [showAllActivity, setShowAllActivity] = useState(false);
+  // Paying-wallets-by-date drill-down.
+  const today = new Date().toISOString().slice(0, 10);
+  const [payersDate, setPayersDate] = useState(today);
+  const [payers, setPayers] = useState<Payers | null>(null);
+  const [payersLoading, setPayersLoading] = useState(false);
+  const [openWallet, setOpenWallet] = useState<string | null>(null);
+
+  async function loadPayers(date: string, tok: string) {
+    setPayersLoading(true);
+    try {
+      const r = await fetch(`/api/payers?date=${date}`, { headers: { "x-stats-token": tok } });
+      if (r.ok) setPayers(await r.json());
+      else setPayers(null);
+    } catch {
+      setPayers(null);
+    } finally {
+      setPayersLoading(false);
+    }
+  }
 
   async function load(tok: string) {
     setLoading(true);
@@ -114,6 +152,7 @@ export default function Stats() {
       } catch {
         /* ignore */
       }
+      loadPayers(payersDate, tok);
       try {
         localStorage.setItem("x402_stats_token", tok);
       } catch {
@@ -266,6 +305,118 @@ export default function Stats() {
                 <div className="shrink-0 font-mono text-sm font-bold text-emerald-300">${p.amountUsdc}</div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Paying wallets by day</h2>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              max={today}
+              value={payersDate}
+              onChange={(e) => {
+                setPayersDate(e.target.value);
+                setOpenWallet(null);
+                if (e.target.value) loadPayers(e.target.value, token);
+              }}
+              className="rounded-lg border border-base-line bg-black/40 px-2.5 py-1.5 text-xs outline-none focus:border-base-blue"
+            />
+            <button className="btn-ghost !px-3 !py-1.5 !text-xs" onClick={() => loadPayers(payersDate, token)}>
+              {payersLoading ? "…" : "Load"}
+            </button>
+          </div>
+        </div>
+
+        {payersLoading && (
+          <div className="card animate-pulse px-4 py-6 text-center text-sm text-gray-500">Reading chain…</div>
+        )}
+
+        {payers && payers.available && (payers.walletCount ?? 0) > 0 && (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="card p-4">
+                <div className="label">Wallets</div>
+                <div className="mt-1 font-mono text-2xl font-bold text-sky-300">{payers.walletCount}</div>
+              </div>
+              <div className="card p-4">
+                <div className="label">Payments</div>
+                <div className="mt-1 font-mono text-2xl font-bold">{payers.txCount}</div>
+              </div>
+              <div className="card p-4">
+                <div className="label">USDC in</div>
+                <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">${(payers.totalUsdc ?? 0).toFixed(2)}</div>
+              </div>
+            </div>
+            <div className="card divide-y divide-base-line/60">
+              {payers.wallets!.map((w) => {
+                const open = openWallet === w.wallet;
+                return (
+                  <div key={w.wallet}>
+                    <button
+                      onClick={() => setOpenWallet(open ? null : w.wallet)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/5"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="text-gray-500">{open ? "▾" : "▸"}</span>
+                        <span className="font-mono text-sm">{short(w.wallet)}</span>
+                        {w.firstService && (
+                          <span className="shrink-0 truncate rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300/90">
+                            first: {w.firstService}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3 text-xs">
+                        <span className="text-gray-500">{w.txCount}×</span>
+                        <span className="font-mono font-bold text-emerald-300">${w.totalUsdc.toFixed(2)}</span>
+                      </div>
+                    </button>
+                    {open && (
+                      <div className="bg-black/20 px-4 py-2">
+                        <div className="mb-1 flex items-center justify-between text-[10px] text-gray-500">
+                          <span>{w.txCount} payment{w.txCount === 1 ? "" : "s"} this day</span>
+                          <a className="text-sky-400 hover:underline" href={BASESCAN_TOKENTX(w.wallet)} target="_blank" rel="noreferrer">
+                            wallet on BaseScan ↗
+                          </a>
+                        </div>
+                        <div className="divide-y divide-base-line/40">
+                          {w.txs.map((t, i) => (
+                            <div key={i} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+                              <a
+                                className="truncate font-mono text-[11px] text-sky-400 hover:underline"
+                                href={t.txHash ? BASESCAN_TX(t.txHash) : "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {t.txHash ? `${t.txHash.slice(0, 18)}…` : "—"}
+                              </a>
+                              <div className="flex shrink-0 items-center gap-3 text-gray-500">
+                                <span className="font-mono text-emerald-300/90">${t.usdc.toFixed(2)}</span>
+                                <span>{t.at ? timeAgo(new Date(t.at).getTime()) : "—"}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {payers.note && <p className="text-[10px] text-gray-500">{payers.note}</p>}
+          </>
+        )}
+
+        {payers && !payersLoading && payers.available && (payers.walletCount ?? 0) === 0 && (
+          <div className="card px-4 py-6 text-center text-sm text-gray-500">
+            No USDC payments into the seller wallet on {payers.date}.
+          </div>
+        )}
+        {payers && !payers.available && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            {payers.note}
           </div>
         )}
       </section>

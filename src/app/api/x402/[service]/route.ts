@@ -21,7 +21,7 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel } from "@/lib/kv";
-import { debitCredit, creditBalance, tierPrice } from "@/lib/credits";
+import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
 
 /** Service price string ("$0.03") → integer cents (3). */
@@ -140,14 +140,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const creditToken = req.headers.get("x-credit-token") || "";
   if (creditToken && service.id !== "buy-credits") {
     const cents = priceCents(service.price);
-    // Cheap pre-check so we don't run an expensive handler for an underfunded token.
-    if ((await creditBalance(creditToken)) < cents) {
+    // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
+    // one step, so two concurrent calls can't each pass a cheap pre-check and get a
+    // free call on the race. An underfunded/unknown token is refunded inside
+    // debitCredit and reported here.
+    const debit = await debitCredit(creditToken, cents);
+    if (!debit.ok) {
       return NextResponse.json(
         {
-          error: "Insufficient credits",
+          error: debit.reason === "insufficient" ? "Insufficient credits" : "Invalid or unusable credit token",
           service: service.id,
           priceUsd: +(cents / 100).toFixed(2),
-          balanceUsd: +((await creditBalance(creditToken)) / 100).toFixed(2),
+          balanceUsd: +((debit.balance ?? 0) / 100).toFixed(2),
           topUp: "Buy more at /api/x402/buy-credits (tier=1|5|20), or omit x-credit-token to pay per-call via x402.",
         },
         { status: 402 },
@@ -157,9 +161,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     try {
       data = await service.handler(paramsFrom(req, service));
     } catch (err) {
-      return handlerErrorResponse(err); // handler failed → no debit, caller keeps balance
+      await refundCredit(creditToken, cents); // charged but never delivered → give it back
+      return handlerErrorResponse(err);
     }
-    const debit = await debitCredit(creditToken, cents);
     const ip = clientIp(req);
     await logUsage(service.id, true, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, false, srcHash(`credit:${creditToken}`));
     return NextResponse.json(
