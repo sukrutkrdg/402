@@ -6,20 +6,27 @@
     "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp",
     "source": "github"
   },
-  "version": "0.1.5",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "x402-bazaar-mcp",
-      "version": "0.1.5",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
+          "name": "X402_CREDIT_TOKEN",
+          "description": "Prepaid credit token (ck_…) from the buy-credits service. Sent as the x-credit-token header; each call debits your balance. No wallet or signing needed. Recommended paid mode.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
           "name": "AGENT_PRIVATE_KEY",
-          "description": "Hex private key of a Base wallet holding USDC. Used locally to sign x402 payments — never sent anywhere. Use a dedicated low-balance wallet.",
-          "isRequired": true,
+          "description": "Hex private key of a Base wallet holding USDC. Used locally to sign x402 payments — never sent anywhere. Use a dedicated low-balance wallet. Optional: without it (and without a credit token) the server runs on the free tier.",
+          "isRequired": false,
           "isSecret": true,
           "format": "string"
         },

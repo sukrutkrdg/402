@@ -4,13 +4,18 @@
  *
  * An MCP (Model Context Protocol) stdio server that auto-discovers every paid
  * endpoint in the x402 Bazaar catalog and registers each one as an MCP tool.
- * When a tool is called the server transparently handles the x402 payment flow
- * (HTTP 402 → pay USDC on Base → retry), so the AI agent calling the tool
- * never has to deal with payment details itself.
  *
- * Required env:
- *   AGENT_PRIVATE_KEY  – hex private key of a Base wallet that holds USDC
- *                        (prefix 0x is optional; will be added if missing)
+ * THREE payment modes, in precedence order — the server works with ZERO config
+ * (free tier) so an agent can try it instantly, then unlocks paid calls with a
+ * prepaid credit token (no wallet, no signing) or a wallet key:
+ *
+ *   1. X402_CREDIT_TOKEN  – a prepaid credit token (ck_…) from the buy-credits
+ *                           service. Sent as the `x-credit-token` header; each
+ *                           call debits your balance. No private key, no signing.
+ *   2. AGENT_PRIVATE_KEY  – hex private key of a Base wallet holding USDC. Signs
+ *                           the x402 payment locally (never sent anywhere).
+ *   3. (neither)          – FREE tier: one free full call/day per service, then a
+ *                           preview. Zero config — great for trying the tools.
  *
  * Optional env:
  *   X402_BAZAAR_CATALOG – catalog URL (default: https://402.com.tr/api/catalog)
@@ -23,25 +28,24 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
 
+const VERSION = "0.2.0";
+
 // ---------------------------------------------------------------------------
-// 1. Config + lazy paying-fetch
+// 1. Config + payment mode
 // ---------------------------------------------------------------------------
-// The private key is needed only to PAY for a tool call — not to start the
-// server. Building it lazily lets the server boot, advertise its tools, and be
-// scanned by registries without a key. The key is required only on invocation.
 
 const CATALOG_URL =
   process.env.X402_BAZAAR_CATALOG ?? "https://402.com.tr/api/catalog";
+const CREDIT_TOKEN = (process.env.X402_CREDIT_TOKEN ?? "").trim();
+const HAS_WALLET = Boolean(process.env.AGENT_PRIVATE_KEY);
+const MODE = CREDIT_TOKEN ? "credits" : HAS_WALLET ? "wallet" : "free";
 
+// Wallet paying-fetch is built lazily — only needed when actually paying with a
+// key, so the server boots and advertises its tools without one.
 let _payingFetch = null;
 function getPayingFetch() {
   if (_payingFetch) return _payingFetch;
   const rawKey = process.env.AGENT_PRIVATE_KEY;
-  if (!rawKey) {
-    throw new Error(
-      "AGENT_PRIVATE_KEY is not set — required to pay for tool calls. Add it to your MCP client config."
-    );
-  }
   const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
   const account = privateKeyToAccount(privateKey);
   const client = new x402Client();
@@ -52,14 +56,32 @@ function getPayingFetch() {
 
 const log = (m) => process.stderr.write(`[x402-bazaar-mcp] ${m}\n`);
 
+/**
+ * Mode-aware fetch. Credits → add the header and use a plain fetch (no signing).
+ * Wallet → the x402 paying fetch (auto-handles 402 → pay → retry). Free → plain
+ * fetch (the server serves a free daily call / preview, or 402s for paid-only).
+ */
+async function payAwareFetch(target, opts = {}) {
+  if (CREDIT_TOKEN) {
+    return fetch(target, {
+      ...opts,
+      headers: { ...(opts.headers ?? {}), "x-credit-token": CREDIT_TOKEN },
+    });
+  }
+  if (HAS_WALLET) {
+    return getPayingFetch()(target, opts);
+  }
+  return fetch(target, opts);
+}
+
 // ---------------------------------------------------------------------------
 // 2. Create the MCP server
 // ---------------------------------------------------------------------------
 
-const server = new McpServer({ name: "x402-bazaar", version: "0.1.5" });
+const server = new McpServer({ name: "x402-bazaar", version: VERSION });
 
 // ---------------------------------------------------------------------------
-// 3. Tool registration (with POST support, typed inputs, pretty JSON output)
+// 3. Tool registration (typed inputs, mode-aware payment, pretty JSON output)
 // ---------------------------------------------------------------------------
 
 const registeredNames = new Set();
@@ -94,27 +116,32 @@ function registerService(service) {
   server.tool(toolName, description, inputShape, async (args) => {
     let response;
     try {
-      const pay = getPayingFetch();
+      let target = service.endpoint;
+      let opts = {};
       if (method === "GET") {
         const url = new URL(service.endpoint);
         for (const [k, v] of Object.entries(args)) {
           if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
         }
-        response = await pay(url.toString());
+        target = url.toString();
       } else {
-        // POST/PUT/etc — send params as a JSON body.
-        response = await pay(service.endpoint, {
+        opts = {
           method,
           headers: { "content-type": "application/json" },
           body: JSON.stringify(args),
-        });
+        };
       }
+      response = await payAwareFetch(target, opts);
     } catch (err) {
       let msg = err?.message ?? String(err);
       if (/insufficient|balance|funds|exceeds/i.test(msg)) {
-        msg = "Insufficient USDC balance on Base — fund the agent wallet (AGENT_PRIVATE_KEY address).";
+        msg =
+          "Insufficient USDC balance on Base — fund the agent wallet (AGENT_PRIVATE_KEY address), or use X402_CREDIT_TOKEN.";
       }
-      return { content: [{ type: "text", text: `[x402-bazaar-mcp] Request failed: ${msg}` }], isError: true };
+      return {
+        content: [{ type: "text", text: `[x402-bazaar-mcp] Request failed: ${msg}` }],
+        isError: true,
+      };
     }
 
     // Pretty-print JSON so the LLM gets a readable, structured result.
@@ -126,6 +153,19 @@ function registerService(service) {
       } catch {
         /* leave as-is */
       }
+    }
+
+    // A 402 in free/credits mode is expected sometimes (quota used, paid-only
+    // service, or empty balance). Turn it into an actionable hint instead of a
+    // bare error so the agent/operator knows exactly how to unlock the call.
+    if (response.status === 402) {
+      const hint =
+        MODE === "credits"
+          ? "Prepaid credits exhausted or invalid — top up with the buy_credits tool, or set a funded X402_CREDIT_TOKEN."
+          : MODE === "wallet"
+            ? "Wallet could not settle the payment — check the AGENT_PRIVATE_KEY wallet's USDC balance on Base."
+            : "This call needs payment (free daily quota used, or a paid-only service). Set X402_CREDIT_TOKEN (recommended — buy once, no wallet) or AGENT_PRIVATE_KEY.";
+      text = `${text}\n\n[x402-bazaar-mcp] 402 Payment Required — ${hint}`;
     }
 
     return { content: [{ type: "text", text }], isError: !response.ok };
@@ -162,7 +202,12 @@ async function loadCatalog() {
 }
 
 const { total, added } = await loadCatalog();
-log(`Server starting — ${added} tool(s) registered (catalog: ${total}).`);
+log(
+  `v${VERSION} — mode: ${MODE} — ${added} tool(s) registered (catalog: ${total}).` +
+    (MODE === "free"
+      ? " Free tier active (1 call/day/service, then preview). Set X402_CREDIT_TOKEN or AGENT_PRIVATE_KEY for paid calls."
+      : ""),
+);
 
 // Hourly refresh — registers any newly listed services (idempotent via the
 // registeredNames set; the SDK emits tools/list_changed for new tools).

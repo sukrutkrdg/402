@@ -8,6 +8,11 @@ Each tool call is backed by an **x402 micro-payment in USDC on Base** — no API
 keys, no subscriptions, no sign-up.  The agent pays only for what it uses,
 typically fractions of a cent per call.
 
+**Works with zero config.** Run it with no wallet and no token and it uses the
+**free tier** (one free call/day per service, then a preview) — so an agent can
+try every tool instantly. Unlock unlimited paid calls with either a **prepaid
+credit token** (buy once, no wallet, no signing) or a **wallet key**.
+
 ---
 
 ## How it works
@@ -15,46 +20,59 @@ typically fractions of a cent per call.
 1. On startup the server fetches the live catalog from
    `https://402.com.tr/api/catalog` and auto-registers one MCP tool per
    service.
-2. When an AI agent calls a tool the server builds the request URL, hits the
-   endpoint, and transparently handles the x402 payment flow:
-   `HTTP 402 → pay USDC on Base → retry → return response`.
-3. The agent wallet only needs **USDC on Base**.  Gas is paid by the x402
-   facilitator — it is **gasless for the payer**.
+2. When an AI agent calls a tool the server picks a payment mode (below), hits
+   the endpoint, and returns the response.
+3. In wallet mode the x402 flow is transparent:
+   `HTTP 402 → pay USDC on Base → retry → return response`, gasless for the payer
+   (the facilitator pays gas).
 
-First few calls per day per IP may be served on the **free tier** at no
-cost; subsequent calls trigger micro-payments automatically.
+### Three payment modes (precedence order)
+
+| Mode | Set | What happens | Wallet? Signing? |
+|---|---|---|---|
+| **Credits** ⭐ | `X402_CREDIT_TOKEN` | Sent as `x-credit-token`; each call debits your prepaid balance | No / No |
+| **Wallet** | `AGENT_PRIVATE_KEY` | Signs an x402 USDC payment locally per call | Yes / Yes |
+| **Free** | *(nothing)* | Free tier: 1 full call/day/service, then a preview | No / No |
+
+Credits are the easiest paid mode: call the `buy_credits` tool once (or buy at
+[402.com.tr](https://402.com.tr)) to get a `ck_…` token, set it as
+`X402_CREDIT_TOKEN`, and every call just draws down the balance — no private key
+ever touches the config.
 
 ---
 
 ## Requirements
 
 - Node.js ≥ 20
-- A Base wallet private key whose address holds USDC on Base mainnet
+- *(optional, for paid calls)* a prepaid credit token **or** a Base wallet
+  private key whose address holds USDC on Base mainnet
 
 ---
 
 ## Installation & running
 
 ```bash
-# Install dependencies
 npm install
 
-# Run (set your private key in the environment)
+# Zero-config — free tier, try every tool instantly:
+npx x402-bazaar-mcp
+
+# Paid via prepaid credits (recommended — no wallet, no signing):
+X402_CREDIT_TOKEN=ck_your_token npx x402-bazaar-mcp
+
+# Paid via wallet:
 AGENT_PRIVATE_KEY=0xYOUR_PRIVATE_KEY npx x402-bazaar-mcp
-```
-
-Or with `npm start` after cloning:
-
-```bash
-AGENT_PRIVATE_KEY=0xYOUR_PRIVATE_KEY npm start
 ```
 
 ### Environment variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AGENT_PRIVATE_KEY` | **yes** | — | Hex private key for a Base wallet holding USDC. `0x` prefix is optional. |
+| `X402_CREDIT_TOKEN` | no | — | Prepaid credit token (`ck_…`) from `buy-credits`. Sent as `x-credit-token`; debits your balance per call. No wallet needed. **Recommended paid mode.** |
+| `AGENT_PRIVATE_KEY` | no | — | Hex private key for a Base wallet holding USDC. `0x` prefix optional. Used only if no credit token is set. |
 | `X402_BAZAAR_CATALOG` | no | `https://402.com.tr/api/catalog` | Override the catalog URL (useful for local dev). |
+
+With none of the above set, the server runs on the **free tier**.
 
 ---
 
@@ -71,12 +89,16 @@ macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
       "command": "npx",
       "args": ["-y", "x402-bazaar-mcp"],
       "env": {
-        "AGENT_PRIVATE_KEY": "0xYOUR_PRIVATE_KEY"
+        "X402_CREDIT_TOKEN": "ck_your_token"
       }
     }
   }
 }
 ```
+
+Omit the `env` block entirely to run on the **free tier** (great for a first
+try), or use `"AGENT_PRIVATE_KEY": "0x…"` instead of the credit token to pay
+from a wallet.
 
 After saving, restart Claude Desktop.  You should see the Bazaar tools appear
 in the tool list (hammer icon).
@@ -118,7 +140,11 @@ provider for each.
 Add it as an MCP server in one command:
 
 ```bash
-claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0xYOUR_PRIVATE_KEY -- npx -y x402-bazaar-mcp
+# Free tier (zero config):
+claude mcp add x402-bazaar -- npx -y x402-bazaar-mcp
+
+# Or paid via prepaid credits:
+claude mcp add x402-bazaar -e X402_CREDIT_TOKEN=ck_your_token -- npx -y x402-bazaar-mcp
 ```
 
 Then ask Claude Code to check a token, price a portfolio, or screen an address —
@@ -155,7 +181,7 @@ writing it includes:
 | `price_alert` | $0.05 | Register a webhook alert when a token crosses a price |
 | `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
 
-…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (67+ services).
+…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (70+ services, including `pre_trade_gate`, `whale_flow`, `watchlist_diff`, the B20 safety suite, and `buy_credits`).
 
 ### Example
 
@@ -251,10 +277,14 @@ from your wallet, and answers with the on-chain data.
 
 ## Security note
 
-Your private key is only used locally inside this process to sign payment
-authorizations.  It is **never** sent to the Bazaar server or any third party.
-Use a dedicated spending wallet (not your main wallet) and keep only a small
-USDC balance on it.
+**Prepaid credits (recommended) need no wallet at all** — the `ck_…` token is a
+bearer capability worth only its remaining balance, so a leaked token can lose at
+most what's left on it, never a wallet. Buy a small pack and rotate it if needed.
+
+If you use **wallet mode** instead, your private key is only used locally inside
+this process to sign payment authorizations. It is **never** sent to the Bazaar
+server or any third party. Use a dedicated spending wallet (not your main wallet)
+and keep only a small USDC balance on it.
 
 ---
 
