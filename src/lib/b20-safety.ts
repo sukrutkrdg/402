@@ -97,51 +97,56 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     rebase: false, supplyCapped: false, degraded: false,
   };
 
-  // supplyCap() exists on every B20 and reverts on a plain ERC-20 → B20 probe.
-  let supplyCap: bigint | null = null;
-  for (let i = 0; i < 3; i++) {
+  // One multicall (Multicall3, a single eth_call) instead of 8 sequential reads
+  // with sleeps — B20 precompiles answer staticcalls, so this works and is ~1s
+  // vs ~3s. supplyCap failure = not a B20 (reverts / no data on a plain ERC-20).
+  const contracts = [
+    { address: addr, abi: B20_ABI, functionName: "supplyCap" },
+    { address: addr, abi: B20_ABI, functionName: "symbol" },
+    { address: addr, abi: B20_ABI, functionName: "multiplier" },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] },
+    { address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] },
+    { address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] },
+  ] as const;
+
+  type MC = { status: "success"; result: unknown } | { status: "failure"; error: Error };
+  let r: MC[];
+  try {
+    r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as unknown as MC[];
+  } catch {
+    // Whole-chain RPC failure (not a per-call revert) — retry once, else give up.
     try {
-      supplyCap = (await client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" })) as bigint;
-      break;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/revert/i.test(msg)) return empty; // not a B20 token
-      if (i === 2) return empty;
-      await sleep(300);
+      await sleep(400);
+      r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as unknown as MC[];
+    } catch {
+      return empty;
     }
   }
-  if (supplyCap === null) return empty;
 
-  await sleep(120);
-  const symbol = await withRetry<string | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "symbol" }) as Promise<string | null>, null);
-  await sleep(120);
-  const mult = await withRetry<bigint | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>, null);
-  const variant: "asset" | "stablecoin" = mult !== null ? "asset" : "stablecoin";
-  // Seize/freeze-critical reads use a null sentinel so an RPC failure is NOT
-  // silently read as "no policy" (which would report a seizable token as safe).
-  let degraded = false;
-  await sleep(120);
-  const senderPol = await withRetry<bigint | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint | null>, null);
-  await sleep(120);
-  const recvPol = await withRetry<bigint | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] }) as Promise<bigint | null>, null);
-  await sleep(120);
-  const pT = await withRetry<boolean | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] }) as Promise<boolean | null>, null);
-  await sleep(120);
-  const pM = await withRetry<boolean | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] }) as Promise<boolean | null>, null);
-  await sleep(120);
-  const pB = await withRetry<boolean | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] }) as Promise<boolean | null>, null);
-  if (senderPol === null || recvPol === null || pT === null) degraded = true;
+  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2] = r;
+  if (scRes.status !== "success") return empty; // supplyCap reverted / no data → not a B20
+  const supplyCap = scRes.result as bigint;
+  const symbol = symRes.status === "success" ? (symRes.result as string) : null;
+  const variant: "asset" | "stablecoin" = multRes.status === "success" ? "asset" : "stablecoin";
+
+  // On a confirmed B20, a failed seize/freeze-critical read = degraded (we must
+  // NOT read that as "no policy" and call a seizable token safe).
+  const degraded = spRes.status !== "success" || rpRes.status !== "success" || p0.status !== "success";
+  const senderPol = spRes.status === "success" ? (spRes.result as bigint) : 0n;
+  const recvPol = rpRes.status === "success" ? (rpRes.result as bigint) : 0n;
 
   return {
     isB20: true, variant, symbol, supplyCap,
-    canSeize: (senderPol ?? 0n) > 0n,
-    transferGated: (senderPol ?? 0n) > 0n || (recvPol ?? 0n) > 0n,
-    senderPolicyId: senderPol ?? 0n,
-    paused: { transfer: pT ?? false, mint: pM ?? false, burn: pB ?? false },
+    canSeize: senderPol > 0n,
+    transferGated: senderPol > 0n || recvPol > 0n,
+    senderPolicyId: senderPol,
+    paused: {
+      transfer: p0.status === "success" ? (p0.result as boolean) : false,
+      mint: p1.status === "success" ? (p1.result as boolean) : false,
+      burn: p2.status === "success" ? (p2.result as boolean) : false,
+    },
     rebase: variant === "asset",
     supplyCapped: supplyCap !== MAX_SUPPLY_CAP,
     degraded,
