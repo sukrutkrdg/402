@@ -171,6 +171,10 @@ export interface RecentCall {
   i?: boolean;
   /** Free-tier teaser (preview) response. */
   pv?: boolean;
+  /** Hit the 402 price challenge and (likely) walked away. */
+  ch?: boolean;
+  /** Hashed payer wallet on a paid call. */
+  pyr?: string;
 }
 
 export async function getUsage(serviceIds: string[], ownerSources: string[] = []): Promise<{

@@ -32,6 +32,10 @@ interface UsageRow {
   price?: number;
   revenue?: number;
   conversionPct?: number;
+  /** Times shown the 402 price. */
+  challenge?: number;
+  /** Of those shown the price, how many paid (paid ÷ (paid+challenge)). */
+  challengePaidPct?: number;
 }
 interface RecentCall {
   s: string;
@@ -46,6 +50,10 @@ interface RecentCall {
   i?: boolean;
   /** Free-tier teaser (preview) response. */
   pv?: boolean;
+  /** Hit the 402 price challenge (and likely walked away). */
+  ch?: boolean;
+  /** Hashed payer wallet on a paid call. */
+  pyr?: string;
 }
 interface Usage {
   per: UsageRow[];
@@ -59,6 +67,7 @@ interface Usage {
   botSourcesToday?: number;
   internalSourcesToday?: number;
   externalSourcesToday?: number;
+  payersToday?: number;
   youSource?: string;
   ownerSources?: string[];
 }
@@ -279,7 +288,7 @@ export default function Stats() {
                 ${(usage.totalRevenue ?? 0).toFixed(2)}
               </div>
               <div className="text-[10px] text-gray-500">
-                {usage.totalPaid} paid · {usage.paidToday ?? 0} today
+                {usage.totalPaid} paid · {usage.paidToday ?? 0} today · {usage.payersToday ?? 0} 👛 wallet{(usage.payersToday ?? 0) === 1 ? "" : "s"}
               </div>
             </div>
             <div className="card p-4">
@@ -344,13 +353,21 @@ export default function Stats() {
                           className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
                             r.p
                               ? "bg-emerald-500/15 text-emerald-300"
-                              : r.pv
-                                ? "bg-sky-500/15 text-sky-300"
-                                : "bg-white/5 text-gray-400"
+                              : r.ch
+                                ? "bg-amber-500/15 text-amber-300"
+                                : r.pv
+                                  ? "bg-sky-500/15 text-sky-300"
+                                  : "bg-white/5 text-gray-400"
                           }`}
+                          title={r.ch ? "shown the 402 price, walked away" : undefined}
                         >
-                          {r.p ? "PAID" : r.pv ? "preview" : "free"}
+                          {r.p ? "PAID" : r.ch ? "402⚡" : r.pv ? "preview" : "free"}
                         </span>
+                        {r.p && r.pyr && (
+                          <span className="shrink-0 font-mono text-[10px] text-emerald-300/70" title={`payer wallet ${r.pyr}`}>
+                            👛{r.pyr}
+                          </span>
+                        )}
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${who.cls}`}>
                           {who.label}
                         </span>
@@ -397,6 +414,7 @@ export default function Stats() {
                   const conv = r.conversionPct ?? 0;
                   const convCls =
                     conv >= 20 ? "text-emerald-300" : conv >= 5 ? "text-amber-300" : "text-gray-500";
+                  const chPct = r.challengePaidPct ?? 0;
                   return (
                     <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                       <div className="min-w-0 flex-1 truncate text-sm">{r.name}</div>
@@ -407,6 +425,14 @@ export default function Stats() {
                         <span className={`w-10 text-right font-mono ${convCls}`} title="conversion: paid ÷ external calls">
                           {conv}%
                         </span>
+                        {r.challenge ? (
+                          <span
+                            className="font-mono text-amber-300/80"
+                            title={`shown the 402 price ${r.challenge}× · ${chPct}% of those paid`}
+                          >
+                            {r.challenge}⚡{chPct > 0 ? `·${chPct}%` : ""}
+                          </span>
+                        ) : null}
                         <span className="text-emerald-300/90">{r.paid}p</span>
                         {r.preview ? <span className="text-sky-300/80">{r.preview}👁</span> : null}
                         <span className="text-gray-500">{free}f</span>
@@ -420,6 +446,7 @@ export default function Stats() {
               <p className="mt-1 text-[10px] text-gray-500">
                 <span className="text-emerald-300">$</span> est. revenue (paid×price) ·{" "}
                 <span className="text-emerald-300">%</span> conversion (paid ÷ external) ·{" "}
+                <b className="text-amber-300">⚡</b> shown the price (·% = of those, how many paid) ·{" "}
                 <b>p</b> paid · <b>👁</b> preview/teaser · <b>f</b> free · <b>i</b> internal
               </p>
             </div>

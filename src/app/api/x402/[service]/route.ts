@@ -21,6 +21,13 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel } from "@/lib/kv";
+import { debitCredit, creditBalance, tierPrice } from "@/lib/credits";
+import { sinceLastCheck } from "@/lib/since-last";
+
+/** Service price string ("$0.03") → integer cents (3). */
+function priceCents(price: string): number {
+  return Math.round((parseFloat(price.replace(/[^0-9.]/g, "")) || 0) * 100);
+}
 
 /** Best-effort payer wallet from the x-payment header (base64 JSON) — used only
  * for anonymized repeat-buyer analytics; never throws. */
@@ -125,6 +132,42 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     }
   }
 
+  // Prepaid-credit path (P3): a caller who bought a credit pack presents its
+  // bearer token as `x-credit-token` and draws the service price down from their
+  // balance — no per-call x402 settlement. Revenue was collected up front when the
+  // pack was bought; this only debits it. buy-credits itself is excluded (you can't
+  // mint credits from credits — that needs a real settlement).
+  const creditToken = req.headers.get("x-credit-token") || "";
+  if (creditToken && service.id !== "buy-credits") {
+    const cents = priceCents(service.price);
+    // Cheap pre-check so we don't run an expensive handler for an underfunded token.
+    if ((await creditBalance(creditToken)) < cents) {
+      return NextResponse.json(
+        {
+          error: "Insufficient credits",
+          service: service.id,
+          priceUsd: +(cents / 100).toFixed(2),
+          balanceUsd: +((await creditBalance(creditToken)) / 100).toFixed(2),
+          topUp: "Buy more at /api/x402/buy-credits (tier=1|5|20), or omit x-credit-token to pay per-call via x402.",
+        },
+        { status: 402 },
+      );
+    }
+    let data: unknown;
+    try {
+      data = await service.handler(paramsFrom(req, service));
+    } catch (err) {
+      return handlerErrorResponse(err); // handler failed → no debit, caller keeps balance
+    }
+    const debit = await debitCredit(creditToken, cents);
+    const ip = clientIp(req);
+    await logUsage(service.id, true, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, false, srcHash(`credit:${creditToken}`));
+    return NextResponse.json(
+      { service: service.id, builderCode: cfg.appBuilderCode, data, paidVia: "credits", creditBalanceUsd: +(debit.remaining / 100).toFixed(2) },
+      { headers: { "x-credit-balance": String(debit.remaining), "x-paid-via": "credits" } },
+    );
+  }
+
   // Free tier: an unpaid request (no payment header) that isn't the internal
   // demo buy flow gets one free trial call/day per IP, then must pay. This is the
   // agent trial funnel.
@@ -190,17 +233,26 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // Funnel coupon: paying the entry check (token-risk/rug-score) discounts the
     // AI report on the SAME token for 1h; redeeming it consumes the coupon.
     try {
-      const addr = String((data as { address?: string } | null)?.address ?? "").toLowerCase();
+      const d = data as Record<string, unknown> | null;
+      const addr = String(d?.address ?? "").toLowerCase();
       if (/^0x[0-9a-f]{40}$/.test(addr)) {
         const src = srcHash(clientIp(request));
         if (service.id === "token-risk" || service.id === "rug-score") {
           await kvSet(`coupon:${src}:${addr}`, "1", 3600);
+          // Retention (R2): attach how this token's risk moved since this caller's
+          // last paid check on it — the diff that pulls them back.
+          const score = typeof d?.riskScore === "number" ? (d.riskScore as number) : typeof d?.rugScore === "number" ? (d.rugScore as number) : null;
+          if (score !== null && d) {
+            const level = String(d.riskLevel ?? d.level ?? "");
+            const sl = await sinceLastCheck(src, addr, score, level);
+            if (sl) d.sinceLastCheck = sl;
+          }
         } else if (service.id === "ai-token-report") {
           await kvDel(`coupon:${src}:${addr}`);
         }
       }
     } catch {
-      /* coupon bookkeeping is best-effort — never blocks the paid response */
+      /* coupon/retention bookkeeping is best-effort — never blocks the paid response */
     }
     return NextResponse.json({
       service: service.id,
@@ -224,7 +276,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // gets the AI report for less. Checked at challenge time by src+token; falls
   // back to full price if absent — never cheaper without a real prior purchase.
   let effectivePrice = service.price;
-  if (service.id === "ai-token-report") {
+  if (service.id === "buy-credits") {
+    // The challenge amount is the chosen pack's price (tier=1|5|20).
+    effectivePrice = tierPrice(paramsFrom(req, service).tier || "");
+  } else if (service.id === "ai-token-report") {
     try {
       const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
       if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) {

@@ -47,6 +47,7 @@ import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
 import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard } from "./b20-safety";
+import { buyCredits } from "./credits";
 
 export interface ServiceParam {
   name: string;
@@ -1078,6 +1079,19 @@ export const SERVICES: ServiceDef[] = [
       return { count, tokens, generatedAt: new Date().toISOString() };
     },
     hidden: true,
+  },
+  {
+    id: "buy-credits",
+    name: "Prepaid Credits",
+    tagline: "Pay once, then call without per-request settlement",
+    description:
+      "Buy a prepaid balance in a single x402 settlement and get a secret credit token. Send it as the `x-credit-token` header on any paid service and each call debits its price from your balance — no per-call signature, no settlement latency. Built for agents that fire many checks a minute. Tiers: $1, $5 (+10%), $20 (+20%). The token is shown once; balance lasts 180 days.",
+    price: "$5.00",
+    icon: "🎟️",
+    category: "Utility",
+    params: [{ name: "tier", label: "Pack: 1, 5 or 20 (USD)", placeholder: "5" }],
+    handler: buyCredits,
+    noFreeTier: true,
   },
 ];
 

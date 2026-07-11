@@ -97,6 +97,28 @@ export async function kvIncr(key: string, ttlSeconds?: number): Promise<number |
   return n;
 }
 
+/**
+ * Atomically add `by` to a counter and return the new value (or null on failure).
+ * Redis INCRBY/DECRBY are atomic, so this is safe for the prepaid-credit ledger:
+ * two concurrent debits can't both overdraw — one lands below zero and is refunded
+ * by the caller. Money-path callers MUST treat null as "fail closed".
+ */
+export async function kvIncrBy(key: string, by: number): Promise<number | null> {
+  if (kvConfigured()) return await cmd<number>(["INCRBY", key, by]);
+  const e = memValid(key);
+  const n = (e ? parseInt(e.value, 10) || 0 : 0) + by;
+  mem.set(key, { value: String(n), expireAt: e?.expireAt });
+  return n;
+}
+
+export async function kvDecrBy(key: string, by: number): Promise<number | null> {
+  if (kvConfigured()) return await cmd<number>(["DECRBY", key, by]);
+  const e = memValid(key);
+  const n = (e ? parseInt(e.value, 10) || 0 : 0) - by;
+  mem.set(key, { value: String(n), expireAt: e?.expireAt });
+  return n;
+}
+
 export async function kvGetNumber(key: string): Promise<number> {
   if (kvConfigured()) {
     const v = await cmd<string>(["GET", key]);
