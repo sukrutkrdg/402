@@ -23,10 +23,10 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
-import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
+// NOTE: the wallet stack (viem + @x402) is imported LAZILY inside getPayingFetch()
+// — free-tier and prepaid-credit callers never load it, so the server boots and
+// serves those modes even without the crypto deps present, and startup is lighter.
 
 const VERSION = "0.2.0";
 
@@ -41,10 +41,17 @@ const HAS_WALLET = Boolean(process.env.AGENT_PRIVATE_KEY);
 const MODE = CREDIT_TOKEN ? "credits" : HAS_WALLET ? "wallet" : "free";
 
 // Wallet paying-fetch is built lazily — only needed when actually paying with a
-// key, so the server boots and advertises its tools without one.
+// key. The crypto stack is dynamically imported here so free/credit callers never
+// load viem/@x402 at all.
 let _payingFetch = null;
-function getPayingFetch() {
+async function getPayingFetch() {
   if (_payingFetch) return _payingFetch;
+  const [{ x402Client, wrapFetchWithPayment }, { ExactEvmScheme }, { privateKeyToAccount }] =
+    await Promise.all([
+      import("@x402/fetch"),
+      import("@x402/evm/exact/client"),
+      import("viem/accounts"),
+    ]);
   const rawKey = process.env.AGENT_PRIVATE_KEY;
   const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
   const account = privateKeyToAccount(privateKey);
@@ -69,7 +76,8 @@ async function payAwareFetch(target, opts = {}) {
     });
   }
   if (HAS_WALLET) {
-    return getPayingFetch()(target, opts);
+    const pay = await getPayingFetch();
+    return pay(target, opts);
   }
   return fetch(target, opts);
 }
