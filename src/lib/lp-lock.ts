@@ -10,6 +10,7 @@
  */
 
 import "server-only";
+import { goPlusSecurity } from "./upstream-cache";
 import { getAddress } from "viem";
 
 interface LockDetail {
@@ -45,18 +46,7 @@ const isTrue = (v: unknown) => v === 1 || v === "1" || v === true;
 export async function lpLock(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
 
-  let gp: { lp_holders?: LpHolder[]; lp_total_supply?: string; holder_count?: string | number } | undefined;
-  try {
-    const res = await fetch(
-      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
-      { signal: AbortSignal.timeout(9000) },
-    );
-    if (!res.ok) throw new Error(`GoPlus responded ${res.status}`);
-    const j = (await res.json()) as { result?: Record<string, { lp_holders?: LpHolder[]; lp_total_supply?: string; holder_count?: string | number }> };
-    gp = j.result?.[address.toLowerCase()];
-  } catch (err) {
-    throw new Error(`LP data unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const gp = (await goPlusSecurity<{ lp_holders?: LpHolder[]; lp_total_supply?: string; holder_count?: string | number }>(address)) ?? undefined;
   if (!gp) throw new Error("No LP data for this token");
 
   const lps = Array.isArray(gp.lp_holders) ? gp.lp_holders : [];

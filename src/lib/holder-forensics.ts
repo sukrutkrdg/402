@@ -11,6 +11,7 @@
  */
 
 import "server-only";
+import { goPlusSecurity } from "./upstream-cache";
 import { getAddress } from "viem";
 
 interface GpHolder {
@@ -56,18 +57,7 @@ function isInfra(tag?: string): boolean {
 export async function holderForensics(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
 
-  let gp: Gp | undefined;
-  try {
-    const res = await fetch(
-      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
-      { signal: AbortSignal.timeout(9000) },
-    );
-    if (!res.ok) throw new Error(`GoPlus responded ${res.status}`);
-    const j = (await res.json()) as { result?: Record<string, Gp> };
-    gp = j.result?.[address.toLowerCase()];
-  } catch (err) {
-    throw new Error(`Holder data unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const gp = (await goPlusSecurity<Gp>(address)) ?? undefined;
   if (!gp || Object.keys(gp).length === 0) throw new Error("No holder data for this token");
 
   const holdersRaw = Array.isArray(gp.holders) ? gp.holders : [];

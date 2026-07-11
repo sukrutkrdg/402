@@ -11,6 +11,7 @@
  */
 
 import "server-only";
+import { goPlusSecurity } from "./upstream-cache";
 import { createPublicClient, http, getAddress, formatEther, formatUnits, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
@@ -50,18 +51,7 @@ type GoPlus = Record<string, unknown>;
 
 /** Free public token-security data (honeypot, taxes, holders). Returns null on failure. */
 async function fetchGoPlus(address: string): Promise<GoPlus | null> {
-  try {
-    const r = await fetch(
-      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
-      { signal: AbortSignal.timeout(8000) },
-    );
-    if (!r.ok) return null;
-    const j = (await r.json()) as { result?: Record<string, GoPlus> };
-    const row = j.result?.[address.toLowerCase()];
-    return row && Object.keys(row).length > 0 ? row : null;
-  } catch {
-    return null;
-  }
+  return (await goPlusSecurity<GoPlus>(address)) ?? null;
 }
 
 const isTrue = (v: unknown) => v === "1" || v === 1 || v === true;

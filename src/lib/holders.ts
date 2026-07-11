@@ -5,6 +5,7 @@
  */
 
 import "server-only";
+import { goPlusSecurity } from "./upstream-cache";
 import { getAddress } from "viem";
 
 const isTrue = (v: unknown) => v === "1" || v === 1 || v === true;
@@ -33,18 +34,7 @@ export async function holderDistribution(params: Record<string, string>) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide a valid 0x… token address");
   const address = getAddress(raw);
 
-  let gp: Gp | undefined;
-  try {
-    const r = await fetch(
-      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${address}`,
-      { signal: AbortSignal.timeout(8000) },
-    );
-    if (!r.ok) throw new Error(`GoPlus responded ${r.status}`);
-    const j = (await r.json()) as { result?: Record<string, Gp> };
-    gp = j.result?.[address.toLowerCase()];
-  } catch (err) {
-    throw new Error(`Holder data unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const gp = (await goPlusSecurity<Gp>(address)) ?? undefined;
   if (!gp || Object.keys(gp).length === 0) throw new Error("No holder data for this token");
 
   const holdersRaw = Array.isArray(gp.holders) ? gp.holders : [];

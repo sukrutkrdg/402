@@ -11,6 +11,7 @@
  */
 
 import "server-only";
+import { dexTokenPairs } from "./upstream-cache";
 import { getAddress } from "viem";
 
 interface DexPair {
@@ -39,17 +40,8 @@ export async function exitLiquidity(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
   const size = Math.max(0, parseFloat(params.size || params.amount || "1000") || 1000);
 
-  let pairs: DexPair[] = [];
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    const j = (await res.json()) as { pairs?: DexPair[] | null };
-    pairs = (j.pairs ?? []).filter((p) => p.baseToken?.address?.toLowerCase() === address.toLowerCase());
-  } catch (err) {
-    throw new Error(`Liquidity data unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const allPairs = (await dexTokenPairs<DexPair>(address)) ?? [];
+  const pairs = allPairs.filter((p) => p.baseToken?.address?.toLowerCase() === address.toLowerCase());
   if (pairs.length === 0) throw new Error("No liquidity pool found for this token on Base");
 
   // Deepest pool drives whether you can actually exit.

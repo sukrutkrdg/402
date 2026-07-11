@@ -6,6 +6,7 @@
  */
 
 import "server-only";
+import { dexTokenPairs } from "./upstream-cache";
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
@@ -35,17 +36,7 @@ function reqAddr(raw: string): string {
 
 /** Fetch the token's best base-matched DEX pair (highest liquidity). */
 async function bestBasePair(address: string): Promise<DSPair> {
-  let data: { pairs?: DSPair[] | null };
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    data = (await res.json()) as { pairs?: DSPair[] | null };
-  } catch (err) {
-    throw new Error(`Data fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const pairs = (data.pairs ?? []).filter(Boolean);
+  const pairs = ((await dexTokenPairs<DSPair>(address)) ?? []).filter(Boolean);
   if (pairs.length === 0) throw new Error("No DEX data for this token");
   const addrLc = address.toLowerCase();
   const baseM = pairs.filter((p) => p.baseToken?.address?.toLowerCase() === addrLc);
