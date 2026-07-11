@@ -45,6 +45,7 @@ import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
+import { watchlistDiff } from "./watchlist";
 import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard } from "./b20-safety";
 
 export interface ServiceParam {
@@ -118,6 +119,21 @@ export const SERVICES: ServiceDef[] = [
       { name: "hours", label: "Window in hours (default 24, max 72)", placeholder: "24" },
     ],
     handler: whaleFlow,
+  },
+  {
+    id: "watchlist-diff",
+    name: "Watchlist Diff",
+    tagline: "What changed on my tokens since last check?",
+    description:
+      "Retention in one call: pass up to 10 tokens to snapshot them and get a watchId; call again with that watchId to get only the DELTAS since last time — liquidity ±%, price ±%, became-honeypot, sell-tax spiked, liquidity pulled. The second call is worth more than the first. Built for agents holding positions that re-check daily.",
+    price: "$0.06",
+    icon: "📋",
+    category: "Onchain",
+    params: [
+      { name: "tokens", label: "Up to 10 token addresses (comma-separated)", placeholder: "0x…, 0x…" },
+      { name: "watchId", label: "Or: watchId to re-check an existing list", placeholder: "wl_…" },
+    ],
+    handler: watchlistDiff,
   },
   {
     id: "address-intel",
