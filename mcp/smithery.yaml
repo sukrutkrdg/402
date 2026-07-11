@@ -6,17 +6,27 @@
 
 startCommand:
   type: stdio
+  # Nothing is required — with no config the server runs on the FREE tier (one
+  # call/day/service, then a preview), so users can try every tool instantly.
+  # Add a prepaid credit token (recommended) or a wallet key to unlock paid calls.
   configSchema:
     type: object
-    required:
-      - agentPrivateKey
+    required: []
     properties:
+      creditToken:
+        type: string
+        title: Prepaid credit token (recommended)
+        description: >-
+          A credit token (ck_…) from the buy-credits service. Sent as the
+          x-credit-token header; each call debits your prepaid balance. No wallet
+          or signing needed — the safest paid mode. Buy at https://402.com.tr.
       agentPrivateKey:
         type: string
-        title: Agent wallet private key
+        title: Agent wallet private key (alternative)
         description: >-
           Private key of a Base wallet holding USDC. Used locally to sign x402
-          payments (gasless for the payer). Use a dedicated low-balance wallet.
+          payments (gasless for the payer). Only used if no credit token is set.
+          Use a dedicated low-balance wallet.
       catalogUrl:
         type: string
         title: Catalog URL
@@ -27,7 +37,8 @@ startCommand:
       command: "npx",
       args: ["-y", "x402-bazaar-mcp"],
       env: {
-        AGENT_PRIVATE_KEY: config.agentPrivateKey,
+        ...(config.creditToken ? { X402_CREDIT_TOKEN: config.creditToken } : {}),
+        ...(config.agentPrivateKey ? { AGENT_PRIVATE_KEY: config.agentPrivateKey } : {}),
         ...(config.catalogUrl ? { X402_BAZAAR_CATALOG: config.catalogUrl } : {})
       }
     })
