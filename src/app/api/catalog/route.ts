@@ -26,6 +26,18 @@ export function GET() {
     builderCode: cfg.appBuilderCode,
     baseUrl: SITE_URL,
     docs: `${SITE_URL}/agents`,
+    // How to pay, and what each status means — so an agent handles non-200s.
+    payment: {
+      how: "GET the endpoint; on 402 read the accepts[] (price, payTo, asset, network), pay a USDC micro-payment via x402, and retry with the x-payment header. Libraries (@x402/fetch) do this automatically.",
+      freeTier: "The first call/day per IP is free (full result); after that, unpaid calls return a preview (headline only) with an 'unlock' message. AI/metered services are paid-only.",
+    },
+    errors: {
+      "200": "Success — full result (paid or first free call), or a preview when the free tier is used up.",
+      "400": "Bad input (e.g. missing/invalid address). You were NOT charged.",
+      "402": "Payment required — pay per accepts[] and retry with x-payment.",
+      "429": "Rate limited — back off and retry after the retry-after header.",
+      "502": "Upstream data provider failed. You were NOT charged; retry later.",
+    },
     services: SERVICES.filter((s) => !s.hidden).map((s) => ({
       id: s.id,
       name: s.name,
@@ -40,7 +52,7 @@ export function GET() {
       input: Object.fromEntries(
         s.params.map((p) => [
           p.name,
-          { type: "string", required: Boolean(p.required), description: p.label, in: "query" },
+          { type: "string", required: Boolean(p.required), description: p.label, in: "query", example: p.placeholder || undefined },
         ]),
       ),
     })),

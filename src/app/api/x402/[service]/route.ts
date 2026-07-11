@@ -22,6 +22,27 @@ import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel } from "@/lib/kv";
 
+/** Best-effort payer wallet from the x-payment header (base64 JSON) — used only
+ * for anonymized repeat-buyer analytics; never throws. */
+function payerFrom(request: NextRequest): string {
+  try {
+    const h = request.headers.get("x-payment");
+    if (!h) return "";
+    const j = JSON.parse(Buffer.from(h, "base64").toString("utf8")) as Record<string, unknown>;
+    const dig = (o: unknown): string => {
+      if (!o || typeof o !== "object") return "";
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (/^(from|payer|sender)$/i.test(k) && typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v)) return v;
+        if (v && typeof v === "object") { const r = dig(v); if (r) return r; }
+      }
+      return "";
+    };
+    return dig(j);
+  } catch {
+    return "";
+  }
+}
+
 export const dynamic = "force-dynamic";
 // AI services aggregate several upstreams + Claude, and x402 settlement adds a few
 // seconds — well over the serverless default. Give the handler room so paid AI
@@ -164,7 +185,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     } catch (err) {
       return handlerErrorResponse(err);
     }
-    await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "");
+    const payer = payerFrom(request);
+    await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "", false, false, false, payer ? srcHash(payer) : "");
     // Funnel coupon: paying the entry check (token-risk/rug-score) discounts the
     // AI report on the SAME token for 1h; redeeming it consumes the coupon.
     try {
@@ -238,7 +260,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   try {
     const server = getResourceServer();
     const guarded = withX402(handler, routeConfig, server);
-    return await guarded(req);
+    const res = await guarded(req);
+    // Telemetry: a 402 means the caller was shown the price and (usually) walked
+    // away — log it so we can measure challenge→paid conversion per service.
+    if (res.status === 402) {
+      await logUsage(service.id, false, srcHash(clientIp(req)), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, true);
+    }
+    return res;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Server misconfigured";
     return NextResponse.json({ error: message }, { status: 503 });

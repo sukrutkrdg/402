@@ -70,6 +70,12 @@ export async function logUsage(
   /** True for a free-tier TEASER (preview) response — so we can measure how many
    * previews we serve and whether they convert to paid calls. */
   preview = false,
+  /** True when the caller hit the 402 challenge and (likely) walked away — the
+   * missing denominator for conversion: which services get tried but not paid. */
+  challenge = false,
+  /** Hashed payer wallet address on a PAID call — lets us measure repeat buyers
+   * and which service a payer buys FIRST, independent of rotating IP hashes. */
+  payer = "",
 ): Promise<void> {
   try {
     const kind = classifyUa(ua);
@@ -84,6 +90,8 @@ export async function logUsage(
       ref: refHost(ref),
       ...(internal ? { i: true } : {}),
       ...(preview ? { pv: true } : {}),
+      ...(challenge ? { ch: true } : {}),
+      ...(payer ? { pyr: payer } : {}),
     });
     if (kvConfigured()) {
       // One REST round trip instead of ~7 — analytics shouldn't dominate the
@@ -95,12 +103,14 @@ export async function logUsage(
         ["EXPIRE", `usage:day:${d}`, 60 * 60 * 24 * 8],
         ["SADD", `usage:src:${d}`, source],
         ["LPUSH", "usage:recent", entry],
-        ["LTRIM", "usage:recent", 0, 99],
+        ["LTRIM", "usage:recent", 0, 499],
       ];
       if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ["EXPIRE", `usage:paidday:${d}`, 60 * 60 * 24 * 8]);
       if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source]);
       if (preview) cmds.push(["INCR", `usage:preview:${serviceId}`]);
       if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source]);
+      if (challenge) cmds.push(["INCR", `usage:challenge:${serviceId}`]);
+      if (payer) cmds.push(["SADD", `usage:payers:${d}`, payer], ["SETNX", `usage:firstsvc:${payer}`, serviceId], ["EXPIRE", `usage:firstsvc:${payer}`, 60 * 60 * 24 * 60]);
       await kvPipeline(cmds);
       return;
     }
