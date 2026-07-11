@@ -157,6 +157,7 @@ export interface UsageRow {
   paid: number;
   internal: number;
   preview: number;
+  challenge: number;
 }
 export interface RecentCall {
   s: string;
@@ -183,6 +184,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   botSourcesToday: number;
   internalSourcesToday: number;
   externalSourcesToday: number;
+  payersToday: number;
 }> {
   const per = await Promise.all(
     serviceIds.map(async (id) => ({
@@ -191,6 +193,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
       paid: await kvGetNumber(`usage:paid:${id}`),
       internal: await kvGetNumber(`usage:internal:${id}`),
       preview: await kvGetNumber(`usage:preview:${id}`),
+      challenge: await kvGetNumber(`usage:challenge:${id}`),
     })),
   );
   const recentRaw = await kvLRange("usage:recent", 0, 29);
@@ -212,6 +215,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   let botSourcesToday = 0;
   let internalSourcesToday = 0;
   let externalSourcesToday = 0;
+  let payersToday = 0;
   try {
     today = await kvGetNumber(`usage:day:${day()}`);
     paidToday = await kvGetNumber(`usage:paidday:${day()}`);
@@ -225,6 +229,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
     // Real external visitors = distinct sources today minus bots, minus the
     // owner's own devices, minus our own first-party services.
     externalSourcesToday = all.filter((s) => !bots.has(s) && !owner.has(s) && !internals.has(s)).length;
+    payersToday = (await kvSMembers(`usage:payers:${day()}`)).length;
   } catch {
     /* ignore */
   }
@@ -240,5 +245,6 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
     botSourcesToday,
     internalSourcesToday,
     externalSourcesToday,
+    payersToday,
   };
 }
