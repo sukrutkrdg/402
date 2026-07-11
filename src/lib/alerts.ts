@@ -86,6 +86,8 @@ export interface Alert {
   priceAtCreate: number;
   createdAt: string;
   fired: boolean;
+  firedAt?: string;
+  firedPrice?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +174,28 @@ export async function registerAlert(
     throw new Error("Alerts unavailable: durable storage not configured");
   }
 
+  // Poll mode — check a previously registered alert by id (no webhook needed).
+  const checkId = (params.check || "").trim();
+  if (checkId) {
+    const a = await getAlert(checkId);
+    if (!a) return { found: false, note: "No alert with that id (expired or never registered)." };
+    let current: number | null = null;
+    try {
+      current = await fetchTokenPrice(a.token);
+    } catch {
+      /* transient */
+    }
+    const crossed = current !== null && (a.direction === "above" ? current >= a.threshold : current <= a.threshold);
+    return {
+      found: true, alertId: a.id, token: a.token, direction: a.direction, threshold: a.threshold,
+      currentPrice: current, priceAtCreate: a.priceAtCreate, fired: a.fired,
+      firedAt: a.firedAt ?? null, firedPrice: a.firedPrice ?? null,
+      verdict: a.fired ? "FIRED" : crossed ? "THRESHOLD_MET" : "ok",
+      note: a.fired ? `Alert fired${a.firedAt ? ` at ${a.firedAt}` : ""}.` : "Alert active. Re-check anytime with check=<id>.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   // ---- Validate token ----
   const token = (params.token || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(token)) {
@@ -193,10 +217,9 @@ export async function registerAlert(
     throw new Error('Invalid direction: must be "above" or "below"');
   }
 
-  // ---- Validate webhook (https + SSRF protection: no private/internal hosts) ----
+  // ---- Webhook OPTIONAL: with one we POST on fire; without, caller polls check=<id> ----
   const webhook = (params.webhook || "").trim();
-  if (!webhook) throw new Error("webhook is required");
-  await assertSafeWebhook(webhook);
+  if (webhook) await assertSafeWebhook(webhook);
 
   // ---- Fetch current price (throws if unavailable — prevents charge on failure) ----
   const currentPrice = await fetchTokenPrice(token);
@@ -229,9 +252,11 @@ export async function registerAlert(
     threshold,
     direction,
     currentPrice,
-    webhook,
-    message:
-      "Alert registered. You'll receive a webhook POST when crossed.",
+    webhook: webhook || null,
+    mode: webhook ? "webhook" : "poll",
+    message: webhook
+      ? "Alert registered. You'll receive a webhook POST when crossed."
+      : `Alert registered (poll mode). Re-check anytime by calling this service with check=${id}.`,
     createdAt,
   };
 }
@@ -261,13 +286,13 @@ export async function getAlert(id: string): Promise<Alert | null> {
  * KV key (the TTL would clean it up eventually, but removing eagerly keeps
  * the active-set accurate and avoids redundant checks).
  */
-export async function markFired(id: string): Promise<void> {
+export async function markFired(id: string, firedPrice?: number): Promise<void> {
   const raw = await kvGet(`alert:${id}`);
   if (raw) {
     try {
-      const alert: Alert = { ...(JSON.parse(raw) as Alert), fired: true };
-      // Keep the key briefly (1 h) so callers can inspect it post-fire.
-      await kvSet(`alert:${id}`, JSON.stringify(alert), 3600);
+      const alert: Alert = { ...(JSON.parse(raw) as Alert), fired: true, firedAt: new Date().toISOString(), firedPrice };
+      // Keep the fired alert for 24h so poll-mode callers can read it.
+      await kvSet(`alert:${id}`, JSON.stringify(alert), 60 * 60 * 24);
     } catch {
       /* best-effort update */
     }

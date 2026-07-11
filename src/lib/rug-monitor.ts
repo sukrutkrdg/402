@@ -25,6 +25,9 @@ export interface RugWatch {
   dropPct: number; // fire when liquidity falls by at least this %
   createdAt: string;
   fired: boolean;
+  firedAt?: string;
+  firedDropPct?: number;
+  firedLiquidityUsd?: number;
 }
 
 async function fetchLiquidity(token: string): Promise<number> {
@@ -42,11 +45,42 @@ async function fetchLiquidity(token: string): Promise<number> {
 export async function registerRugMonitor(params: Record<string, string>): Promise<unknown> {
   if (!kvConfigured()) throw new Error("Monitor unavailable: durable storage not configured");
 
+  // Poll mode — check a previously registered monitor by id (no webhook needed).
+  // This is how a stateless MCP agent (no inbound endpoint) uses monitors: pay
+  // once to register, then re-check on its own schedule.
+  const checkId = (params.check || "").trim();
+  if (checkId) {
+    const raw = await kvGet(`rugwatch:${checkId}`);
+    if (!raw) return { found: false, note: "No monitor with that id (expired or never registered)." };
+    const w = JSON.parse(raw) as RugWatch;
+    let current: number | null = null;
+    try {
+      current = await fetchLiquidity(w.token);
+    } catch {
+      /* transient */
+    }
+    const dropNow = current !== null && w.baselineLiquidityUsd > 0 ? +(100 * (1 - current / w.baselineLiquidityUsd)).toFixed(1) : null;
+    return {
+      found: true, id: w.id, token: w.token, fired: w.fired,
+      baselineLiquidityUsd: w.baselineLiquidityUsd,
+      currentLiquidityUsd: current !== null ? +current.toFixed(0) : null,
+      dropPct: dropNow, firesAtDropPct: w.dropPct,
+      firedAt: w.firedAt ?? null, firedLiquidityUsd: w.firedLiquidityUsd ?? null,
+      verdict: w.fired ? "RUG_WARNING_FIRED" : dropNow !== null && dropNow >= w.dropPct ? "THRESHOLD_MET" : "ok",
+      note: w.fired
+        ? `⚠️ Liquidity collapsed — this monitor fired${w.firedAt ? ` at ${w.firedAt}` : ""}.`
+        : "Monitor active; liquidity still above the drop threshold. Re-check anytime with check=<id>.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   const token = (params.token || params.address || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new Error("Invalid token: must be a 0x… 40-hex Base contract address");
 
   const dropPct = Math.min(95, Math.max(10, parseFloat(params.dropPct || "50") || 50));
-  const url = await assertSafeWebhook(params.webhook || "");
+  // Webhook is OPTIONAL: with one we POST on fire; without, the caller polls check=<id>.
+  const wh = (params.webhook || "").trim();
+  const url = wh ? await assertSafeWebhook(wh) : null;
 
   const baseline = await fetchLiquidity(token);
   if (baseline <= 0) throw new Error("Token has no measurable liquidity to monitor");
@@ -55,7 +89,7 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
   const watch: RugWatch = {
     id,
     token,
-    webhook: url.toString(),
+    webhook: url ? url.toString() : "",
     baselineLiquidityUsd: +baseline.toFixed(0),
     dropPct,
     createdAt: new Date().toISOString(),
@@ -70,9 +104,12 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
     token,
     baselineLiquidityUsd: watch.baselineLiquidityUsd,
     firesWhenLiquidityDropsPct: dropPct,
-    webhook: watch.webhook,
+    webhook: watch.webhook || null,
+    mode: watch.webhook ? "webhook" : "poll",
     expiresInDays: 30,
-    note: `We'll POST your webhook if ${token}'s liquidity falls ${dropPct}%+ from the $${watch.baselineLiquidityUsd.toLocaleString()} baseline. Checked on each monitor cron run.`,
+    note: watch.webhook
+      ? `We'll POST your webhook if ${token}'s liquidity falls ${dropPct}%+ from the $${watch.baselineLiquidityUsd.toLocaleString()} baseline.`
+      : `Poll mode (no webhook): re-check anytime by calling this service with check=${watch.id}. We fire when liquidity falls ${dropPct}%+ from $${watch.baselineLiquidityUsd.toLocaleString()}.`,
   };
 }
 
@@ -106,7 +143,8 @@ export async function checkRugMonitors(): Promise<{ checked: number; fired: numb
     }
     const dropPct = w.baselineLiquidityUsd > 0 ? 100 * (1 - current / w.baselineLiquidityUsd) : 0;
     if (dropPct >= w.dropPct) {
-      // Re-check webhook safety right before delivery (DNS-rebinding defense).
+      // Deliver only if a webhook was set (poll-mode monitors just record state).
+      if (w.webhook) {
       try {
         await assertSafeWebhook(w.webhook);
         await fetch(w.webhook, {
@@ -126,7 +164,11 @@ export async function checkRugMonitors(): Promise<{ checked: number; fired: numb
       } catch {
         /* delivery best-effort */
       }
+      }
       w.fired = true;
+      w.firedAt = new Date().toISOString();
+      w.firedDropPct = +dropPct.toFixed(1);
+      w.firedLiquidityUsd = +current.toFixed(0);
       await kvSet(`rugwatch:${w.id}`, JSON.stringify(w), TTL);
       await kvSRem("rugwatch:active", w.id);
       fired++;

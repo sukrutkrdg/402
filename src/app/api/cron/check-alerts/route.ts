@@ -98,12 +98,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (!crossed) continue;
 
+    // Poll-mode alerts (no webhook) just record fired state for the caller to read.
+    if (!alert.webhook) {
+      await markFired(id, currentPrice);
+      fired++;
+      continue;
+    }
+
     // Re-validate webhook right before delivery (DNS-rebinding / TOCTOU defense).
     try {
       await assertSafeWebhook(alert.webhook);
     } catch (err) {
       errors.push(`${id}: webhook blocked — ${err instanceof Error ? err.message : String(err)}`);
-      await markFired(id);
+      await markFired(id, currentPrice);
       continue;
     }
 
@@ -144,7 +151,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     // Mark fired and remove from active set regardless of webhook outcome.
-    await markFired(id);
+    await markFired(id, currentPrice);
     fired++;
   }
 
