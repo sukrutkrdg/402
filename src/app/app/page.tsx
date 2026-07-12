@@ -26,17 +26,23 @@ type TypedData = {
 
 // Consumer-friendly "paste a token → get an answer" checks for the mini-app.
 const CHECKS = [
+  { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP", price: "$0.10" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.12" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize", price: "$0.04" },
   { id: "b20-policy-watch", label: "👁️ B20: when did it turn seizable?", price: "$0.03" },
   { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.08" },
   { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.75" },
   { id: "position-health", label: "🩺 Position Health (I'm in it)", price: "$0.04" },
+  { id: "whale-flow", label: "🐋 Whale Flow · selling now?", price: "$0.04" },
   { id: "deployer-rep", label: "🕵️ Deployer Reputation", price: "$0.04" },
   { id: "holder-forensics", label: "🧬 Holder Forensics", price: "$0.03" },
+  { id: "volume-check", label: "📊 Volume Authenticity (wash?)", price: "$0.03" },
   { id: "exit-liquidity", label: "🚪 Exit Liquidity", price: "$0.02" },
+  { id: "lp-lock", label: "🔐 LP Lock Details", price: "$0.02" },
   { id: "token-unlock", label: "📆 LP Unlock Calendar", price: "$0.02" },
+  { id: "proxy-check", label: "🧩 Proxy / Upgrade Risk", price: "$0.02" },
   { id: "contract-danger", label: "⚠️ Contract Danger", price: "$0.04" },
+  { id: "token-momentum", label: "📈 Momentum (price/volume)", price: "$0.02" },
   { id: "token-risk", label: "🔎 Token Risk", price: "$0.03" },
 ] as const;
 
@@ -84,6 +90,23 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     : "";
   const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
   switch (id) {
+    case "pre-trade-gate": {
+      const rc = (d.receipt ?? {}) as { observedRisks?: string[] };
+      const risks = Array.isArray(rc.observedRisks) && rc.observedRisks.length ? rc.observedRisks.map((r) => `• ${r}`).join("\n") : "";
+      return `${s(d.decision)}${d.degraded ? " · ⚠️ degraded (a check couldn't run)" : ""}\n${risks || "No blocking flags across risk, sellability, routing & deployer."}\n\n➡️ ${s(d.recommendation)}`;
+    }
+    case "whale-flow":
+      return `${s(d.verdict).toUpperCase().replace(/_/g, " ")} · sell pressure ${s(d.sellPressurePct)}%\nPools: ${s(d.poolsTracked)} · large transfers (${s(d.windowHours)}h): ${s(d.largeTransfers)}\n\n➡️ ${s(d.recommendation)}`;
+    case "volume-check":
+      return `${s(d.verdict).toUpperCase().replace(/_/g, " ")} · suspicion ${s(d.suspicionScore)}/100\nVol 24h: $${s(d.volume24h)} · Liq: $${s(d.liquidityUsd)} · vol/liq ${s(d.volumeToLiquidity)}×\nBuys/Sells: ${s((d.txns24h as { buys?: number })?.buys)}/${s((d.txns24h as { sells?: number })?.sells)}\n\n➡️ ${s(d.recommendation)}`;
+    case "lp-lock":
+      return `Rug risk: ${s(d.rugRisk).toUpperCase()}\nLP secured: ${s(d.lpSecuredPercent)}% (locked ${s(d.lpLockedPercent)}% + burned ${s(d.lpBurnedPercent)}%) · pullable ${s(d.lpUnlockedPercent)}%\n\n➡️ ${s(d.recommendation)}`;
+    case "proxy-check":
+      return `Upgrade risk: ${s(d.upgradeRisk).toUpperCase()}\n${d.isProxy ? `Upgradeable (${s(d.proxyStandard)}) · admin: ${s(d.adminType)}` : "Not an upgradeable proxy"}${(Array.isArray(d.flags) && d.flags.length) ? "\n" + (d.flags as string[]).map((f) => `• ${f}`).join("\n") : ""}\n\n${s(d.note)}`;
+    case "token-momentum": {
+      const pc = (d.priceChange ?? {}) as { h1?: number | null; h6?: number | null; h24?: number | null };
+      return `${s(d.trend).toUpperCase().replace(/_/g, " ")} · ${s(d.symbol)}\nPrice: $${s(d.priceUsd)}\nΔ 1h: ${s(pc.h1)}% · 6h: ${s(pc.h6)}% · 24h: ${s(pc.h24)}%\nLiquidity: $${s(d.liquidityUsd)}`;
+    }
     case "ai-token-report":
       return `${s(d.verdict).toUpperCase()} · safety ${s(d.safetyScore)}/100\n\n${s(d.summary)}${factors ? "\n\n" + factors : ""}`;
     case "deep-dd": {
