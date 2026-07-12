@@ -24,6 +24,7 @@ import { kvGet, kvSet, kvDel } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
 import { saveSample, loadSample } from "@/lib/sample-cache";
+import { loadPreview, savePreview } from "@/lib/preview-cache";
 
 /** Service price string ("$0.03") → integer cents (3). */
 function priceCents(price: string): number {
@@ -252,23 +253,45 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     } else {
       // Daily free full report already used → return a PREVIEW (headline scalars +
       // "N signals found") instead of a hard 402 wall. The teaser creates the
-      // pull; the full detail is what a paid call unlocks. Rate-limited above, so
-      // it can't be scraped for free at scale; AI/metered services aren't
-      // free-eligible so they never reach here.
-      try {
-        const full = await service.handler(paramsFrom(req, service));
-        await saveSample(service.id, full);
-        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, true);
-        return NextResponse.json(
+      // pull; the full detail is what a paid call unlocks.
+      const params = paramsFrom(req, service);
+      const previewBody = (data: Record<string, unknown>) =>
+        NextResponse.json(
           {
             service: service.id,
             builderCode: cfg.appBuilderCode,
-            data: toPreview(full),
+            data,
             preview: true,
             unlock: `Free daily check used — this is a preview. Pay ${service.price} for the full report (all signals, details & recommendation).`,
           },
           { headers: { "x-preview": "true" } },
         );
+
+      // Serve a cached teaser for this exact input WITHOUT running the handler —
+      // the preview path runs the full handler (real upstream cost, zero
+      // revenue), so a repeat preview must not re-hit upstreams.
+      const cached = await loadPreview(service.id, params);
+      if (cached) {
+        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, true);
+        return previewBody(cached);
+      }
+
+      // Cache miss → we must run the handler. Tight per-IP limit here (well below
+      // the outer 60/min) so this cost path can't be scraped across many inputs.
+      const pl = await rateLimitKv(`preview:${ip}`, 12, 60);
+      if (!pl.ok) {
+        return NextResponse.json(
+          { service: service.id, error: "Free preview limit reached — pay for the full report or retry later.", price: service.price, retryAfterMs: pl.retryAfterMs },
+          { status: 429, headers: { "retry-after": String(Math.ceil(pl.retryAfterMs / 1000)) } },
+        );
+      }
+      try {
+        const full = await service.handler(params);
+        await saveSample(service.id, full);
+        const preview = toPreview(full);
+        await savePreview(service.id, params, preview);
+        await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, true);
+        return previewBody(preview);
       } catch (err) {
         return handlerErrorResponse(err);
       }
