@@ -90,6 +90,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token address", required: true }],
     handler: tokenRisk,
+    noFreeTier: true, // free-tier disabled so CDP Bazaar indexes it (free-eligible resources aren't indexed)
   },
   {
     id: "pre-trade-gate",
@@ -105,6 +106,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
     ],
     handler: preTradeGate,
+    noFreeTier: true,
   },
   {
     id: "whale-flow",
@@ -120,6 +122,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "hours", label: "Window in hours (default 24, max 72)", placeholder: "24" },
     ],
     handler: whaleFlow,
+    noFreeTier: true,
   },
   {
     id: "watchlist-diff",
@@ -171,6 +174,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Safety,
+    noFreeTier: true,
   },
   {
     id: "b20-launch-radar",
@@ -183,6 +187,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "limit", label: "How many", placeholder: "12" }],
     handler: b20LaunchRadar,
+    noFreeTier: true,
   },
   {
     id: "b20-policy-watch",
@@ -195,6 +200,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20PolicyWatch,
+    noFreeTier: true,
   },
   {
     id: "b20-guard",
@@ -207,6 +213,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token (optional — omit for network feed)", placeholder: "0x… B20 token" }],
     handler: b20Guard,
+    noFreeTier: true,
   },
   {
     id: "b20-info",
@@ -219,6 +226,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Info,
+    noFreeTier: true,
   },
   {
     id: "b20-freeze-check",
@@ -234,6 +242,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "wallet", label: "Your wallet address", placeholder: "0x… wallet", required: true },
     ],
     handler: b20FreezeCheck,
+    noFreeTier: true,
   },
   {
     id: "b20-rebase",
@@ -246,6 +255,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Rebase,
+    noFreeTier: true,
   },
   {
     id: "b20-batch",
@@ -258,6 +268,7 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "addresses", label: "B20 addresses (comma-separated)", placeholder: "0x…, 0x…", required: true }],
     handler: b20Batch,
+    noFreeTier: true,
   },
   {
     id: "token-price",
@@ -428,6 +439,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "amountUsd", label: "Trade size in USD", placeholder: "1000" },
     ],
     handler: swapRoute,
+    noFreeTier: true,
   },
   {
     id: "token-unlock",
