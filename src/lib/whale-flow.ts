@@ -34,7 +34,11 @@ export async function whaleFlow(params: Record<string, string>) {
 
   // DEX pool addresses = the "exit side". A big holder sending TO a pool is
   // adding liquidity / selling into it; receiving FROM one is a buy.
-  const pairs = ((await dexTokenPairs<Pair>(token)) ?? []).filter((p) => p.baseToken?.address?.toLowerCase() === t);
+  // null = DexScreener unavailable — that is NOT "no pool"; a paid answer must
+  // never state "No DEX pool found" about a token nothing was read on.
+  const rawPairs = await dexTokenPairs<Pair>(token);
+  if (rawPairs === null) throw new Error("DEX pair data unavailable (provider) — try again shortly");
+  const pairs = rawPairs.filter((p) => p.baseToken?.address?.toLowerCase() === t);
   const pools = new Set(pairs.map((p) => (p.pairAddress ?? "").toLowerCase()).filter(Boolean));
 
   // Largest transfers of this token in the window (CDP-indexed, decoded params).

@@ -69,6 +69,36 @@ function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>
   return params;
 }
 
+/**
+ * Post-payment funnel bookkeeping, shared by the x402 and credit pay paths so
+ * both kinds of payer get the same product: paying the entry check mints a 1h
+ * coupon for the AI report on the same token; a paid re-check attaches the
+ * since-last diff; redeeming the AI report consumes the coupon. Best-effort —
+ * never blocks or breaks a paid response.
+ */
+async function attachRetention(serviceId: string, data: unknown, src: string): Promise<void> {
+  try {
+    const d = data as Record<string, unknown> | null;
+    const addr = String(d?.address ?? "").toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(addr)) return;
+    if (serviceId === "token-risk" || serviceId === "rug-score") {
+      await kvSet(`coupon:${src}:${addr}`, "1", 3600);
+      const score = typeof d?.riskScore === "number" ? (d.riskScore as number) : typeof d?.rugScore === "number" ? (d.rugScore as number) : null;
+      if (score !== null && d) {
+        const level = String(d.riskLevel ?? d.level ?? "");
+        // Keyed per service: token-risk and rug-score scores are different
+        // methodologies — diffing one against the other fabricates movement.
+        const sl = await sinceLastCheck(src, `${serviceId}:${addr}`, score, level);
+        if (sl) d.sinceLastCheck = sl;
+      }
+    } else if (serviceId === "ai-token-report") {
+      await kvDel(`coupon:${src}:${addr}`);
+    }
+  } catch {
+    /* retention bookkeeping is best-effort */
+  }
+}
+
 /** Constant-time secret compare (avoids leaking length/match via timing). */
 function secretMatches(provided: string, expected: string): boolean {
   const a = Buffer.from(provided);
@@ -118,8 +148,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // x402 — so our own products don't bill themselves. Only active when
   // WARDEN_INTERNAL_SECRET is configured; compared in constant time. Still
   // counts toward usage logs (as internal) and is rate-limited above.
+  // buy-credits is excluded: the bypass exists so first-party products skip
+  // BILLING, not so a leaked/first-party secret can MINT spendable credit
+  // balances without any settlement.
   const internalHeader = req.headers.get("x-warden-internal");
-  if (cfg.internalSecret && internalHeader && secretMatches(internalHeader, cfg.internalSecret)) {
+  if (cfg.internalSecret && internalHeader && secretMatches(internalHeader, cfg.internalSecret) && service.id !== "buy-credits") {
     try {
       const data = await service.handler(paramsFrom(req, service));
       const ip = clientIp(req);
@@ -140,13 +173,27 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // mint credits from credits — that needs a real settlement).
   const creditToken = req.headers.get("x-credit-token") || "";
   if (creditToken && service.id !== "buy-credits") {
-    const cents = priceCents(service.price);
+    // Credit payers get the same funnel prices as x402 payers: an unexpired
+    // coupon (earned by paying the entry check on this token) discounts the AI
+    // report here exactly as it discounts the x402 challenge.
+    let cents = priceCents(service.price);
+    if (service.id === "ai-token-report") {
+      try {
+        const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
+        if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) cents = 5;
+      } catch {
+        /* full price */
+      }
+    }
     // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
     // one step, so two concurrent calls can't each pass a cheap pre-check and get a
     // free call on the race. An underfunded/unknown token is refunded inside
     // debitCredit and reported here.
     const debit = await debitCredit(creditToken, cents);
     if (!debit.ok) {
+      // This is a price wall too — log it as a challenge so the funnel counts
+      // credit-exhausted callers, not just x402 walk-aways.
+      await logUsage(service.id, false, srcHash(clientIp(req)), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, true);
       return NextResponse.json(
         {
           error: debit.reason === "insufficient" ? "Insufficient credits" : "Invalid or unusable credit token",
@@ -167,6 +214,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     }
     await saveSample(service.id, data);
     const ip = clientIp(req);
+    await attachRetention(service.id, data, srcHash(ip));
     await logUsage(service.id, true, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, false, srcHash(`credit:${creditToken}`));
     return NextResponse.json(
       { service: service.id, builderCode: cfg.appBuilderCode, data, paidVia: "credits", creditBalanceUsd: +(debit.remaining / 100).toFixed(2) },
@@ -185,7 +233,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const freeEligible = service.category !== "AI" && !service.noFreeTier;
   if (!hasPayment && !forcePay && freeEligible) {
     const ip = clientIp(req);
-    const free = await consumeFree(`free:${ip}`);
+    // Keyed per IP AND service: every published surface (MCP readme/registry,
+    // server card, catalog) promises "one free call per day per service" — one
+    // shared daily call across 60+ tools broke that promise 65 times over.
+    const free = await consumeFree(`free:${ip}:${service.id}`);
     if (free.allowed) {
       try {
         const data = await service.handler(paramsFrom(req, service));
@@ -237,32 +288,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       return handlerErrorResponse(err);
     }
     await saveSample(service.id, data);
-    const payer = payerFrom(request);
+    // Lowercase before hashing: the payers dashboard hashes the lowercased
+    // address from CDP SQL — a checksummed hash here would never match it.
+    const payer = payerFrom(request).toLowerCase();
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "", false, false, false, payer ? srcHash(payer) : "");
-    // Funnel coupon: paying the entry check (token-risk/rug-score) discounts the
-    // AI report on the SAME token for 1h; redeeming it consumes the coupon.
-    try {
-      const d = data as Record<string, unknown> | null;
-      const addr = String(d?.address ?? "").toLowerCase();
-      if (/^0x[0-9a-f]{40}$/.test(addr)) {
-        const src = srcHash(clientIp(request));
-        if (service.id === "token-risk" || service.id === "rug-score") {
-          await kvSet(`coupon:${src}:${addr}`, "1", 3600);
-          // Retention (R2): attach how this token's risk moved since this caller's
-          // last paid check on it — the diff that pulls them back.
-          const score = typeof d?.riskScore === "number" ? (d.riskScore as number) : typeof d?.rugScore === "number" ? (d.rugScore as number) : null;
-          if (score !== null && d) {
-            const level = String(d.riskLevel ?? d.level ?? "");
-            const sl = await sinceLastCheck(src, addr, score, level);
-            if (sl) d.sinceLastCheck = sl;
-          }
-        } else if (service.id === "ai-token-report") {
-          await kvDel(`coupon:${src}:${addr}`);
-        }
-      }
-    } catch {
-      /* coupon/retention bookkeeping is best-effort — never blocks the paid response */
-    }
+    await attachRetention(service.id, data, srcHash(clientIp(request)));
     return NextResponse.json({
       service: service.id,
       builderCode: cfg.appBuilderCode,
@@ -342,9 +372,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
             data: sample,
           };
         }
-        if (freeEligible) body.freeCall = "First call each day is free — retry without a payment header.";
-        body.noWalletNeeded =
-          "No wallet? Buy prepaid credits once via /api/x402/buy-credits?tier=0.25|1|5|20 and send the returned token as the x-credit-token header — no signature per call.";
+        if (freeEligible) body.freeCall = "This service gives 1 free call/day per IP — retry without a payment header.";
+        body.prepaidCredits =
+          "One x402 settlement on /api/x402/buy-credits?tier=0.25|1|5|20 mints a bearer credit token; send it as the x-credit-token header and later calls debit the balance — no wallet or signature per call after that first purchase.";
         const headers = new Headers(res.headers);
         headers.delete("content-length");
         return NextResponse.json(body, { status: 402, headers });

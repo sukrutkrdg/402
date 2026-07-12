@@ -42,8 +42,11 @@ export async function GET(req: NextRequest) {
       price,
       revenue: +(r.paid * price).toFixed(4),
       conversionPct: external > 0 ? +((r.paid / external) * 100).toFixed(1) : 0,
-      // Of those shown the 402 price, how many actually paid — the funnel's true tail.
-      challengePaidPct: r.challenge + r.paid > 0 ? +((r.paid / (r.challenge + r.paid)) * 100).toFixed(1) : 0,
+      // Of those shown the 402 price, how many actually paid. Every successful
+      // x402 purchase necessarily logs one pre-flight 402 first, so challenges
+      // are the denominator (paid ⊆ challenged), not an addition to it — the
+      // old paid/(challenge+paid) capped a perfect converter at 50%.
+      challengePaidPct: r.challenge > 0 ? Math.min(100, +((r.paid / r.challenge) * 100).toFixed(1)) : 0,
     };
   });
   const totalRevenue = +per.reduce((a, r) => a + r.revenue, 0).toFixed(2);

@@ -20,7 +20,7 @@
 
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { kvConfigured, kvGetNumber, kvSet, kvDecrBy, kvIncrBy } from "./kv";
+import { kvConfigured, kvGetNumber, kvSet, kvDecrBy, kvIncrBy, kvDel } from "./kv";
 
 /** Prepaid packs: pay `usd`, receive `credits` (a small bonus rewards prepaying). */
 export const CREDIT_TIERS: Record<string, { usd: number; credits: number }> = {
@@ -56,12 +56,16 @@ export async function buyCredits(params: Record<string, string>) {
 
   const token = `ck_${randomBytes(18).toString("hex")}`;
   const set = await kvIncrBy(keyFor(token), pack.credits); // create/topup atomically
+  // A null here means the ledger write did NOT happen (KV unreachable). Throwing
+  // makes the response ≥400 so withX402 never settles — the one path that mints
+  // money must fail CLOSED, or the customer pays for a token with no balance.
+  if (set === null) throw new Error("Credits unavailable: ledger write failed — payment not settled, retry shortly");
   // Refresh the TTL on the (new) balance key.
-  await kvSet(keyFor(token), String(set ?? pack.credits), BALANCE_TTL);
+  await kvSet(keyFor(token), String(set), BALANCE_TTL);
 
   return {
     creditToken: token,
-    balanceUsd: +(((set ?? pack.credits)) / 100).toFixed(2),
+    balanceUsd: +(set / 100).toFixed(2),
     paidUsd: pack.usd,
     creditedUsd: +(pack.credits / 100).toFixed(2),
     bonusUsd: +((pack.credits - pack.usd * 100) / 100).toFixed(2),
@@ -95,9 +99,14 @@ export async function debitCredit(token: string, priceCents: number): Promise<De
   const after = await kvDecrBy(key, priceCents);
   if (after === null) return { ok: false, remaining: 0, reason: "no_kv" };
   if (after < 0) {
-    // Overdraw (or unknown token, which DECRBY treats as 0) → put it back.
+    // Overdraw (or unknown token, which DECRBY treats as 0) → put it back. When
+    // the restored balance is exactly 0 the key was almost certainly minted by
+    // this very probe (unknown token) — delete it so bad-token spam can't grow
+    // KV with permanent zero-value keys.
     await kvIncrBy(key, priceCents);
-    return { ok: false, remaining: 0, reason: "insufficient", balance: Math.max(0, after + priceCents) };
+    const balance = after + priceCents;
+    if (balance === 0) await kvDel(key);
+    return { ok: false, remaining: 0, reason: "insufficient", balance: Math.max(0, balance) };
   }
   return { ok: true, remaining: after };
 }

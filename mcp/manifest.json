@@ -33,7 +33,7 @@
     "credit_token": {
       "type": "string",
       "title": "Prepaid credit token (recommended)",
-      "description": "A credit token (ck_…) from the buy-credits service. Each call debits your prepaid balance — no wallet or signing needed. Buy at https://402.com.tr. Leave empty to stay on the free tier.",
+      "description": "A credit token (ck_…) from the buy-credits service (one x402 settlement mints it — see https://402.com.tr/agents). Each call debits your prepaid balance — no wallet or signing per call. Leave empty to stay on the free tier.",
       "sensitive": true,
       "required": false,
       "default": ""

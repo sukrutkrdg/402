@@ -799,7 +799,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Block, base fee, ETH price & transfer cost in USD",
     description:
       "Live Base chain snapshot: latest block, base fee + priority fee (Gwei), current ETH price, and the estimated USD cost of a simple ETH transfer. For agents timing or budgeting transactions.",
-    price: "$0.005",
+    price: "$0.01",
     icon: "⛓️",
     category: "Onchain",
     params: [],
@@ -812,7 +812,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Freshly listed/profiled tokens on Base",
     description:
       "Returns the latest tokens profiled on Base from the DexScreener feed — address, description, and links. Great for discovery bots hunting new launches early.",
-    price: "$0.005",
+    price: "$0.01",
     icon: "🆕",
     category: "Onchain",
     params: [],
@@ -1065,7 +1065,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Cryptographically strong random IDs",
     description:
       "Generate N url-safe random tokens server-side. Demonstrates a paid utility endpoint with a query parameter.",
-    price: "$0.005",
+    price: "$0.01",
     icon: "🔐",
     category: "Utility",
     params: [{ name: "count", label: "How many", placeholder: "3" }],

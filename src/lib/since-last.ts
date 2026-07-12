@@ -7,6 +7,8 @@
  * exact moment you re-check your exit — so the second check is worth more than the
  * first, and the caller comes back. Keyed by the pseudonymous source hash we
  * already compute for the coupon/rate-limit, so no new plumbing or payer decode.
+ * That hash is an IP-derived approximation: callers behind a shared egress can
+ * see each other's baseline, so the note words it as "from your network".
  */
 
 import "server-only";
@@ -65,9 +67,9 @@ export async function sinceLastCheck(
     direction: delta > 0 ? "worsened" : delta < 0 ? "improved" : "unchanged",
     note:
       delta > 0
-        ? `⚠️ Risk is UP ${delta} pts since you last checked this token (${ago(prev.t)}) — re-evaluate your position.`
+        ? `⚠️ Risk is UP ${delta} pts since this token was last checked from your network (${ago(prev.t)}) — re-evaluate your position.`
         : delta < 0
-          ? `Risk is down ${Math.abs(delta)} pts since your last check (${ago(prev.t)}).`
-          : `No change in score since your last check (${ago(prev.t)}).`,
+          ? `Risk is down ${Math.abs(delta)} pts since the last check from your network (${ago(prev.t)}).`
+          : `No change in score since the last check from your network (${ago(prev.t)}).`,
   };
 }

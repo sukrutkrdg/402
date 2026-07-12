@@ -19,6 +19,8 @@ export async function preTradeGate(params: Record<string, string>) {
   const address = (params.address || params.tokenOut || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… token contract address");
   const amountUsd = params.amountUsd || params.size || "1000";
+  const tradeSizeUsd = Number(amountUsd);
+  if (!Number.isFinite(tradeSizeUsd) || tradeSizeUsd <= 0) throw new Error("amountUsd must be a positive number");
 
   // Run the four checks; tolerate individual upstream failures (never block the
   // whole gate because one provider hiccuped — surface what we could read).
@@ -37,27 +39,45 @@ export async function preTradeGate(params: Record<string, string>) {
   const sec = (risk?.security ?? {}) as { isHoneypot?: boolean; sellTaxPct?: number | null };
   const honeypot = Boolean(sec.isHoneypot) || (sell?.canSell === false);
   const sellTax = num(sec.sellTaxPct) ?? num(sell?.sellTaxPct);
-  const riskScore = num(risk?.riskScore) ?? 50;
+  const riskScore = num(risk?.riskScore);
   const impact = num(route?.estPriceImpactPct);
   const deployRep = String(deploy?.reputation ?? "");
+
+  // A GO must mean "everything was CHECKED and clean" — a failed upstream is
+  // UNKNOWN, not safe. Any missing check (or a token-risk read that ran without
+  // its honeypot source, so isHoneypot could be silently absent) degrades the
+  // gate: the best it can then say is HOLD.
+  const riskSources = Array.isArray(risk?.sources) ? (risk!.sources as unknown[]).map(String) : null;
+  const honeypotChecked = riskSources ? riskSources.some((s) => /goplus/i.test(s)) : sec.isHoneypot !== undefined;
+  const unavailable: string[] = [];
+  if (!risk) unavailable.push("token-risk");
+  else if (!honeypotChecked) unavailable.push("token-risk honeypot source (GoPlus)");
+  if (!sell) unavailable.push("sellability");
+  if (!route) unavailable.push("swap-route");
+  if (!deploy) unavailable.push("deployer-rep");
+  const degraded = unavailable.length > 0;
 
   const observedRisks: string[] = [];
   if (honeypot) observedRisks.push("honeypot / cannot sell");
   if (sellTax !== null && sellTax >= 20) observedRisks.push(`high sell tax ${sellTax}%`);
-  if (riskScore >= 70) observedRisks.push("high token-risk score");
+  if (riskScore !== null && riskScore >= 70) observedRisks.push("high token-risk score");
   if (impact !== null && impact >= 10) observedRisks.push(`price impact ${impact}% at this size`);
   if (/high[_-]?risk|scam|serial/.test(deployRep)) observedRisks.push(`deployer: ${deployRep}`);
   if ((risk?.ownership as { renounced?: boolean } | undefined)?.renounced === false) observedRisks.push("ownership not renounced");
+  if (degraded) observedRisks.push(`unverified: ${unavailable.join(", ")}`);
 
-  // Decision: any terminal flag → STOP; material risks → HOLD; else GO.
-  const stop = honeypot || (sellTax !== null && sellTax >= 50) || riskScore >= 80 || /scam/.test(deployRep);
-  const hold = observedRisks.length > 0;
+  // Decision: any terminal flag → STOP; material risks OR an unverified check →
+  // HOLD; GO only when every check ran and came back clean. A high_risk deployer
+  // (serial rugger profile) is terminal, not merely cautionary.
+  const stop = honeypot || (sellTax !== null && sellTax >= 50) || (riskScore !== null && riskScore >= 80) || /high[_-]?risk|scam/.test(deployRep);
+  const hold = observedRisks.length > 0 || degraded;
   const decision = stop ? "STOP" : hold ? "HOLD" : "GO";
 
   return {
     address,
-    tradeSizeUsd: Number(amountUsd),
+    tradeSizeUsd,
     decision, // GO | HOLD | STOP
+    ...(degraded ? { degraded: true, unverifiedChecks: unavailable } : {}),
     receipt: {
       checked: address,
       at: new Date().toISOString(),
@@ -79,9 +99,11 @@ export async function preTradeGate(params: Record<string, string>) {
       decision === "STOP"
         ? "Do not trade — a terminal safety flag is set."
         : decision === "HOLD"
-          ? "Tradeable with caution — size down and mind the risks above; some checks may be provider-limited."
-          : "No blocking flags across risk, sellability, routing and deployer. Proceed within normal size.",
-    note: "Single pre-trade gate = token-risk + sellability + swap-route + deployer-rep, collapsed to one verdict. Individual checks may read 'unavailable' if a provider is momentarily down. Not financial advice.",
+          ? degraded && observedRisks.length === 1 /* the only "risk" is the unverified entry */
+            ? "Do not treat as clean — one or more checks could not be verified (provider down). Re-check before trading."
+            : "Tradeable with caution — size down and mind the risks above; some checks may be provider-limited."
+          : "No blocking flags across risk, sellability, routing and deployer — all four checks ran. Proceed within normal size.",
+    note: "Single pre-trade gate = token-risk + sellability + swap-route + deployer-rep, collapsed to one verdict. GO is only returned when every check ran clean; an unavailable provider degrades the answer to HOLD, never GO. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

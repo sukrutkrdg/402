@@ -10,7 +10,7 @@ export function GET() {
   const cfg = getConfig();
 
   const paths: Record<string, unknown> = {};
-  for (const s of SERVICES) {
+  for (const s of SERVICES.filter((x) => !x.hidden)) {
     paths[`/api/x402/${s.id}`] = {
       get: {
         operationId: s.id.replace(/-/g, "_"),

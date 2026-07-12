@@ -43,14 +43,18 @@ function extract(e: Record<string, unknown>): Rec | null {
   if (!/Policy|Paused/i.test(event)) return null; // only guard-relevant events
   const params = (pick("parameters", "data.parameters") ?? {}) as Record<string, unknown>;
   const topics = (pick("topics", "data.topics") ?? []) as unknown[];
+  // Length-cap every free-form field before storing: webhook payloads are
+  // authenticated but external input, and these values are later served (and
+  // sampled) — no legitimate value here exceeds a bytes32/tx-hash length.
+  const cap = (v: string | null) => (v === null ? null : v.slice(0, 128));
   return {
     token: token.toLowerCase(),
-    event: event.split("(")[0],
-    time: String(pick("block_timestamp", "blockTimestamp", "timestamp", "data.block_timestamp") ?? new Date().toISOString()),
-    scopeTopic: typeof topics[1] === "string" ? (topics[1] as string) : null,
-    oldPolicyId: params.oldPolicyId != null ? String(params.oldPolicyId) : null,
-    newPolicyId: params.newPolicyId != null ? String(params.newPolicyId) : null,
-    txHash: (pick("transaction_hash", "transactionHash", "data.transaction_hash") as string) ?? null,
+    event: event.split("(")[0].slice(0, 128),
+    time: String(pick("block_timestamp", "blockTimestamp", "timestamp", "data.block_timestamp") ?? new Date().toISOString()).slice(0, 128),
+    scopeTopic: typeof topics[1] === "string" ? cap(topics[1] as string) : null,
+    oldPolicyId: params.oldPolicyId != null ? cap(String(params.oldPolicyId)) : null,
+    newPolicyId: params.newPolicyId != null ? cap(String(params.newPolicyId)) : null,
+    txHash: cap((pick("transaction_hash", "transactionHash", "data.transaction_hash") as string) ?? null),
   };
 }
 

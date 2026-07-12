@@ -122,7 +122,8 @@ export async function GET(req: NextRequest) {
       .map(async (w) => {
         let firstService: string | null = null;
         try {
-          const svc = await kvGet(`usage:firstsvc:${srcHash(w.wallet)}`);
+          // Lowercase to match the write side (route.ts lowercases before hashing).
+          const svc = await kvGet(`usage:firstsvc:${srcHash(w.wallet.toLowerCase())}`);
           if (svc) firstService = nameById[svc] ?? svc;
         } catch {
           /* ignore */

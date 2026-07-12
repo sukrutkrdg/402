@@ -11,7 +11,8 @@ typically fractions of a cent per call.
 **Works with zero config.** Run it with no wallet and no token and it uses the
 **free tier** (one free call/day per service, then a preview) — so an agent can
 try every tool instantly. Unlock unlimited paid calls with either a **prepaid
-credit token** (buy once, no wallet, no signing) or a **wallet key**.
+credit token** (one x402 purchase up front, then no wallet or signing per call)
+or a **wallet key**.
 
 ---
 
@@ -34,10 +35,12 @@ credit token** (buy once, no wallet, no signing) or a **wallet key**.
 | **Wallet** | `AGENT_PRIVATE_KEY` | Signs an x402 USDC payment locally per call | Yes / Yes |
 | **Free** | *(nothing)* | Free tier: 1 full call/day/service, then a preview | No / No |
 
-Credits are the easiest paid mode: call the `buy_credits` tool once (or buy at
-[402.com.tr](https://402.com.tr)) to get a `ck_…` token, set it as
-`X402_CREDIT_TOKEN`, and every call just draws down the balance — no private key
-ever touches the config.
+Credits are the easiest paid mode day-to-day: buying the pack takes ONE x402
+settlement (call the `buy_credits` tool in wallet mode, or pay
+`https://402.com.tr/api/x402/buy-credits?tier=0.25|1|5|20` from any x402 client),
+which returns a `ck_…` token. Set it as `X402_CREDIT_TOKEN` and every later call
+just draws down the balance — no private key ever touches this config again.
+Tiers: $0.25 starter, $1, $5 (+10%), $20 (+20%).
 
 ---
 
@@ -154,7 +157,7 @@ it calls the right Bazaar tool and settles the micro-payment automatically.
 
 ## Why agents use this
 
-Agents need fresh on-chain data and AI utilities but don't want to manage RPC endpoints, scrapers, security heuristics, or per-provider API keys. One MCP server plus a funded wallet gives them everything — contract safety checks, live DEX prices, gas estimates, transaction decoding, and Claude-powered text utilities — all pay-per-use, with no subscriptions or sign-up required.
+Agents need fresh on-chain data and AI utilities but don't want to manage RPC endpoints, scrapers, security heuristics, or per-provider API keys. One MCP server plus a credit token (or a funded wallet) gives them everything — contract safety checks, live DEX prices, gas estimates, transaction decoding, and Claude-powered reports — all pay-per-use, with no subscriptions or sign-up required.
 
 ---
 
@@ -165,23 +168,28 @@ writing it includes:
 
 | Tool | Price | What it does |
 |---|---|---|
-| `token_risk` | $0.02 | Token safety score (honeypot, taxes, ownership, holders) for any Base token |
-| `sanctions` | $0.01 | Screen an address against the OFAC sanctions list |
-| `holders` | $0.01 | Top holders, concentration (whale risk) & LP lock for a token |
-| `token_price` | $0.01 | DEX price + liquidity for a Base token |
-| `multi_price` | $0.01 | Prices for up to 10 Base tokens in one call |
-| `address_intel` | $0.01 | EOA/contract, ETH+USDC balance, activity for any address |
-| `wallet_tokens` | $0.01 | Portfolio of major Base tokens + USD value |
-| `gas_oracle` | $0.005 | Live Base gas estimates (slow/normal/fast) |
-| `tx_decode` | $0.01 | Structural decode of a Base transaction |
-| `contract_abi` | $0.01 | Is a contract verified? Get its ABI (Sourcify) |
-| `decode_selector` | $0.005 | Resolve a 4-byte selector to function signatures |
-| `basename` | $0.005 | Resolve Basenames ↔ addresses on Base |
-| `trending_tokens` / `new_tokens` | $0.005 | Trending & freshly listed Base tokens |
-| `price_alert` | $0.05 | Register a webhook alert when a token crosses a price |
-| `ai_summarize` / `ai_extract` / `ai_translate` | $0.02 | Claude-powered text utilities |
+| `pre_trade_gate` | $0.10 | The one call before a trade — risk + sellability + route + deployer → GO/HOLD/STOP |
+| `token_risk` | $0.03 | Token safety score (honeypot, taxes, ownership, holders) for any Base token |
+| `sellability` | $0.08 | Can you actually SELL it? Honeypot/tax/lp simulation verdict |
+| `ai_token_report` | $0.12 | Claude-written full due-diligence report on a token |
+| `sanctions` | $0.02 | Screen an address against the OFAC sanctions list |
+| `holders` | $0.02 | Top holders, concentration (whale risk) & LP lock for a token |
+| `token_price` | $0.02 | DEX price + liquidity for a Base token |
+| `multi_price` | $0.02 | Prices for up to 10 Base tokens in one call |
+| `address_intel` | $0.02 | EOA/contract, ETH+USDC balance, activity for any address |
+| `wallet_tokens` | $0.02 | Portfolio of major Base tokens + USD value |
+| `gas_oracle` | $0.01 | Live Base gas estimates (slow/normal/fast) |
+| `tx_decode` | $0.02 | Structural decode of a Base transaction |
+| `contract_abi` | $0.02 | Is a contract verified? Get its ABI (Sourcify) |
+| `basename` | $0.01 | Resolve Basenames ↔ addresses on Base |
+| `trending_tokens` / `new_tokens` | $0.01 | Trending & freshly listed Base tokens |
+| `price_alert` | $0.05 | Register an alert when a token crosses a price (webhook or poll) |
+| `buy_credits` | $0.25–$20 | Buy a prepaid credit pack (tier param) — unlocks walletless calls |
 
-…plus more — the tool list is loaded **live from the catalog**, so it always reflects the current marketplace (70+ services, including `pre_trade_gate`, `whale_flow`, `watchlist_diff`, the B20 safety suite, and `buy_credits`).
+Prices shown as of this release — the authoritative price is always in the live
+catalog and in each 402 challenge. …plus ~50 more tools loaded **live from the
+catalog** (66 total), including `whale_flow`, `watchlist_diff` and the 8-tool
+B20 safety suite.
 
 ### Example
 
@@ -277,9 +285,11 @@ from your wallet, and answers with the on-chain data.
 
 ## Security note
 
-**Prepaid credits (recommended) need no wallet at all** — the `ck_…` token is a
-bearer capability worth only its remaining balance, so a leaked token can lose at
-most what's left on it, never a wallet. Buy a small pack and rotate it if needed.
+**Prepaid credits (recommended) keep wallets out of your agent config** — buying
+the pack takes one x402 settlement, but after that the `ck_…` token is all the
+agent holds: a bearer capability worth only its remaining balance, so a leaked
+token can lose at most what's left on it, never a wallet. Buy a small pack and
+rotate it if needed.
 
 If you use **wallet mode** instead, your private key is only used locally inside
 this process to sign payment authorizations. It is **never** sent to the Bazaar

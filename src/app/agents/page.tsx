@@ -46,7 +46,7 @@ export default function AgentsPage() {
         </p>
         <Code>{`claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0xYOUR_KEY -- npx -y x402-bazaar-mcp`}</Code>
         <p className="text-sm text-gray-400">
-          Or call any endpoint directly over HTTP — the first call/day per IP is free (no wallet), so
+          Or call any endpoint directly over HTTP — 1 free call per service per day (no wallet), so
           you can try before wiring payments:
         </p>
         <Code>{`curl "${SITE_URL}/api/x402/${example.id}?${example.params.map((p) => `${p.name}=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed`).join("&")}"`}</Code>
@@ -108,6 +108,30 @@ console.log(await res.json());`}</Code>
       </section>
 
       <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">2b. Or prepay credits — no signature per call</h2>
+        <p className="text-sm text-gray-400">
+          Pay once with x402 on <code className="codechip">buy-credits</code> (tier ={" "}
+          <code className="codechip">0.25</code>, <code className="codechip">1</code>,{" "}
+          <code className="codechip">5</code> or <code className="codechip">20</code> USD) and get a
+          bearer token. Later calls send it as a header and debit the balance — no wallet, no
+          signing, no settlement latency per call:
+        </p>
+        <Code>{`// one-time (needs a wallet): pay the pack via x402
+const buy = await fetchWithPay("${SITE_URL}/api/x402/buy-credits?tier=1");
+const { data } = await buy.json(); // data.creditToken = "ck_…" — shown ONCE, store it
+
+// every later call: just a header, no wallet involved
+const res = await fetch(
+  "${SITE_URL}/api/x402/token-risk?address=0x4ed4…efed",
+  { headers: { "x-credit-token": "ck_…" } }
+); // response header x-credit-balance = remaining cents`}</Code>
+        <p className="text-xs text-gray-500">
+          One settlement mints the pack ($5 and $20 tiers carry a bonus); after that the agent runs
+          walletless. Balance lasts 180 days.
+        </p>
+      </section>
+
+      <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">3. Use as MCP tools (easiest)</h2>
         <p className="text-sm text-gray-400">
           Every service appears as a tool in Claude Desktop, Cursor, or any MCP client — via the
@@ -127,14 +151,16 @@ console.log(await res.json());`}</Code>
     "x402-bazaar": {
       "command": "npx",
       "args": ["-y", "x402-bazaar-mcp"],
-      "env": { "AGENT_PRIVATE_KEY": "0xYOUR_BASE_WALLET_KEY" }
+      "env": { "X402_CREDIT_TOKEN": "ck_YOUR_CREDIT_TOKEN" }
     }
   }
 }`}</Code>
         <p className="text-xs text-gray-500">
           Add to <code className="codechip">claude_desktop_config.json</code> (or your client&apos;s MCP
-          config), restart, and the tools appear. The wallet needs only USDC on Base — the key never
-          leaves your machine. Also on the{" "}
+          config), restart, and the tools appear. With no env at all it runs on the free tier;
+          set <code className="codechip">X402_CREDIT_TOKEN</code> (from buy-credits, recommended) or{" "}
+          <code className="codechip">AGENT_PRIVATE_KEY</code> (Base wallet with USDC — the key never
+          leaves your machine) for paid calls. Also on the{" "}
           <a
             className="text-sky-400 hover:underline"
             href="https://github.com/sukrutkrdg/x402-bazaar-mcp"
@@ -162,7 +188,7 @@ console.log(await res.json());`}</Code>
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Available services</h2>
         <div className="card divide-y divide-base-line/60">
-          {SERVICES.map((s) => (
+          {SERVICES.filter((s) => !s.hidden).map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">

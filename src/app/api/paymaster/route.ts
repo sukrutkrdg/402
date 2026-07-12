@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decodeFunctionData } from "viem";
 import { kvIncr } from "@/lib/kv";
+import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,12 @@ export async function POST(req: NextRequest) {
     const day = new Date().toISOString().slice(0, 10);
     const n = await kvIncr(`pm:day:${sender}:${day}`, 60 * 60 * 25);
     if (n === null || n > DAILY_SPONSOR_CAP) return reject("daily sponsorship limit reached");
+  } else {
+    // Stub calls carry no sponsorship, but each one is still a proxied request
+    // to the upstream (billed) paymaster RPC — cap them per IP so the stub can't
+    // be used as a free relay. Sender-keyed caps don't work here (client-chosen).
+    const rl = await rateLimitKv(`pmstub:${clientIp(req)}`, 30, 60);
+    if (!rl.ok) return reject("rate limited — retry shortly");
   }
 
   try {

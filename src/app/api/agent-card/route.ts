@@ -36,9 +36,9 @@ export function GET() {
       llms: `${SITE}/llms.txt`,
       mcp: "npx x402-bazaar-mcp",
     },
-    freeTrial: "The first few non-AI calls per day per IP are free — try before you pay, no signup.",
+    freeTrial: "1 free call per service per day per IP (AI and metered services excluded) — try before you pay, no signup.",
     tryExample: `${SITE}/api/x402/token-risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
-    skills: SERVICES.map((s) => ({
+    skills: SERVICES.filter((s) => !s.hidden).map((s) => ({
       id: s.id,
       name: s.name,
       description: s.tagline,

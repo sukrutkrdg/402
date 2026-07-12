@@ -6,17 +6,24 @@
  * DELTAS (liquidity ±%, price ±%, honeypot/tax flipped) and re-snapshots — so the
  * second call is intrinsically more valuable than the first. Built on the cached
  * upstreams (DexScreener pairs + GoPlus security), so a 10-token diff is cheap.
+ *
+ * Failure discipline: an upstream outage is UNKNOWN, never zero. Coercing a
+ * DexScreener blip to liq=0 would fire the worst possible false alert
+ * ("LIQUIDITY_DOWN_100%") and then persist the zeroed baseline, poisoning every
+ * later diff — so unavailable fields stay null, produce no alerts, and never
+ * overwrite the stored baseline.
  */
 
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { kvGet, kvSet, kvConfigured } from "./kv";
 import { dexTokenPairs, goPlusSecurity } from "./upstream-cache";
 
 interface Snap {
-  liq: number;
-  price: number;
-  honeypot: boolean;
-  sellTax: number;
+  liq: number | null;
+  price: number | null;
+  honeypot: boolean | null;
+  sellTax: number | null;
 }
 interface Watch {
   id: string;
@@ -34,15 +41,16 @@ const num = (v: unknown) => {
 
 async function snapshot(token: string): Promise<Snap> {
   const t = token.toLowerCase();
-  const pairs = ((await dexTokenPairs<{ baseToken?: { address?: string }; liquidity?: { usd?: number }; priceUsd?: string }>(t)) ?? [])
-    .filter((p) => p.baseToken?.address?.toLowerCase() === t);
-  const best = pairs.reduce((m, p) => ((p.liquidity?.usd ?? 0) > (m?.liquidity?.usd ?? 0) ? p : m), pairs[0]);
+  // null = provider unavailable (unknown); [] = provider answered "no pairs".
+  const rawPairs = await dexTokenPairs<{ baseToken?: { address?: string }; liquidity?: { usd?: number }; priceUsd?: string }>(t);
+  const pairs = rawPairs === null ? null : rawPairs.filter((p) => p.baseToken?.address?.toLowerCase() === t);
+  const best = pairs === null ? null : pairs.reduce((m, p) => ((p.liquidity?.usd ?? 0) > (m?.liquidity?.usd ?? 0) ? p : m), pairs[0]);
   const gp = (await goPlusSecurity<{ is_honeypot?: string; sell_tax?: string }>(t)) ?? null;
   return {
-    liq: Math.round(best?.liquidity?.usd ?? 0),
-    price: num(best?.priceUsd),
-    honeypot: gp?.is_honeypot === "1",
-    sellTax: gp ? +(num(gp.sell_tax) * 100).toFixed(1) : 0,
+    liq: pairs === null ? null : Math.round(best?.liquidity?.usd ?? 0),
+    price: pairs === null ? null : num(best?.priceUsd),
+    honeypot: gp === null ? null : gp.is_honeypot === "1",
+    sellTax: gp === null ? null : +(num(gp.sell_tax) * 100).toFixed(1),
   };
 }
 
@@ -58,24 +66,39 @@ export async function watchlistDiff(params: Record<string, string>) {
     if (!raw) return { found: false, note: "No watchlist with that id (expired or never created). Create one by passing tokens=." };
     const w = JSON.parse(raw) as Watch;
     const changes = [];
+    let anyDegraded = false;
     for (const token of w.tokens) {
       const prev = w.snaps[token];
       const now = await snapshot(token);
-      const liqPct = pctChange(prev?.liq ?? 0, now.liq);
-      const pricePct = pctChange(prev?.price ?? 0, now.price);
+      const degraded: string[] = [];
+      if (now.liq === null) degraded.push("dex");
+      if (now.honeypot === null) degraded.push("security");
+      if (degraded.length) anyDegraded = true;
+
+      // Deltas/alerts only where BOTH sides are known — an outage is not a change.
+      const liqPct = prev?.liq != null && now.liq !== null ? pctChange(prev.liq, now.liq) : null;
+      const pricePct = prev?.price != null && now.price !== null ? pctChange(prev.price, now.price) : null;
       const flags = [];
-      if (!prev?.honeypot && now.honeypot) flags.push("BECAME_HONEYPOT");
-      if ((prev?.sellTax ?? 0) < 20 && now.sellTax >= 20) flags.push(`SELL_TAX_UP_${now.sellTax}%`);
-      if (liqPct <= -30) flags.push(`LIQUIDITY_DOWN_${Math.abs(liqPct)}%`);
+      if (prev?.honeypot === false && now.honeypot === true) flags.push("BECAME_HONEYPOT");
+      if (prev?.sellTax != null && now.sellTax !== null && prev.sellTax < 20 && now.sellTax >= 20) flags.push(`SELL_TAX_UP_${now.sellTax}%`);
+      if (liqPct !== null && liqPct <= -30) flags.push(`LIQUIDITY_DOWN_${Math.abs(liqPct)}%`);
       changes.push({
         token,
         liquidityUsd: now.liq, liquidityChangePct: liqPct,
         priceUsd: now.price, priceChangePct: pricePct,
         honeypot: now.honeypot, sellTaxPct: now.sellTax,
         alerts: flags,
-        changed: flags.length > 0 || Math.abs(liqPct) >= 10 || Math.abs(pricePct) >= 10,
+        changed: flags.length > 0 || (liqPct !== null && Math.abs(liqPct) >= 10) || (pricePct !== null && Math.abs(pricePct) >= 10),
+        ...(degraded.length ? { unavailable: degraded } : {}),
       });
-      w.snaps[token] = now;
+      // Advance the baseline ONLY for fields we actually read; keep the previous
+      // known value where the provider was down so the next diff stays honest.
+      w.snaps[token] = {
+        liq: now.liq ?? prev?.liq ?? null,
+        price: now.price ?? prev?.price ?? null,
+        honeypot: now.honeypot ?? prev?.honeypot ?? null,
+        sellTax: now.sellTax ?? prev?.sellTax ?? null,
+      };
     }
     w.updatedAt = new Date().toISOString();
     await kvSet(`watch:${watchId}`, JSON.stringify(w), TTL);
@@ -84,9 +107,12 @@ export async function watchlistDiff(params: Record<string, string>) {
       watchId, sinceLast: true, tokenCount: w.tokens.length,
       materialAlerts: material.length,
       changes,
+      ...(anyDegraded ? { degraded: true } : {}),
       note: material.length
         ? `⚠️ ${material.length} token(s) changed materially since your last check.`
-        : "No material changes since your last check. Re-check anytime with watchId.",
+        : anyDegraded
+          ? "No material changes detected, but a data provider was unavailable for some fields (marked 'unavailable') — those were not compared. Re-check shortly."
+          : "No material changes since your last check. Re-check anytime with watchId.",
       checkedAt: new Date().toISOString(),
     };
   }
@@ -101,7 +127,11 @@ export async function watchlistDiff(params: Record<string, string>) {
 
   const snaps: Record<string, Snap> = {};
   for (const t of tokens) snaps[t] = await snapshot(t);
-  const id = `wl_${Math.random().toString(36).slice(2, 10)}`;
+  // A baseline built while BOTH providers are down is worthless — refuse (≥400 →
+  // the buyer is not charged) rather than selling an empty snapshot.
+  if (tokens.every((t) => snaps[t].liq === null && snaps[t].honeypot === null))
+    throw new Error("Upstream data providers unavailable — could not build a baseline, try again shortly");
+  const id = `wl_${randomBytes(9).toString("hex")}`;
   const w: Watch = { id, tokens, snaps, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await kvSet(`watch:${id}`, JSON.stringify(w), TTL);
 

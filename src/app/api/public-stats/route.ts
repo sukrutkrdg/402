@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const [callsServed, paidServed] = await Promise.all([getCallsServed(), getPaidServed()]);
   return NextResponse.json({
-    services: SERVICES.length,
+    services: SERVICES.filter((s) => !s.hidden).length,
     callsServed,
     paidServed,
   });

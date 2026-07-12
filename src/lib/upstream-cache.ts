@@ -12,18 +12,38 @@ import "server-only";
 import { kvGet, kvSet } from "./kv";
 
 // Process-local micro-cache (bridges the sub-second window within one composite
-// call before/without KV, and cuts KV round-trips on hot addresses).
-const mem = new Map<string, { at: number; v: unknown }>();
-const MEM_TTL_MS = 45_000;
+// call before/without KV, and cuts KV round-trips on hot addresses). Entries
+// carry the ORIGINAL fetch time and expire on the same deadline as the KV row —
+// re-stamping a near-expiry KV hit into mem would quietly extend price/honeypot
+// staleness past the 45/90s windows callers (and receipts) reason about.
+const mem = new Map<string, { fetchedAt: number; expiresAt: number; v: unknown }>();
+const MEM_MAX = 500; // per-instance cap — address-scanning traffic must not grow this unbounded
 
+function memSet(key: string, fetchedAt: number, ttlSec: number, v: unknown) {
+  if (mem.size >= MEM_MAX) {
+    // Cheap eviction: drop the oldest-inserted half. Map preserves insertion order.
+    let n = Math.floor(MEM_MAX / 2);
+    for (const k of mem.keys()) {
+      if (n-- <= 0) break;
+      mem.delete(k);
+    }
+  }
+  mem.set(key, { fetchedAt, expiresAt: fetchedAt + ttlSec * 1000, v });
+}
+
+// KV rows are wrapped {at, v} so a KV hit knows its true age. Bare legacy rows
+// (pre-wrapper) parse as v-with-unknown-age and are treated as expiring now.
 async function cached<T>(key: string, ttlSec: number, fetcher: () => Promise<T | null>): Promise<T | null> {
   const m = mem.get(key);
-  if (m && Date.now() - m.at < MEM_TTL_MS) return m.v as T | null;
+  if (m && Date.now() < m.expiresAt) return m.v as T | null;
   try {
     const hit = await kvGet(key);
     if (hit !== null) {
-      const v = JSON.parse(hit) as T;
-      mem.set(key, { at: Date.now(), v });
+      const parsed = JSON.parse(hit) as { at?: number; v?: T } | T;
+      const wrapped = parsed !== null && typeof parsed === "object" && "at" in (parsed as object) && "v" in (parsed as object);
+      const v = wrapped ? (parsed as { v: T }).v : (parsed as T);
+      const at = wrapped ? (parsed as { at: number }).at : 0;
+      if (at > 0) memSet(key, at, ttlSec, v);
       return v;
     }
   } catch {
@@ -31,9 +51,10 @@ async function cached<T>(key: string, ttlSec: number, fetcher: () => Promise<T |
   }
   const v = await fetcher();
   if (v !== null) {
-    mem.set(key, { at: Date.now(), v });
+    const now = Date.now();
+    memSet(key, now, ttlSec, v);
     try {
-      await kvSet(key, JSON.stringify(v), ttlSec);
+      await kvSet(key, JSON.stringify({ at: now, v }), ttlSec);
     } catch {
       /* best-effort */
     }

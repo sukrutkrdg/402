@@ -86,7 +86,7 @@ never leaves your process.
 
 ## Available services
 
-Pulled live from the catalog (token-risk, address-intel, gas-oracle, token-price,
-tx-decode, wallet-tokens, trending-tokens, price-alert, contract-abi, decode-selector,
-basename, ai-summarize/extract/translate, and more). See
+Pulled live from the catalog (pre-trade-gate, token-risk, sellability, address-intel,
+gas-oracle, token-price, tx-decode, wallet-tokens, trending-tokens, price-alert,
+contract-abi, basename, ai-token-report, and more). See
 <https://402.com.tr/api/catalog>.
