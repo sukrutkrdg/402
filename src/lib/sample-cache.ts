@@ -60,12 +60,22 @@ export async function saveSample(serviceId: string, data: unknown): Promise<void
   }
 }
 
+// Process-local micro-cache so loadSample (hit on every request that builds a
+// route config, for both the 402 shop window and the discovery output.example)
+// doesn't add a KV round-trip to the hot path. Short TTL — a stale demo is fine.
+const mem = new Map<string, { at: number; v: Record<string, unknown> | null }>();
+const MEM_TTL_MS = 60_000;
+
 /** The cached sample for a service, or null when none has been captured yet. */
 export async function loadSample(serviceId: string): Promise<Record<string, unknown> | null> {
   if (NO_SAMPLE.has(serviceId)) return null;
+  const m = mem.get(serviceId);
+  if (m && Date.now() - m.at < MEM_TTL_MS) return m.v;
   try {
     const raw = await kvGet(`sample:${serviceId}`);
-    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    const v = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    mem.set(serviceId, { at: Date.now(), v });
+    return v;
   } catch {
     return null;
   }

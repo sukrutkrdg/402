@@ -334,6 +334,24 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         }
       : undefined;
 
+  // Rich discovery metadata feeds CDP Bazaar's hybrid (text + semantic) ranking:
+  // a concrete example input and a real example output ("metadata quality") lift
+  // us in search results and help the facilitator index the endpoint at all.
+  // - input: realistic example values (a well-known token for address-like params)
+  // - output.example: a recent real response preview (cached, already redacted)
+  const exampleInput =
+    service.params.length > 0
+      ? Object.fromEntries(
+          service.params.map((p) => [
+            p.name,
+            /address|token|wallet|contract|owner|spender/i.test(p.name)
+              ? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+              : p.placeholder || "",
+          ]),
+        )
+      : undefined;
+  const outputExample = await loadSample(service.id);
+
   // Coupon-discounted price: a caller who just paid the entry check on this token
   // gets the AI report for less. Checked at challenge time by src+token; falls
   // back to full price if absent — never cheaper without a real prior purchase.
@@ -370,7 +388,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // Builder Code → lands in settlement calldata as `a`.
       [BUILDER_CODE]: declareBuilderCodeExtension(cfg.appBuilderCode),
       // Discovery → auto-indexed in the x402 Bazaar after settlement.
-      ...declareDiscoveryExtension(inputSchema ? { inputSchema } : {}),
+      ...declareDiscoveryExtension({
+        ...(inputSchema ? { inputSchema } : {}),
+        ...(exampleInput ? { input: exampleInput } : {}),
+        ...(outputExample ? { output: { example: outputExample } } : {}),
+      }),
     },
   };
 
