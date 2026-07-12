@@ -13,6 +13,7 @@ import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
 import { NETWORK, getConfig } from "./config";
+import { bazaarEchoClientExtension } from "./bazaar-echo";
 
 let cachedFetch: ReturnType<typeof wrapFetchWithPayment> | undefined;
 
@@ -32,6 +33,8 @@ export function getPayingFetch(): ReturnType<typeof wrapFetchWithPayment> {
   const client = new x402Client();
   client.register(NETWORK, new ExactEvmScheme(account));
   client.registerExtension(new BuilderCodeClientExtension(cfg.clientBuilderCode));
+  // Echo the seller's bazaar extension into the settle payload → CDP indexes it.
+  client.registerExtension(bazaarEchoClientExtension);
 
   cachedFetch = wrapFetchWithPayment(fetch, client);
   return cachedFetch;
