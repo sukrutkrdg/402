@@ -1085,11 +1085,11 @@ export const SERVICES: ServiceDef[] = [
     name: "Prepaid Credits",
     tagline: "Pay once, then call without per-request settlement",
     description:
-      "Buy a prepaid balance in a single x402 settlement and get a secret credit token. Send it as the `x-credit-token` header on any paid service and each call debits its price from your balance — no per-call signature, no settlement latency. Built for agents that fire many checks a minute. Tiers: $1, $5 (+10%), $20 (+20%). The token is shown once; balance lasts 180 days.",
+      "Buy a prepaid balance in a single x402 settlement and get a secret credit token. Send it as the `x-credit-token` header on any paid service and each call debits its price from your balance — no per-call signature, no settlement latency. Built for agents that fire many checks a minute. Tiers: $0.25 (starter), $1, $5 (+10%), $20 (+20%). The token is shown once; balance lasts 180 days.",
     price: "$5.00",
     icon: "🎟️",
     category: "Utility",
-    params: [{ name: "tier", label: "Pack: 1, 5 or 20 (USD)", placeholder: "5" }],
+    params: [{ name: "tier", label: "Pack: 0.25, 1, 5 or 20 (USD)", placeholder: "5" }],
     handler: buyCredits,
     noFreeTier: true,
   },

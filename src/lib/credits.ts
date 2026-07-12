@@ -24,6 +24,7 @@ import { kvConfigured, kvGetNumber, kvSet, kvDecrBy, kvIncrBy } from "./kv";
 
 /** Prepaid packs: pay `usd`, receive `credits` (a small bonus rewards prepaying). */
 export const CREDIT_TIERS: Record<string, { usd: number; credits: number }> = {
+  "0.25": { usd: 0.25, credits: 25 }, // $0.25 → 25¢ starter — lowest-commitment taste of the paid tier
   "1": { usd: 1, credits: 100 }, //  $1.00 → 100¢ (no bonus)
   "5": { usd: 5, credits: 550 }, //  $5.00 → 550¢ (+10%)
   "20": { usd: 20, credits: 2400 }, // $20.00 → 2400¢ (+20%)

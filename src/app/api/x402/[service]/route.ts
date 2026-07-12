@@ -23,6 +23,7 @@ import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
+import { saveSample, loadSample } from "@/lib/sample-cache";
 
 /** Service price string ("$0.03") → integer cents (3). */
 function priceCents(price: string): number {
@@ -152,7 +153,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
           service: service.id,
           priceUsd: +(cents / 100).toFixed(2),
           balanceUsd: +((debit.balance ?? 0) / 100).toFixed(2),
-          topUp: "Buy more at /api/x402/buy-credits (tier=1|5|20), or omit x-credit-token to pay per-call via x402.",
+          topUp: "Buy more at /api/x402/buy-credits (tier=0.25|1|5|20), or omit x-credit-token to pay per-call via x402.",
         },
         { status: 402 },
       );
@@ -164,6 +165,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       await refundCredit(creditToken, cents); // charged but never delivered → give it back
       return handlerErrorResponse(err);
     }
+    await saveSample(service.id, data);
     const ip = clientIp(req);
     await logUsage(service.id, true, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, false, srcHash(`credit:${creditToken}`));
     return NextResponse.json(
@@ -187,6 +189,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     if (free.allowed) {
       try {
         const data = await service.handler(paramsFrom(req, service));
+        await saveSample(service.id, data);
         await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "");
         return NextResponse.json(
           { service: service.id, builderCode: cfg.appBuilderCode, data, freeTier: true, freeRemaining: free.remaining },
@@ -203,6 +206,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // free-eligible so they never reach here.
       try {
         const full = await service.handler(paramsFrom(req, service));
+        await saveSample(service.id, full);
         await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, true);
         return NextResponse.json(
           {
@@ -232,6 +236,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     } catch (err) {
       return handlerErrorResponse(err);
     }
+    await saveSample(service.id, data);
     const payer = payerFrom(request);
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "", false, false, false, payer ? srcHash(payer) : "");
     // Funnel coupon: paying the entry check (token-risk/rug-score) discounts the
@@ -281,7 +286,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // back to full price if absent — never cheaper without a real prior purchase.
   let effectivePrice = service.price;
   if (service.id === "buy-credits") {
-    // The challenge amount is the chosen pack's price (tier=1|5|20).
+    // The challenge amount is the chosen pack's price (tier=0.25|1|5|20).
     effectivePrice = tierPrice(paramsFrom(req, service).tier || "");
   } else if (service.id === "ai-token-report") {
     try {
@@ -324,6 +329,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // away — log it so we can measure challenge→paid conversion per service.
     if (res.status === 402) {
       await logUsage(service.id, false, srcHash(clientIp(req)), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, true);
+      // Make the challenge sell, not just charge: show a preview of a real recent
+      // response (cached at serve time — never computed here, an unpaid handler
+      // run would be a cost-drain vector) plus the no-wallet payment path. Extra
+      // top-level fields are spec-safe; x402 clients only read `accepts`.
+      try {
+        const body = (await res.clone().json()) as Record<string, unknown>;
+        const sample = await loadSample(service.id);
+        if (sample) {
+          body.sample = {
+            note: "Preview of a recent real response — a paid call returns the full report (all signals, details & recommendation).",
+            data: sample,
+          };
+        }
+        if (freeEligible) body.freeCall = "First call each day is free — retry without a payment header.";
+        body.noWalletNeeded =
+          "No wallet? Buy prepaid credits once via /api/x402/buy-credits?tier=0.25|1|5|20 and send the returned token as the x-credit-token header — no signature per call.";
+        const headers = new Headers(res.headers);
+        headers.delete("content-length");
+        return NextResponse.json(body, { status: 402, headers });
+      } catch {
+        return res; // enrichment is best-effort — never break the challenge itself
+      }
     }
     return res;
   } catch (err) {
