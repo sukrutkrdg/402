@@ -50,6 +50,8 @@ const B20_CREATED = parseAbiItem(
 // Policy scope ids are keccak256 of the label (per B20Constants).
 const TRANSFER_SENDER_POLICY = keccak256(toBytes("TRANSFER_SENDER_POLICY"));
 const TRANSFER_RECEIVER_POLICY = keccak256(toBytes("TRANSFER_RECEIVER_POLICY"));
+const TRANSFER_EXECUTOR_POLICY = keccak256(toBytes("TRANSFER_EXECUTOR_POLICY"));
+const MINT_RECEIVER_POLICY = keccak256(toBytes("MINT_RECEIVER_POLICY"));
 // PausableFeature enum: TRANSFER=0, MINT=1, BURN=2. B20Variant enum: Asset=0, Stablecoin=1.
 const MAX_SUPPLY_CAP = (1n << 128n) - 1n; // uint128.max == "no cap" sentinel
 const WAD = 10n ** 18n;
@@ -83,6 +85,10 @@ export interface B20Signals {
   canSeize: boolean;
   transferGated: boolean;
   senderPolicyId: bigint;
+  /** Transfers can only be executed by allowlisted executors (a third-party gate). */
+  executorGated: boolean;
+  /** New supply can only be minted to allowlisted receivers (mint is restricted). */
+  mintGated: boolean;
   paused: { transfer: boolean; mint: boolean; burn: boolean };
   rebase: boolean;
   supplyCapped: boolean;
@@ -93,7 +99,8 @@ export interface B20Signals {
 async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const empty: B20Signals = {
     isB20: false, variant: null, symbol: null, supplyCap: 0n, canSeize: false,
-    transferGated: false, senderPolicyId: 0n, paused: { transfer: false, mint: false, burn: false },
+    transferGated: false, senderPolicyId: 0n, executorGated: false, mintGated: false,
+    paused: { transfer: false, mint: false, burn: false },
     rebase: false, supplyCapped: false, degraded: false,
   };
 
@@ -109,6 +116,8 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     { address: addr, abi: B20_ABI, functionName: "isPaused", args: [0] },
     { address: addr, abi: B20_ABI, functionName: "isPaused", args: [1] },
     { address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_EXECUTOR_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [MINT_RECEIVER_POLICY] },
   ] as const;
 
   type MC = { status: "success"; result: unknown } | { status: "failure"; error: Error };
@@ -125,7 +134,7 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     }
   }
 
-  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2] = r;
+  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2, exRes, mrRes] = r;
   if (scRes.status !== "success") return empty; // supplyCap reverted / no data → not a B20
   const supplyCap = scRes.result as bigint;
   const symbol = symRes.status === "success" ? (symRes.result as string) : null;
@@ -136,11 +145,15 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const degraded = spRes.status !== "success" || rpRes.status !== "success" || p0.status !== "success";
   const senderPol = spRes.status === "success" ? (spRes.result as bigint) : 0n;
   const recvPol = rpRes.status === "success" ? (rpRes.result as bigint) : 0n;
+  const execPol = exRes?.status === "success" ? (exRes.result as bigint) : 0n;
+  const mintRecvPol = mrRes?.status === "success" ? (mrRes.result as bigint) : 0n;
 
   return {
     isB20: true, variant, symbol, supplyCap,
     canSeize: senderPol > 0n,
-    transferGated: senderPol > 0n || recvPol > 0n,
+    transferGated: senderPol > 0n || recvPol > 0n || execPol > 0n,
+    executorGated: execPol > 0n,
+    mintGated: mintRecvPol > 0n,
     senderPolicyId: senderPol,
     paused: {
       transfer: p0.status === "success" ? (p0.result as boolean) : false,
@@ -188,7 +201,7 @@ export async function b20Safety(params: Record<string, string>) {
 
   return {
     address, isB20: true, variant: s.variant, symbol: s.symbol, riskScore: risk, verdict,
-    powers: { seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
+    powers: { seizable: s.canSeize, freezable: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
     flags,
     recommendation:
       verdict === "avoid" ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
@@ -220,7 +233,7 @@ export async function b20Info(params: Record<string, string>) {
     totalSupply: totalSupply.toString(),
     supplyCapped: s.supplyCapped,
     supplyCap: s.supplyCapped ? s.supplyCap.toString() : "uncapped",
-    policies: { senderPolicyId: s.senderPolicyId.toString(), transferGated: s.transferGated },
+    policies: { senderPolicyId: s.senderPolicyId.toString(), transferGated: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated },
     paused: s.paused,
     rebase: s.rebase,
     note: "B20 (Base-native) token profile read from the precompile. For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.",
@@ -369,7 +382,7 @@ export async function b20Gate(params: Record<string, string>) {
   return {
     address, isB20: true, variant: s.variant, symbol: s.symbol,
     wallet: validAddr(wallet) ? wallet : null, walletStatus, decision,
-    powers: { seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
+    powers: { seizable: s.canSeize, freezable: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
     observedRisks,
     receipt: {
       checked: address, decision, at: new Date().toISOString(), endpoint: "b20-gate", observedRisks,
