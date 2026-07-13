@@ -387,7 +387,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     },
     // Canonical resource URL: keeps discovery/Bazaar indexing on the real domain
     // even when the route is reached via the vercel.app host (Cloudflare bypass).
-    resource: `${(process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "")}/api/x402/${service.id}${STUCK_REINDEX.has(service.id) ? "?rev=2" : ""}`,
+    resource: `${(process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "")}/api/${STUCK_REINDEX.has(service.id) ? "x402r" : "x402"}/${service.id}`,
     description: service.description,
     mimeType: "application/json",
     serviceName: service.name,
