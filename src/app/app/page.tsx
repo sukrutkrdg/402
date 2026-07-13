@@ -14,7 +14,6 @@ import { useAccount, useConnect, type Connector } from "wagmi";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
-import { bazaarEchoClientExtension } from "@/lib/bazaar-echo";
 import OnrampButton from "@/components/OnrampButton";
 import WalletProtect from "@/components/WalletProtect";
 
@@ -310,9 +309,6 @@ export default function MiniApp() {
       // Client (`s`) code — use the registered 402.com.tr Builder Code so
       // mini-app payments attribute to this app on the Base dashboard.
       client.registerExtension(new BuilderCodeClientExtension("bc_pa0gqlv1"));
-      // Echo the seller's bazaar extension into the settle payload so real
-      // mini-app payments also list the endpoint in the CDP discovery index.
-      client.registerExtension(bazaarEchoClientExtension);
       const pay = wrapFetchWithPayment(fetch, client);
 
       setStep(`Running ${check.label}…`);
