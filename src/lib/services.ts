@@ -49,7 +49,7 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio, b20Control } from "./b20-safety";
 import { buyCredits } from "./credits";
 
 export interface ServiceParam {
@@ -261,6 +261,19 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: b20Portfolio,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-control",
+    name: "B20 Control Audit",
+    tagline: "WHO can mint, seize, freeze or pause this B20?",
+    description:
+      "🆕 b20-safety tells you WHICH powers a B20 has; this tells you WHO holds them. Reads the token's role-based access control (mint / burn / seize-via-burnBlocked / pause / admin) from onchain role events and reports the exact controllers, how centralized they are, and whether admin has been renounced. The issuer-control map an agent needs before holding a regulated Base-native asset.",
+    price: "$0.05",
+    icon: "🔑",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Control,
     noFreeTier: true,
   },
   {

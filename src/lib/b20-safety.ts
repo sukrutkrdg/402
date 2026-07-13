@@ -722,3 +722,100 @@ export async function b20LaunchRadar(params: Record<string, string>) {
     checkedAt: new Date().toISOString(),
   };
 }
+
+// ---- B20 Control Audit — WHO holds the mint/burn/seize/pause powers? ----
+
+const ROLE_NAMES: ReadonlyArray<readonly [string, string]> = [
+  ["MINT_ROLE", "mint"],
+  ["BURN_ROLE", "burn"],
+  ["BURN_BLOCKED_ROLE", "seize (burnBlocked)"],
+  ["PAUSE_ROLE", "pause"],
+  ["UNPAUSE_ROLE", "unpause"],
+  ["METADATA_ROLE", "metadata"],
+];
+
+/**
+ * b20-safety reads WHICH powers a B20 has; this reads WHO holds them. Reads each
+ * role's bytes32 id from the token, then replays RoleGranted/RoleRevoked events to
+ * reconstruct the current holders of mint / burn / seize / pause / admin — plus
+ * whether the admin has been renounced. The issuer-control map regulated-asset
+ * agents need before holding size.
+ */
+export async function b20Control(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  // 1) Read each role's bytes32 id straight from the token (guaranteed-correct).
+  const roleAbi = ROLE_NAMES.map(([fn]) => ({ type: "function", name: fn, stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] }));
+  const idToName = new Map<string, string>();
+  idToName.set("0x" + "0".repeat(64), "admin"); // DEFAULT_ADMIN_ROLE
+  try {
+    const mc = (await client.multicall({ contracts: ROLE_NAMES.map(([fn]) => ({ address: addr, abi: roleAbi as never, functionName: fn })) as never, allowFailure: true })) as Array<{ status?: string; result?: unknown }>;
+    ROLE_NAMES.forEach(([, label], i) => {
+      const r = mc[i];
+      if (r?.status === "success" && typeof r.result === "string") idToName.set(r.result.toLowerCase(), label);
+    });
+  } catch {
+    /* role-id reads best-effort — admin + raw role ids still work below */
+  }
+
+  // 2) Replay role events. Role & account are INDEXED, so they live in topics.
+  const rows = await cdpSql<{ event_signature?: string; topics?: string[] }>(
+    `SELECT event_signature, topics FROM base.events WHERE address = '${addr.toLowerCase()}' AND (event_signature LIKE 'RoleGranted%' OR event_signature LIKE 'RoleRevoked%' OR event_signature LIKE 'LastAdminRenounced%') AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp ASC LIMIT 3000`,
+  );
+  if (rows === null) throw new Error("B20 role event data unavailable (data provider) — try again shortly");
+
+  const holders = new Map<string, Set<string>>();
+  let adminRenounced = false;
+  for (const r of rows) {
+    const sig = r.event_signature ?? "";
+    if (/LastAdminRenounced/i.test(sig)) { adminRenounced = true; continue; }
+    const t = r.topics ?? [];
+    const roleId = String(t[1] ?? "").toLowerCase();
+    const acctTopic = String(t[2] ?? "");
+    if (acctTopic.length < 42) continue;
+    let account: string;
+    try { account = getAddress("0x" + acctTopic.slice(-40)); } catch { continue; }
+    const label = idToName.get(roleId) ?? `role:${roleId.slice(0, 10)}`;
+    if (!holders.has(label)) holders.set(label, new Set());
+    if (/RoleRevoked/i.test(sig)) holders.get(label)!.delete(account);
+    else holders.get(label)!.add(account);
+  }
+
+  const roles: Record<string, string[]> = {};
+  for (const [label, set] of holders) if (set.size) roles[label] = [...set];
+  const minters = roles["mint"] ?? [];
+  const seizers = roles["seize (burnBlocked)"] ?? [];
+  const pausers = roles["pause"] ?? [];
+  const admins = roles["admin"] ?? [];
+
+  const flags: string[] = [];
+  if (seizers.length) flags.push(`${seizers.length} address(es) can SEIZE balances (burnBlocked)`);
+  if (minters.length) flags.push(`${minters.length} address(es) can MINT new supply`);
+  if (pausers.length) flags.push(`${pausers.length} address(es) can PAUSE transfers`);
+  if (admins.length === 1 && !adminRenounced) flags.push("a single admin address controls all role assignment");
+  if (adminRenounced) flags.push("admin renounced — the role set is frozen as-is");
+
+  const controllers = new Set([...minters, ...seizers, ...admins]);
+  const verdict = seizers.length ? "seizable_controlled" : minters.length || pausers.length ? "issuer_controlled" : admins.length && !adminRenounced ? "admin_controlled" : "minimal";
+
+  return {
+    address: addr, isB20: true, symbol: s.symbol, variant: s.variant,
+    adminRenounced,
+    distinctControllers: controllers.size,
+    roles,
+    can: { mint: minters, seize: seizers, pause: pausers, admin: admins },
+    flags,
+    verdict, // seizable_controlled | issuer_controlled | admin_controlled | minimal
+    recommendation:
+      seizers.length ? `${seizers.length} address(es) can freeze + seize your balance at will — a fully issuer-controlled asset. Only hold if you trust the operator.`
+        : minters.length ? "The issuer can mint supply and gate transfers — standard for regulated assets, but you're trusting the operator; size accordingly."
+          : adminRenounced ? "Admin renounced — the role set is frozen; no new powers can be granted. Lower governance risk."
+            : "Limited control roles detected — behaves close to a plain token.",
+    note: "Maps a B20's role-based access control (mint / burn / seize / pause / admin) from onchain role events — WHO can exercise the token's powers, and whether admin is renounced. Complements b20-safety (which powers exist). Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
