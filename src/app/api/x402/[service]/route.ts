@@ -26,6 +26,14 @@ import { sinceLastCheck } from "@/lib/since-last";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
+// Services whose FIRST settlement happened while the resource was free-tier /
+// echo-broken, so the CDP facilitator stamped the URL "not paywalled" and won't
+// re-index it. The stamp is keyed on the resource URL — appending a version
+// suffix makes CDP see a brand-new resource and index it on its next (clean)
+// settlement. The handler ignores the extra query param, and agents can still
+// call the URL as-is. TEST SET first; expand once confirmed to work.
+const STUCK_REINDEX = new Set(["deployer-rep", "address-intel", "token-price"]);
+
 /** Service price string ("$0.03") → integer cents (3). */
 function priceCents(price: string): number {
   return Math.round((parseFloat(price.replace(/[^0-9.]/g, "")) || 0) * 100);
@@ -379,7 +387,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     },
     // Canonical resource URL: keeps discovery/Bazaar indexing on the real domain
     // even when the route is reached via the vercel.app host (Cloudflare bypass).
-    resource: `${(process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "")}/api/x402/${service.id}`,
+    resource: `${(process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "")}/api/x402/${service.id}${STUCK_REINDEX.has(service.id) ? "?rev=2" : ""}`,
     description: service.description,
     mimeType: "application/json",
     serviceName: service.name,
