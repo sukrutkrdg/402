@@ -141,6 +141,22 @@ interface TokenBalances {
   tokenBalances?: Array<{ contractAddress?: string; tokenBalance?: string }>;
 }
 
+/**
+ * Just the ERC-20/B20 contract addresses a wallet holds, via CDP Data API.
+ * Used by the B20 portfolio guard to find B20 holdings without the full
+ * price-enriched portfolio. Returns [] when CDP isn't configured (caller decides).
+ */
+export async function walletTokenContracts(address: Address): Promise<Address[]> {
+  const cfg = getConfig();
+  if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return [];
+  const cdp = new CdpClient({ apiKeyId: cfg.cdpApiKeyId, apiKeySecret: cfg.cdpApiKeySecret });
+  const res = await cdp.evm.listTokenBalances({ network: "base", address });
+  return (res.balances ?? [])
+    .map((b) => b.token?.contractAddress)
+    .filter((a): a is Address => !!a && /^0x[0-9a-fA-F]{40}$/.test(a))
+    .slice(0, 100);
+}
+
 export async function walletPortfolio(params: Record<string, string>) {
   const address = reqAddr(params.address || "") as Address;
   const k = key();

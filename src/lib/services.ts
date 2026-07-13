@@ -46,7 +46,7 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio } from "./b20-safety";
 import { buyCredits } from "./credits";
 
 export interface ServiceParam {
@@ -174,6 +174,35 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Safety,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-gate",
+    name: "B20 Pre-Trade Gate",
+    tagline: "One GO/HOLD/STOP before you touch a B20 token",
+    description:
+      "🆕 The single call before trading a Base-native B20: seize (burnBlocked) + freeze (Policy Registry) + rebase + pause + uncapped-mint, collapsed into one GO/HOLD/STOP verdict with an auditable receipt. Pass wallet= to also check if YOUR address is already blocked on that token. The B20 tool to bind first.",
+    price: "$0.05",
+    icon: "🚦",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true },
+      { name: "wallet", label: "Your wallet (optional — checks if you're blocked)", placeholder: "0x… wallet" },
+    ],
+    handler: b20Gate,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-portfolio",
+    name: "B20 Portfolio Guard",
+    tagline: "Which B20s in your wallet can freeze or seize you?",
+    description:
+      "🆕 Scans a wallet's B20 (Base-native) holdings for protocol-level freeze/seize powers and whether YOUR address is ALREADY blocked on any of them — the risk no ERC-20 portfolio tool can see. Returns per-token seizable/freezable/rebase flags plus a wallet-level verdict. Built for agents holding Base positions.",
+    price: "$0.06",
+    icon: "🛡️",
+    category: "B20",
+    params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: b20Portfolio,
     noFreeTier: true,
   },
   {

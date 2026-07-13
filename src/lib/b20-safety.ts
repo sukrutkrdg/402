@@ -332,12 +332,121 @@ export async function b20Batch(params: Record<string, string>) {
   };
 }
 
+// ---- B20 Pre-Trade Gate — one GO/HOLD/STOP decision for a B20 token ----
+
+export async function b20Gate(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const wallet = (params.wallet || params.buyer || "").trim();
+  const s = await readB20Signals(getAddress(address));
+  if (!s.isB20) return { ...notB20(address), decision: "N/A" };
+  if (s.degraded) {
+    return {
+      address, isB20: true, decision: "HOLD", degraded: true, variant: s.variant, symbol: s.symbol,
+      note: "⚠️ A seize/freeze-critical precompile read failed (RPC) — B20 powers could NOT be confirmed. Do not treat as safe; re-check.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const observedRisks: string[] = [];
+  let stop = false, hold = false;
+  if (s.paused.transfer) { observedRisks.push("transfers PAUSED right now — you can't move it"); stop = true; }
+  if (s.canSeize) { observedRisks.push("issuer can blocklist + burnBlocked() SEIZE your balance"); stop = true; }
+  if (s.transferGated && !s.canSeize) { observedRisks.push("transfers policy-gated — freezable"); hold = true; }
+  if (s.rebase) { observedRisks.push("mutable rebase multiplier — balance can be scaled up/down"); hold = true; }
+  if (!s.supplyCapped) { observedRisks.push("uncapped mint — dilution risk"); hold = true; }
+
+  // If a buyer wallet is given AND the token can seize, check whether THAT wallet
+  // is already blocked — a terminal flag specific to the caller.
+  let walletStatus: string | null = null;
+  if (validAddr(wallet) && s.canSeize) {
+    const fc = (await b20FreezeCheck({ token: address, wallet })) as { verdict?: string };
+    walletStatus = fc.verdict ?? null;
+    if (fc.verdict === "BLOCKED") { observedRisks.push("YOUR wallet is ALREADY blocked/seizable on this token"); stop = true; }
+  }
+
+  const decision = stop ? "STOP" : hold ? "HOLD" : "GO";
+  return {
+    address, isB20: true, variant: s.variant, symbol: s.symbol,
+    wallet: validAddr(wallet) ? wallet : null, walletStatus, decision,
+    powers: { seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
+    observedRisks,
+    receipt: {
+      checked: address, decision, at: new Date().toISOString(), endpoint: "b20-gate", observedRisks,
+      wouldChangeCall: stop
+        ? "Nothing while a terminal B20 power (seize / paused-now) stands."
+        : "Policy removal, a rebase lock, or a supply cap — re-check before sizing up.",
+    },
+    recommendation:
+      decision === "STOP" ? "Do not hold size — the issuer can freeze or seize your balance at the protocol level."
+        : decision === "HOLD" ? "Tradeable with caution — the issuer retains B20 control powers; size down."
+          : "No high-control B20 powers detected — behaves close to a plain token.",
+    note: "B20-specific pre-trade gate: seize (burnBlocked) + freeze (Policy Registry) + rebase + pause + uncapped mint, collapsed to one verdict. Pass wallet= to also check if YOUR address is already blocked. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- B20 Portfolio Guard — which B20s in a wallet can freeze/seize it? ----
+
+export async function b20Portfolio(params: Record<string, string>) {
+  const wallet = (params.wallet || params.address || "").trim();
+  if (!validAddr(wallet)) throw new Error("Provide a wallet address (wallet=)");
+  const w = getAddress(wallet);
+
+  let contracts: string[];
+  try {
+    contracts = await walletTokenContracts(w);
+  } catch {
+    throw new Error("Wallet token balances unavailable (data provider) — try again shortly");
+  }
+  // B20 tokens live at deterministic 0xb200… addresses — prefilter cheaply, then
+  // confirm each with the precompile read (a non-B20 that happens to share the
+  // prefix is dropped by readB20Signals).
+  const candidates = contracts.filter((a) => a.toLowerCase().startsWith("0xb200")).slice(0, 15);
+
+  const holdings: Array<Record<string, unknown>> = [];
+  for (const c of candidates) {
+    const s = await readB20Signals(getAddress(c));
+    if (!s.isB20) continue;
+    let walletBlocked: boolean | null = null;
+    if (s.canSeize && !s.degraded) {
+      const fc = (await b20FreezeCheck({ token: c, wallet })) as { verdict?: string };
+      walletBlocked = fc.verdict === "BLOCKED" ? true : fc.verdict === "clear" ? false : null;
+      await sleep(120);
+    }
+    holdings.push({
+      token: c, symbol: s.symbol, variant: s.variant,
+      seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, rebase: s.rebase,
+      walletBlocked, degraded: s.degraded,
+      risk: s.paused.transfer || s.canSeize ? "high" : s.transferGated || s.rebase ? "medium" : "low",
+    });
+    await sleep(150);
+  }
+
+  const blocked = holdings.filter((h) => h.walletBlocked === true);
+  const seizable = holdings.filter((h) => h.seizable);
+  const verdict = blocked.length ? "action_required" : seizable.length ? "exposed" : holdings.length ? "clear" : "no_b20";
+
+  return {
+    wallet, b20Count: holdings.length, seizableCount: seizable.length, blockedCount: blocked.length,
+    verdict, holdings,
+    recommendation:
+      blocked.length ? `⚠️ You are ALREADY blocked/seizable on ${blocked.length} B20 token(s) — exit those positions if you can.`
+        : seizable.length ? `${seizable.length} of your B20 holdings can be frozen/seized by their issuer. Watch policy changes (b20-policy-watch) and size accordingly.`
+          : holdings.length ? "None of your B20 holdings have active freeze/seize powers set right now."
+            : "No B20 (Base-native) tokens found in this wallet.",
+    note: "Scans a wallet's B20 holdings for protocol-level freeze/seize powers and whether YOUR address is already blocked — the risk ERC-20 portfolio tools can't see. Only B20 tokens are analyzed. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 // ---- 6b. B20 Policy Watch — did this token BECOME seizable/freezable? ----
 
 import { cdpSql } from "./covalent";
 import { kvLRange, kvGet, kvSet, kvIncr } from "./kv";
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { getConfig } from "./config";
+import { walletTokenContracts } from "./alchemy";
 
 /**
  * The rug-prevention angle unique to B20: a token can launch clean and later
