@@ -38,6 +38,7 @@ import { lpLock } from "./lp-lock";
 import { deployerReputation } from "./deployer-rep";
 import { preSignPreflight } from "./pre-sign";
 import { signGuard } from "./sign-guard";
+import { spendAudit } from "./spend-audit";
 import { swapRoute } from "./swap-route";
 import { tokenUnlock } from "./token-unlock";
 import { volumeCheck } from "./volume-check";
@@ -123,6 +124,19 @@ export const SERVICES: ServiceDef[] = [
       { name: "to", label: "Destination contract/token (recommended)", placeholder: "0x… contract" },
     ],
     handler: signGuard,
+    noFreeTier: true,
+  },
+  {
+    id: "spend-audit",
+    name: "Spend Permission Auditor",
+    tagline: "Which apps/agents can pull funds from this Base wallet?",
+    description:
+      "🆕 Base Account spend permissions let an app or agent spend a scoped, recurring allowance from a wallet — the primitive behind autonomous agent payments on Base. This reconstructs a wallet's ACTIVE spend permissions from onchain approve/revoke events and flags the dangerous ones: unlimited allowance, no expiry, unrecognized spender. The Base-native, agent-era drain check that ERC-20 approval tools can't see.",
+    price: "$0.05",
+    icon: "🔑",
+    category: "Onchain",
+    params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: spendAudit,
     noFreeTier: true,
   },
   {
