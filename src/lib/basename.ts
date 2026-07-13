@@ -41,6 +41,13 @@ const resolverAbi = [
     inputs: [{ name: "node", type: "bytes32" }],
     outputs: [{ type: "string" }],
   },
+  {
+    type: "function",
+    name: "text",
+    stateMutability: "view",
+    inputs: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }],
+    outputs: [{ type: "string" }],
+  },
 ] as const;
 
 function client() {
@@ -160,6 +167,79 @@ export async function ensResolve(params: Record<string, string>) {
     ensName: q.toLowerCase(),
     address: address ? (getAddress(address) as Address) : null,
     resolved: Boolean(address),
+    checkedAt,
+  };
+}
+
+/**
+ * basenameProfile — the full onchain identity behind a Basename or address:
+ * resolved address, avatar, description, url and social handles (twitter, github,
+ * farcaster, discord) read from Base's L2 Resolver text records. Lets an agent
+ * resolve who a counterparty is beyond just the name.
+ */
+export async function basenameProfile(params: Record<string, string>) {
+  const q = (params.name || params.query || params.address || "").trim();
+  if (!q) throw new Error("Provide a Basename (name=) or a 0x address");
+  const c = client();
+  const checkedAt = new Date().toISOString();
+
+  let name = q;
+  if (/^0x[0-9a-fA-F]{40}$/.test(q)) {
+    const address = getAddress(q);
+    try {
+      name = (await c.readContract({ address: L2_RESOLVER, abi: resolverAbi, functionName: "name", args: [reverseNode(address, 8453)] })) as string;
+    } catch {
+      name = "";
+    }
+    if (!name) return { address, basename: null, hasProfile: false, note: "No primary Basename set for this address.", checkedAt };
+  }
+
+  let norm: string;
+  try {
+    norm = normalize(name);
+  } catch {
+    throw new Error("Invalid Basename");
+  }
+  const node = namehash(norm);
+
+  const KEYS = ["avatar", "description", "url", "com.twitter", "com.github", "xyz.farcaster", "com.discord", "email", "location"];
+  const calls = [
+    { address: L2_RESOLVER, abi: resolverAbi, functionName: "addr", args: [node] },
+    ...KEYS.map((k) => ({ address: L2_RESOLVER, abi: resolverAbi, functionName: "text", args: [node, k] })),
+  ];
+  let results;
+  try {
+    results = await c.multicall({ contracts: calls as never, allowFailure: true });
+  } catch {
+    throw new Error("Basename profile unavailable (RPC) — try again shortly");
+  }
+  const val = (i: number) => {
+    const r = (results as Array<{ status?: string; result?: unknown }>)[i];
+    return r?.status === "success" ? String(r.result ?? "") : "";
+  };
+  const addr = val(0);
+  const records: Record<string, string> = {};
+  KEYS.forEach((k, i) => {
+    const v = val(i + 1);
+    if (v) records[k] = v;
+  });
+
+  const socials: Record<string, string> = {};
+  if (records["com.twitter"]) socials.twitter = records["com.twitter"];
+  if (records["com.github"]) socials.github = records["com.github"];
+  if (records["xyz.farcaster"]) socials.farcaster = records["xyz.farcaster"];
+  if (records["com.discord"]) socials.discord = records["com.discord"];
+
+  return {
+    basename: norm,
+    address: /^0x[0-9a-fA-F]{40}$/.test(addr) && addr.toLowerCase() !== ZERO ? getAddress(addr) : null,
+    avatar: records.avatar || null,
+    description: records.description || null,
+    url: records.url || null,
+    socials,
+    hasProfile: Object.keys(records).length > 0,
+    records,
+    note: "Full Basename profile (address + avatar + socials + text records) read from Base's L2 Resolver. Lets an agent resolve a counterparty's onchain identity. Not financial advice.",
     checkedAt,
   };
 }

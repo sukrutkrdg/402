@@ -15,7 +15,7 @@ import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector, encodeSelector } from "./onchain-extra3";
-import { basenameResolve, ensResolve } from "./basename";
+import { basenameResolve, ensResolve, basenameProfile } from "./basename";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -39,6 +39,7 @@ import { deployerReputation } from "./deployer-rep";
 import { preSignPreflight } from "./pre-sign";
 import { signGuard } from "./sign-guard";
 import { spendAudit } from "./spend-audit";
+import { addressTrust } from "./address-trust";
 import { swapRoute } from "./swap-route";
 import { tokenUnlock } from "./token-unlock";
 import { volumeCheck } from "./volume-check";
@@ -137,6 +138,32 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: spendAudit,
+    noFreeTier: true,
+  },
+  {
+    id: "address-trust",
+    name: "Address Trust",
+    tagline: "Is this counterparty Coinbase-verified or an anon/sybil?",
+    description:
+      "🆕 The 'who am I dealing with?' check for agents. Reads Coinbase's ONCHAIN verification (an EAS attestation by verifications.coinbase.eth) — meaning the address is tied to a KYC'd Coinbase account, the strongest sybil-resistance signal on Base — plus the address's Basename. Returns a verified/named/anonymous verdict + trust score. Pair with sign-guard/spend-audit for a full pre-transaction gate. Identity is a signal, not proof of honesty.",
+    price: "$0.03",
+    icon: "🪪",
+    category: "Onchain",
+    params: [{ name: "address", label: "Address to check", placeholder: "0x… wallet/agent", required: true }],
+    handler: addressTrust,
+    noFreeTier: true,
+  },
+  {
+    id: "basename-profile",
+    name: "Basename Profile",
+    tagline: "Full onchain identity behind a Basename or address",
+    description:
+      "🆕 Resolves the complete Base identity behind an address or Basename: resolved address, avatar, description, website and social handles (X/Twitter, GitHub, Farcaster, Discord) read from Base's L2 Resolver text records. Lets an agent turn a counterparty address into a real profile — beyond just the name. Complements address-trust (verification) with the human context.",
+    price: "$0.02",
+    icon: "🏷️",
+    category: "Onchain",
+    params: [{ name: "name", label: "Basename or address", placeholder: "jesse.base.eth or 0x…", required: true }],
+    handler: basenameProfile,
     noFreeTier: true,
   },
   {
