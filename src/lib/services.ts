@@ -37,6 +37,7 @@ import { contractDanger } from "./contract-danger";
 import { lpLock } from "./lp-lock";
 import { deployerReputation } from "./deployer-rep";
 import { preSignPreflight } from "./pre-sign";
+import { signGuard } from "./sign-guard";
 import { swapRoute } from "./swap-route";
 import { tokenUnlock } from "./token-unlock";
 import { volumeCheck } from "./volume-check";
@@ -106,6 +107,22 @@ export const SERVICES: ServiceDef[] = [
       { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
     ],
     handler: preTradeGate,
+    noFreeTier: true,
+  },
+  {
+    id: "sign-guard",
+    name: "Sign Guard",
+    tagline: "Should the agent sign THIS calldata? GO/HOLD/STOP",
+    description:
+      "The check before the riskiest moment — signing. Decodes raw unsigned calldata (approve / permit / transfer / setApprovalForAll), shows the exact intent (who gets power over what, and whether it's UNLIMITED), and screens the destination + spender for OFAC sanctions and dangerous owner powers, in one GO/HOLD/STOP verdict + receipt. No simulation needed — pure decode + onchain risk. Catches the unlimited-approval drain vector before it's signed.",
+    price: "$0.06",
+    icon: "✍️",
+    category: "Onchain",
+    params: [
+      { name: "data", label: "Transaction calldata (0x…)", placeholder: "0x095ea7b3…", required: true },
+      { name: "to", label: "Destination contract/token (recommended)", placeholder: "0x… contract" },
+    ],
+    handler: signGuard,
     noFreeTier: true,
   },
   {
