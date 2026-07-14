@@ -542,7 +542,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a href="/agents" className="btn-primary !py-2 !text-xs">Use in your agent →</a>
-                  <a href="https://t.me/Bazaar402_bot" target="_blank" rel="noreferrer" className="btn-ghost !py-2 !text-xs">
+                  <a href="https://t.me/Bazaar402_bot" className="btn-ghost !py-2 !text-xs">
                     Try free in Telegram: /ai
                   </a>
                 </div>

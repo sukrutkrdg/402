@@ -146,11 +146,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               X @sukrutkrdg
             </a>{" "}
             ·{" "}
-            <a className="text-sky-400 hover:underline" href="https://t.me/Bazaar402_bot" target="_blank" rel="noreferrer">
+            <a className="text-sky-400 hover:underline" href="https://t.me/Bazaar402_bot">
               Telegram bot
             </a>{" "}
             ·{" "}
-            <a className="text-sky-400 hover:underline" href="https://t.me/x402scout" target="_blank" rel="noreferrer">
+            <a className="text-sky-400 hover:underline" href="https://t.me/x402scout">
               Token radar
             </a>{" "}
             ·{" "}
