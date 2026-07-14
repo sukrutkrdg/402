@@ -114,12 +114,13 @@ export async function spendAudit(params: Record<string, string>) {
   const high = activeNow.filter((p) => p.risk === "high");
   const verdict = high.length ? "action_required" : activeNow.some((p) => p.risk === "medium") ? "review" : activeNow.length ? "ok" : "none";
 
+  const rank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   return {
     wallet,
     activeCount: activeNow.length,
     highRiskCount: high.length,
     verdict, // action_required | review | ok | none
-    permissions: activeNow.sort((a, b) => (a.risk === "high" ? -1 : 1)),
+    permissions: activeNow.sort((a, b) => (rank[a.risk] ?? 9) - (rank[b.risk] ?? 9)),
     recommendation:
       high.length ? `⚠️ ${high.length} spend permission(s) grant UNLIMITED, non-expiring authority — revoke any you don't recognize; a spender can pull the full allowance every period.`
         : activeNow.length ? `${activeNow.length} active spend permission(s). Confirm each spender is one you intend to keep funding, and prefer scoped allowances with an expiry.`

@@ -270,7 +270,7 @@ export const SERVICES: ServiceDef[] = [
     description:
       "🆕 b20-safety tells you WHICH powers a B20 has; this tells you WHO holds them. Reads the token's role-based access control (mint / burn / seize-via-burnBlocked / pause / admin) from onchain role events and reports the exact controllers, how centralized they are, and whether admin has been renounced. The issuer-control map an agent needs before holding a regulated Base-native asset.",
     price: "$0.05",
-    icon: "🔑",
+    icon: "👑",
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Control,
