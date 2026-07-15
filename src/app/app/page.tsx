@@ -11,11 +11,23 @@
 import { useEffect, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 import { useAccount, useConnect, type Connector } from "wagmi";
+import { createPublicClient, http, encodeFunctionData } from "viem";
+import { base } from "viem/chains";
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
 import OnrampButton from "@/components/OnrampButton";
 import WalletProtect from "@/components/WalletProtect";
+
+// On-chain pay rail (opt-in): a REAL USDC transfer broadcast from the user's own
+// wallet, so it registers as a Base App transacting user (climbs App Rankings).
+// The gasless x402 flow below is unchanged and stays the default.
+const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const PAY_TO = (process.env.NEXT_PUBLIC_PAY_TO_ADDRESS || "0x973a31858f4d2125f48c880542da11a2796f12d6") as `0x${string}`;
+const ERC20_TRANSFER_ABI = [
+  { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
+] as const;
+const priceToCents = (price: string) => Math.round((parseFloat(price.replace(/[^0-9.]/g, "")) || 0) * 100);
 
 type TypedData = {
   domain: Record<string, unknown>;
@@ -172,6 +184,10 @@ export default function MiniApp() {
   const [previewShown, setPreviewShown] = useState(false);
   // "token" = token-safety checks; "wallet" = approval scan + revoke.
   const [mode, setMode] = useState<"token" | "wallet">("token");
+  // Opt-in: pay with a real on-chain USDC transfer (broadcast from the user's
+  // wallet) instead of the gasless x402 signature — so it counts as a Base App
+  // transacting user. Off by default; the gasless path is unchanged.
+  const [gasMode, setGasMode] = useState(false);
 
   // Deep link: /app?mode=wallet opens straight into Protect-wallet mode.
   useEffect(() => {
@@ -358,6 +374,139 @@ export default function MiniApp() {
     }
   }
 
+  // Opt-in on-chain payment: broadcast a real USDC transfer(payTo, price) from the
+  // user's own wallet, wait for it to confirm, then redeem the report. Because the
+  // wallet is the on-chain SENDER, this registers as a Base App transacting user —
+  // unlike the gasless path where only the facilitator broadcasts. Fully parallel:
+  // it does not touch paidReport / the x402 flow.
+  async function payOnchain(chosenConnector?: Connector) {
+    if (!valid) return;
+    setErr(null);
+    setOut(null);
+    setStep(null);
+    setWalletPicker(null);
+    setPreviewShown(false);
+    setBusy("paid");
+    const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timed out: ${label}`)), ms))]);
+    try {
+      setStep("Connecting wallet…");
+      if (connectors.length === 0) throw new Error("No wallet connector available.");
+      let inMiniApp = false;
+      try {
+        inMiniApp = await sdk.isInMiniApp();
+      } catch {
+        inMiniApp = false;
+      }
+      const isFc = (c: Connector) => /farcaster/i.test(c.id) || /farcaster/i.test(c.type);
+
+      // Same connector selection as the gasless path (mini-app host vs web picker).
+      let preferred = chosenConnector;
+      if (!preferred) {
+        if (inMiniApp) {
+          preferred = connectors.find(isFc) ?? connectors[0];
+        } else {
+          const webConnectors = connectors.filter((c) => !isFc(c));
+          if (webConnectors.length > 1) {
+            setWalletPicker(webConnectors);
+            setStep(null);
+            setBusy(null);
+            return; // re-enters payOnchain(connector) once the user picks one
+          }
+          preferred = webConnectors[0] ?? connectors[0];
+        }
+      }
+
+      let acct = address as `0x${string}` | undefined;
+      let conn = connector;
+      if (!isConnected || !acct || conn?.id !== preferred.id) {
+        const res = await withTimeout(connectAsync({ connector: preferred }), 60000, "wallet connect");
+        acct = res.accounts?.[0];
+        conn = preferred;
+      }
+      if (!acct || !conn) {
+        throw new Error(
+          inMiniApp
+            ? "Wallet didn't respond — close this mini app and reopen it, then try again."
+            : "Couldn't connect a wallet. Approve the connection and try again.",
+        );
+      }
+      const provider = (await conn.getProvider()) as EthProvider;
+
+      // Ensure a plain browser wallet is on Base (mini-app host already is).
+      if (!inMiniApp) {
+        setStep("Switching to Base…");
+        try {
+          await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+        } catch (switchErr) {
+          if ((switchErr as { code?: number })?.code === 4902) {
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: "0x2105",
+                  chainName: "Base",
+                  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+                  rpcUrls: ["https://mainnet.base.org"],
+                  blockExplorerUrls: ["https://basescan.org"],
+                },
+              ],
+            });
+          }
+        }
+      }
+
+      // Broadcast the USDC transfer — THIS is the on-chain transaction that makes
+      // the wallet a Base App transacting user. Amount = price in 6-dp USDC micro.
+      const amount = BigInt(priceToCents(check.price)) * 10_000n;
+      const data = encodeFunctionData({ abi: ERC20_TRANSFER_ABI, functionName: "transfer", args: [PAY_TO, amount] });
+      setStep("⛽ Confirm the on-chain payment in your wallet…");
+      const txHash = (await withTimeout(
+        provider.request({ method: "eth_sendTransaction", params: [{ from: acct, to: USDC, data }] }),
+        120000,
+        "send payment",
+      )) as `0x${string}`;
+
+      setStep("Waiting for confirmation…");
+      const pub = createPublicClient({ chain: base, transport: http() });
+      await withTimeout(pub.waitForTransactionReceipt({ hash: txHash }), 150000, "confirmation");
+
+      // Redeem the report against the confirmed payment.
+      setStep(`Running ${check.label}…`);
+      const r = await withTimeout(
+        fetch(`/api/onchain/${selected}?address=${addr.trim()}&txHash=${txHash}`, { method: "POST" }),
+        90000,
+        "report",
+      );
+      const text = await r.text();
+      if (!r.ok) {
+        let msg = text.slice(0, 220) || "no body";
+        try {
+          msg = (JSON.parse(text).error as string) || msg;
+        } catch {
+          /* keep raw text */
+        }
+        throw new Error(`Payment sent but redeem failed (${r.status}): ${msg} · your txHash: ${txHash}`);
+      }
+      let parsed: { data?: Record<string, unknown> };
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error(`Unexpected response: ${text.slice(0, 160)}`);
+      }
+      setOut(formatResult(selected, (parsed.data ?? parsed) as Record<string, unknown>));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed";
+      const needsGas = /insufficient funds|gas|exceeds balance|balance/i.test(msg);
+      setErr(
+        `${msg}${needsGas ? " — an on-chain payment needs a little ETH on Base for gas (plus USDC for the price). Add funds and retry, or turn off “Pay onchain” to pay gaslessly." : ""}${step ? ` (at: ${step})` : ""}`,
+      );
+    } finally {
+      setBusy(null);
+      setStep(null);
+    }
+  }
+
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6">
       <header className="flex flex-col gap-1">
@@ -410,10 +559,22 @@ export default function MiniApp() {
         <button onClick={freeCheck} disabled={!valid || busy !== null} className="btn-ghost flex-1 !py-2 text-sm disabled:opacity-40">
           {busy === "free" ? "Checking…" : "Free rug-score"}
         </button>
-        <button onClick={() => paidReport()} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "paid" ? "Paying…" : `Run · ${check.price}`}
+        <button onClick={() => (gasMode ? payOnchain() : paidReport())} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
+          {busy === "paid" ? "Paying…" : `${gasMode ? "⛽ Pay onchain" : "Run"} · ${check.price}`}
         </button>
       </div>
+
+      <label className="flex items-start gap-2 text-[11px] leading-snug text-gray-400">
+        <input
+          type="checkbox"
+          checked={gasMode}
+          onChange={(e) => setGasMode(e.target.checked)}
+          className="mt-0.5 accent-base-blue"
+        />
+        <span>
+          ⛽ Pay onchain from my wallet <span className="text-gray-500">(counts on the Base App leaderboard · costs a little ETH for gas)</span>. Off = gasless one-tap, no gas.
+        </span>
+      </label>
 
       {!hasWallet && (
         <p className="text-center text-[11px] text-gray-500">Open in the Base App, or use a browser wallet, to pay.</p>
@@ -425,7 +586,7 @@ export default function MiniApp() {
             {walletPicker.map((c) => (
               <button
                 key={c.uid}
-                onClick={() => paidReport(c)}
+                onClick={() => (gasMode ? payOnchain(c) : paidReport(c))}
                 className="btn-ghost !px-3 !py-1.5 text-xs"
               >
                 {c.name}
@@ -444,7 +605,7 @@ export default function MiniApp() {
       {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
 
       {previewShown && busy === null && (
-        <button onClick={() => paidReport()} className="btn-primary !py-2 text-sm">
+        <button onClick={() => (gasMode ? payOnchain() : paidReport())} className="btn-primary !py-2 text-sm">
           🔓 Unlock full report · {check.label} · {check.price}
         </button>
       )}
