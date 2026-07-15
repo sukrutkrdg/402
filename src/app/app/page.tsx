@@ -192,9 +192,22 @@ export default function MiniApp() {
   // race on redeem). Kept so the user can retry the SAME payment — never re-charged.
   const [lastPaid, setLastPaid] = useState<{ hash: string; service: string; address: string; label: string; price: string } | null>(null);
 
-  // Deep link: /app?mode=wallet opens straight into Protect-wallet mode.
+  // Set true when a valid ?token= is deep-linked, so we can auto-run the free
+  // score once the address state has taken → instant value on open from a cast.
+  const [prefill, setPrefill] = useState(false);
+
+  // Deep links: /app?mode=wallet → Protect-wallet mode; /app?token=0x…&check=… →
+  // preload a token (and optional check) so a shared cast opens on the answer.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("mode") === "wallet") setMode("wallet");
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("mode") === "wallet") setMode("wallet");
+    const c = (q.get("check") || "").trim();
+    if (c && CHECKS.some((x) => x.id === c)) setSelected(c);
+    const t = (q.get("token") || q.get("address") || "").trim();
+    if (/^0x[0-9a-fA-F]{40}$/.test(t)) {
+      setAddr(t);
+      setPrefill(true);
+    }
   }, []);
 
   const { address, isConnected, connector } = useAccount();
@@ -208,6 +221,16 @@ export default function MiniApp() {
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
   const check = CHECKS.find((c) => c.id === selected) ?? CHECKS[0];
+
+  // A cast deep-linked a token → run the free rug-score automatically so the
+  // opener lands on an answer, not an empty form (the top of the funnel).
+  useEffect(() => {
+    if (prefill && valid && mode === "token" && busy === null && out === null) {
+      setPrefill(false);
+      freeCheck();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill, valid, mode]);
 
   async function freeCheck() {
     if (!valid) return;
@@ -657,11 +680,17 @@ export default function MiniApp() {
           onClick={() =>
             sdk.actions
               .composeCast({
-                // Share the actual result when there is one → far more viral than a generic pitch.
+                // Share the actual result when there is one → far more viral than a
+                // generic pitch. The embed carries the token so a tap opens the mini
+                // app already on this token's check — every cast is a funnel entry.
                 text: out
-                  ? `Checked ${addr.trim().slice(0, 6)}…${addr.trim().slice(-4)} on 402.com.tr 🛡️\n${out.split("\n").slice(0, 2).join(" · ").slice(0, 140)}`
-                  : "Check any Base token before you ape in 🛡️ honeypot, sellability, holder & liquidity checks — pay-per-call over x402.",
-                embeds: ["https://402.com.tr/app"],
+                  ? `${check.label.replace(/^[^A-Za-z0-9]+\s*/, "")} · ${addr.trim().slice(0, 6)}…${addr.trim().slice(-4)} 🛡️\n${out.split("\n").slice(0, 2).join(" · ").slice(0, 180)}\n\nCheck any Base token 👇`
+                  : "Check any Base token before you ape 🛡️ rug-score, honeypot, sellability, holders & liquidity — free score, full check pays per-call over x402 👇",
+                embeds: [
+                  valid
+                    ? `https://402.com.tr/app?token=${addr.trim()}${selected ? `&check=${selected}` : ""}`
+                    : "https://402.com.tr/app",
+                ],
               })
               .catch(() => {})
           }
