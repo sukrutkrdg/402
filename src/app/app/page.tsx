@@ -188,6 +188,9 @@ export default function MiniApp() {
   // wallet) instead of the gasless x402 signature — so it counts as a Base App
   // transacting user. Off by default; the gasless path is unchanged.
   const [gasMode, setGasMode] = useState(false);
+  // A confirmed on-chain payment whose report wasn't delivered yet (e.g. an RPC
+  // race on redeem). Kept so the user can retry the SAME payment — never re-charged.
+  const [lastPaid, setLastPaid] = useState<{ hash: string; service: string; address: string; label: string; price: string } | null>(null);
 
   // Deep link: /app?mode=wallet opens straight into Protect-wallet mode.
   useEffect(() => {
@@ -471,36 +474,59 @@ export default function MiniApp() {
       const pub = createPublicClient({ chain: base, transport: http() });
       await withTimeout(pub.waitForTransactionReceipt({ hash: txHash }), 150000, "confirmation");
 
-      // Redeem the report against the confirmed payment.
-      setStep(`Running ${check.label}…`);
-      const r = await withTimeout(
-        fetch(`/api/onchain/${selected}?address=${addr.trim()}&txHash=${txHash}`, { method: "POST" }),
-        90000,
-        "report",
-      );
-      const text = await r.text();
-      if (!r.ok) {
-        let msg = text.slice(0, 220) || "no body";
-        try {
-          msg = (JSON.parse(text).error as string) || msg;
-        } catch {
-          /* keep raw text */
-        }
-        throw new Error(`Payment sent but redeem failed (${r.status}): ${msg} · your txHash: ${txHash}`);
-      }
-      let parsed: { data?: Record<string, unknown> };
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        throw new Error(`Unexpected response: ${text.slice(0, 160)}`);
-      }
-      setOut(formatResult(selected, (parsed.data ?? parsed) as Record<string, unknown>));
+      // Payment is confirmed — remember it so a redeem hiccup never loses the paid
+      // report (the user can retry the same tx, never re-charged).
+      const pay = { hash: txHash, service: selected, address: addr.trim(), label: check.label, price: check.price };
+      setLastPaid(pay);
+      await withTimeout(redeemReport(pay), 90000, "report");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed";
       const needsGas = /insufficient funds|gas|exceeds balance|balance/i.test(msg);
       setErr(
         `${msg}${needsGas ? " — an on-chain payment needs a little ETH on Base for gas (plus USDC for the price). Add funds and retry, or turn off “Pay onchain” to pay gaslessly." : ""}${step ? ` (at: ${step})` : ""}`,
       );
+    } finally {
+      setBusy(null);
+      setStep(null);
+    }
+  }
+
+  // Redeem a confirmed on-chain payment for its report. Reused by payOnchain and
+  // by the "retry" button — same txHash is safe (server serves it once, and only
+  // clears the used-key when it genuinely can't deliver).
+  async function redeemReport(pay: { hash: string; service: string; address: string; label: string; price: string }) {
+    setStep(`Running ${pay.label}…`);
+    const r = await fetch(`/api/onchain/${pay.service}?address=${pay.address}&txHash=${pay.hash}`, { method: "POST" });
+    const text = await r.text();
+    if (!r.ok) {
+      let msg = text.slice(0, 220) || "no body";
+      try {
+        msg = (JSON.parse(text).error as string) || msg;
+      } catch {
+        /* keep raw text */
+      }
+      throw new Error(`Payment confirmed but report not delivered (${r.status}): ${msg}`);
+    }
+    let parsed: { data?: Record<string, unknown> };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`Unexpected response: ${text.slice(0, 160)}`);
+    }
+    setOut(formatResult(pay.service, (parsed.data ?? parsed) as Record<string, unknown>));
+    setLastPaid(null); // delivered — nothing left to retry
+  }
+
+  // Retry delivery of an already-confirmed payment (no new charge).
+  async function retryRedeem() {
+    if (!lastPaid) return;
+    setErr(null);
+    setOut(null);
+    setBusy("paid");
+    try {
+      await redeemReport(lastPaid);
+    } catch (e) {
+      setErr(`${e instanceof Error ? e.message : "Failed"} · your txHash: ${lastPaid.hash}`);
     } finally {
       setBusy(null);
       setStep(null);
@@ -602,6 +628,11 @@ export default function MiniApp() {
         <div className="card border-base-blue/30 bg-base-blue/10 p-3 text-xs text-sky-200">{step}</div>
       )}
       {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
+      {lastPaid && busy === null && (
+        <button onClick={retryRedeem} className="btn-primary !py-2 text-sm">
+          🔁 Retry — already paid {lastPaid.price}, no new charge
+        </button>
+      )}
       {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
 
       {previewShown && busy === null && (

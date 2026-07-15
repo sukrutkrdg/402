@@ -98,12 +98,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ service: s
   try {
     const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
+    // Wait (don't just look up once) — the client's RPC may have seen the receipt
+    // a beat before ours, so a bare getTransactionReceipt races and 404s a valid
+    // payment. waitForTransactionReceipt returns instantly if we already have it,
+    // otherwise polls until it appears or the short timeout elapses.
     let receipt;
     try {
-      receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
+      receipt = await client.waitForTransactionReceipt({ hash: txHash as `0x${string}`, timeout: 25000, pollingInterval: 2000, confirmations: 1 });
     } catch {
-      await kvDel(usedKey); // not mined yet — let the client retry after confirmation
-      return NextResponse.json({ error: "Transaction not found yet — wait for it to confirm, then retry." }, { status: 400 });
+      await kvDel(usedKey); // truly not mined yet — let the client retry with the same hash
+      return NextResponse.json({ error: "Transaction not confirmed yet — wait a few seconds and retry (you were NOT charged again)." }, { status: 400 });
     }
     if (receipt.status !== "success") {
       await kvDel(usedKey);
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ service: s
     try {
       const block = await client.getBlock({ blockNumber: receipt.blockNumber });
       const ageSec = Math.floor(Date.now() / 1000) - Number(block.timestamp);
-      if (ageSec > 1800) {
+      if (ageSec > 7200) {
         await kvDel(usedKey);
         return NextResponse.json({ error: "Payment is too old to redeem — make a fresh payment and retry." }, { status: 400 });
       }
