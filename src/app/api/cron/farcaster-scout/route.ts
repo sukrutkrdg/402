@@ -13,7 +13,6 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { newTokens } from "@/lib/onchain-extra4";
 import { rugScore } from "@/lib/scores";
 import { safeEqual } from "@/lib/secure";
 import { kvGet, kvSet } from "@/lib/kv";
@@ -80,67 +79,84 @@ async function scamCheck(address: string): Promise<Scam | null> {
 }
 
 type Scored = { rugScore?: number; level?: string; signals?: string[] };
+interface Trend { address: string; symbol: string; liq: number }
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-/** Pick the single most cast-worthy token and compose its cast + embed. */
-async function pickCast(dry: boolean): Promise<{ text: string; embed: string; token: string; kind: string } | null> {
-  let tokens: Array<{ tokenAddress?: string | null; description?: string | null }> = [];
-  try {
-    const data = (await newTokens({})) as { tokens?: typeof tokens };
-    tokens = data.tokens ?? [];
-  } catch {
-    return null;
+/** Trending Base tokens = GeckoTerminal's actually-traded pools (trending by
+ * activity + top by 24h volume). Real demand, not obscure fresh launches. Each
+ * carries its symbol + liquidity so the picker needs no extra upstream call. */
+async function trendingBaseTokens(): Promise<Trend[]> {
+  const urls = [
+    "https://api.geckoterminal.com/api/v2/networks/base/trending_pools?duration=24h",
+    "https://api.geckoterminal.com/api/v2/networks/base/pools?sort=h24_volume_usd_desc",
+  ];
+  const seen = new Set<string>();
+  const out: Trend[] = [];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(9000), headers: { accept: "application/json" } });
+      if (!r.ok) continue;
+      const j = (await r.json()) as {
+        data?: Array<{ attributes?: { name?: string; reserve_in_usd?: string }; relationships?: { base_token?: { data?: { id?: string } } } }>;
+      };
+      for (const p of j.data ?? []) {
+        const id = p.relationships?.base_token?.data?.id ?? ""; // "base_0x…"
+        const addr = id.startsWith("base_") ? id.slice(5) : "";
+        if (!/^0x[0-9a-fA-F]{40}$/.test(addr) || seen.has(addr.toLowerCase())) continue;
+        seen.add(addr.toLowerCase());
+        const symbol = (p.attributes?.name ?? "").split("/")[0].trim().slice(0, 12);
+        const liq = Math.round(parseFloat(p.attributes?.reserve_in_usd ?? "0")) || 0;
+        out.push({ address: addr, symbol, liq });
+      }
+    } catch {
+      /* best-effort */
+    }
   }
+  return out;
+}
 
-  for (const tk of tokens.slice(0, 20)) {
-    const addr = tk.tokenAddress;
-    if (!addr || !/^0x[0-9a-fA-F]{40}$/.test(addr)) continue;
-    const a = addr.toLowerCase();
+/** Pick a trending, liquid Base token and compose its safety-readout cast. Works
+ * for ANY risk level (clean or risky) — the token is already something people
+ * trade, so a verdict + "check it yourself" is a valid funnel entry every run. */
+async function pickCast(dry: boolean): Promise<{ text: string; embed: string; token: string; kind: string } | null> {
+  const candidates = await trendingBaseTokens();
 
-    // 7-day dedup so we never cast the same token twice. In dry mode we don't
-    // consume the dedup key (so a preview doesn't silently "use up" a token).
+  for (const c of candidates.slice(0, 30)) {
+    if (c.liq < 10_000) continue; // skip dust — not worth a follower's tap
+    const a = c.address.toLowerCase();
+    // 7-day dedup so we rotate through tokens. Dry runs don't consume the key.
     const seenKey = `fcscout:seen:${a}`;
     if (await kvGet(seenKey)) continue;
 
-    const embed = `${APP}?token=${addr}`;
-
-    // Best content: a scam we caught before anyone aped in.
-    const scam = await scamCheck(addr);
-    if (scam?.isScam) {
-      const sym = scam.symbol ? `$${scam.symbol}` : "This new Base token";
-      const text = [
-        `🚨 Caught ${scam.honeypot ? "a honeypot" : "an unsellable token"} on Base before anyone aped in`,
-        ``,
-        `${sym} — ${scam.reasons.slice(0, 2).join(" · ")}`,
-        short(addr),
-        ``,
-        `Check any Base token before you buy 👇`,
-      ].join("\n");
-      if (!dry) await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
-      return { text, embed, token: addr, kind: "caught-scam" };
-    }
-
-    // Else: a genuinely high rug-risk token (warning value).
+    // Deterministic safety readout (no LLM cost on a schedule).
     let scored: Scored | null = null;
     try {
-      scored = (await rugScore({ address: addr })) as unknown as Scored;
+      scored = (await rugScore({ address: c.address })) as unknown as Scored;
     } catch {
       scored = null;
     }
-    if (scored?.level === "high") {
-      const sym = tk.description ? String(tk.description).split(/[\s—·|]/)[0].slice(0, 16) : "";
-      const text = [
-        `🔴 High rug risk on a fresh Base token${sym ? ` (${sym})` : ""}`,
-        ``,
-        `Rug score ${scored.rugScore}/100${scored.signals?.length ? ` · ${scored.signals.slice(0, 2).join(", ")}` : ""}`,
-        short(addr),
-        ``,
-        `Don't ape before you check 👇`,
-      ].join("\n");
-      if (!dry) await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
-      return { text, embed, token: addr, kind: "high-risk" };
-    }
+    if (!scored) continue;
+    const scam = await scamCheck(c.address);
+
+    const level = scored.level ?? "?";
+    const emoji = level === "high" ? "🔴" : level === "medium" ? "🟡" : "🟢";
+    const signal = scam?.honeypot
+      ? " · 🚨 HONEYPOT (can't sell)"
+      : scored.signals?.length
+        ? ` · ${scored.signals[0]}`
+        : "";
+    const embed = `${APP}?token=${c.address}`;
+    const text = [
+      `${emoji} ${c.symbol ? `$${c.symbol}` : "This token"} is trending on Base — safety readout 🛡️`,
+      ``,
+      `Rug score ${scored.rugScore}/100 (${level})${signal}`,
+      `Liq ~$${c.liq.toLocaleString("en-US")} · ${short(c.address)}`,
+      ``,
+      `Check any Base token yourself 👇`,
+    ].join("\n");
+    if (!dry) await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
+    return { text, embed, token: c.address, kind: `trending-${level}` };
   }
   return null;
 }
