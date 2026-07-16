@@ -60,6 +60,10 @@ interface Usage {
   recent: RecentCall[];
   totalCalls: number;
   totalPaid: number;
+  /** Sum over CURRENT services only (≤ totalCalls, which also counts retired ones). */
+  perTotalCalls?: number;
+  /** KV was unreachable — numbers this refresh are a best-effort fallback. */
+  degraded?: boolean;
   totalRevenue?: number;
   paidToday?: number;
   today: number;
@@ -229,14 +233,18 @@ export default function Stats() {
         <div className="card p-5">
           <div className="label">Received (recent window)</div>
           <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">
-            {data ? `$${data.totalUsdc}` : "—"}
+            {!data ? "—" : data.rpcLimited ? "—" : `$${data.totalUsdc}`}
           </div>
-          <div className="text-[11px] text-gray-500">USDC · last ~{data?.windowBlocks ?? 0} blocks</div>
+          <div className="text-[11px] text-gray-500">
+            {data?.rpcLimited ? "RPC rate-limited — see BaseScan" : `USDC · last ~${data?.windowBlocks ?? 0} blocks`}
+          </div>
         </div>
         <div className="card p-5">
           <div className="label">Payments</div>
-          <div className="mt-1 font-mono text-2xl font-bold">{data?.count ?? "—"}</div>
-          <div className="text-[11px] text-gray-500">incoming USDC transfers</div>
+          <div className="mt-1 font-mono text-2xl font-bold">{!data ? "—" : data.rpcLimited ? "—" : data.count}</div>
+          <div className="text-[11px] text-gray-500">
+            {data?.rpcLimited ? "couldn't read chain this refresh" : "incoming USDC transfers"}
+          </div>
         </div>
         <div className="card p-5">
           <div className="label">Seller wallet</div>
@@ -425,12 +433,21 @@ export default function Stats() {
         <section className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Usage &amp; activity</h2>
 
+          {usage.degraded && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+              ⚠️ Analytics store was slow to reach this refresh — numbers may be understated. Refresh again in a moment.
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="card p-4">
               <div className="label">Total calls</div>
               <div className="mt-1 font-mono text-2xl font-bold">{usage.totalCalls}</div>
               <div className="text-[10px] text-gray-500">
                 {usage.totalCalls > 0 ? ((usage.totalPaid / usage.totalCalls) * 100).toFixed(1) : "0"}% paid
+                {typeof usage.perTotalCalls === "number" && usage.perTotalCalls !== usage.totalCalls
+                  ? ` · ${usage.perTotalCalls} on current services`
+                  : ""}
               </div>
             </div>
             <div className="card p-4">

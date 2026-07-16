@@ -40,17 +40,28 @@ export async function getRevenue(blocks = 5000): Promise<RevenueResult> {
   // For a wider window, set BASE_RPC_URL to a dedicated RPC.
   const span = BigInt(Math.min(Math.max(blocks, 100), 10000));
 
+  // Read the log window with one retry — the primary RPC (CDP Node) handles this
+  // range fine, but a transient hiccup shouldn't immediately flip the dashboard
+  // to "0 / rate-limited". Retry once before giving up.
   let logs;
-  try {
+  const readLogs = async () => {
     const latest = await client.getBlockNumber();
     const fromBlock = latest > span ? latest - span : 0n;
-    logs = await client.getLogs({
+    return client.getLogs({
       address: USDC_BASE as Address,
       event: transferEvent,
       args: { to: payTo },
       fromBlock,
       toBlock: latest,
     });
+  };
+  try {
+    try {
+      logs = await readLogs();
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+      logs = await readLogs();
+    }
   } catch {
     return {
       payTo,

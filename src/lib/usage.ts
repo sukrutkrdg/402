@@ -182,6 +182,7 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   recent: RecentCall[];
   totalCalls: number;
   totalPaid: number;
+  perTotalCalls: number;
   paidToday: number;
   today: number;
   sourcesToday: number;
@@ -189,7 +190,85 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   internalSourcesToday: number;
   externalSourcesToday: number;
   payersToday: number;
+  degraded: boolean;
 }> {
+  const d = day();
+  // Read EVERYTHING in one pipeline round trip. Previously this fired ~5×N + 6
+  // separate KV GETs; any single one timing out returned 0 (kvGetNumber), so the
+  // totals wobbled on every refresh. One request = one consistent snapshot.
+  const gets: (string | number)[][] = [];
+  for (const id of serviceIds) {
+    gets.push(["GET", `usage:total:${id}`], ["GET", `usage:paid:${id}`], ["GET", `usage:internal:${id}`], ["GET", `usage:preview:${id}`], ["GET", `usage:challenge:${id}`]);
+  }
+  // Trailing fixed reads (order matters — indices used below).
+  const TAIL = [
+    ["GET", "usage:calls:total"],   // canonical global total (same value the public strip shows)
+    ["GET", "usage:paid:total"],    // canonical global paid total
+    ["GET", `usage:day:${d}`],
+    ["GET", `usage:paidday:${d}`],
+    ["LRANGE", "usage:recent", 0, 29],
+    ["SMEMBERS", `usage:src:${d}`],
+    ["SMEMBERS", `usage:botsrc:${d}`],
+    ["SMEMBERS", `usage:intsrc:${d}`],
+    ["SMEMBERS", `usage:payers:${d}`],
+  ] as (string | number)[][];
+  gets.push(...TAIL);
+
+  const res = await kvPipeline(gets);
+  const toNum = (v: unknown) => (typeof v === "string" ? parseInt(v, 10) || 0 : typeof v === "number" ? v : 0);
+  const toArr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
+
+  // KV unreachable or not configured → fall back to the (in-memory-aware)
+  // per-key path so dev/degraded still returns something coherent.
+  if (res === null) return getUsageFallback(serviceIds, ownerSources);
+
+  const per: UsageRow[] = serviceIds.map((id, i) => {
+    const b = i * 5;
+    return {
+      id,
+      total: toNum(res[b]),
+      paid: toNum(res[b + 1]),
+      internal: toNum(res[b + 2]),
+      preview: toNum(res[b + 3]),
+      challenge: toNum(res[b + 4]),
+    };
+  });
+  const t = serviceIds.length * 5; // start of TAIL
+  const totalCalls = toNum(res[t]);       // global counter — matches the public strip
+  const totalPaid = toNum(res[t + 1]);
+  const perTotalCalls = per.reduce((a, r) => a + r.total, 0); // current-services sum (≤ total)
+  const today = toNum(res[t + 2]);
+  const paidToday = toNum(res[t + 3]);
+  const recent = toArr(res[t + 4])
+    .map((s) => { try { return JSON.parse(s) as RecentCall; } catch { return null; } })
+    .filter((x): x is RecentCall => x !== null);
+  const all = toArr(res[t + 5]);
+  const bots = new Set(toArr(res[t + 6]));
+  const internals = new Set(toArr(res[t + 7]));
+  const owner = new Set(ownerSources);
+  const payersToday = toArr(res[t + 8]).length;
+
+  return {
+    per: per.filter((r) => r.total > 0).sort((a, b) => b.total - a.total),
+    recent,
+    totalCalls,
+    totalPaid,
+    perTotalCalls,
+    paidToday,
+    today,
+    sourcesToday: all.length,
+    botSourcesToday: bots.size,
+    internalSourcesToday: internals.size,
+    // Real external visitors = distinct sources today minus bots, minus the
+    // owner's own devices, minus our own first-party services.
+    externalSourcesToday: all.filter((s) => !bots.has(s) && !owner.has(s) && !internals.has(s)).length,
+    payersToday,
+    degraded: false,
+  };
+}
+
+/** Per-key fallback (KV unreachable/unconfigured) — same shape as getUsage. */
+async function getUsageFallback(serviceIds: string[], ownerSources: string[]) {
   const per = await Promise.all(
     serviceIds.map(async (id) => ({
       id,
@@ -200,55 +279,29 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
       challenge: await kvGetNumber(`usage:challenge:${id}`),
     })),
   );
-  const recentRaw = await kvLRange("usage:recent", 0, 29);
-  const recent = recentRaw
-    .map((s) => {
-      try {
-        return JSON.parse(s) as RecentCall;
-      } catch {
-        return null;
-      }
-    })
+  const recent = (await kvLRange("usage:recent", 0, 29))
+    .map((s) => { try { return JSON.parse(s) as RecentCall; } catch { return null; } })
     .filter((x): x is RecentCall => x !== null);
-
-  const totalCalls = per.reduce((a, r) => a + r.total, 0);
-  const totalPaid = per.reduce((a, r) => a + r.paid, 0);
-  let today = 0;
-  let paidToday = 0;
-  let sourcesToday = 0;
-  let botSourcesToday = 0;
-  let internalSourcesToday = 0;
-  let externalSourcesToday = 0;
-  let payersToday = 0;
-  try {
-    today = await kvGetNumber(`usage:day:${day()}`);
-    paidToday = await kvGetNumber(`usage:paidday:${day()}`);
-    const all = await kvSMembers(`usage:src:${day()}`);
-    const bots = new Set(await kvSMembers(`usage:botsrc:${day()}`));
-    const internals = new Set(await kvSMembers(`usage:intsrc:${day()}`));
-    const owner = new Set(ownerSources);
-    sourcesToday = all.length;
-    botSourcesToday = bots.size;
-    internalSourcesToday = internals.size;
-    // Real external visitors = distinct sources today minus bots, minus the
-    // owner's own devices, minus our own first-party services.
-    externalSourcesToday = all.filter((s) => !bots.has(s) && !owner.has(s) && !internals.has(s)).length;
-    payersToday = (await kvSMembers(`usage:payers:${day()}`)).length;
-  } catch {
-    /* ignore */
-  }
-
+  const perTotalCalls = per.reduce((a, r) => a + r.total, 0);
+  const globalCalls = await kvGetNumber("usage:calls:total");
+  const globalPaid = await kvGetNumber("usage:paid:total");
+  const all = await kvSMembers(`usage:src:${day()}`);
+  const bots = new Set(await kvSMembers(`usage:botsrc:${day()}`));
+  const internals = new Set(await kvSMembers(`usage:intsrc:${day()}`));
+  const owner = new Set(ownerSources);
   return {
     per: per.filter((r) => r.total > 0).sort((a, b) => b.total - a.total),
     recent,
-    totalCalls,
-    totalPaid,
-    paidToday,
-    today,
-    sourcesToday,
-    botSourcesToday,
-    internalSourcesToday,
-    externalSourcesToday,
-    payersToday,
+    totalCalls: globalCalls || perTotalCalls,
+    totalPaid: globalPaid,
+    perTotalCalls,
+    paidToday: await kvGetNumber(`usage:paidday:${day()}`),
+    today: await kvGetNumber(`usage:day:${day()}`),
+    sourcesToday: all.length,
+    botSourcesToday: bots.size,
+    internalSourcesToday: internals.size,
+    externalSourcesToday: all.filter((s) => !bots.has(s) && !owner.has(s) && !internals.has(s)).length,
+    payersToday: (await kvSMembers(`usage:payers:${day()}`)).length,
+    degraded: true,
   };
 }
