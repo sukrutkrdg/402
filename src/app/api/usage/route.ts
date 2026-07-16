@@ -8,6 +8,7 @@ import { safeEqual } from "@/lib/secure";
 import { clientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30; // headroom for the per-service KV reads
 
 export async function GET(req: NextRequest) {
   const cfg = getConfig();

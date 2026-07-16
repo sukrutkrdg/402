@@ -145,7 +145,22 @@ export async function kvDecrBy(key: string, by: number): Promise<number | null> 
 
 export async function kvGetNumber(key: string): Promise<number> {
   if (kvConfigured()) {
-    const v = await cmdRead<string>(["GET", key]); // retry on transient failure → no false 0
+    const v = await cmd<string>(["GET", key]);
+    return v ? parseInt(v, 10) || 0 : 0;
+  }
+  const e = memValid(key);
+  return e ? parseInt(e.value, 10) || 0 : 0;
+}
+
+/**
+ * Number read with retry on transient failure — for the handful of HOT SINGLETON
+ * counters (usage:calls:total etc.) whose flicker to a false 0 is user-visible.
+ * NOT for bulk/per-service reads: firing hundreds of these in parallel would let
+ * retries pile up under rate-limiting and stall the request.
+ */
+export async function kvGetNumberStable(key: string): Promise<number> {
+  if (kvConfigured()) {
+    const v = await cmdRead<string>(["GET", key]);
     return v ? parseInt(v, 10) || 0 : 0;
   }
   const e = memValid(key);
@@ -153,7 +168,7 @@ export async function kvGetNumber(key: string): Promise<number> {
 }
 
 export async function kvGet(key: string): Promise<string | null> {
-  if (kvConfigured()) return await cmdRead<string>(["GET", key]);
+  if (kvConfigured()) return await cmd<string>(["GET", key]);
   return memValid(key)?.value ?? null;
 }
 
@@ -204,7 +219,7 @@ export async function kvLPush(key: string, value: string, capTo = 200): Promise<
 }
 
 export async function kvLRange(key: string, start = 0, stop = -1): Promise<string[]> {
-  if (kvConfigured()) return (await cmdRead<string[]>(["LRANGE", key, start, stop])) ?? [];
+  if (kvConfigured()) return (await cmd<string[]>(["LRANGE", key, start, stop])) ?? [];
   const arr = memList.get(key) ?? [];
   return stop === -1 ? arr.slice(start) : arr.slice(start, stop + 1);
 }
@@ -230,6 +245,6 @@ export async function kvSRem(key: string, member: string): Promise<void> {
 }
 
 export async function kvSMembers(key: string): Promise<string[]> {
-  if (kvConfigured()) return (await cmdRead<string[]>(["SMEMBERS", key])) ?? [];
+  if (kvConfigured()) return (await cmd<string[]>(["SMEMBERS", key])) ?? [];
   return memList.get(`set:${key}`) ?? [];
 }
