@@ -23,6 +23,7 @@ import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
+import { riskSignal } from "@/lib/envelope";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
@@ -84,12 +85,12 @@ async function attachRetention(serviceId: string, data: unknown, src: string): P
     if (!/^0x[0-9a-f]{40}$/.test(addr)) return;
     if (serviceId === "token-risk" || serviceId === "rug-score") {
       await kvSet(`coupon:${src}:${addr}`, "1", 3600);
-      const score = typeof d?.riskScore === "number" ? (d.riskScore as number) : typeof d?.rugScore === "number" ? (d.rugScore as number) : null;
-      if (score !== null && d) {
-        const level = String(d.riskLevel ?? d.level ?? "");
+      // One place knows the score/level field aliases across services.
+      const sig = riskSignal(d);
+      if (sig.score !== null && d) {
         // Keyed per service: token-risk and rug-score scores are different
         // methodologies — diffing one against the other fabricates movement.
-        const sl = await sinceLastCheck(src, `${serviceId}:${addr}`, score, level);
+        const sl = await sinceLastCheck(src, `${serviceId}:${addr}`, sig.score, sig.level ?? "");
         if (sl) d.sinceLastCheck = sl;
       }
     } else if (serviceId === "ai-token-report") {

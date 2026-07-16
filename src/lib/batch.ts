@@ -5,6 +5,7 @@
 
 import "server-only";
 import { rugScore } from "./scores";
+import { riskSignal, severityRank, finish } from "./envelope";
 
 const MAX = 10;
 
@@ -23,26 +24,26 @@ export async function batchRisk(params: Record<string, string>) {
   const tokens = capped.map((address, i) => {
     const r = settled[i];
     if (r.status === "fulfilled") {
-      const v = r.value as { rugScore?: number; level?: string; signals?: string[] };
+      const sig = riskSignal(r.value);
+      const signals = (r.value as { signals?: string[] }).signals ?? [];
       return {
         address,
-        rugScore: typeof v.rugScore === "number" ? v.rugScore : null,
-        level: v.level ?? null,
-        signals: (v.signals ?? []).slice(0, 3),
+        rugScore: sig.score,
+        level: sig.level, // low | medium | high | unknown
+        signals: signals.slice(0, 3),
       };
     }
     return { address, error: r.reason instanceof Error ? r.reason.message.slice(0, 80) : "scan failed" };
   });
 
-  // Sort riskiest first so the agent sees the dangerous ones up top.
-  const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
-  tokens.sort((a, b) => (order[("level" in a && a.level) || "low"] ?? 3) - (order[("level" in b && b.level) || "low"] ?? 3));
+  // Sort riskiest first (unknown ranks just under high — an unassessed token
+  // isn't safe) so the agent sees what matters up top.
+  tokens.sort((a, b) => severityRank("level" in a ? a.level : undefined) - severityRank("level" in b ? b.level : undefined));
 
-  return {
+  return finish({
     count: tokens.length,
     requested: list.length,
     truncated: valid.length > MAX,
     tokens,
-    checkedAt: new Date().toISOString(),
-  };
+  });
 }

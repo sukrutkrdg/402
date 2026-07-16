@@ -12,6 +12,7 @@
 import "server-only";
 import { walletPortfolio } from "./alchemy";
 import { tokenRisk } from "./onchain";
+import type { TokenRiskResult } from "./envelope";
 
 const MAX_SCAN = 8; // bound cost + latency
 
@@ -20,18 +21,9 @@ interface Holding {
   address?: string;
   usdValue?: number | null;
 }
-interface SecurityShape {
-  isHoneypot?: boolean;
-  sellTaxPct?: number | null;
-}
-interface RiskShape {
-  // tokenRisk() exposes the score/level at the TOP level and the honeypot/tax
-  // fields nested under `security`. Read them from the correct shape.
-  riskScore?: number;
-  riskLevel?: string;
-  security?: SecurityShape;
-  flags?: string[];
-}
+// tokenRisk() exposes the score/level at the TOP level and the honeypot/tax
+// fields nested under `security` — the shared TokenRiskResult encodes both.
+type RiskShape = TokenRiskResult;
 
 export async function portfolioScan(params: Record<string, string>) {
   const port = (await walletPortfolio(params)) as {

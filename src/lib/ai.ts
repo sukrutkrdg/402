@@ -13,6 +13,7 @@
 
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { finish } from "./envelope";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
@@ -60,7 +61,7 @@ export async function aiSummarize(params: Record<string, string>) {
     .split("\n")
     .map((l) => l.replace(/^[-*•]\s*/, "").trim())
     .filter(Boolean);
-  return { model: MODEL, bullets, truncated, generatedAt: new Date().toISOString() };
+  return finish({ model: MODEL, bullets, truncated, generatedAt: new Date().toISOString() });
 }
 
 /** Extract structured fields from unstructured text. */
@@ -97,7 +98,7 @@ export async function aiExtract(params: Record<string, string>) {
   } catch {
     throw new Error("Model did not return valid JSON");
   }
-  return { model: MODEL, fields, data, truncated, generatedAt: new Date().toISOString() };
+  return finish({ model: MODEL, fields, data, truncated, generatedAt: new Date().toISOString() });
 }
 
 /** Translate text into a target language. */
@@ -115,5 +116,5 @@ export async function aiTranslate(params: Record<string, string>) {
     messages: [{ role: "user", content: text }],
   });
 
-  return { model: MODEL, to, translation: textOf(msg), truncated, generatedAt: new Date().toISOString() };
+  return finish({ model: MODEL, to, translation: textOf(msg), truncated, generatedAt: new Date().toISOString() });
 }

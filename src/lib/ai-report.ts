@@ -130,6 +130,7 @@ export async function aiTokenReport(params: Record<string, string>) {
     data,
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }
 
@@ -242,6 +243,7 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
     data,
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }
 
@@ -303,6 +305,7 @@ export async function aiWalletReport(params: Record<string, string>) {
     data,
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }
 
@@ -376,6 +379,7 @@ export async function aiMarketBrief(_params: Record<string, string>) {
     },
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }
 
@@ -455,6 +459,7 @@ export async function aiWalletSecurity(params: Record<string, string>) {
     observations: parsed.observations ?? [],
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }
 
@@ -516,6 +521,7 @@ export async function aiTxExplain(params: Record<string, string>) {
     data: decoded,
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }
 
@@ -604,5 +610,6 @@ export async function aiContractRisk(params: Record<string, string>) {
     observations: parsed.observations ?? [],
     model: MODEL,
     generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
   };
 }

@@ -10,25 +10,9 @@
 
 import "server-only";
 import { tokenRisk, addressIntel } from "./onchain";
+import { securityChecked as wasSecurityChecked, type TokenRiskResult } from "./envelope";
 
-interface Security {
-  creatorAddress?: string | null;
-  creatorPct?: number | null;
-  holderCount?: number | null;
-}
-interface Ownership {
-  owner?: string | null;
-  renounced?: boolean | null;
-}
-interface RiskShape {
-  riskScore?: number;
-  riskLevel?: string;
-  flags?: string[];
-  ownership?: Ownership;
-  security?: Security;
-  securityChecked?: boolean;
-  sources?: string[];
-}
+type RiskShape = TokenRiskResult;
 interface ProfileShape {
   type?: string;
   txCount?: number;
@@ -45,7 +29,7 @@ export async function deployerReputation(params: Record<string, string>) {
   // Creator identity/holdings come from the security feed (GoPlus). If it wasn't
   // consulted, we can't profile the deployer — an "unremarkable/neutral" verdict
   // would be misleading, so we mark the result degraded below.
-  const securityChecked = risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"));
+  const securityChecked = wasSecurityChecked(risk);
   const creator = risk.security?.creatorAddress ?? null;
   const creatorPct = typeof risk.security?.creatorPct === "number" ? risk.security.creatorPct : null;
   const renounced = risk.ownership?.renounced ?? null;

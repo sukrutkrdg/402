@@ -14,6 +14,7 @@ import "server-only";
 import { tokenPrice } from "./onchain-extra";
 import { exitLiquidity } from "./liquidity";
 import { rugScore } from "./scores";
+import { riskSignal, finish } from "./envelope";
 
 interface PriceShape {
   priceUsd?: string | null;
@@ -48,6 +49,7 @@ export async function positionHealth(params: Record<string, string>) {
   ]);
   const exit = (exitR.status === "fulfilled" ? exitR.value : null) as ExitShape | null;
   const rug = (rugR.status === "fulfilled" ? rugR.value : null) as RugShape | null;
+  const rugSig = riskSignal(rug); // normalized {score, level, degraded}
 
   const currentPrice = price.priceUsd ? parseFloat(price.priceUsd) : null;
   const pnlPct =
@@ -56,8 +58,9 @@ export async function positionHealth(params: Record<string, string>) {
     pnlPct !== null ? +(sizeUsd * (1 + pnlPct / 100)).toFixed(2) : sizeUsd;
 
   const reasons: string[] = [];
-  if (rug?.level === "high") reasons.push(`Rug score is HIGH (${rug.rugScore}/100): ${(rug.signals || []).slice(0, 4).join(", ")}.`);
-  else if (rug?.level === "medium") reasons.push(`Rug score is medium (${rug?.rugScore}/100).`);
+  if (rugSig.level === "high") reasons.push(`Rug score is HIGH (${rugSig.score}/100): ${(rug?.signals || []).slice(0, 4).join(", ")}.`);
+  else if (rugSig.level === "medium") reasons.push(`Rug score is medium (${rugSig.score}/100).`);
+  else if (rugSig.degraded) reasons.push("Rug score could not be assessed this call (security feed unavailable) — treat as unverified.");
   if (exit && exit.canExit === false)
     reasons.push(`Position can no longer be exited cleanly — unwinding ~$${Math.round(positionValueUsd)} costs ~${exit.estSellImpactPct}% impact.`);
   else if (exit && (exit.estSellImpactPct ?? 0) >= 5)
@@ -67,15 +70,16 @@ export async function positionHealth(params: Record<string, string>) {
 
   // Verdict: a high rug score or a blocked exit means get out while you still
   // can; medium risk or a narrowing exit means watch; otherwise hold.
-  const exitNow = rug?.level === "high" || (exit ? exit.canExit === false : false);
+  const exitNow = rugSig.level === "high" || (exit ? exit.canExit === false : false);
   const watch =
-    rug?.level === "medium" ||
+    rugSig.level === "medium" ||
+    rugSig.degraded || // couldn't assess rug → don't call the position healthy
     (exit ? (exit.estSellImpactPct ?? 0) >= 5 : false) ||
     (price.liquidityUsd ?? Infinity) < 5000 ||
     (pnlPct !== null && pnlPct <= -50);
   const verdict: "exit_now" | "watch" | "healthy" = exitNow ? "exit_now" : watch ? "watch" : "healthy";
 
-  return {
+  return finish({
     address,
     positionSizeUsd: sizeUsd,
     entryPriceUsd: hasEntry ? entryPrice : null,
@@ -87,7 +91,7 @@ export async function positionHealth(params: Record<string, string>) {
     exit: exit
       ? { canExit: exit.canExit ?? null, estSellImpactPct: exit.estSellImpactPct ?? null, maxSafeExitUsd: exit.maxSafeExitUsd ?? null, exitRisk: exit.exitRisk ?? null }
       : null,
-    rug: rug ? { score: rug.rugScore ?? null, level: rug.level ?? null } : null,
+    rug: rug ? { score: rugSig.score, level: rugSig.level } : null,
     verdict, // healthy | watch | exit_now
     reasons,
     recommendation:
@@ -97,6 +101,5 @@ export async function positionHealth(params: Record<string, string>) {
           ? "Hold with a tight watch — risk or exit conditions have degraded. Consider trimming toward the max safe exit size."
           : "Position looks healthy: exitable at this size with no elevated rug signals.",
     note: "Post-trade check: live price/P&L + exit feasibility + current rug score in one call. Conditions change block to block — re-check before acting. Not financial advice.",
-    checkedAt: new Date().toISOString(),
-  };
+  });
 }

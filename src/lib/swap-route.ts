@@ -16,6 +16,7 @@ import "server-only";
 import { tokenPools } from "./onchain-extra";
 import { impactPct } from "./liquidity";
 import { tokenRisk } from "./onchain";
+import { securityChecked as wasSecurityChecked, type TokenRiskResult } from "./envelope";
 import { CdpClient } from "@coinbase/cdp-sdk";
 import { getConfig } from "./config";
 
@@ -27,17 +28,7 @@ interface Pool {
   liquidityUsd?: number | null;
   volume24h?: number | null;
 }
-interface Security {
-  isHoneypot?: boolean;
-  sellTaxPct?: number | null;
-  buyTaxPct?: number | null;
-}
-interface RiskShape {
-  flags?: string[];
-  security?: Security;
-  securityChecked?: boolean;
-  sources?: string[];
-}
+type RiskShape = TokenRiskResult;
 
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
@@ -144,8 +135,7 @@ export async function swapRoute(params: Record<string, string>) {
   let safety: { honeypot: boolean; sellTaxPct: number | null; canReceiveSafely: boolean; note: string } | null = null;
   try {
     const risk = (await tokenRisk({ address: tokenOut })) as RiskShape;
-    const securityChecked = risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"));
-    if (!securityChecked) {
+    if (!wasSecurityChecked(risk)) {
       // GoPlus wasn't consulted — tokenRisk still fulfilled, but honeypot/tax are
       // UNKNOWN, not clean. Leave safety null (the "unknown" path) rather than
       // asserting "no honeypot flag".

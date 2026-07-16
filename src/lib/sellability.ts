@@ -15,6 +15,7 @@ import { getAddress } from "viem";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { exitLiquidity } from "./liquidity";
+import { securityChecked as wasSecurityChecked, type TokenRiskResult } from "./envelope";
 
 const rpcUrl = (k: string) => `https://base-mainnet.g.alchemy.com/v2/${k}`;
 const ZERO_ISH = new Set([
@@ -72,21 +73,10 @@ async function simulateTransfer(
   }
 }
 
-interface SecurityShape {
-  isHoneypot?: boolean;
-  buyTaxPct?: number | null;
-  sellTaxPct?: number | null;
-  transferPausable?: boolean;
-}
-interface RiskShape {
-  // tokenRisk() nests honeypot/tax/pausable under `security`; only `flags` is
-  // top-level. Reading these off the top level silently yields null → the
-  // high-tax verdict never fires. Read from `security`.
-  security?: SecurityShape;
-  flags?: string[];
-  securityChecked?: boolean;
-  sources?: string[];
-}
+// tokenRisk() nests honeypot/tax/pausable under `security`; only `flags` is
+// top-level. Reading these off the top level silently yields null → the high-tax
+// verdict never fires. The shared TokenRiskResult encodes the correct shape.
+type RiskShape = TokenRiskResult;
 
 export async function sellability(params: Record<string, string>) {
   const token = reqAddr(params.address || "");
@@ -113,9 +103,7 @@ export async function sellability(params: Record<string, string>) {
   const sec = risk?.security;
   // Was the honeypot/tax feed actually consulted? Empty security data during an
   // outage must not read as "sellable".
-  const securityChecked = risk
-    ? risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"))
-    : false;
+  const securityChecked = wasSecurityChecked(risk);
   const honeypot = Boolean(sec?.isHoneypot) || flags.includes("honeypot");
   const cannotSellAll = flags.includes("cannot_sell_all");
   const sellTax = typeof sec?.sellTaxPct === "number" ? sec.sellTaxPct : null;
