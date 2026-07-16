@@ -125,12 +125,14 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   try {
     r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as unknown as MC[];
   } catch {
-    // Whole-chain RPC failure (not a per-call revert) — retry once, else give up.
+    // Whole-chain RPC failure (not a per-call revert) — retry once, else fail
+    // LOUD. Returning `empty` here would read as "not a B20" and silently drop
+    // real holdings (or clear a token we couldn't actually read).
     try {
       await sleep(400);
       r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as unknown as MC[];
     } catch {
-      return empty;
+      throw new Error("B20 read unavailable (RPC) — try again shortly");
     }
   }
 
@@ -329,12 +331,16 @@ export async function b20Batch(params: Record<string, string>) {
 
   const results = [];
   for (const a of list) {
-    const r = await b20Safety({ address: a });
-    results.push(
-      r.isB20
-        ? { address: a, isB20: true, symbol: (r as { symbol?: string }).symbol ?? null, verdict: (r as { verdict?: string }).verdict, riskScore: (r as { riskScore?: number }).riskScore }
-        : { address: a, isB20: false },
-    );
+    try {
+      const r = await b20Safety({ address: a });
+      results.push(
+        r.isB20
+          ? { address: a, isB20: true, symbol: (r as { symbol?: string }).symbol ?? null, verdict: (r as { verdict?: string }).verdict, riskScore: (r as { riskScore?: number }).riskScore }
+          : { address: a, isB20: false },
+      );
+    } catch {
+      results.push({ address: a, error: "read unavailable — retry" }); // one bad RPC read shouldn't fail the whole paid batch
+    }
     await sleep(150);
   }
   const worst = results.reduce((m, r) => Math.max(m, ("riskScore" in r ? r.riskScore ?? 0 : 0)), 0);
@@ -418,8 +424,15 @@ export async function b20Portfolio(params: Record<string, string>) {
   const candidates = contracts.filter((a) => a.toLowerCase().startsWith("0xb200")).slice(0, 15);
 
   const holdings: Array<Record<string, unknown>> = [];
+  const unreadable: string[] = [];
   for (const c of candidates) {
-    const s = await readB20Signals(getAddress(c));
+    let s: Awaited<ReturnType<typeof readB20Signals>>;
+    try {
+      s = await readB20Signals(getAddress(c));
+    } catch {
+      unreadable.push(c); // RPC failure ≠ not-a-B20 — surface it, don't drop it
+      continue;
+    }
     if (!s.isB20) continue;
     let walletBlocked: boolean | null = null;
     if (s.canSeize && !s.degraded) {
@@ -443,6 +456,7 @@ export async function b20Portfolio(params: Record<string, string>) {
   return {
     wallet, b20Count: holdings.length, seizableCount: seizable.length, blockedCount: blocked.length,
     verdict, holdings,
+    ...(unreadable.length ? { unreadableCount: unreadable.length, unreadable, degraded: true } : {}),
     recommendation:
       blocked.length ? `⚠️ You are ALREADY blocked/seizable on ${blocked.length} B20 token(s) — exit those positions if you can.`
         : seizable.length ? `${seizable.length} of your B20 holdings can be frozen/seized by their issuer. Watch policy changes (b20-policy-watch) and size accordingly.`

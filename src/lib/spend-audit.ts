@@ -33,13 +33,27 @@ const lc = (v: unknown) => String(v ?? "").toLowerCase();
 
 /**
  * The event carries `(bytes32 hash, SpendPermission spendPermission)`. CDP SQL may
- * flatten the struct differently across indexer versions, so pull each field from
- * wherever it lands (nested under spendPermission, or flat).
+ * flatten the struct differently across indexer versions: nested object, flat
+ * fields, or (current indexer) a single tuple STRING of the form
+ * "{0xAccount 0xSpender 0xToken allowance period start end salt [extraData]}"
+ * in struct order. Pull each field from wherever it lands.
  */
 function readPerm(parameters: unknown): { hash: string; account: string; spender: string; token: string; allowance: string; period: string; start: string; end: string } | null {
   const p = (parameters ?? {}) as Record<string, unknown>;
-  const sp = (p.spendPermission ?? p.spend_permission ?? p) as Record<string, unknown>;
   const hash = String(p.hash ?? p.permissionHash ?? "");
+  const raw = p.spendPermission ?? p.spend_permission ?? p;
+  if (typeof raw === "string") {
+    // Tuple-string form; struct order: account spender token allowance period start end salt extraData
+    const parts = raw.replace(/^\{|\}$/g, "").trim().split(/\s+/);
+    const [account, spender, token, allowance, period, start, end] = parts;
+    if (!isAddr(lc(account ?? "")) || !isAddr(lc(spender ?? ""))) return null;
+    return {
+      hash,
+      account: lc(account), spender: lc(spender), token: lc(token ?? ""),
+      allowance: allowance ?? "0", period: period ?? "0", start: start ?? "0", end: end ?? "0",
+    };
+  }
+  const sp = raw as Record<string, unknown>;
   const account = lc(sp.account);
   const spender = lc(sp.spender);
   const token = lc(sp.token);
@@ -90,19 +104,24 @@ export async function spendAudit(params: Record<string, string>) {
     const end = Number(perm!.end || "0");
     const period = Number(perm!.period || "0");
     const unlimited = allowance >= NEAR_UNLIMITED;
-    const noExpiry = end === 0 || end > now + 60 * 60 * 24 * 365 * 5; // 0 or >5y ≈ perpetual
-    const expired = end !== 0 && end < now;
+    // 0 and uint48-max both appear in the wild as "never expires"; >5y ≈ perpetual too.
+    const noExpiry = end === 0 || end > now + 60 * 60 * 24 * 365 * 5;
+    const expired = !noExpiry && end < now;
+    // A SHORT period is the drain vector: the spender can re-pull the full
+    // allowance every period (period=1s + $5 allowance = $432k/day authority).
+    const shortPeriod = period > 0 && period <= 3600 && allowance > 0n && !expired;
     const flags: string[] = [];
     if (unlimited) flags.push("UNLIMITED allowance per period");
     if (noExpiry) flags.push("no/near-infinite expiry");
+    if (shortPeriod) flags.push(`short ${period}s period — allowance re-spendable ${Math.round(86400 / period).toLocaleString("en-US")}×/day`);
     if (period >= 60 * 60 * 24 * 30) flags.push(`long ${Math.round(period / 86400)}-day period`);
-    const risk = expired ? "expired" : unlimited && noExpiry ? "high" : unlimited || noExpiry ? "medium" : "low";
+    const risk = expired ? "expired" : (unlimited || shortPeriod) && noExpiry ? "high" : unlimited || noExpiry || shortPeriod ? "medium" : "low";
     return {
       spender: perm!.spender,
       token: perm!.token === NATIVE ? "ETH (native)" : perm!.token,
       allowancePerPeriod: unlimited ? "unlimited" : allowance.toString(),
       periodSeconds: period,
-      endsAt: end === 0 ? "never" : new Date(end * 1000).toISOString(),
+      endsAt: noExpiry ? "never" : new Date(end * 1000).toISOString(),
       grantedAt: at,
       expired,
       risk,
@@ -122,7 +141,7 @@ export async function spendAudit(params: Record<string, string>) {
     verdict, // action_required | review | ok | none
     permissions: activeNow.sort((a, b) => (rank[a.risk] ?? 9) - (rank[b.risk] ?? 9)),
     recommendation:
-      high.length ? `⚠️ ${high.length} spend permission(s) grant UNLIMITED, non-expiring authority — revoke any you don't recognize; a spender can pull the full allowance every period.`
+      high.length ? `⚠️ ${high.length} spend permission(s) grant effectively unbounded, non-expiring authority (unlimited allowance and/or rapid re-spend period) — revoke any you don't recognize; a spender can pull the full allowance every period.`
         : activeNow.length ? `${activeNow.length} active spend permission(s). Confirm each spender is one you intend to keep funding, and prefer scoped allowances with an expiry.`
           : "No active Base Account spend permissions found for this wallet.",
     note: "Reconstructs a wallet's active Base Account spend permissions (SpendPermissionManager) from onchain approve/revoke events and flags unlimited/non-expiring grants — the agent-era drain vector ERC-20 approval tools can't see. Revoke via the Base Account app. Not financial advice.",

@@ -150,11 +150,21 @@ export async function walletTokenContracts(address: Address): Promise<Address[]>
   const cfg = getConfig();
   if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return [];
   const cdp = new CdpClient({ apiKeyId: cfg.cdpApiKeyId, apiKeySecret: cfg.cdpApiKeySecret });
-  const res = await cdp.evm.listTokenBalances({ network: "base", address });
-  return (res.balances ?? [])
-    .map((b) => b.token?.contractAddress)
-    .filter((a): a is Address => !!a && /^0x[0-9a-fA-F]{40}$/.test(a))
-    .slice(0, 100);
+  // The API pages at 20 by default with unstable ordering — a wallet holding >20
+  // tokens would get a different (and incomplete) token set on every call. Walk
+  // the pages so B20 holdings past the first page are never silently missed.
+  const out: Address[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < 10; page++) {
+    const res = await cdp.evm.listTokenBalances({ network: "base", address, pageSize: 100, pageToken });
+    for (const b of res.balances ?? []) {
+      const a = b.token?.contractAddress;
+      if (a && /^0x[0-9a-fA-F]{40}$/.test(a)) out.push(a);
+    }
+    pageToken = res.nextPageToken ?? undefined;
+    if (!pageToken || out.length >= 500) break;
+  }
+  return out.slice(0, 500);
 }
 
 export async function walletPortfolio(params: Record<string, string>) {
