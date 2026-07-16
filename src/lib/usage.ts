@@ -133,22 +133,37 @@ export async function logUsage(
   }
 }
 
+// These counters only ever INCREMENT, so a read that comes back lower than one
+// we've already seen (typically 0, from a rate-limited KV GET that slipped past
+// the retry) is provably a transient failure — never render the regression.
+// Per-instance memory; resets on cold start, which is fine (the floor just
+// re-learns from the next good read).
+const lastGood = new Map<string, number>();
+/** Clamp a monotonic counter to the highest value we've seen (never regress). */
+function applyFloor(key: string, v: number): number {
+  const floor = lastGood.get(key) ?? 0;
+  const best = Math.max(v, floor);
+  if (best > floor) lastGood.set(key, best);
+  return best;
+}
+async function monotonicCounter(key: string): Promise<number> {
+  let v = 0;
+  try {
+    v = await kvGetNumber(key);
+  } catch {
+    v = 0;
+  }
+  return applyFloor(key, v);
+}
+
 /** Single cheap read for the public "N calls served" strip. */
 export async function getCallsServed(): Promise<number> {
-  try {
-    return await kvGetNumber("usage:calls:total");
-  } catch {
-    return 0;
-  }
+  return monotonicCounter("usage:calls:total");
 }
 
 /** Public social-proof counter: total PAID calls (real agents that paid). */
 export async function getPaidServed(): Promise<number> {
-  try {
-    return await kvGetNumber("usage:paid:total");
-  } catch {
-    return 0;
-  }
+  return monotonicCounter("usage:paid:total");
 }
 
 export interface UsageRow {
@@ -240,8 +255,10 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
     };
   });
   const t = serviceIds.length * 5; // start of TAIL
-  const totalCalls = toNum(res[t]);       // global counter — matches the public strip
-  const totalPaid = toNum(res[t + 1]);
+  // Global counters — same values (and same never-regress floor) the public strip
+  // uses, so /stats and the landing page always agree.
+  const totalCalls = applyFloor("usage:calls:total", toNum(res[t]));
+  const totalPaid = applyFloor("usage:paid:total", toNum(res[t + 1]));
   const perTotalCalls = per.reduce((a, r) => a + r.total, 0); // current-services sum (≤ total)
   const today = toNum(res[t + 2]);
   const paidToday = toNum(res[t + 3]);
