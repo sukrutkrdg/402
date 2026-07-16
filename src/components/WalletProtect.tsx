@@ -16,6 +16,28 @@ interface RevokeItem {
   priority: "high" | "medium" | "low";
 }
 
+interface B20Holding {
+  token: string;
+  symbol: string | null;
+  variant: string | null;
+  seizable: boolean;
+  freezable: boolean;
+  pausedNow: boolean;
+  rebase: boolean;
+  walletBlocked: boolean | null;
+  risk: "high" | "medium" | "low";
+}
+
+interface B20Result {
+  b20Count: number;
+  seizableCount: number;
+  blockedCount: number;
+  verdict: "action_required" | "exposed" | "clear" | "no_b20";
+  holdings: B20Holding[];
+  recommendation: string;
+  unreadableCount?: number;
+}
+
 const short = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 /**
@@ -69,6 +91,10 @@ export default function WalletProtect() {
   const [summary, setSummary] = useState<{ totalUsdAtRisk: number; highPriorityCount: number; recommendation: string } | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
+  const [b20, setB20] = useState<B20Result | null>(null);
+  const [b20Busy, setB20Busy] = useState(false);
+  // Which scan the wallet picker should resume after the user chooses a connector.
+  const [action, setAction] = useState<"approvals" | "b20">("approvals");
 
   const target = (addr.trim() || address || "").trim();
   const valid = /^0x[0-9a-fA-F]{40}$/.test(target);
@@ -78,6 +104,7 @@ export default function WalletProtect() {
       setErr("Enter a wallet address, or connect your wallet.");
       return;
     }
+    setAction("approvals");
     setBusy(true);
     setErr(null);
     setQueue(null);
@@ -105,6 +132,45 @@ export default function WalletProtect() {
       setErr(e instanceof Error ? e.message : "Scan failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** B20 exposure scan — Base-native freeze/seize powers ERC-20 tools can't see. */
+  async function scanB20(chosen?: Connector) {
+    if (!valid) {
+      setErr("Enter a wallet address, or connect your wallet.");
+      return;
+    }
+    setAction("b20");
+    setB20Busy(true);
+    setErr(null);
+    setB20(null);
+    try {
+      const r = await pay(`/api/x402/b20-portfolio?wallet=${target}`, chosen);
+      if (r === PICK_WALLET) {
+        setB20Busy(false);
+        return;
+      }
+      const text = await r.text();
+      const j = JSON.parse(text);
+      if (!r.ok) {
+        const m = (j.error as string) || `Scan failed (${r.status})`;
+        throw new Error(/insufficient|balance|settle|402/i.test(m) ? `${m} — you may be out of USDC on Base.` : m);
+      }
+      const d = j.data ?? {};
+      setB20({
+        b20Count: d.b20Count ?? 0,
+        seizableCount: d.seizableCount ?? 0,
+        blockedCount: d.blockedCount ?? 0,
+        verdict: d.verdict ?? "no_b20",
+        holdings: (d.holdings ?? []) as B20Holding[],
+        recommendation: d.recommendation ?? "",
+        unreadableCount: d.unreadableCount,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Scan failed");
+    } finally {
+      setB20Busy(false);
     }
   }
 
@@ -176,10 +242,18 @@ export default function WalletProtect() {
 
       <button
         onClick={() => scan()}
-        disabled={busy || !valid}
+        disabled={busy || b20Busy || !valid}
         className="btn-primary !py-2 text-sm disabled:opacity-40"
       >
         {busy ? (step ?? "Scanning…") : "🛡️ Scan approvals · $0.05"}
+      </button>
+
+      <button
+        onClick={() => scanB20()}
+        disabled={busy || b20Busy || !valid}
+        className="btn-ghost !py-2 text-sm disabled:opacity-40"
+      >
+        {b20Busy ? (step ?? "Scanning B20s…") : "🧊 Scan B20 holdings · freeze/seize risk · $0.06"}
       </button>
 
       {picker && (
@@ -187,7 +261,11 @@ export default function WalletProtect() {
           <span className="text-[11px] text-sky-200">Choose a wallet to pay with:</span>
           <div className="flex flex-wrap gap-2">
             {picker.map((c) => (
-              <button key={c.uid} onClick={() => scan(c)} className="btn-ghost !px-3 !py-1.5 text-xs">
+              <button
+                key={c.uid}
+                onClick={() => (action === "b20" ? scanB20(c) : scan(c))}
+                className="btn-ghost !px-3 !py-1.5 text-xs"
+              >
                 {c.name}
               </button>
             ))}
@@ -262,6 +340,50 @@ export default function WalletProtect() {
 
       {queue && queue.length === 0 && (
         <div className="card p-3 text-xs text-emerald-300">✓ No risky approvals found — your wallet looks clean.</div>
+      )}
+
+      {b20 && (
+        <div className="card p-3 text-xs">
+          <div className="font-semibold">
+            {b20.verdict === "action_required" ? (
+              <span className="text-red-300">⚠️ You are blocked/seizable on {b20.blockedCount} B20 token{b20.blockedCount === 1 ? "" : "s"}</span>
+            ) : b20.verdict === "exposed" ? (
+              <span className="text-amber-300">🧊 {b20.seizableCount} of {b20.b20Count} B20 holding{b20.b20Count === 1 ? "" : "s"} can be frozen/seized</span>
+            ) : b20.verdict === "clear" ? (
+              <span className="text-emerald-300">✓ {b20.b20Count} B20 holding{b20.b20Count === 1 ? "" : "s"} — no active freeze/seize powers</span>
+            ) : (
+              <span className="text-gray-400">No B20 (Base-native) tokens in this wallet</span>
+            )}
+          </div>
+          {b20.recommendation && <p className="mt-1 text-gray-400">{b20.recommendation}</p>}
+          {(b20.unreadableCount ?? 0) > 0 && (
+            <p className="mt-1 text-amber-300/80">{b20.unreadableCount} token{b20.unreadableCount === 1 ? "" : "s"} could not be read — rescan shortly.</p>
+          )}
+        </div>
+      )}
+
+      {b20 && b20.holdings.length > 0 && (
+        <div className="card divide-y divide-base-line/60">
+          {b20.holdings.map((h) => (
+            <div key={h.token} className="flex items-center justify-between gap-3 px-3 py-2.5 text-xs">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`font-semibold ${prCls(h.risk)}`}>{h.risk.toUpperCase()}</span>
+                  <span className="truncate font-medium">{h.symbol ?? short(h.token)}</span>
+                  {h.variant && <span className="pill !px-1.5 !py-0 !text-[9px] text-gray-400">{h.variant}</span>}
+                </div>
+                <div className="mt-0.5 flex flex-wrap gap-x-2 text-[10px] text-gray-500">
+                  {h.walletBlocked === true && <span className="text-red-300">YOU ARE BLOCKED</span>}
+                  {h.seizable && <span className="text-red-300">seizable</span>}
+                  {h.freezable && <span className="text-amber-300">transfer-gated</span>}
+                  {h.pausedNow && <span className="text-red-300">paused now</span>}
+                  {h.rebase && <span>rebase</span>}
+                  {!h.seizable && !h.freezable && !h.pausedNow && !h.rebase && <span className="text-emerald-300">clean</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
