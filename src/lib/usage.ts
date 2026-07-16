@@ -214,7 +214,13 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   ] as (string | number)[][];
   gets.push(...TAIL);
 
-  const res = await kvPipeline(gets);
+  // All-reads pipeline → safe to retry once on a transient (rate-limited) failure
+  // before dropping to the per-key fallback.
+  let res = await kvPipeline(gets);
+  if (res === null) {
+    await new Promise((r) => setTimeout(r, 200));
+    res = await kvPipeline(gets);
+  }
   const toNum = (v: unknown) => (typeof v === "string" ? parseInt(v, 10) || 0 : typeof v === "number" ? v : 0);
   const toArr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
 

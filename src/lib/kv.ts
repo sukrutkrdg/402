@@ -36,7 +36,11 @@ function memValid(k: string): Entry | undefined {
 }
 
 // ---- Upstash REST command ----
-async function cmd<T = unknown>(args: (string | number)[]): Promise<T | null> {
+// Single attempt, distinguishing a TRANSPORT failure (fetch threw / non-2xx —
+// e.g. a rate-limited 429) from a successful read whose value is genuinely null
+// (missing key). Callers that must not surface a transient failure as a real "0"
+// use this via cmdRead() to retry only the transport-failure case.
+async function cmdOnce<T = unknown>(args: (string | number)[]): Promise<{ ok: boolean; result: T | null }> {
   try {
     const res = await fetch(URL_ENV, {
       method: "POST",
@@ -44,12 +48,32 @@ async function cmd<T = unknown>(args: (string | number)[]): Promise<T | null> {
       body: JSON.stringify(args),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, result: null };
     const j = (await res.json()) as { result?: T };
-    return (j.result ?? null) as T | null;
+    return { ok: true, result: (j.result ?? null) as T | null };
   } catch {
-    return null;
+    return { ok: false, result: null };
   }
+}
+
+async function cmd<T = unknown>(args: (string | number)[]): Promise<T | null> {
+  return (await cmdOnce<T>(args)).result;
+}
+
+/**
+ * Read-only command with bounded retry on TRANSPORT failure only. A valid null
+ * result (missing key) returns immediately — so legitimately-empty counters cost
+ * one call, while a rate-limited/timed-out read (the cause of the dashboard's
+ * numbers flickering to 0) is retried instead of returning a false null. Never
+ * use for writes — a retried INCR/LPUSH could double-apply.
+ */
+async function cmdRead<T = unknown>(args: (string | number)[]): Promise<T | null> {
+  for (let i = 0; i < 3; i++) {
+    const r = await cmdOnce<T>(args);
+    if (r.ok) return r.result;
+    if (i < 2) await new Promise((res) => setTimeout(res, 150 * (i + 1)));
+  }
+  return null; // persistent transport failure — caller decides (0 / degraded)
 }
 
 /**
@@ -121,7 +145,7 @@ export async function kvDecrBy(key: string, by: number): Promise<number | null> 
 
 export async function kvGetNumber(key: string): Promise<number> {
   if (kvConfigured()) {
-    const v = await cmd<string>(["GET", key]);
+    const v = await cmdRead<string>(["GET", key]); // retry on transient failure → no false 0
     return v ? parseInt(v, 10) || 0 : 0;
   }
   const e = memValid(key);
@@ -129,7 +153,7 @@ export async function kvGetNumber(key: string): Promise<number> {
 }
 
 export async function kvGet(key: string): Promise<string | null> {
-  if (kvConfigured()) return await cmd<string>(["GET", key]);
+  if (kvConfigured()) return await cmdRead<string>(["GET", key]);
   return memValid(key)?.value ?? null;
 }
 
@@ -180,7 +204,7 @@ export async function kvLPush(key: string, value: string, capTo = 200): Promise<
 }
 
 export async function kvLRange(key: string, start = 0, stop = -1): Promise<string[]> {
-  if (kvConfigured()) return (await cmd<string[]>(["LRANGE", key, start, stop])) ?? [];
+  if (kvConfigured()) return (await cmdRead<string[]>(["LRANGE", key, start, stop])) ?? [];
   const arr = memList.get(key) ?? [];
   return stop === -1 ? arr.slice(start) : arr.slice(start, stop + 1);
 }
@@ -206,6 +230,6 @@ export async function kvSRem(key: string, member: string): Promise<void> {
 }
 
 export async function kvSMembers(key: string): Promise<string[]> {
-  if (kvConfigured()) return (await cmd<string[]>(["SMEMBERS", key])) ?? [];
+  if (kvConfigured()) return (await cmdRead<string[]>(["SMEMBERS", key])) ?? [];
   return memList.get(`set:${key}`) ?? [];
 }
