@@ -35,6 +35,8 @@ interface Security {
 interface RiskShape {
   flags?: string[];
   security?: Security;
+  securityChecked?: boolean;
+  sources?: string[];
 }
 
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -142,20 +144,28 @@ export async function swapRoute(params: Record<string, string>) {
   let safety: { honeypot: boolean; sellTaxPct: number | null; canReceiveSafely: boolean; note: string } | null = null;
   try {
     const risk = (await tokenRisk({ address: tokenOut })) as RiskShape;
-    const sec = risk.security;
-    const honeypot = Boolean(sec?.isHoneypot) || (risk.flags || []).includes("honeypot");
-    const sellTax = typeof sec?.sellTaxPct === "number" ? sec.sellTaxPct : null;
-    const canReceiveSafely = !honeypot && (sellTax === null || sellTax < 50);
-    safety = {
-      honeypot,
-      sellTaxPct: sellTax,
-      canReceiveSafely,
-      note: honeypot
-        ? "Token is flagged as a honeypot — you may not be able to sell it. Do not route into it."
-        : sellTax !== null && sellTax >= 50
-          ? `Extreme sell tax (${sellTax}%) — you'd keep almost nothing on exit.`
-          : "No honeypot / extreme-tax flag on the token you'd receive.",
-    };
+    const securityChecked = risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"));
+    if (!securityChecked) {
+      // GoPlus wasn't consulted — tokenRisk still fulfilled, but honeypot/tax are
+      // UNKNOWN, not clean. Leave safety null (the "unknown" path) rather than
+      // asserting "no honeypot flag".
+      safety = null;
+    } else {
+      const sec = risk.security;
+      const honeypot = Boolean(sec?.isHoneypot) || (risk.flags || []).includes("honeypot");
+      const sellTax = typeof sec?.sellTaxPct === "number" ? sec.sellTaxPct : null;
+      const canReceiveSafely = !honeypot && (sellTax === null || sellTax < 50);
+      safety = {
+        honeypot,
+        sellTaxPct: sellTax,
+        canReceiveSafely,
+        note: honeypot
+          ? "Token is flagged as a honeypot — you may not be able to sell it. Do not route into it."
+          : sellTax !== null && sellTax >= 50
+            ? `Extreme sell tax (${sellTax}%) — you'd keep almost nothing on exit.`
+            : "No honeypot / extreme-tax flag on the token you'd receive.",
+      };
+    }
   } catch {
     safety = null; // security provider down → surface the route, flag safety as unknown
   }
@@ -192,13 +202,16 @@ export async function swapRoute(params: Record<string, string>) {
     suggestedSlippagePct,
     suggestedMinOutPct, // set your min-out to this % of the quoted amount
     safety, // honeypot / sell-tax gate on tokenOut (null if unavailable)
+    safetyChecked: safety !== null, // false → could not screen the destination token
     verdict, // ok | trade_reduces_size | do_not_trade
     recommendation:
       verdict === "do_not_trade"
         ? "Don't trade — the token you'd receive fails the sellability gate."
         : highImpact
           ? `Price impact ~${estImpact}% at this size — split the order or reduce size to protect your fill.`
-          : `Route via ${best.dexId ?? "the deepest pool"}; set min-out to ${suggestedMinOutPct}% of the quote.`,
+          : safety === null
+            ? `Route looks fine on depth, but the destination token could NOT be safety-screened this call (honeypot/tax unknown) — re-check with token-risk before routing. Set min-out to ${suggestedMinOutPct}%.`
+            : `Route via ${best.dexId ?? "the deepest pool"}; set min-out to ${suggestedMinOutPct}% of the quote.`,
     note: "cdpRoute gives exact routed output (toAmount/minToAmount, atomic units) via the CDP Trade API when CDP keys are set; price impact is a constant-product estimate (or 0x when ZEROX_API_KEY is set). Not financial advice.",
     checkedAt: new Date().toISOString(),
   };

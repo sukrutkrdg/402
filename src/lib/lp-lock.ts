@@ -65,8 +65,16 @@ export async function lpLock(params: Record<string, string>) {
       burnedPct += pct;
     } else if (locked) {
       lockedPct += pct;
+      // end_time is a unix seconds number in most responses, but GoPlus also
+      // returns a "YYYY-MM-DD HH:MM:SS" string for some pools — Number() on that
+      // is NaN and new Date(NaN).toISOString() THROWS, 500-ing the whole call.
       const end = h.locked_detail?.[0]?.end_time;
-      const unlockDate = end ? new Date(Number(end) * 1000).toISOString() : null;
+      let unlockDate: string | null = null;
+      if (end !== undefined && end !== null && end !== "") {
+        const secs = Number(end);
+        const d = Number.isFinite(secs) ? new Date(secs * 1000) : new Date(String(end));
+        unlockDate = Number.isNaN(d.getTime()) ? null : d.toISOString();
+      }
       lockers.push({ address: h.address ?? null, tag: h.tag || null, percent: +pct.toFixed(2), unlockDate });
     }
   }

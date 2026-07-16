@@ -26,6 +26,8 @@ interface RiskShape {
   flags?: string[];
   ownership?: Ownership;
   security?: Security;
+  securityChecked?: boolean;
+  sources?: string[];
 }
 interface ProfileShape {
   type?: string;
@@ -40,6 +42,10 @@ export async function deployerReputation(params: Record<string, string>) {
 
   // tokenRisk throws (pre-settlement) if the token can't be read at all.
   const risk = (await tokenRisk({ address: token })) as RiskShape;
+  // Creator identity/holdings come from the security feed (GoPlus). If it wasn't
+  // consulted, we can't profile the deployer — an "unremarkable/neutral" verdict
+  // would be misleading, so we mark the result degraded below.
+  const securityChecked = risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"));
   const creator = risk.security?.creatorAddress ?? null;
   const creatorPct = typeof risk.security?.creatorPct === "number" ? risk.security.creatorPct : null;
   const renounced = risk.ownership?.renounced ?? null;
@@ -101,7 +107,13 @@ export async function deployerReputation(params: Record<string, string>) {
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
-  const reputation = score >= 70 ? "trusted" : score >= 50 ? "neutral" : score >= 30 ? "caution" : "high_risk";
+  // Without the security feed we couldn't read the creator at all — don't emit a
+  // confident "neutral/trusted" reputation; the deployer is UNKNOWN.
+  const degraded = !securityChecked && creator === null;
+  if (degraded) signals.push("Creator identity unavailable this call (security feed down) — deployer could not be profiled.");
+  const reputation = degraded
+    ? "unknown"
+    : score >= 70 ? "trusted" : score >= 50 ? "neutral" : score >= 30 ? "caution" : "high_risk";
 
   return {
     token,
@@ -112,7 +124,8 @@ export async function deployerReputation(params: Record<string, string>) {
       ? { type: profile.type ?? null, txCount: profile.txCount ?? null, ethBalance: profile.ethBalance ?? null, activity: profile.activity ?? null }
       : null,
     reputationScore: score, // 0-100, higher = more trustworthy
-    reputation, // trusted | neutral | caution | high_risk
+    reputation, // trusted | neutral | caution | high_risk | unknown
+    ...(degraded ? { degraded: true } : {}),
     signals,
     recommendation:
       reputation === "high_risk"
@@ -121,7 +134,9 @@ export async function deployerReputation(params: Record<string, string>) {
           ? "Deployer shows caution signals — verify holdings and ownership before sizing up."
           : reputation === "trusted"
             ? "Deployer profile looks established and low-control."
-            : "Deployer profile is unremarkable — combine with token-level checks.",
+            : reputation === "unknown"
+              ? "Could not read the deployer this call (security feed unavailable) — re-check before trusting the token."
+              : "Deployer profile is unremarkable — combine with token-level checks.",
     note: "Creator identity from on-chain security data; profile from Base RPC. A fresh creator with large holdings and no renounce is the classic rug setup. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };

@@ -125,13 +125,20 @@ export async function complianceCheck(params: Record<string, string>) {
     }
   }
 
+  // A "clear" recommendation must mean the sanctions screen actually ran. When
+  // the list couldn't be loaded (sanctioned === null), the honest answer is
+  // "unknown", never "clear" — a compliance agent must not read an unscreened
+  // counterparty as safe.
   const recommendation =
-    sanctioned === true ? "blocked" : token?.riskLevel === "high" ? "review" : "clear";
+    sanctioned === true ? "blocked"
+      : sanctioned === null ? "unknown"
+        : token?.riskLevel === "high" ? "review" : "clear";
 
   return {
     address,
-    recommendation,
+    recommendation, // blocked | review | clear | unknown
     sanctioned,
+    ...(sanctioned === null ? { degraded: true, note2: "OFAC sanctions list was unavailable this call — screening did not run." } : {}),
     sanctionsStale: sancV?.stale ?? null,
     addressType: isContract === null ? "unknown" : isContract ? "contract" : "eoa",
     token,

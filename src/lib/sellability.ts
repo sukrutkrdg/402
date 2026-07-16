@@ -84,6 +84,8 @@ interface RiskShape {
   // high-tax verdict never fires. Read from `security`.
   security?: SecurityShape;
   flags?: string[];
+  securityChecked?: boolean;
+  sources?: string[];
 }
 
 export async function sellability(params: Record<string, string>) {
@@ -109,6 +111,11 @@ export async function sellability(params: Record<string, string>) {
 
   const flags = risk?.flags || [];
   const sec = risk?.security;
+  // Was the honeypot/tax feed actually consulted? Empty security data during an
+  // outage must not read as "sellable".
+  const securityChecked = risk
+    ? risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"))
+    : false;
   const honeypot = Boolean(sec?.isHoneypot) || flags.includes("honeypot");
   const cannotSellAll = flags.includes("cannot_sell_all");
   const sellTax = typeof sec?.sellTaxPct === "number" ? sec.sellTaxPct : null;
@@ -127,12 +134,38 @@ export async function sellability(params: Record<string, string>) {
   if (sim.ran && sim.taxedOnTransfer) reasons.push("Transfers are taxed (confirmed by live simulation).");
   if (canExit === false) reasons.push("Pool too thin to exit this size without heavy slippage.");
 
+  // If NEITHER the security feed NOR the live simulation actually ran, we have no
+  // sell-mechanics evidence at all — a positive "sellable" here would be a guess.
+  // (A confirmed honeypot/revert still stands even when degraded.)
+  const degraded = !securityChecked && !(sim.ran);
+  if (degraded && canSell) {
+    reasons.push("Neither the security feed nor the live transfer simulation was available — sellability could not be confirmed.");
+    return {
+      address: token,
+      canSell: null,
+      riskLevel: "unknown",
+      degraded: true,
+      honeypot,
+      cannotSellAll,
+      sellTaxPct: sellTax,
+      buyTaxPct: buyTax,
+      transferPausable,
+      canExitSize: canExit,
+      liveSimulation: sim,
+      reasons,
+      verdict: "unknown",
+      note: "PARTIAL: sell-mechanics providers were unavailable this call — cannot confirm the token is sellable. Re-check shortly. Not financial advice.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   const level = !canSell ? "high" : sellTax !== null && sellTax >= 15 ? "medium" : transferPausable ? "medium" : "low";
 
   return {
     address: token,
     canSell,
     riskLevel: level, // low | medium | high
+    degraded,
     honeypot,
     cannotSellAll,
     sellTaxPct: sellTax,
@@ -146,7 +179,9 @@ export async function sellability(params: Record<string, string>) {
         ? "sellable_with_high_tax"
         : "sellable"
       : "do_not_buy_cannot_sell",
-    note: "Combines security simulation, a live transfer simulation we run, and exit-liquidity. Simulate again before trading; state can change. Not financial advice.",
+    note: degraded
+      ? "PARTIAL: security feed unavailable — verdict rests on the live simulation and RPC only. Not financial advice."
+      : "Combines security simulation, a live transfer simulation we run, and exit-liquidity. Simulate again before trading; state can change. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

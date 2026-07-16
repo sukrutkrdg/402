@@ -40,7 +40,11 @@ export async function exitLiquidity(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
   const size = Math.max(0, parseFloat(params.size || params.amount || "1000") || 1000);
 
-  const allPairs = (await dexTokenPairs<DexPair>(address)) ?? [];
+  // Distinguish a provider OUTAGE (null) from a token with genuinely no pools
+  // ([]). Collapsing both to "No liquidity pool found" tells the buyer a token is
+  // illiquid when we simply couldn't reach the data provider.
+  const allPairs = await dexTokenPairs<DexPair>(address);
+  if (allPairs === null) throw new Error("Liquidity data provider unavailable — try again shortly");
   const pairs = allPairs.filter((p) => p.baseToken?.address?.toLowerCase() === address.toLowerCase());
   if (pairs.length === 0) throw new Error("No liquidity pool found for this token on Base");
 

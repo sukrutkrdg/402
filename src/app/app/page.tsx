@@ -127,7 +127,7 @@ function formatResult(id: string, d: Record<string, unknown>): string {
       return `${s(d.verdict).toUpperCase()} · safety ${s(d.safetyScore)}/100\nBuy: ${tr?.canBuy} · Sell: ${tr?.canSell}\n\n${s(d.summary)}\n\n➡️ ${s(d.recommendation)}`;
     }
     case "sellability":
-      return `${d.canSell ? "✅ SELLABLE" : "🚫 CANNOT SELL"} (${s(d.verdict)})\nSell tax: ${s(d.sellTaxPct)}% · Buy tax: ${s(d.buyTaxPct)}%${reasons ? "\n\n" + reasons : ""}`;
+      return `${d.canSell === null ? "❔ UNKNOWN" : d.canSell ? "✅ SELLABLE" : "🚫 CANNOT SELL"} (${s(d.verdict)})\nSell tax: ${s(d.sellTaxPct)}% · Buy tax: ${s(d.buyTaxPct)}%${reasons ? "\n\n" + reasons : ""}`;
     case "holder-forensics":
       return `Concentration risk: ${s(d.concentrationRisk).toUpperCase()}\nLargest wallet: ${s(d.largestWalletPercent)}% · Creator: ${s(d.creatorPercent)}%\nHolders: ${s(d.holderCount)}\nFlags: ${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "none"}`;
     case "exit-liquidity":

@@ -24,6 +24,7 @@ describe("sellability — reads tax from the nested security shape", () => {
   it("fails a high-sell-tax token on the tax alone (not just honeypot)", async () => {
     tokenRiskMock.mockResolvedValue({
       flags: [],
+      securityChecked: true,
       security: { isHoneypot: false, sellTaxPct: 90, buyTaxPct: 0, transferPausable: false },
     });
     const r = (await sellability({ address: TOKEN })) as {
@@ -39,10 +40,21 @@ describe("sellability — reads tax from the nested security shape", () => {
   it("reports a clean, low-tax token as sellable", async () => {
     tokenRiskMock.mockResolvedValue({
       flags: [],
+      securityChecked: true,
       security: { isHoneypot: false, sellTaxPct: 0, buyTaxPct: 0, transferPausable: false },
     });
     const r = (await sellability({ address: TOKEN })) as { canSell: boolean; verdict: string };
     expect(r.canSell).toBe(true);
     expect(r.verdict).toBe("sellable");
+  });
+
+  it("does NOT report sellable when the security feed was unavailable", async () => {
+    // GoPlus down: tokenRisk fulfills with no security data (securityChecked=false).
+    // With no live sim either (no holder), sellability must degrade, never "sellable".
+    tokenRiskMock.mockResolvedValue({ flags: [], securityChecked: false, security: undefined });
+    const r = (await sellability({ address: TOKEN })) as { canSell: boolean | null; verdict: string; degraded?: boolean };
+    expect(r.canSell).toBeNull();
+    expect(r.verdict).toBe("unknown");
+    expect(r.degraded).toBe(true);
   });
 });

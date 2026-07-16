@@ -92,8 +92,17 @@ export async function signGuard(params: Record<string, string>) {
     grantee ? sanctionsCheck({ address: grantee }) : Promise.resolve(null),
   ]);
   const destDanger = (destDangerR.status === "fulfilled" ? destDangerR.value : null) as { verified?: boolean; dangerLevel?: string; dangerCategories?: string[] } | null;
-  const destSanctioned = destSancR.status === "fulfilled" && (destSancR.value as { sanctioned?: boolean } | null)?.sanctioned === true;
-  const granteeSanctioned = granteeSancR.status === "fulfilled" && (granteeSancR.value as { sanctioned?: boolean } | null)?.sanctioned === true;
+  // Tri-state: true = sanctioned, false = screened clean, null = screen didn't
+  // run (list outage). A rejected check must NOT collapse to "clean" — that would
+  // let a scoped approve to a sanctioned spender return GO during an outage.
+  const readSanc = (r: PromiseSettledResult<unknown>, requested: boolean): boolean | null => {
+    if (!requested) return false; // nothing to screen (no target/grantee) → not a risk
+    if (r.status !== "fulfilled" || r.value == null) return null;
+    return (r.value as { sanctioned?: boolean }).sanctioned === true;
+  };
+  const destSanctioned = readSanc(destSancR, !!target);
+  const granteeSanctioned = readSanc(granteeSancR, !!grantee);
+  const sanctionsUnavailable = (!!target && destSanctioned === null) || (!!grantee && granteeSanctioned === null);
 
   const destCritical = destDanger?.dangerLevel === "critical";
   const destUnverified = destDanger?.verified === false;
@@ -102,8 +111,9 @@ export async function signGuard(params: Record<string, string>) {
   let stop = false, hold = false;
 
   if (!intent) { observedRisks.push("unrecognized calldata — intent could NOT be decoded; sign only if you built this call yourself"); hold = true; }
-  if (destSanctioned) { observedRisks.push("destination contract is on the OFAC sanctions list"); stop = true; }
-  if (granteeSanctioned) { observedRisks.push("the spender/recipient is on the OFAC sanctions list"); stop = true; }
+  if (destSanctioned === true) { observedRisks.push("destination contract is on the OFAC sanctions list"); stop = true; }
+  if (granteeSanctioned === true) { observedRisks.push("the spender/recipient is on the OFAC sanctions list"); stop = true; }
+  if (sanctionsUnavailable) { observedRisks.push("OFAC sanctions screening was unavailable this call — could not confirm the counterparty is not sanctioned"); hold = true; }
   if (intent?.unlimited) { observedRisks.push(`grants UNLIMITED power (${intent.action}) — the classic wallet-drain vector`); hold = true; }
   if (intent?.unlimited && (destUnverified || destCritical)) { observedRisks.push("unlimited approval to an unverified/dangerous contract"); stop = true; }
   if (destCritical) { observedRisks.push(`destination has critical owner powers (${(destDanger?.dangerCategories || []).join(", ")})`); hold = true; }

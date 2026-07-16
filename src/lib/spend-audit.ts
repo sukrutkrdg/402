@@ -75,16 +75,27 @@ export async function spendAudit(params: Record<string, string>) {
   if (!isAddr(wallet)) throw new Error("Provide a wallet address (wallet=)");
   const w = wallet.toLowerCase();
 
+  // Filter to THIS wallet's events IN SQL. The account lives inside the
+  // (non-indexed) SpendPermission tuple string, so match the address
+  // case-insensitively within it — the manager is a network-wide singleton and
+  // an unfiltered scan (LIMIT 5000, ASC) would drop this wallet's recent grants
+  // once the contract passes 5000 events/year, silently reporting "none".
+  // `w` is validated `0x`+40-hex, so the interpolation is injection-safe.
+  const needle = w.slice(2);
   const rows = await cdpSql<EvtRow>(
     `SELECT event_signature, parameters, block_timestamp, transaction_hash
      FROM base.events
      WHERE address = '${MANAGER}'
        AND (event_signature LIKE 'SpendPermissionApproved%' OR event_signature LIKE 'SpendPermissionRevoked%')
+       AND positionCaseInsensitive(toString(parameters['spendPermission']), '${needle}') > 0
        AND block_timestamp > now() - INTERVAL 365 DAY
      ORDER BY block_timestamp ASC
      LIMIT 5000`,
   );
   if (rows === null) throw new Error("Spend permission data unavailable (data provider) — try again shortly");
+  // A single account hitting 5000 events in a year is implausible; if it happens
+  // the replay is incomplete, so fail loud rather than under-report active grants.
+  if (rows.length >= 5000) throw new Error("Too many spend-permission events to reconstruct reliably — narrow the window");
 
   // Replay approvals/revocations for THIS account; a later revoke of the same
   // permission hash cancels an earlier approval.

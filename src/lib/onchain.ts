@@ -248,7 +248,12 @@ export async function tokenRisk(params: Record<string, string>) {
   }
 
   score = Math.min(score, 100);
-  const riskLevel = score >= 70 ? "high" : score >= 35 ? "medium" : "low";
+  // When the security provider (honeypot/taxes/holders) wasn't consulted, the
+  // absence of those flags must NOT read as "low". RPC signals can still prove a
+  // token high-risk, but a clean RPC read with no security data is UNKNOWN, not
+  // safe — consumers gate on `securityChecked`/`degraded` below.
+  const securityChecked = !!gp;
+  const riskLevel = score >= 70 ? "high" : score >= 35 ? "medium" : securityChecked ? "low" : "unknown";
 
   return {
     address,
@@ -265,7 +270,9 @@ export async function tokenRisk(params: Record<string, string>) {
     upgradeableProxy,
     security,
     riskScore: score,
-    riskLevel,
+    riskLevel, // high | medium | low | unknown (unknown = security feed unavailable)
+    securityChecked, // false → honeypot/tax/holder data NOT consulted this call
+    degraded: !securityChecked,
     flags,
     sources: gp ? ["base-rpc", "goplus"] : ["base-rpc"],
     coverage: gp
@@ -278,7 +285,9 @@ export async function tokenRisk(params: Record<string, string>) {
       atBlock,
       at: new Date().toISOString(),
       endpoint: "token-risk",
-      decision: riskLevel === "high" ? "STOP" : riskLevel === "medium" ? "HOLD" : "GO",
+      // Never GO on missing security data — a clean RPC read with no honeypot/tax
+      // check is HOLD, not GO. Only RPC-proven high-risk yields STOP.
+      decision: riskLevel === "high" ? "STOP" : !securityChecked ? "HOLD" : riskLevel === "medium" ? "HOLD" : "GO",
       observedRisks: flags,
       notChecked: gp
         ? ["offchain team/social signals", "liquidity depth vs your trade size (use swap-route)", "B20 policy powers (use b20-safety)"]

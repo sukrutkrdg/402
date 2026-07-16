@@ -24,8 +24,13 @@ export async function rugScore(params: Record<string, string>) {
   }
 
   const risk = riskR.status === "fulfilled"
-    ? (riskR.value as { flags?: string[]; security?: Record<string, unknown> | null })
+    ? (riskR.value as { flags?: string[]; security?: Record<string, unknown> | null; securityChecked?: boolean; sources?: string[] })
     : null;
+  // Did the honeypot/tax/holder feed actually run? If not, empty security flags
+  // are absence-of-evidence, not evidence-of-safety — we must not score "low".
+  const securityChecked = risk
+    ? risk.securityChecked ?? (Array.isArray(risk.sources) && risk.sources.includes("goplus"))
+    : false;
   const holders = holdersR.status === "fulfilled"
     ? (holdersR.value as { top10Pct?: number; lockedLpPct?: number | null })
     : null;
@@ -70,12 +75,18 @@ export async function rugScore(params: Record<string, string>) {
   else if (liq !== null && liq < 20000) add(8, `thin liquidity $${Math.round(liq)}`);
 
   score = Math.min(score, 100);
-  const level = score >= 70 ? "high" : score >= 35 ? "medium" : "low";
+  // Without the security feed we can still confirm high/medium from the signals
+  // that DID load (holders, liquidity, RPC flags), but we cannot certify "low" —
+  // the honeypot/tax checks that most often drive a high score never ran.
+  const level = score >= 70 ? "high" : score >= 35 ? "medium" : securityChecked ? "low" : "unknown";
+  const degraded = !securityChecked;
+  if (degraded) signals.push("security feed unavailable — honeypot/tax not checked");
 
   return {
     address,
     rugScore: score,
-    level,
+    level, // high | medium | low | unknown (unknown = security feed unavailable)
+    degraded,
     signals,
     inputs: {
       top10HolderPct: top10,
@@ -83,7 +94,9 @@ export async function rugScore(params: Record<string, string>) {
       liquidityUsd: liq,
       sellTaxPct: sellTax,
     },
-    note: "Composite of security flags, holder concentration and liquidity depth. Higher = riskier. Heuristic, not financial advice.",
+    note: degraded
+      ? "PARTIAL: security provider (honeypot/taxes) was unavailable this call — score reflects holders/liquidity/RPC only and cannot certify low risk. Re-check shortly."
+      : "Composite of security flags, holder concentration and liquidity depth. Higher = riskier. Heuristic, not financial advice.",
     // Funnel: the natural next step after a raw rug score.
     upgrade: {
       service: "ai-token-report",
