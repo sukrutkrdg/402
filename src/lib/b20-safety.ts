@@ -58,18 +58,40 @@ const WAD = 10n ** 18n;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function withRetry<T>(call: () => Promise<T>, fallback: T): Promise<T> {
+/**
+ * Read with retry, distinguishing two very different failures:
+ *  - a CONTRACT-LEVEL error (revert / no-data / decode) means the contract
+ *    effectively answered "no" (not a B20, no such policy) → return `fallback`.
+ *  - a TRANSPORT error (timeout / network / rate-limit / 5xx) means we DON'T KNOW
+ *    → throw, so a seize/freeze-critical read can never silently become 0n/null
+ *    and read as "safe"/"not a B20".
+ * Callers that want best-effort on a cosmetic field (name/symbol/…) pass
+ * `softFallback`, which returns the fallback even on a transport failure.
+ *
+ * We classify by transport signatures only, and default the ambiguous case to
+ * `fallback` (the historical behaviour) — so a plain ERC-20 whose missing
+ * function surfaces an unusual error still reads as "not a B20", never a 500.
+ */
+function isTransportError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return /timeout|timed out|fetch failed|network|socket|econn|etimed|dns|rate.?limit|too many request|429|50[0234]|bad gateway|gateway time|service unavailable|could not be reached|connection (?:closed|refused|reset)|request failed with status/.test(msg);
+}
+async function withRetry<T>(call: () => Promise<T>, fallback: T, softFallback = false): Promise<T> {
+  let lastErr: unknown;
+  let sawTransport = false;
   for (let i = 0; i < 3; i++) {
     try {
       return await call();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/revert/i.test(msg)) return fallback; // clean revert → fallback, don't retry
-      if (i === 2) return fallback;
+      lastErr = e;
+      if (!isTransportError(e)) return fallback; // contract-level "no" — real answer
+      sawTransport = true;
+      if (i === 2) break;
       await sleep(300);
     }
   }
-  return fallback;
+  if (softFallback || !sawTransport) return fallback;
+  throw new Error(`B20 read unavailable (RPC): ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
 }
 
 const validAddr = (a?: string) => /^0x[0-9a-fA-F]{40}$/.test((a ?? "").trim());
@@ -142,9 +164,17 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const symbol = symRes.status === "success" ? (symRes.result as string) : null;
   const variant: "asset" | "stablecoin" = multRes.status === "success" ? "asset" : "stablecoin";
 
-  // On a confirmed B20, a failed seize/freeze-critical read = degraded (we must
-  // NOT read that as "no policy" and call a seizable token safe).
-  const degraded = spRes.status !== "success" || rpRes.status !== "success" || p0.status !== "success";
+  // On a confirmed B20, a failed policy/pause read = degraded (we must NOT read a
+  // failed read as "no policy / not paused" and call a gated token safe). Covers
+  // every gating input: sender/receiver/executor/mint policies + all pause flags.
+  const degraded =
+    spRes.status !== "success" ||
+    rpRes.status !== "success" ||
+    exRes?.status !== "success" ||
+    mrRes?.status !== "success" ||
+    p0.status !== "success" ||
+    p1.status !== "success" ||
+    p2.status !== "success";
   const senderPol = spRes.status === "success" ? (spRes.result as bigint) : 0n;
   const recvPol = rpRes.status === "success" ? (rpRes.result as bigint) : 0n;
   const execPol = exRes?.status === "success" ? (exRes.result as bigint) : 0n;
@@ -224,11 +254,11 @@ export async function b20Info(params: Record<string, string>) {
   if (!s.isB20) return notB20(address);
 
   await sleep(120);
-  const name = await withRetry<string | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>, null);
+  const name = await withRetry<string | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>, null, true);
   await sleep(120);
-  const decimals = await withRetry<number | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "decimals" }) as Promise<number | null>, null);
+  const decimals = await withRetry<number | null>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "decimals" }) as Promise<number | null>, null, true);
   await sleep(120);
-  const totalSupply = await withRetry<bigint>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>, 0n);
+  const totalSupply = await withRetry<bigint>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>, 0n, true);
 
   return {
     address, isB20: true, name, symbol: s.symbol, variant: s.variant, decimals,
@@ -238,7 +268,10 @@ export async function b20Info(params: Record<string, string>) {
     policies: { senderPolicyId: s.senderPolicyId.toString(), transferGated: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated },
     paused: s.paused,
     rebase: s.rebase,
-    note: "B20 (Base-native) token profile read from the precompile. For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.",
+    ...(s.degraded ? { degraded: true } : {}),
+    note: s.degraded
+      ? "⚠️ PARTIAL: a policy/pause precompile read failed (RPC) — the policies/paused fields may understate gating. Re-check before relying on this. For a risk verdict use b20-safety."
+      : "B20 (Base-native) token profile read from the precompile. For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.",
     checkedAt: new Date().toISOString(),
   };
 }
@@ -269,7 +302,7 @@ export async function b20FreezeCheck(params: Record<string, string>) {
   // We must NOT fall back to "authorized: true" — that would tell a genuinely
   // blocked wallet it is clear. On failure the answer is UNKNOWN, not clear.
   const authorized = await withRetry<boolean | null>(
-    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [senderPol, getAddress(wallet)] }) as Promise<boolean | null>, null);
+    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [senderPol, getAddress(wallet)] }) as Promise<boolean | null>, null, true);
 
   if (authorized === null) {
     return {
@@ -344,9 +377,17 @@ export async function b20Batch(params: Record<string, string>) {
     await sleep(150);
   }
   const worst = results.reduce((m, r) => Math.max(m, ("riskScore" in r ? r.riskScore ?? 0 : 0)), 0);
+  // Tokens that couldn't be read (error) or came back degraded/unknown are NOT
+  // scored 0 — surface them so worstRiskScore=0 can't read as "all 5 are safe".
+  const unread = results.filter((r) => "error" in r || (r as { verdict?: string }).verdict === "unknown");
   return {
-    count: results.length, worstRiskScore: worst, results,
-    note: "Batch B20 safety scan (max 5). Each is scored for freeze/seize/pause/rebase/uncapped-mint. Not financial advice.",
+    count: results.length,
+    worstRiskScore: worst,
+    ...(unread.length ? { degraded: true, unreadCount: unread.length } : {}),
+    results,
+    note: unread.length
+      ? `Batch B20 safety scan (max 5). ${unread.length} token(s) could not be fully scored this call — worstRiskScore covers only the ones that were. Re-check the rest. Not financial advice.`
+      : "Batch B20 safety scan (max 5). Each is scored for freeze/seize/pause/rebase/uncapped-mint. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
@@ -451,17 +492,33 @@ export async function b20Portfolio(params: Record<string, string>) {
 
   const blocked = holdings.filter((h) => h.walletBlocked === true);
   const seizable = holdings.filter((h) => h.seizable);
-  const verdict = blocked.length ? "action_required" : seizable.length ? "exposed" : holdings.length ? "clear" : "no_b20";
+  // A holding whose seize/freeze status could not be fully read (multicall
+  // sub-call failed, or the token was entirely unreadable) must not let the
+  // portfolio read "clear" — that would hide an unknown seizable position.
+  const degradedHoldings = holdings.filter((h) => h.degraded === true);
+  const anyDegraded = degradedHoldings.length > 0 || unreadable.length > 0;
+  const verdict = blocked.length
+    ? "action_required"
+    : seizable.length
+      ? "exposed"
+      : holdings.length
+        ? (anyDegraded ? "clear_partial" : "clear")
+        : (anyDegraded ? "unknown" : "no_b20");
 
   return {
     wallet, b20Count: holdings.length, seizableCount: seizable.length, blockedCount: blocked.length,
     verdict, holdings,
-    ...(unreadable.length ? { unreadableCount: unreadable.length, unreadable, degraded: true } : {}),
+    ...(anyDegraded ? { degraded: true, unreadableCount: unreadable.length, unreadable, degradedHoldingsCount: degradedHoldings.length } : {}),
     recommendation:
       blocked.length ? `⚠️ You are ALREADY blocked/seizable on ${blocked.length} B20 token(s) — exit those positions if you can.`
         : seizable.length ? `${seizable.length} of your B20 holdings can be frozen/seized by their issuer. Watch policy changes (b20-policy-watch) and size accordingly.`
-          : holdings.length ? "None of your B20 holdings have active freeze/seize powers set right now."
-            : "No B20 (Base-native) tokens found in this wallet.",
+          : holdings.length
+            ? anyDegraded
+              ? `${holdings.length} B20 holding(s) read clean, but ${degradedHoldings.length + unreadable.length} could not be fully checked — re-scan before relying on this.`
+              : "None of your B20 holdings have active freeze/seize powers set right now."
+            : anyDegraded
+              ? "Could not read your B20 holdings this call — re-scan shortly."
+              : "No B20 (Base-native) tokens found in this wallet.",
     note: "Scans a wallet's B20 holdings for protocol-level freeze/seize powers and whether YOUR address is already blocked — the risk ERC-20 portfolio tools can't see. Only B20 tokens are analyzed. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
@@ -1026,8 +1083,11 @@ export async function b20Metadata(params: Record<string, string>) {
   const currentName = await withRetry<string | null>(
     () => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>,
     null,
+    true, // cosmetic display field
   );
   await sleep(120);
+  // METADATA_ROLE gates the mutable/immutable verdict — a transport failure here
+  // must NOT read as "no role → immutable", so this stays fail-loud (throws).
   const metaRoleId = await withRetry<string | null>(
     () => client.readContract({ address: addr, abi: META_ROLE_ABI, functionName: "METADATA_ROLE" }) as Promise<string | null>,
     null,
@@ -1113,6 +1173,7 @@ export async function b20Permit(params: Record<string, string>) {
   const name = await withRetry<string | null>(
     () => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>,
     null,
+    true, // cosmetic
   );
 
   let nonce: string | null = null;
@@ -1153,21 +1214,32 @@ export async function b20Permit(params: Record<string, string>) {
 }
 
 // ---- Shared: read the four transfer/mint policy ids in one multicall ----
-async function readPolicyIds(addr: `0x${string}`): Promise<{ sender: bigint; receiver: bigint; executor: bigint; mint: bigint } | null> {
+// Returns null only when the token is genuinely not a B20 (sender policyId
+// reverts). A TRANSPORT failure throws — never mislabel an outage as "not a
+// B20" / "no policies". `degraded` is set if a secondary policy read failed.
+async function readPolicyIds(addr: `0x${string}`): Promise<{ sender: bigint; receiver: bigint; executor: bigint; mint: bigint; degraded: boolean } | null> {
   const contracts = [
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] },
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] },
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_EXECUTOR_POLICY] },
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [MINT_RECEIVER_POLICY] },
   ] as const;
+  let r: Array<{ status?: string; result?: unknown }>;
   try {
-    const r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as Array<{ status?: string; result?: unknown }>;
-    if (r[0]?.status !== "success") return null; // policyId reverts on a non-B20
-    const g = (i: number) => (r[i]?.status === "success" ? (r[i].result as bigint) : 0n);
-    return { sender: g(0), receiver: g(1), executor: g(2), mint: g(3) };
-  } catch {
-    return null;
+    r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as Array<{ status?: string; result?: unknown }>;
+  } catch (e) {
+    // Whole-multicall (transport) failure — retry once, then fail loud.
+    try {
+      await sleep(400);
+      r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as Array<{ status?: string; result?: unknown }>;
+    } catch {
+      throw new Error(`B20 policy read unavailable (RPC): ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+  if (r[0]?.status !== "success") return null; // sender policyId reverts on a non-B20
+  const g = (i: number) => (r[i]?.status === "success" ? (r[i].result as bigint) : 0n);
+  const degraded = r.slice(1).some((x) => x?.status !== "success");
+  return { sender: g(0), receiver: g(1), executor: g(2), mint: g(3), degraded };
 }
 
 // Policy type is encoded in the high byte of the policyId (B20Constants:
@@ -1236,8 +1308,11 @@ export async function b20PolicyAdmin(params: Record<string, string>) {
   const anyPending = scopes.some((x) => x.pendingAdmin);
   const activeAdmins = new Set(scopes.map((x) => x.admin).filter(Boolean) as string[]);
   const allRenounced = controlling.length > 0 && controlling.every((x) => x.renounced);
+  // A failed secondary policy read defaults that scope's id to 0n (looks like
+  // "no policy"); if that happened, don't assert "no_policies" cleanly.
+  const scopesDegraded = pids.degraded || scopes.some((x) => x.degraded === true);
   const verdict = scopes.length === 0
-    ? "no_policies"
+    ? (pids.degraded ? "unknown" : "no_policies")
     : anyPending
       ? "admin_transfer_pending"
       : allRenounced
@@ -1250,7 +1325,8 @@ export async function b20PolicyAdmin(params: Record<string, string>) {
     address,
     isB20: true,
     symbol: s.symbol,
-    verdict, // no_policies | admin_transfer_pending | admin_renounced | admin_controlled
+    verdict, // no_policies | admin_transfer_pending | admin_renounced | admin_controlled | unknown
+    ...(scopesDegraded ? { degraded: true } : {}),
     policyAdmins: scopes,
     distinctAdmins: activeAdmins.size,
     recommendation: scopes.length === 0
@@ -1295,20 +1371,25 @@ export async function b20AccessType(params: Record<string, string>) {
 
   const permissioned = scopes.some((x) => (x.scope === "send" || x.scope === "receive") && x.type === "allowlist");
   const blockable = scopes.some((x) => x.type === "blocklist");
-  const verdict = permissioned ? "permissioned" : blockable ? "blockable" : "open";
+  // If a scope read failed we can't certify "open" (a failed read looks like "no
+  // policy") — disclose the partial state instead of implying no gating.
+  const verdict = permissioned ? "permissioned" : blockable ? "blockable" : pids.degraded ? "open_partial" : "open";
 
   return {
     address,
     isB20: true,
     symbol: s.symbol,
     variant: s.variant,
-    verdict, // permissioned (allowlist-gated) | blockable (blocklist) | open (no transfer policy)
+    verdict, // permissioned (allowlist-gated) | blockable (blocklist) | open (no transfer policy) | open_partial (a scope read failed)
+    ...(pids.degraded ? { degraded: true } : {}),
     scopes,
     recommendation: permissioned
       ? "⚠️ Permissioned token — an ALLOWLIST gates transfers, so you can only hold/receive it if the issuer has whitelisted your address. Confirm you're (and will stay) approved before buying; otherwise you may not be able to receive or move it."
       : blockable
         ? "Blocklist-gated — you can transfer freely UNLESS the issuer adds you to the blocklist (after which a sender policy also enables burnBlocked-seize). Standard for regulated assets; watch policy changes (b20-policy-watch)."
-        : "No transfer policy — behaves like an open token on the transfer path (no allowlist/blocklist gating).",
+        : pids.degraded
+          ? "No blocklist/allowlist found on the scopes we could read, but at least one scope read failed this call — re-check before assuming the token is ungated."
+          : "No transfer policy — behaves like an open token on the transfer path (no allowlist/blocklist gating).",
     note: "Decodes each active B20 policy as ALLOWLIST (permissioned — must be whitelisted) vs BLOCKLIST (open unless blocked). The distinction b20-safety collapses: a permissioned RWA you can't hold uninvited is a different risk than a blockable token. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
@@ -1422,6 +1503,7 @@ export async function b20Stablecoin(params: Record<string, string>) {
   const totalSupply = await withRetry<bigint>(
     () => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>,
     0n,
+    true, // display number — don't 500 the peg profile on a blip
   );
 
   return {
@@ -1433,7 +1515,8 @@ export async function b20Stablecoin(params: Record<string, string>) {
     totalSupply: totalSupply.toString(),
     supplyCap: s.supplyCapped ? s.supplyCap.toString() : "uncapped",
     control: { seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, uncappedMint: !s.supplyCapped },
-    verdict: s.canSeize || s.paused.transfer ? "issuer_controlled" : s.transferGated ? "gated" : "open",
+    ...(s.degraded ? { degraded: true } : {}),
+    verdict: s.degraded ? "unknown" : s.canSeize || s.paused.transfer ? "issuer_controlled" : s.transferGated ? "gated" : "open",
     recommendation: `Declared peg: ${declaredCurrency || "unknown"}. This is the issuer's self-declared currency code — NOT proof of reserves or backing. ${
       s.canSeize ? "The issuer can freeze/seize holders (standard for regulated stablecoins) — trust the operator." : "No active sender-blocklist right now."
     } Pair with b20-control for who holds the mint/seize roles.`,

@@ -32,10 +32,11 @@ interface B20Result {
   b20Count: number;
   seizableCount: number;
   blockedCount: number;
-  verdict: "action_required" | "exposed" | "clear" | "no_b20";
+  verdict: "action_required" | "exposed" | "clear" | "clear_partial" | "no_b20" | "unknown";
   holdings: B20Holding[];
   recommendation: string;
   unreadableCount?: number;
+  degraded?: boolean;
 }
 
 const short = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
@@ -351,6 +352,10 @@ export default function WalletProtect() {
               <span className="text-amber-300">🧊 {b20.seizableCount} of {b20.b20Count} B20 holding{b20.b20Count === 1 ? "" : "s"} can be frozen/seized</span>
             ) : b20.verdict === "clear" ? (
               <span className="text-emerald-300">✓ {b20.b20Count} B20 holding{b20.b20Count === 1 ? "" : "s"} — no active freeze/seize powers</span>
+            ) : b20.verdict === "clear_partial" ? (
+              <span className="text-amber-300">◑ {b20.b20Count} B20 holding{b20.b20Count === 1 ? "" : "s"} — clean so far, some could not be fully checked</span>
+            ) : b20.verdict === "unknown" ? (
+              <span className="text-amber-300">❔ Could not read your B20 holdings — re-scan shortly</span>
             ) : (
               <span className="text-gray-400">No B20 (Base-native) tokens in this wallet</span>
             )}

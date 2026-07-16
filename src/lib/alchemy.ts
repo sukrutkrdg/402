@@ -148,7 +148,10 @@ interface TokenBalances {
  */
 export async function walletTokenContracts(address: Address): Promise<Address[]> {
   const cfg = getConfig();
-  if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) return [];
+  // Throw (not []) when the balance provider isn't configured — an empty list
+  // would let b20-portfolio report "no B20 tokens" on a config/key failure,
+  // which reads as falsely clean.
+  if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) throw new Error("Token balance provider not configured");
   const cdp = new CdpClient({ apiKeyId: cfg.cdpApiKeyId, apiKeySecret: cfg.cdpApiKeySecret });
   // The API pages at 20 by default with unstable ordering — a wallet holding >20
   // tokens would get a different (and incomplete) token set on every call. Walk
