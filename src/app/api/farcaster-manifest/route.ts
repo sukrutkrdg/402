@@ -44,6 +44,8 @@ export function GET() {
       ],
       primaryCategory: "developer-tools",
       tags: ["x402", "payments", "base", "usdc", "api"],
+      // Enables notifications: clients POST add/remove + notification tokens here.
+      webhookUrl: `${SITE_URL}/api/webhooks/farcaster`,
     },
   });
 }
