@@ -583,7 +583,12 @@ export default function Stats() {
               </div>
               <div className="card divide-y divide-base-line/60">
                 {usage.per.map((r) => {
-                  const free = r.total - r.paid - (r.internal ?? 0);
+                  // "free" = genuine free FULL calls only. total counts every
+                  // logged event (paid + 402-challenge + preview + internal +
+                  // free), so challenge/preview must be subtracted too or they'd
+                  // be shown twice (as ⚡/👁 AND folded into f) and the pills
+                  // wouldn't sum to the total on the right.
+                  const free = Math.max(0, r.total - r.paid - (r.internal ?? 0) - (r.preview ?? 0) - (r.challenge ?? 0));
                   const conv = r.conversionPct ?? 0;
                   const convCls =
                     conv >= 20 ? "text-emerald-300" : conv >= 5 ? "text-amber-300" : "text-gray-500";
@@ -620,7 +625,8 @@ export default function Stats() {
                 <span className="text-emerald-300">$</span> est. revenue (paid×price) ·{" "}
                 <span className="text-emerald-300">%</span> conversion (paid ÷ external) ·{" "}
                 <b className="text-amber-300">⚡</b> shown the price (·% = of those, how many paid) ·{" "}
-                <b>p</b> paid · <b>👁</b> preview/teaser · <b>f</b> free · <b>i</b> internal
+                <b>p</b> paid · <b>👁</b> preview/teaser · <b>f</b> free full call · <b>i</b> internal.{" "}
+                ⚡+p+👁+f+i = the total on the right.
               </p>
             </div>
           )}
