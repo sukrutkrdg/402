@@ -48,60 +48,55 @@ function requireAddress(raw: string): Address {
 // 1. contractAbi — Sourcify verification + ABI for a Base contract
 // ---------------------------------------------------------------------------
 
-interface SourcifyMetadata {
-  output?: {
-    abi?: Array<{ type: string; name?: string; [key: string]: unknown }>;
-  };
+interface SourcifyV2Contract {
+  match?: string | null; // "exact_match" | "match" | null
+  abi?: Array<{ type: string; name?: string; [key: string]: unknown }>;
 }
 
 /**
  * Checks whether a Base contract is verified on Sourcify and, if so, returns
  * its ABI as function/event name lists plus a total item count.
  *
- * Verification check: `https://sourcify.dev/server/check-by-addresses`
- * Metadata fetch:     `https://repo.sourcify.dev/contracts/{match}/8453/{address}/metadata.json`
+ * Sourcify v2 API: `https://sourcify.dev/server/v2/contract/8453/{address}?fields=abi`
+ * (one call returns match level + ABI; the old repo.sourcify.dev metadata
+ * endpoints were retired and now answer 307/503).
  *
  * A non-verified contract returns a valid (paid) response — only an invalid
- * address or a total network failure on the check call will throw.
+ * address or a total network failure will throw.
  *
  * @param params.address — Base contract address (required, checksummed 0x…40-hex).
  */
 export async function contractAbi(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
 
-  // Fetch metadata.json directly from the Sourcify repo (more robust than the
-  // deprecated check endpoint). full_match = exact, partial_match = metadata-equal.
-  // 200 → verified (parse ABI). 404 → not this match. 5xx/network → throw (so the
-  // buyer isn't charged for an answer we couldn't actually compute).
+  // 200 + match → verified (parse ABI). 404 → confirmed not verified.
+  // 5xx/network → throw (so the buyer isn't charged for an answer we couldn't
+  // actually compute).
   let abi: Array<{ type: string; name?: string }> = [];
   let matchType: "full" | "partial" | null = null;
   let serverError: string | null = null;
 
-  for (const [match, label] of [
-    ["full_match", "full"],
-    ["partial_match", "partial"],
-  ] as const) {
-    try {
-      const res = await fetch(
-        `https://repo.sourcify.dev/contracts/${match}/8453/${address}/metadata.json`,
-        { signal: AbortSignal.timeout(8000) },
-      );
-      if (res.status === 404) continue; // not under this match (don't clear a prior server error)
+  try {
+    const res = await fetch(
+      `https://sourcify.dev/server/v2/contract/8453/${address}?fields=abi`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (res.status !== 404) {
       if (!res.ok) {
         serverError = `Sourcify responded ${res.status}`;
-        continue;
+      } else {
+        const j = (await res.json()) as SourcifyV2Contract;
+        if (j.match && Array.isArray(j.abi)) {
+          abi = j.abi as Array<{ type: string; name?: string }>;
+          matchType = j.match === "exact_match" ? "full" : "partial";
+        } else if (j.match) {
+          // 200 but no ABI → treat as "couldn't compute", don't claim unverified.
+          serverError = "Sourcify response had no ABI";
+        }
       }
-      const meta = (await res.json()) as SourcifyMetadata;
-      if (Array.isArray(meta?.output?.abi)) {
-        abi = meta.output.abi as Array<{ type: string; name?: string }>;
-        matchType = label;
-        break;
-      }
-      // 200 but no ABI in metadata → treat as "couldn't compute", don't claim unverified.
-      serverError = "Sourcify metadata had no ABI";
-    } catch (err) {
-      serverError = err instanceof Error ? err.message : String(err);
     }
+  } catch (err) {
+    serverError = err instanceof Error ? err.message : String(err);
   }
 
   // Distinguish "confirmed not verified" (clean 404s) from "couldn't reach Sourcify".

@@ -605,6 +605,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
     handler: contractDanger,
+    noFreeTier: true,
   },
   {
     id: "lp-lock",
@@ -846,6 +847,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
     handler: contractAbi,
+    noFreeTier: true,
   },
   {
     id: "decode-selector",
@@ -981,6 +983,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [{ name: "pair", label: "Pair (pool) address", placeholder: "0x… pair", required: true }],
     handler: pairInfo,
+    noFreeTier: true,
   },
   {
     id: "rug-score",
