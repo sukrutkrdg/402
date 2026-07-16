@@ -49,7 +49,7 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin } from "./b20-safety";
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 
@@ -334,6 +334,58 @@ export const SERVICES: ServiceDef[] = [
       { name: "owner", label: "Owner wallet (for the nonce, optional)", placeholder: "0x…" },
     ],
     handler: b20Permit,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-policy-admin",
+    name: "B20 Policy Admin Watch",
+    tagline: "WHO administers the blocklist that can freeze you?",
+    description:
+      "🆕 b20-control reads the token's own roles; the address that can actually add you to a blocklist lives in the Policy Registry. This reads WHO administers each active transfer/mint policy (policyAdmin), and whether that control is being handed over (pendingPolicyAdmin) or renounced. The other half of 'who can freeze/seize you', straight from the registry.",
+    price: "$0.04",
+    icon: "🗝️",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20PolicyAdmin,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-access-type",
+    name: "B20 Access Type",
+    tagline: "Permissioned (allowlist) or blockable? Decoded per scope",
+    description:
+      "🆕 A B20 transfer policy is either a BLOCKLIST (allowed unless listed) or an ALLOWLIST (allowed ONLY if listed — a permissioned/whitelist token you can't even receive uninvited). b20-safety flags that a policy exists; this decodes its TYPE per scope (send/receive/execute/mint) — the difference between 'the issuer can block bad actors' and 'this is a permissioned RWA you can't hold uninvited'.",
+    price: "$0.03",
+    icon: "🎫",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20AccessType,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-announcements",
+    name: "B20 Announcements",
+    tagline: "On-chain issuer notices & corporate actions",
+    description:
+      "🆕 B20 Asset tokens can post on-chain announcements (Announcement: id, description, uri) — issuer notices, corporate actions, redemptions — a channel ERC-20 has no equivalent for. Reads a token's announcement feed (active vs ended) from CDP-indexed events. The issuer-communications primitive for agents holding tokenized/RWA B20 assets.",
+    price: "$0.03",
+    icon: "📢",
+    category: "B20",
+    params: [{ name: "address", label: "B20 Asset token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Announcements,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-stablecoin",
+    name: "B20 Stablecoin Profile",
+    tagline: "Declared peg currency + issuance & control",
+    description:
+      "🆕 B20 Stablecoin tokens self-declare a fiat currency code (currency() → USD, EUR, …). Reads that declared peg alongside the issuance profile (supply, cap) and control powers (seize/freeze/pause/uncapped-mint) — a one-call 'what is this stablecoin and who controls it' for agents settling in B20 stablecoins. The currency code is the issuer's claim, not attested backing.",
+    price: "$0.03",
+    icon: "💵",
+    category: "B20",
+    params: [{ name: "address", label: "B20 Stablecoin address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Stablecoin,
     noFreeTier: true,
   },
   {

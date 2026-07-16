@@ -745,6 +745,7 @@ const ROLE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ["PAUSE_ROLE", "pause"],
   ["UNPAUSE_ROLE", "unpause"],
   ["METADATA_ROLE", "metadata"],
+  ["OPERATOR_ROLE", "operator (rebase)"],
 ];
 
 /**
@@ -1133,6 +1134,296 @@ export async function b20Permit(params: Record<string, string>) {
         : "Couldn't read the owner's nonce right now (RPC) — retry before signing; a wrong nonce makes the permit revert."
       : "Pass owner= to also get the current nonce. Every B20 supports ERC-2612 permit — approve spenders by signature, no gas.",
     note: "ERC-2612 permit readiness for a B20: DOMAIN_SEPARATOR, owner nonce, and the EIP-712 domain/type struct an agent needs to build a valid gasless approval. Read-only; signs nothing. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- Shared: read the four transfer/mint policy ids in one multicall ----
+async function readPolicyIds(addr: `0x${string}`): Promise<{ sender: bigint; receiver: bigint; executor: bigint; mint: bigint } | null> {
+  const contracts = [
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_EXECUTOR_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [MINT_RECEIVER_POLICY] },
+  ] as const;
+  try {
+    const r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as Array<{ status?: string; result?: unknown }>;
+    if (r[0]?.status !== "success") return null; // policyId reverts on a non-B20
+    const g = (i: number) => (r[i]?.status === "success" ? (r[i].result as bigint) : 0n);
+    return { sender: g(0), receiver: g(1), executor: g(2), mint: g(3) };
+  } catch {
+    return null;
+  }
+}
+
+// Policy type is encoded in the high byte of the policyId (B20Constants:
+// ALWAYS_BLOCK = (uint64(ALLOWLIST) << 56) | 1). enum PolicyType{BLOCKLIST=0,ALLOWLIST=1}.
+const policyType = (pid: bigint): "none" | "blocklist" | "allowlist" =>
+  pid === 0n ? "none" : Number(pid >> 56n) === 1 ? "allowlist" : "blocklist";
+
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+
+// ---- 11. B20 Policy Admin Watch — WHO administers the blocklist that can freeze you? ----
+
+const POLICY_ADMIN_ABI = [
+  { type: "function", name: "policyAdmin", stateMutability: "view", inputs: [{ type: "uint64" }], outputs: [{ type: "address" }] },
+  { type: "function", name: "pendingPolicyAdmin", stateMutability: "view", inputs: [{ type: "uint64" }], outputs: [{ type: "address" }] },
+] as const;
+
+/**
+ * b20-control reads the token's OWN roles (who can mint/seize). But the address
+ * that can actually add you to a blocklist lives in the Policy Registry, not the
+ * token — its `policyAdmin`. This reads WHO administers each of the token's active
+ * transfer policies, and whether that control is being handed over
+ * (pendingPolicyAdmin) or renounced (admin = 0). The other half of "who can
+ * freeze/seize you", straight from the registry.
+ */
+export async function b20PolicyAdmin(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  const pids = await readPolicyIds(addr);
+  if (!pids) return notB20(address);
+
+  const scopeList: Array<[string, bigint]> = [
+    ["transfer-sender", pids.sender],
+    ["transfer-receiver", pids.receiver],
+    ["transfer-executor", pids.executor],
+    ["mint-receiver", pids.mint],
+  ];
+
+  const scopes: Array<Record<string, unknown>> = [];
+  for (const [scope, pid] of scopeList) {
+    if (pid === 0n) continue;
+    await sleep(120);
+    const admin = await withRetry<string | null>(
+      () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ADMIN_ABI, functionName: "policyAdmin", args: [pid] }) as Promise<string | null>,
+      null,
+    );
+    await sleep(120);
+    const pending = await withRetry<string | null>(
+      () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ADMIN_ABI, functionName: "pendingPolicyAdmin", args: [pid] }) as Promise<string | null>,
+      null,
+    );
+    scopes.push({
+      scope,
+      policyId: pid.toString(),
+      type: policyType(pid),
+      admin: admin && admin !== ZERO_ADDR ? getAddress(admin) : null,
+      renounced: admin === ZERO_ADDR,
+      pendingAdmin: pending && pending !== ZERO_ADDR ? getAddress(pending) : null,
+      degraded: admin === null,
+    });
+  }
+
+  const controlling = scopes.filter((x) => x.scope === "transfer-sender" || x.scope === "transfer-receiver");
+  const anyPending = scopes.some((x) => x.pendingAdmin);
+  const activeAdmins = new Set(scopes.map((x) => x.admin).filter(Boolean) as string[]);
+  const allRenounced = controlling.length > 0 && controlling.every((x) => x.renounced);
+  const verdict = scopes.length === 0
+    ? "no_policies"
+    : anyPending
+      ? "admin_transfer_pending"
+      : allRenounced
+        ? "admin_renounced"
+        : activeAdmins.size
+          ? "admin_controlled"
+          : "unknown";
+
+  return {
+    address,
+    isB20: true,
+    symbol: s.symbol,
+    verdict, // no_policies | admin_transfer_pending | admin_renounced | admin_controlled
+    policyAdmins: scopes,
+    distinctAdmins: activeAdmins.size,
+    recommendation: scopes.length === 0
+      ? "No transfer/mint policies set — there's no blocklist admin to worry about on this token right now."
+      : anyPending
+        ? "⚠️ A policy admin transfer is PENDING — control over who can be blocked/seized is being handed to a new address. Confirm you trust the incoming admin before holding size."
+        : allRenounced
+          ? "The controlling policy admins are renounced (address 0) — the current membership is frozen; no new addresses can be blocked. Lower freeze risk."
+          : `The blocklist/allowlist that governs transfers is controlled by ${activeAdmins.size} admin address(es) — whoever holds it can block (and, with a sender policy, burnBlocked-seize) holders. Trust the admin, or don't hold size.`,
+    note: "Reads the Policy Registry admin for a B20's active transfer/mint policies — WHO can add you to the blocklist (and whether that control is being transferred or renounced). Complements b20-control (token roles) and b20-safety (which powers exist). Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 12. B20 Access Type — is this a permissioned (allowlist) token, or blockable? ----
+
+/**
+ * A B20 transfer policy is either a BLOCKLIST (you're allowed unless listed) or
+ * an ALLOWLIST (you're allowed ONLY if listed — a permissioned/whitelist token
+ * you can't even receive without being approved). b20-safety flags that a policy
+ * exists; this decodes its TYPE per scope — the difference between "the issuer can
+ * block bad actors" and "this is a permissioned RWA you can't hold uninvited".
+ */
+export async function b20AccessType(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  const pids = await readPolicyIds(addr);
+  if (!pids) return notB20(address);
+
+  const scopeDefs: Array<[string, bigint]> = [
+    ["send", pids.sender],
+    ["receive", pids.receiver],
+    ["execute", pids.executor],
+    ["mint-to", pids.mint],
+  ];
+  const scopes = scopeDefs
+    .filter(([, pid]) => pid !== 0n)
+    .map(([scope, pid]) => ({ scope, policyId: pid.toString(), type: policyType(pid) }));
+
+  const permissioned = scopes.some((x) => (x.scope === "send" || x.scope === "receive") && x.type === "allowlist");
+  const blockable = scopes.some((x) => x.type === "blocklist");
+  const verdict = permissioned ? "permissioned" : blockable ? "blockable" : "open";
+
+  return {
+    address,
+    isB20: true,
+    symbol: s.symbol,
+    variant: s.variant,
+    verdict, // permissioned (allowlist-gated) | blockable (blocklist) | open (no transfer policy)
+    scopes,
+    recommendation: permissioned
+      ? "⚠️ Permissioned token — an ALLOWLIST gates transfers, so you can only hold/receive it if the issuer has whitelisted your address. Confirm you're (and will stay) approved before buying; otherwise you may not be able to receive or move it."
+      : blockable
+        ? "Blocklist-gated — you can transfer freely UNLESS the issuer adds you to the blocklist (after which a sender policy also enables burnBlocked-seize). Standard for regulated assets; watch policy changes (b20-policy-watch)."
+        : "No transfer policy — behaves like an open token on the transfer path (no allowlist/blocklist gating).",
+    note: "Decodes each active B20 policy as ALLOWLIST (permissioned — must be whitelisted) vs BLOCKLIST (open unless blocked). The distinction b20-safety collapses: a permissioned RWA you can't hold uninvited is a different risk than a blockable token. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 13. B20 Announcements — on-chain issuer notices (Asset variant) ----
+
+/**
+ * B20 Asset tokens can post on-chain announcements (announce → Announcement(id,
+ * description, uri)) — issuer notices, corporate actions, redemptions — a channel
+ * plain ERC-20 has no equivalent for. Reads a token's announcement feed (active vs
+ * ended) from CDP-indexed events. The issuer-communications primitive for agents
+ * holding tokenized/RWA B20 assets.
+ */
+export async function b20Announcements(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  if (s.variant !== "asset") {
+    return {
+      address,
+      isB20: true,
+      variant: s.variant,
+      announcementCount: 0,
+      announcements: [],
+      verdict: "n/a",
+      note: "Announcements are an Asset-variant feature; this is a Stablecoin (or non-Asset) B20 — no on-chain announcement channel.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const rows = await cdpSql<{ event_signature?: string; block_timestamp?: string; parameters?: { id?: string; description?: string; uri?: string }; topics?: string[]; transaction_hash?: string }>(
+    `SELECT event_signature, block_timestamp, parameters, topics, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND (event_signature LIKE 'Announcement%' OR event_signature LIKE 'EndAnnouncement%') AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp DESC LIMIT 100`,
+  );
+  if (rows === null) throw new Error("B20 announcement event data unavailable (data provider) — try again shortly");
+
+  const ended = new Set(
+    rows.filter((r) => /^EndAnnouncement/.test(r.event_signature ?? "")).map((r) => String(r.parameters?.id ?? "")),
+  );
+  const announcements = rows
+    .filter((r) => /^Announcement/.test(r.event_signature ?? ""))
+    .map((r) => {
+      const id = String(r.parameters?.id ?? "");
+      return {
+        time: r.block_timestamp ?? null,
+        id,
+        description: String(r.parameters?.description ?? ""),
+        uri: String(r.parameters?.uri ?? ""),
+        caller: topicToAddr(r.topics?.[1]),
+        active: !ended.has(id),
+        txHash: r.transaction_hash ?? null,
+      };
+    });
+
+  const activeCount = announcements.filter((a) => a.active).length;
+  return {
+    address,
+    isB20: true,
+    variant: "asset",
+    symbol: s.symbol,
+    announcementCount: announcements.length,
+    activeCount,
+    announcements: announcements.slice(0, 40),
+    verdict: activeCount ? "active_notices" : announcements.length ? "past_notices" : "none",
+    recommendation: activeCount
+      ? `${activeCount} active on-chain issuer announcement(s) — read the description/uri for corporate actions (redemptions, notices) that affect holders.`
+      : announcements.length
+        ? "No active announcements, but this issuer has used the on-chain announcement channel before — worth periodic checks."
+        : "No on-chain announcements from this issuer.",
+    note: "B20 Asset on-chain issuer announcements (notices, corporate actions, redemptions) — a channel ERC-20 has no equivalent for. CDP-indexed, 365-day window. Verify any uri before acting on it. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 14. B20 Stablecoin Profile — declared peg currency + issuance ----
+
+const CURRENCY_ABI = [
+  { type: "function", name: "currency", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+] as const;
+
+/**
+ * B20 Stablecoin tokens self-declare a fiat currency code (currency() → "USD",
+ * "EUR", …). This reads that declared peg alongside the token's issuance profile
+ * (supply, cap, control powers) — a one-call "what is this stablecoin and who
+ * controls it" for agents settling in B20 stablecoins.
+ */
+export async function b20Stablecoin(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  if (s.variant !== "stablecoin") {
+    return {
+      address,
+      isB20: true,
+      variant: s.variant,
+      note: "Not a Stablecoin-variant B20 (this is an Asset variant) — currency()/peg declaration applies to stablecoins. Use b20-rebase for Asset multiplier or b20-info for the general profile.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  await sleep(120);
+  const declaredCurrency = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: CURRENCY_ABI, functionName: "currency" }) as Promise<string | null>,
+    null,
+  );
+  await sleep(120);
+  const totalSupply = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>,
+    0n,
+  );
+
+  return {
+    address,
+    isB20: true,
+    variant: "stablecoin",
+    symbol: s.symbol,
+    declaredCurrency, // self-declared ISO fiat code (e.g. USD) — issuer's claim, not proof of backing
+    totalSupply: totalSupply.toString(),
+    supplyCap: s.supplyCapped ? s.supplyCap.toString() : "uncapped",
+    control: { seizable: s.canSeize, freezable: s.transferGated, pausedNow: s.paused.transfer, uncappedMint: !s.supplyCapped },
+    verdict: s.canSeize || s.paused.transfer ? "issuer_controlled" : s.transferGated ? "gated" : "open",
+    recommendation: `Declared peg: ${declaredCurrency || "unknown"}. This is the issuer's self-declared currency code — NOT proof of reserves or backing. ${
+      s.canSeize ? "The issuer can freeze/seize holders (standard for regulated stablecoins) — trust the operator." : "No active sender-blocklist right now."
+    } Pair with b20-control for who holds the mint/seize roles.`,
+    note: "B20 Stablecoin profile: the self-declared fiat currency code plus issuance (supply/cap) and control powers. The currency code is a claim, not attested backing. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
