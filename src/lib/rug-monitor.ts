@@ -13,6 +13,7 @@
 
 import "server-only";
 import { assertSafeWebhook } from "./alerts";
+import { dexTokenPairs } from "./upstream-cache";
 import { kvSet, kvGet, kvSAdd, kvSRem, kvSMembers, kvConfigured } from "./kv";
 
 const TTL = 60 * 60 * 24 * 30; // 30 days
@@ -31,12 +32,9 @@ export interface RugWatch {
 }
 
 async function fetchLiquidity(token: string): Promise<number> {
-  const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token}`, {
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-  const j = (await res.json()) as { pairs?: Array<{ baseToken?: { address?: string }; liquidity?: { usd?: number } }> | null };
-  const pairs = (j.pairs ?? []).filter((p) => p.baseToken?.address?.toLowerCase() === token.toLowerCase());
+  const raw = await dexTokenPairs<{ baseToken?: { address?: string }; liquidity?: { usd?: number } }>(token);
+  if (raw === null) throw new Error("DexScreener unavailable");
+  const pairs = raw.filter((p) => p.baseToken?.address?.toLowerCase() === token.toLowerCase());
   if (pairs.length === 0) throw new Error("No liquidity pool for token");
   return pairs.reduce((m, p) => Math.max(m, p.liquidity?.usd ?? 0), 0);
 }

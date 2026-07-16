@@ -24,6 +24,7 @@ import {
 import { base } from "viem/chains";
 import { getConfig } from "@/lib/config";
 import { baseTransport } from "@/lib/base-transport";
+import { dexTokenPairs } from "@/lib/upstream-cache";
 
 // ---------------------------------------------------------------------------
 // Shared helpers (mirrors onchain.ts — kept local to avoid coupling)
@@ -123,20 +124,11 @@ interface DexScreenerResponse {
 export async function tokenPrice(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
 
-  let data: DexScreenerResponse;
-  try {
-    const res = await fetch(
-      `https://api.dexscreener.com/latest/dex/tokens/${address}`,
-      { signal: AbortSignal.timeout(8000) },
-    );
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    data = (await res.json()) as DexScreenerResponse;
-  } catch (err) {
-    // Re-throw with a clearer message so the caller knows it's a network issue.
-    throw new Error(`Price fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  const pairs = data.pairs?.filter(Boolean) ?? [];
+  // Shared 45s cache + fallback transport (this is called inside the flagship AI
+  // reports too — don't double-hit DexScreener per composite call).
+  const rawPairs = await dexTokenPairs<DexScreenerPair>(address);
+  if (rawPairs === null) throw new Error("Price fetch failed: DexScreener unavailable");
+  const pairs = rawPairs.filter(Boolean);
   if (pairs.length === 0) {
     throw new Error("No price data found for this token — it isn't trading on any Base DEX yet (too new, unlisted, or not a token contract)");
   }
@@ -276,17 +268,9 @@ export async function pairInfo(params: Record<string, string>) {
  */
 export async function tokenPools(params: Record<string, string>) {
   const address = requireAddress(params.address || "");
-  let data: DexScreenerResponse;
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    data = (await res.json()) as DexScreenerResponse;
-  } catch (err) {
-    throw new Error(`Pools fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const pairs = (data.pairs ?? []).filter(Boolean);
+  const rawPairs = await dexTokenPairs<DexScreenerPair>(address);
+  if (rawPairs === null) throw new Error("Pools fetch failed: DexScreener unavailable");
+  const pairs = rawPairs.filter(Boolean);
   if (pairs.length === 0) throw new Error("No pools found for this token");
 
   const addrLc = address.toLowerCase();

@@ -51,7 +51,6 @@ export function GET() {
       name: s.name,
       description: s.description,
       category: s.category,
-      demo: s.category === "Demo",
       requiresAI: s.category === "AI",
       price: s.price,
       // Whether the daily free trial applies — AI/metered services never serve free.

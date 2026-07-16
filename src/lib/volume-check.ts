@@ -12,6 +12,7 @@
 
 import "server-only";
 import { getAddress } from "viem";
+import { dexTokenPairs } from "@/lib/upstream-cache";
 
 interface DexPair {
   baseToken?: { address?: string; symbol?: string };
@@ -28,17 +29,9 @@ export async function volumeCheck(params: Record<string, string>) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide a valid 0x… token contract address");
   const address = getAddress(raw);
 
-  let pairs: DexPair[] = [];
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    const j = (await res.json()) as { pairs?: DexPair[] | null };
-    pairs = (j.pairs ?? []).filter((p) => p.baseToken?.address?.toLowerCase() === address.toLowerCase());
-  } catch (err) {
-    throw new Error(`Market data unavailable: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const rawPairs = await dexTokenPairs<DexPair>(address);
+  if (rawPairs === null) throw new Error("Market data unavailable: DexScreener unavailable");
+  const pairs = rawPairs.filter((p) => p.baseToken?.address?.toLowerCase() === address.toLowerCase());
   if (pairs.length === 0) throw new Error("No trading pair found for this token on Base");
 
   // Deepest pool carries the volume that matters.

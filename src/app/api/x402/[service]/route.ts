@@ -15,7 +15,7 @@ import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/buil
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { getResourceServer } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
-import { NETWORK, getConfig } from "@/lib/config";
+import { NETWORK, getConfig, getSiteUrl } from "@/lib/config";
 import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
@@ -255,6 +255,19 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // "N signals found") instead of a hard 402 wall. The teaser creates the
       // pull; the full detail is what a paid call unlocks.
       const params = paramsFrom(req, service);
+      // The highest-intent unpaid caller (used their free check, came back) sees
+      // this — so carry the same upsell the paid response would. For a token
+      // check, the natural next step is the AI report on this exact token.
+      const previewAddr = String(params.address ?? "").toLowerCase();
+      const previewUpgrade =
+        (service.id === "token-risk" || service.id === "rug-score") && /^0x[0-9a-f]{40}$/.test(previewAddr)
+          ? {
+              service: "ai-token-report",
+              price: "$0.12",
+              why: "AI-written buy/avoid verdict on this token — pay this check first and the full report is $0.05 (not $0.12) on this token for the next hour.",
+              url: `${getSiteUrl()}/api/x402/ai-token-report?address=${previewAddr}`,
+            }
+          : null;
       const previewBody = (data: Record<string, unknown>) =>
         NextResponse.json(
           {
@@ -263,6 +276,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
             data,
             preview: true,
             unlock: `Free daily check used — this is a preview. Pay ${service.price} for the full report (all signals, details & recommendation).`,
+            ...(previewUpgrade ? { upgrade: previewUpgrade } : {}),
           },
           { headers: { "x-preview": "true" } },
         );

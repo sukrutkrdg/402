@@ -1029,7 +1029,7 @@ export const SERVICES: ServiceDef[] = [
       "Metadata for a Base token: name, symbol, logo image, official website and social links (X/Telegram/etc.) plus price & liquidity — from DexScreener. For agents and UIs enriching a token.",
     price: "$0.01",
     icon: "🪪",
-    category: "Data",
+    category: "Markets",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: tokenInfo,
   },
