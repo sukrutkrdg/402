@@ -149,6 +149,24 @@ export async function kvDel(key: string): Promise<void> {
   mem.delete(key);
 }
 
+/**
+ * Atomic reserve: set `key` only if it doesn't already exist (SET … NX EX).
+ * Returns true if THIS caller won the reservation, false if it was already held.
+ * Use to make "check then claim" one step so concurrent requests can't both pass
+ * (e.g. one settlement tx redeeming many reports). Fails CLOSED (returns false)
+ * when KV is unavailable, so a reservation is never falsely granted.
+ */
+export async function kvSetNx(key: string, ttlSeconds: number): Promise<boolean> {
+  if (kvConfigured()) {
+    const r = await cmd<string>(["SET", key, "1", "NX", "EX", ttlSeconds]);
+    return r === "OK";
+  }
+  // In-memory fallback (single instance): emulate NX honoring TTL.
+  if (memValid(key)) return false;
+  mem.set(key, { value: "1", expireAt: Date.now() + ttlSeconds * 1000 });
+  return true;
+}
+
 /** Push to the head of a list (capped via LTRIM). */
 export async function kvLPush(key: string, value: string, capTo = 200): Promise<void> {
   if (kvConfigured()) {

@@ -22,7 +22,7 @@ import { getService } from "@/lib/services";
 import { getConfig, USDC_BASE } from "@/lib/config";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
-import { kvGet, kvSet, kvDel } from "@/lib/kv";
+import { kvSetNx, kvDel } from "@/lib/kv";
 import { saveSample } from "@/lib/sample-cache";
 
 export const dynamic = "force-dynamic";
@@ -86,14 +86,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ service: s
     return NextResponse.json({ error: "Provide the on-chain payment txHash (?txHash=0x…)." }, { status: 400 });
   }
 
-  // One report per settlement tx. Reserve the hash up front so a double-submit
-  // (or a retry mid-flight) can't redeem the same payment twice; released below
-  // only if we never actually serve (verification fails / handler throws).
+  // One report per settlement tx. Reserve the hash ATOMICALLY (SET NX) so N
+  // concurrent submits of the same txHash can't all pass the check before any
+  // writes — otherwise one $1 payment could redeem many reports at once. The
+  // reservation is released below only if we never actually serve (verification
+  // fails / handler throws). Fails closed: if KV is down, no reservation is
+  // granted and redemption is refused rather than served for free.
   const usedKey = `onchain:tx:${txHash}`;
-  if (await kvGet(usedKey)) {
-    return NextResponse.json({ error: "This payment was already redeemed." }, { status: 409 });
+  if (!(await kvSetNx(usedKey, 60 * 60 * 24 * 30))) {
+    return NextResponse.json({ error: "This payment was already redeemed (or is being redeemed) — you were not charged again." }, { status: 409 });
   }
-  await kvSet(usedKey, "1", 60 * 60 * 24 * 30);
 
   try {
     const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
