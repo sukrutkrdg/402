@@ -49,7 +49,8 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio, b20Control } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit } from "./b20-safety";
+import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 
 export interface ServiceParam {
@@ -274,6 +275,78 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Control,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-memo",
+    name: "B20 Memo Tracker",
+    tagline: "Payment IDs & compliance tags on a B20 token",
+    description:
+      "🆕 B20 adds memos to transfers/mints/burns (transferWithMemo) for payment IDs, compliance tags and settlement correlation — a field ERC-20 has no equivalent for. Reads a token's on-chain Memo event history, optionally filtered by a specific memo (bytes32) or the caller wallet. The settlement-reconciliation primitive for agents paying over B20 stablecoins.",
+    price: "$0.03",
+    icon: "🧾",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true },
+      { name: "memo", label: "Filter by memo (bytes32, optional)", placeholder: "0x…" },
+      { name: "caller", label: "Filter by caller wallet (optional)", placeholder: "0x…" },
+    ],
+    handler: b20Memo,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-supply",
+    name: "B20 Supply Guard",
+    tagline: "Mint headroom & dilution history of a B20",
+    description:
+      "🆕 The dilution half of B20 rug risk (b20-safety covers seizure). Reads supply cap vs minted supply (how much can still be minted) plus the on-chain SupplyCapUpdated history — an issuer that RAISED the cap diluted, or set up to dilute, holders. Uncapped mint is flagged as the worst case. Pair with b20-control to see who holds the mint role.",
+    price: "$0.04",
+    icon: "🏦",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Supply,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-metadata",
+    name: "B20 Metadata Integrity",
+    tagline: "Can this token rename itself? Has it?",
+    description:
+      "🆕 A B20 with a METADATA_ROLE holder can call updateName/updateSymbol — change its own identity after launch (an impersonation / bait-and-switch vector ERC-20 has no protocol equivalent for). Reads whether the metadata is mutable (role holder exists) AND whether it has ALREADY been renamed on-chain (NameUpdated/SymbolUpdated history). Trust the address, not the label.",
+    price: "$0.04",
+    icon: "🪪",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Metadata,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-permit",
+    name: "B20 Permit Inspector",
+    tagline: "Gasless-approval (ERC-2612) readiness for agents",
+    description:
+      "🆕 Every B20 has ERC-2612 permit built in — approve a spender by signature instead of a transaction. Reads exactly what an agent needs to build a valid permit: the token's DOMAIN_SEPARATOR, the owner's current nonce (so the signed payload can't be rejected/replayed), and the EIP-712 domain/type struct. Read-only — signs nothing.",
+    price: "$0.03",
+    icon: "🖊️",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true },
+      { name: "owner", label: "Owner wallet (for the nonce, optional)", placeholder: "0x…" },
+    ],
+    handler: b20Permit,
+    noFreeTier: true,
+  },
+  {
+    id: "base-withdrawal",
+    name: "Base Withdrawal Finalizer",
+    tagline: "When can a Base→L1 withdrawal be finalized?",
+    description:
+      "🆕 Beryl (2026-06-25) cut the single-proof withdrawal window from 7 days to 5, with a dual-proof fast path at ~1 day. Given a Base withdrawal-initiation tx, this decodes the L2ToL1MessagePasser event (the withdrawalHash, target & value needed to prove/finalize on L1) and estimates the finalization windows under the post-Beryl rules. For agents managing cross-chain liquidity.",
+    price: "$0.04",
+    icon: "🌉",
+    category: "Onchain",
+    params: [{ name: "tx", label: "Base withdrawal-initiation txHash", placeholder: "0x… (64 hex)", required: true }],
+    handler: baseWithdrawal,
     noFreeTier: true,
   },
   {

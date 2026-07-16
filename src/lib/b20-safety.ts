@@ -832,3 +832,307 @@ export async function b20Control(params: Record<string, string>) {
     checkedAt: new Date().toISOString(),
   };
 }
+
+// ---- Confirm a B20 (supplyCap reverts on a plain ERC-20) — shared by the below ----
+async function isB20Token(addr: `0x${string}`): Promise<boolean> {
+  const cap = await withRetry<bigint | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" }) as Promise<bigint | null>,
+    null,
+  );
+  return cap !== null;
+}
+
+const topicToAddr = (t?: string): string | null => {
+  try {
+    return t && t.length >= 42 ? getAddress("0x" + t.slice(-40)) : null;
+  } catch {
+    return null;
+  }
+};
+
+// ---- 7. B20 Memo Tracker — payment IDs / compliance tags on a B20 ----
+
+/**
+ * B20 adds memos to transfers/mints/burns (transferWithMemo → Memo(caller, memo))
+ * for payment IDs, compliance tags, and settlement correlation — a field plain
+ * ERC-20 has no equivalent for. Reads a token's Memo event history (CDP-indexed),
+ * optionally filtered by a specific memo (bytes32) or the caller wallet. The
+ * settlement-reconciliation primitive for agents paying over B20 stablecoins.
+ */
+export async function b20Memo(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  if (!(await isB20Token(addr))) return notB20(address);
+
+  let memoFilter = (params.memo || "").trim().toLowerCase();
+  if (memoFilter && !memoFilter.startsWith("0x")) memoFilter = "0x" + memoFilter;
+  const caller = (params.caller || params.wallet || "").trim().toLowerCase();
+
+  // Memo(address indexed caller, bytes32 indexed memo) → caller=topics[1], memo=topics[2].
+  const rows = await cdpSql<{ block_timestamp?: string; topics?: string[]; transaction_hash?: string }>(
+    `SELECT block_timestamp, topics, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_name = 'Memo' AND block_timestamp > now() - INTERVAL 45 DAY ORDER BY block_timestamp DESC LIMIT 200`,
+  );
+  if (rows === null) throw new Error("B20 memo event data unavailable (data provider) — try again shortly");
+
+  let memos = rows
+    .map((r) => ({
+      time: r.block_timestamp ?? null,
+      caller: topicToAddr(r.topics?.[1]),
+      memo: String(r.topics?.[2] ?? "").toLowerCase(),
+      txHash: r.transaction_hash ?? null,
+    }))
+    .filter((m) => /^0x[0-9a-f]{64}$/.test(m.memo));
+
+  if (memoFilter && /^0x[0-9a-f]{64}$/.test(memoFilter)) memos = memos.filter((m) => m.memo === memoFilter);
+  if (caller && /^0x[0-9a-f]{40}$/.test(caller)) memos = memos.filter((m) => m.caller?.toLowerCase() === caller);
+
+  const uniqueMemos = new Set(memos.map((m) => m.memo)).size;
+  const uniqueCallers = new Set(memos.map((m) => m.caller).filter(Boolean)).size;
+
+  return {
+    address,
+    isB20: true,
+    memoCount: memos.length,
+    uniqueMemos,
+    uniqueCallers,
+    filtered: Boolean(memoFilter || caller),
+    memos: memos.slice(0, 50),
+    verdict: memos.length ? "tagged_settlement" : "no_memos",
+    recommendation: memoFilter
+      ? memos.length
+        ? `Found ${memos.length} on-chain transfer(s) carrying that memo — use txHash/caller to reconcile the payment.`
+        : "No transfers found carrying that memo in the last 45 days on this token."
+      : memos.length
+        ? `${memos.length} memoed transfer(s) across ${uniqueMemos} distinct memo(s) — this token is used for tagged/compliant settlement. Filter with memo= to trace a specific payment ID.`
+        : "No memoed transfers on this token — memos aren't in use here.",
+    note: "B20 memos (payment IDs, compliance tags, settlement correlation) — a Base-native field ERC-20 has no equivalent for. Filter by memo= (bytes32) or caller= to reconcile a specific payment. CDP-indexed, 45-day window. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 8. B20 Supply / Mint Headroom — dilution risk + cap-change history ----
+
+/**
+ * b20-safety flags freeze/seize (seizure risk); this reads the OTHER half of the
+ * rug picture: dilution. supplyCap vs totalSupply = how much can still be minted,
+ * plus the SupplyCapUpdated history — an issuer that RAISED the cap diluted (or
+ * can dilute) holders. Uncapped mint is the worst case.
+ */
+export async function b20Supply(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  await sleep(120);
+  const totalSupply = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>,
+    0n,
+  );
+
+  const capped = s.supplyCapped;
+  const cap = s.supplyCap;
+  const headroom = capped && cap > totalSupply ? cap - totalSupply : 0n;
+  const pctMinted = capped && cap > 0n ? Math.min(100, Number((totalSupply * 10000n) / cap) / 100) : null;
+
+  // SupplyCapUpdated(address indexed updater, uint256 oldSupplyCap, uint256 newSupplyCap).
+  const rows = await cdpSql<{ block_timestamp?: string; parameters?: { oldSupplyCap?: string; newSupplyCap?: string; oldCap?: string; newCap?: string }; transaction_hash?: string }>(
+    `SELECT block_timestamp, parameters, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_name = 'SupplyCapUpdated' AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp ASC LIMIT 50`,
+  );
+  const capChanges = (rows ?? []).map((r) => {
+    const oldC = BigInt(r.parameters?.oldSupplyCap ?? r.parameters?.oldCap ?? "0");
+    const newC = BigInt(r.parameters?.newSupplyCap ?? r.parameters?.newCap ?? "0");
+    return {
+      time: r.block_timestamp ?? null,
+      oldCap: oldC.toString(),
+      newCap: newC.toString(),
+      direction: newC > oldC ? "raised" : newC < oldC ? "lowered" : "unchanged",
+      txHash: r.transaction_hash ?? null,
+    };
+  });
+  const raises = capChanges.filter((c) => c.direction === "raised").length;
+
+  const verdict = !capped
+    ? "uncapped"
+    : raises > 0
+      ? "cap_raised"
+      : pctMinted !== null && pctMinted >= 99
+        ? "at_cap"
+        : "capped";
+
+  return {
+    address,
+    isB20: true,
+    variant: s.variant,
+    symbol: s.symbol,
+    totalSupply: totalSupply.toString(),
+    supplyCap: capped ? cap.toString() : "uncapped",
+    mintHeadroom: capped ? headroom.toString() : "unbounded",
+    pctMinted,
+    capRaises: raises,
+    capChanges,
+    historyAvailable: rows !== null,
+    verdict, // uncapped | cap_raised | at_cap | capped
+    recommendation: !capped
+      ? "⚠️ No supply cap — the issuer can mint unlimited new supply and dilute you at will. Treat as high dilution risk."
+      : raises > 0
+        ? `⚠️ The supply cap has been RAISED ${raises} time(s) — the issuer has diluted (or set up to dilute) holders. Watch for further cap raises before sizing up.`
+        : pctMinted !== null && pctMinted >= 99
+          ? "Cap is effectively fully minted — little further dilution headroom, but confirm the issuer can't raise the cap (b20-control for the mint/admin roles)."
+          : `Capped supply with ${pctMinted ?? "?"}% minted — bounded dilution. The issuer can still raise the cap; pair with b20-control to see who holds the admin role.`,
+    note: "The dilution half of B20 rug risk: supply cap vs minted supply (headroom) plus the on-chain SupplyCapUpdated history (a raised cap = past/prepared dilution). Complements b20-safety (seizure) and b20-control (who can mint). Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 9. B20 Metadata Integrity — can this token rename itself? has it? ----
+
+const META_ROLE_ABI = [
+  { type: "function", name: "METADATA_ROLE", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+] as const;
+
+/**
+ * A B20 with a METADATA_ROLE holder can call updateName / updateSymbol — i.e.
+ * change its own identity after launch (an impersonation / bait-and-switch
+ * vector plain ERC-20s can't do at the protocol level). This reads whether the
+ * metadata is mutable (role holder exists) AND whether it has ALREADY been
+ * renamed (NameUpdated / SymbolUpdated history).
+ */
+export async function b20Metadata(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  await sleep(120);
+  const currentName = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>,
+    null,
+  );
+  await sleep(120);
+  const metaRoleId = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: META_ROLE_ABI, functionName: "METADATA_ROLE" }) as Promise<string | null>,
+    null,
+  );
+  const metaId = metaRoleId ? metaRoleId.toLowerCase() : null;
+
+  // NameUpdated/SymbolUpdated history + RoleGranted/Revoked to reconstruct METADATA_ROLE holders.
+  const rows = await cdpSql<{ event_signature?: string; block_timestamp?: string; parameters?: { newName?: string; newSymbol?: string }; topics?: string[] }>(
+    `SELECT event_signature, block_timestamp, parameters, topics FROM base.events WHERE address = '${addr.toLowerCase()}' AND (event_signature LIKE 'NameUpdated%' OR event_signature LIKE 'SymbolUpdated%' OR event_signature LIKE 'RoleGranted%' OR event_signature LIKE 'RoleRevoked%') AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp ASC LIMIT 2000`,
+  );
+  if (rows === null) throw new Error("B20 metadata event data unavailable (data provider) — try again shortly");
+
+  const renames: Array<{ time: string | null; field: string; newValue: string }> = [];
+  const metaHolders = new Set<string>();
+  for (const r of rows) {
+    const sig = r.event_signature ?? "";
+    if (/^NameUpdated/.test(sig)) {
+      renames.push({ time: r.block_timestamp ?? null, field: "name", newValue: String(r.parameters?.newName ?? "") });
+    } else if (/^SymbolUpdated/.test(sig)) {
+      renames.push({ time: r.block_timestamp ?? null, field: "symbol", newValue: String(r.parameters?.newSymbol ?? "") });
+    } else if (metaId) {
+      const roleId = String(r.topics?.[1] ?? "").toLowerCase();
+      if (roleId !== metaId) continue;
+      const acct = topicToAddr(r.topics?.[2]);
+      if (!acct) continue;
+      if (/^RoleRevoked/.test(sig)) metaHolders.delete(acct);
+      else metaHolders.add(acct);
+    }
+  }
+
+  const mutable = metaHolders.size > 0;
+  const renamed = renames.length > 0;
+  const verdict = renamed ? "renamed" : mutable ? "mutable" : "immutable";
+
+  return {
+    address,
+    isB20: true,
+    currentName,
+    currentSymbol: s.symbol,
+    metadataMutable: mutable,
+    metadataControllers: [...metaHolders],
+    renameCount: renames.length,
+    renames,
+    verdict, // renamed (already changed identity) | mutable (can) | immutable
+    recommendation: renamed
+      ? `⚠️ This token has changed its ${[...new Set(renames.map((r) => r.field))].join("/")} on-chain ${renames.length} time(s) — its current identity is NOT guaranteed to match what you first saw. Treat name/symbol as untrusted; verify by address only.`
+      : mutable
+        ? `${metaHolders.size} address(es) can rename this token's name/symbol at any time (METADATA_ROLE). Its identity is mutable — trust the address, not the label.`
+        : "No metadata controllers and no rename history — the token's name/symbol are effectively fixed.",
+    note: "B20 metadata integrity: whether the name/symbol are mutable (METADATA_ROLE holder) and whether they've already been changed on-chain (NameUpdated/SymbolUpdated) — an impersonation/bait-and-switch vector ERC-20 has no protocol equivalent for. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 10. B20 Permit Inspector — gasless-approval readiness for agents ----
+
+const PERMIT_ABI = [
+  { type: "function", name: "nonces", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "DOMAIN_SEPARATOR", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+] as const;
+
+/**
+ * Every B20 has ERC-2612 permit built in — an agent can approve a spender with a
+ * signature instead of a transaction. This reads exactly what an agent needs to
+ * build a valid permit: the token's DOMAIN_SEPARATOR, the owner's current nonce
+ * (so the signed payload can't be rejected/replayed), and the EIP-712 domain
+ * fields (name/version/chainId/verifyingContract).
+ */
+export async function b20Permit(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const owner = (params.owner || params.wallet || "").trim();
+
+  if (!(await isB20Token(addr))) return notB20(address);
+
+  await sleep(120);
+  const domainSeparator = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: PERMIT_ABI, functionName: "DOMAIN_SEPARATOR" }) as Promise<string | null>,
+    null,
+  );
+  await sleep(120);
+  const name = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "name" }) as Promise<string | null>,
+    null,
+  );
+
+  let nonce: string | null = null;
+  if (validAddr(owner)) {
+    await sleep(120);
+    const n = await withRetry<bigint | null>(
+      () => client.readContract({ address: addr, abi: PERMIT_ABI, functionName: "nonces", args: [getAddress(owner)] }) as Promise<bigint | null>,
+      null,
+    );
+    nonce = n === null ? null : n.toString();
+  }
+
+  return {
+    address,
+    isB20: true,
+    supportsPermit: true, // ERC-2612 is built into every B20
+    owner: validAddr(owner) ? getAddress(owner) : null,
+    nonce, // next nonce to sign with (null if no owner= given or read failed)
+    domainSeparator,
+    eip712Domain: { name, version: "1", chainId: 8453, verifyingContract: addr },
+    permitTypes: {
+      Permit: [
+        { name: "owner", type: "address" },
+        { name: "spender", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    },
+    recommendation: validAddr(owner)
+      ? nonce !== null
+        ? `Sign an EIP-712 Permit with nonce ${nonce} and a future deadline, then submit permit(owner,spender,value,deadline,v,r,s) — a gasless approval, no separate approve() tx.`
+        : "Couldn't read the owner's nonce right now (RPC) — retry before signing; a wrong nonce makes the permit revert."
+      : "Pass owner= to also get the current nonce. Every B20 supports ERC-2612 permit — approve spenders by signature, no gas.",
+    note: "ERC-2612 permit readiness for a B20: DOMAIN_SEPARATOR, owner nonce, and the EIP-712 domain/type struct an agent needs to build a valid gasless approval. Read-only; signs nothing. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
