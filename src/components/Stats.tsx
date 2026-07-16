@@ -152,7 +152,12 @@ export default function Stats() {
       // usage analytics (best-effort)
       try {
         const ur = await fetch(`/api/usage`, { headers: { "x-stats-token": tok } });
-        if (ur.ok) setUsage(await ur.json());
+        if (ur.ok) {
+          const next = (await ur.json()) as Usage;
+          // Don't let a degraded refresh (KV was slow) wipe good numbers we
+          // already have — keep the last coherent snapshot instead of flashing 0.
+          setUsage((prev) => (next.degraded && prev && !prev.degraded ? prev : next));
+        }
       } catch {
         /* ignore */
       }
