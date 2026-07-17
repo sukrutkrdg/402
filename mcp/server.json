@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sukrutkrdg/x402-bazaar-mcp",
-  "description": "Pay-per-call Base APIs for agents: token risk, prices, gas, wallet intel, AI. USDC via x402.",
+  "description": "The Base token-safety toolkit for agents: the ONLY B20 (Base-native token) freeze/seize/rug suite, pre-trade GO/HOLD/STOP gates, honeypot & sellability checks, wallet + approval audits, plus prices and AI reports. Pay-per-call in USDC over x402 — no API keys.",
   "repository": {
     "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "x402-bazaar-mcp",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "transport": {
         "type": "stdio"
       },

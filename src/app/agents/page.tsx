@@ -134,8 +134,7 @@ const res = await fetch(
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">3. Use as MCP tools (easiest)</h2>
         <p className="text-sm text-gray-400">
-          Every service appears as a tool in Claude Desktop, Cursor, or any MCP client — via the
-          published{" "}
+          Every service appears as a tool via the published{" "}
           <a
             className="text-sky-400 hover:underline"
             href="https://www.npmjs.com/package/x402-bazaar-mcp"
@@ -144,8 +143,13 @@ const res = await fetch(
           >
             x402-bazaar-mcp
           </a>{" "}
-          package. No code to write:
+          package — the same config works everywhere. No code to write:
         </p>
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          {["Claude Desktop", "Cursor", "Cline", "Windsurf", "VS Code", "Claude Code", "Coinbase AgentKit"].map((h) => (
+            <span key={h} className="rounded-full border border-base-line bg-white/5 px-2 py-0.5 text-gray-300">{h}</span>
+          ))}
+        </div>
         <Code>{`{
   "mcpServers": {
     "x402-bazaar": {
@@ -156,20 +160,25 @@ const res = await fetch(
   }
 }`}</Code>
         <p className="text-xs text-gray-500">
-          Add to <code className="codechip">claude_desktop_config.json</code> (or your client&apos;s MCP
-          config), restart, and the tools appear. With no env at all it runs on the free tier;
-          set <code className="codechip">X402_CREDIT_TOKEN</code> (from buy-credits, recommended) or{" "}
-          <code className="codechip">AGENT_PRIVATE_KEY</code> (Base wallet with USDC — the key never
-          leaves your machine) for paid calls. Also on the{" "}
+          Add to your client&apos;s MCP config (per-host file paths in the{" "}
           <a
             className="text-sky-400 hover:underline"
-            href="https://github.com/sukrutkrdg/x402-bazaar-mcp"
+            href="https://github.com/sukrutkrdg/x402-bazaar-mcp#readme"
             target="_blank"
             rel="noreferrer"
           >
-            GitHub repo
-          </a>{" "}
-          &amp; the official MCP Registry.
+            README
+          </a>
+          ), restart, and the tools appear. With no env at all it runs on the free tier;
+          set <code className="codechip">X402_CREDIT_TOKEN</code> (from buy-credits, recommended) or{" "}
+          <code className="codechip">AGENT_PRIVATE_KEY</code> (Base wallet with USDC — the key never
+          leaves your machine) for paid calls. Also on the official MCP Registry &amp; Smithery.
+        </p>
+        <p className="text-xs text-gray-500">
+          Once bound, tell your agent to <strong className="text-gray-300">bind these first</strong>:{" "}
+          <code className="codechip">pre_trade_gate</code> (any token),{" "}
+          <code className="codechip">b20_gate</code> (Base-native B20 tokens — the only such tool
+          anywhere), <code className="codechip">sign_guard</code> (before signing a tx).
         </p>
         <p className="text-xs text-gray-500">
           Prefer to build your own? See the{" "}

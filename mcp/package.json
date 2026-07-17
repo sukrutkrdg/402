@@ -1,8 +1,8 @@
 {
   "name": "x402-bazaar-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "mcpName": "io.github.sukrutkrdg/x402-bazaar-mcp",
-  "description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools — pay per call in USDC on Base, no API keys needed.",
+  "description": "The Base token-safety toolkit for agents: the only B20 (Base-native token) freeze/seize/rug suite, pre-trade GO/HOLD/STOP gates, honeypot & sellability checks, wallet + approval audits, prices and AI reports — pay per call in USDC over x402, no API keys.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -33,7 +33,16 @@
     "usdc",
     "pay-per-call",
     "agent",
-    "modelcontextprotocol"
+    "modelcontextprotocol",
+    "b20",
+    "token-risk",
+    "honeypot",
+    "rug",
+    "freeze-seize",
+    "pre-trade",
+    "onchain-safety",
+    "sanctions",
+    "wallet-intel"
   ],
   "repository": {
     "type": "git",

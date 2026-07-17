@@ -1,8 +1,16 @@
 # x402-bazaar-mcp
 
-An **MCP (Model Context Protocol) server** that exposes every paid API in the
-[x402 Bazaar](https://402.com.tr) catalog as a callable tool for AI agents
-(Claude Desktop, Cursor, custom agents, etc.).
+**The Base token-safety toolkit for AI agents.** An **MCP (Model Context
+Protocol) server** that gives your agent the checks it needs before it touches a
+Base token — including the **only [B20](https://402.com.tr) (Base-native token
+standard) freeze/seize/rug suite anywhere**, pre-trade GO/HOLD/STOP gates,
+honeypot & sellability checks, wallet + approval audits, sign-guard, prices and
+AI reports. Every paid API in the [x402 Bazaar](https://402.com.tr) catalog,
+exposed as a callable tool (Claude Desktop, Cursor, Cline, Windsurf, VS Code,
+Coinbase AgentKit, custom agents).
+
+**Bind these first:** `pre_trade_gate` (any token), `b20_gate` (Base-native B20
+tokens), `sign_guard` (before signing a tx).
 
 Each tool call is backed by an **x402 micro-payment in USDC on Base** — no API
 keys, no subscriptions, no sign-up.  The agent pays only for what it uses,
@@ -108,10 +116,74 @@ in the tool list (hammer icon).
 
 ---
 
-## Cursor / other MCP clients
+## Cursor
 
-Any MCP-compatible client that supports stdio servers works the same way — just
-point it at `npx x402-bazaar-mcp` with `AGENT_PRIVATE_KEY` in the environment.
+Add to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` in your project:
+
+```json
+{
+  "mcpServers": {
+    "x402-bazaar": {
+      "command": "npx",
+      "args": ["-y", "x402-bazaar-mcp"],
+      "env": { "X402_CREDIT_TOKEN": "ck_your_token" }
+    }
+  }
+}
+```
+
+## Cline (VS Code)
+
+In the Cline panel → **MCP Servers → Configure** (`cline_mcp_settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "x402-bazaar": {
+      "command": "npx",
+      "args": ["-y", "x402-bazaar-mcp"],
+      "env": { "X402_CREDIT_TOKEN": "ck_your_token" },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+## Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "x402-bazaar": {
+      "command": "npx",
+      "args": ["-y", "x402-bazaar-mcp"],
+      "env": { "X402_CREDIT_TOKEN": "ck_your_token" }
+    }
+  }
+}
+```
+
+## VS Code (GitHub Copilot / MCP)
+
+Add to `.vscode/mcp.json` in your workspace (or run **MCP: Add Server**):
+
+```json
+{
+  "servers": {
+    "x402-bazaar": {
+      "command": "npx",
+      "args": ["-y", "x402-bazaar-mcp"],
+      "env": { "X402_CREDIT_TOKEN": "ck_your_token" }
+    }
+  }
+}
+```
+
+Every client above works the same way: **omit `env`** to run on the free tier,
+or swap the credit token for `"AGENT_PRIVATE_KEY": "0x…"` to pay from a wallet.
 
 ---
 
@@ -131,12 +203,21 @@ is handled for you: `HTTP 402 → pay USDC on Base → retry → response`.
 
 ### Coinbase AgentKit
 
-AgentKit agents that support MCP servers load the Bazaar tools the same way
-(`command: npx`, `args: ["-y", "x402-bazaar-mcp"]`, `AGENT_PRIVATE_KEY` in env).
-The agent gains on-chain safety/intel + AI tools as pay-per-call actions — token
-risk, honeypot/sellability checks, deployer reputation, exit liquidity, live DEX
-prices, gas, tx decode, and Claude-powered reports — without writing an action
-provider for each.
+Two ways in:
+
+1. **As MCP tools** — load this server into your AgentKit agent's MCP config
+   (`command: "npx"`, `args: ["-y", "x402-bazaar-mcp"]`, and `X402_CREDIT_TOKEN`
+   or `AGENT_PRIVATE_KEY` in `env`). The agent gains all 80+ Bazaar tools —
+   B20 freeze/seize checks, pre-trade gates, honeypot/sellability, deployer
+   reputation, exit liquidity, live DEX prices, gas, tx decode, Claude reports —
+   as pay-per-call actions, no action provider to write.
+2. **Via AgentKit's native x402 support** — AgentKit's wallet can settle x402
+   payments directly, so an agent can `GET https://402.com.tr/api/x402/<service>`
+   and pay the returned 402 from its own wallet. The 402 body includes a
+   machine-readable `alternatives` block (starter credits first) so the agent can
+   pick the cheapest on-ramp programmatically.
+
+Either way the agent pays only for the calls it makes, in USDC on Base, gasless.
 
 ### Claude Code
 

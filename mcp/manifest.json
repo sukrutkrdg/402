@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "x402-bazaar-mcp",
   "display_name": "x402 Bazaar",
-  "version": "0.2.1",
-  "description": "Pay-per-call Base onchain-safety, wallet-intel & AI tools over x402 — free tier works with zero config.",
-  "long_description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools. Every tool works instantly on the free tier (one call per day per service, then a preview). Add a prepaid credit token (buy once with USDC, no wallet in the agent) or a Base wallet private key to unlock unlimited paid calls via x402 micro-payments in USDC. Token safety checks, B20 standard inspection, wallet intelligence, DeFi data and AI reports — no API keys anywhere.",
+  "version": "0.2.2",
+  "description": "The Base token-safety toolkit for agents: the only B20 (Base-native token) freeze/seize/rug suite, pre-trade GO/HOLD/STOP gates, honeypot checks, wallet + approval audits, prices & AI reports over x402 — free tier, zero config.",
+  "long_description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools. Its edge is Base token safety: the only B20 (Base-native token standard) suite anywhere — freeze/seize/rebase/policy checks no ERC-20 tool can see — plus pre-trade GO/HOLD/STOP gates, honeypot/sellability/rug scores, wallet & approval audits, sign-guard, prices, and Claude-written AI reports. Every tool works instantly on the free tier (one call per day per service, then a preview). Add a prepaid credit token (buy once with USDC, no wallet in the agent) or a Base wallet private key to unlock unlimited paid calls via x402 micro-payments in USDC — no API keys anywhere.",
   "author": {
     "name": "sukrutkrdg",
     "url": "https://402.com.tr"
@@ -15,7 +15,7 @@
     "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp"
   },
   "license": "MIT",
-  "keywords": ["x402", "base", "usdc", "pay-per-call", "onchain-safety", "b20", "agent"],
+  "keywords": ["x402", "base", "usdc", "pay-per-call", "onchain-safety", "b20", "agent", "token-risk", "honeypot", "rug", "freeze-seize", "pre-trade", "sanctions", "wallet-intel"],
   "server": {
     "type": "node",
     "entry_point": "src/index.mjs",
