@@ -50,7 +50,7 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin, b20SeizureHistory } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin, b20SeizureHistory, b20Authenticity, b20ConfigAudit, b20PolicyMembers, b20GenesisAudit, b20MintWatch, b20RebaseHistory, b20Peg } from "./b20-safety";
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 
@@ -323,6 +323,103 @@ export const SERVICES: ServiceDef[] = [
       { name: "wallet", label: "Victim wallet (optional)", placeholder: "0x… wallet" },
     ],
     handler: b20SeizureHistory,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-authenticity",
+    name: "B20 Authenticity Check",
+    tagline: "Is this a REAL B20 — or a lookalike contract?",
+    description:
+      "🆕 Run FIRST on any 'B20'. A scammer can deploy a normal contract at a vanity 0xB200… address and fake the whole B20 read surface — the B20Factory precompile is the one authority that can't be spoofed. Verifies factory registration + bytecode absence (real B20s are chain-native precompiles with no code). verdict: genuine / fake_lookalike / not_b20. The 2-cent check that keeps every other B20 answer honest.",
+    price: "$0.02",
+    icon: "🕵️",
+    category: "B20",
+    params: [{ name: "address", label: "Token address", placeholder: "0x… token", required: true }],
+    handler: b20Authenticity,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-config-audit",
+    name: "B20 Config Audit",
+    tagline: "Bricked scopes, dangling policies, frozen lists",
+    description:
+      "🆕 The B20 misconfiguration lint. Base's docs warn: a scope bound to a NON-EXISTENT allowlist silently denies EVERYONE — transfers brick. Audits every policy scope for dangling bindings, ALWAYS_BLOCK, renounced (frozen) lists and live pauses; verdict bricked / critical_misconfig / misconfigured / clean plus a can-this-token-even-move flag. Pre-launch lint for issuers, stuck-funds guard for holders and merchants.",
+    price: "$0.05",
+    icon: "🩺",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20ConfigAudit,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-policy-members",
+    name: "B20 Policy Members",
+    tagline: "The FULL blocklist/allowlist — every address, with history",
+    description:
+      "🆕 b20-freeze-check answers one wallet; this enumerates the WHOLE list. Replays the Policy Registry's BlocklistUpdated/AllowlistUpdated events into the full membership of a B20's blocklist/allowlist: every address ever blocked or whitelisted, when, by whom, and the current member set per scope. Compliance-grade visibility no other tool provides. Pass address= (token) or policy= (registry policy ID).",
+    price: "$0.05",
+    icon: "📋",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token address", placeholder: "0x… B20 token" },
+      { name: "policy", label: "Registry policy ID (optional)", placeholder: "e.g. 2" },
+    ],
+    handler: b20PolicyMembers,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-genesis-audit",
+    name: "B20 Genesis Audit",
+    tagline: "What the issuer did in the initCalls bypass window",
+    description:
+      "🆕 createB20's initCalls run with role AND transfer-policy gates BYPASSED — a one-tx privilege window only the issuer ever gets. Reconstructs what they did in it: pre-mints (how much, to whom), role grants, policy bindings, blocklist seeding — the token's true starting conditions. verdict: blocklist_seeded / premined / configured_launch / bare_launch.",
+    price: "$0.04",
+    icon: "🧬",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20GenesisAudit,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-mint-watch",
+    name: "B20 Mint Watch",
+    tagline: "Who is printing this token, right now",
+    description:
+      "🆕 b20-supply shows the dilution ceiling; this shows the actual printing. Every mint (incl. batchMint) in the window: amount, recipients, and the share of current supply it represents — heavy_dilution / active_minting / minor_minting / quiet. The live issuance feed for agents holding B20 stablecoins and RWAs. Pass days= (1-90, default 30).",
+    price: "$0.03",
+    icon: "🖨️",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true },
+      { name: "days", label: "Window in days (default 30)", placeholder: "30" },
+    ],
+    handler: b20MintWatch,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-rebase-history",
+    name: "B20 Rebase History",
+    tagline: "Every silent balance rescaling this token ever did",
+    description:
+      "🆕 An Asset B20's multiplier rescales EVERY holder's balance in one call — no transfer, no per-account event, nothing in your tx history. b20-rebase shows today's value; this replays the full MultiplierUpdated history and flags DOWNWARD moves that silently cut every holder. The operator's rebase track record, before you hold a rebasing RWA.",
+    price: "$0.03",
+    icon: "📉",
+    category: "B20",
+    params: [{ name: "address", label: "B20 Asset token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20RebaseHistory,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-peg",
+    name: "B20 Peg Check",
+    tagline: "Declared currency vs what the market actually pays",
+    description:
+      "🆕 A B20 Stablecoin's currency() is SELF-DECLARED — the standard verifies nothing. This is the missing check: declared peg vs actual DEX market price. 'Says USD, trades at $0.71' in one call: on_peg / depeg_warning / depegged / no_market (the peg is a pure claim with zero price discovery) / unverifiable_fx for non-USD pegs. Run before settling in any B20 stablecoin.",
+    price: "$0.03",
+    icon: "⚖️",
+    category: "B20",
+    params: [{ name: "address", label: "B20 stablecoin address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Peg,
     noFreeTier: true,
   },
   {

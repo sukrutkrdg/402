@@ -367,6 +367,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const aiSuite = AI_FLAGSHIP_IDS.map((id) => services.find((s) => s.id === id)).filter(
     (s): s is ServiceMeta => Boolean(s),
   );
+  const b20Count = services.filter((s) => s.category === "B20").length;
 
   return (
     <div className="flex flex-col gap-10">
@@ -377,7 +378,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       >
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-amber-200">
-            🚨 The B20 protection suite — 8 tools, incl. real-time seizure alerts
+            🚨 The B20 protection suite — {b20Count} tools, incl. real-time seizure alerts
           </span>
           <span className="max-w-2xl text-xs leading-relaxed text-gray-300">
             B20 issuers can <strong className="text-amber-200">freeze</strong> and even{" "}

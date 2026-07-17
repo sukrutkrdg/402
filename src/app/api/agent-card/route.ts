@@ -43,10 +43,10 @@ export function GET() {
     startHere: ["pre-trade-gate", "b20-gate", "sign-guard"],
     b20Suite: {
       about: "Base-native B20 tokens: protocol-level freeze/seize/pause powers no ERC-20 tool can see.",
-      gate: ["b20-gate", "b20-transfer-preflight"],
-      dossier: ["b20-safety", "b20-info", "b20-control", "b20-policy-admin", "b20-access-type", "b20-supply", "b20-metadata", "b20-rebase", "b20-stablecoin"],
+      gate: ["b20-authenticity", "b20-gate", "b20-transfer-preflight"],
+      dossier: ["b20-safety", "b20-info", "b20-control", "b20-policy-admin", "b20-access-type", "b20-policy-members", "b20-supply", "b20-metadata", "b20-rebase", "b20-rebase-history", "b20-stablecoin", "b20-peg", "b20-seizure-history", "b20-genesis-audit", "b20-config-audit", "b20-dossier"],
       myWallet: ["b20-freeze-check", "b20-portfolio"],
-      monitoring: ["b20-policy-watch", "b20-guard", "b20-launch-radar", "b20-announcements"],
+      monitoring: ["b20-policy-watch", "b20-guard", "b20-launch-radar", "b20-mint-watch", "b20-announcements"],
       rails: ["b20-memo", "b20-permit"],
     },
     skills: SERVICES.filter((s) => !s.hidden).map((s) => ({

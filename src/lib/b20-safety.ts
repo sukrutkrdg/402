@@ -42,6 +42,14 @@ const POLICY_ABI = [
   { type: "function", name: "isAuthorized", stateMutability: "view", inputs: [{ type: "uint64" }, { type: "address" }], outputs: [{ type: "bool" }] },
 ] as const;
 
+// B20Factory: the AUTHORITATIVE "is this a real B20" check. A malicious EVM
+// contract can implement supplyCap()/policyId() and (with a vanity 0xB200…
+// address) impersonate a B20 — only the factory can't be faked.
+const FACTORY_ABI = [
+  { type: "function", name: "isB20", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "isB20Initialized", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
+] as const;
+
 // B20Factory event, for the launch radar.
 const B20_CREATED = parseAbiItem(
   "event B20Created(address indexed token, uint8 indexed variant, string name, string symbol, uint8 decimals, bytes variantEventParams)",
@@ -140,6 +148,7 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     { address: addr, abi: B20_ABI, functionName: "isPaused", args: [2] },
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_EXECUTOR_POLICY] },
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [MINT_RECEIVER_POLICY] },
+    { address: B20_FACTORY, abi: FACTORY_ABI, functionName: "isB20", args: [addr] },
   ] as const;
 
   type MC = { status: "success"; result: unknown } | { status: "failure"; error: Error };
@@ -158,8 +167,11 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     }
   }
 
-  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2, exRes, mrRes] = r;
+  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2, exRes, mrRes, facRes] = r;
   if (scRes.status !== "success") return empty; // supplyCap reverted / no data → not a B20
+  // Factory is the authority: a contract that answers supplyCap() but that the
+  // factory disowns is a FAKE B20 (vanity-address impersonation) — not a B20.
+  if (facRes?.status === "success" && facRes.result === false) return empty;
   const supplyCap = scRes.result as bigint;
   const symbol = symRes.status === "success" ? (symRes.result as string) : null;
   const variant: "asset" | "stablecoin" = multRes.status === "success" ? "asset" : "stablecoin";
@@ -174,7 +186,8 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     mrRes?.status !== "success" ||
     p0.status !== "success" ||
     p1.status !== "success" ||
-    p2.status !== "success";
+    p2.status !== "success" ||
+    facRes?.status !== "success"; // couldn't confirm authenticity with the factory
   const senderPol = spRes.status === "success" ? (spRes.result as bigint) : 0n;
   const recvPol = rpRes.status === "success" ? (rpRes.result as bigint) : 0n;
   const execPol = exRes?.status === "success" ? (exRes.result as bigint) : 0n;
@@ -622,6 +635,7 @@ export async function b20Portfolio(params: Record<string, string>) {
 // ---- 6b. B20 Policy Watch — did this token BECOME seizable/freezable? ----
 
 import { cdpSql } from "./covalent";
+import { dexTokenPairs } from "./upstream-cache";
 import { kvLRange, kvGet, kvSet, kvIncr } from "./kv";
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { getConfig } from "./config";
@@ -1002,6 +1016,15 @@ export async function b20Control(params: Record<string, string>) {
 
 // ---- Confirm a B20 (supplyCap reverts on a plain ERC-20) — shared by the below ----
 async function isB20Token(addr: `0x${string}`): Promise<boolean> {
+  // Factory-first: isB20() can't be spoofed by a lookalike contract that
+  // implements supplyCap(). Falls back to the supplyCap probe only if the
+  // factory read itself fails (transport).
+  const real = await withRetry<boolean | null>(
+    () => client.readContract({ address: B20_FACTORY, abi: FACTORY_ABI, functionName: "isB20", args: [addr] }) as Promise<boolean>,
+    null,
+    true,
+  );
+  if (real !== null) return real;
   const cap = await withRetry<bigint | null>(
     () => client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" }) as Promise<bigint | null>,
     null,
@@ -1141,6 +1164,21 @@ export async function b20Memo(params: Record<string, string>) {
   if (memoFilter && /^0x[0-9a-f]{64}$/.test(memoFilter)) memos = memos.filter((m) => m.memo === memoFilter);
   if (caller && /^0x[0-9a-f]{40}$/.test(caller)) memos = memos.filter((m) => m.caller?.toLowerCase() === caller);
 
+  // Merchant reconciliation: to= keeps only memos whose tx also moved tokens TO
+  // that address (the Memo event itself doesn't carry the recipient — join via
+  // the Transfer in the same tx, exactly how the Base docs tell merchants to).
+  const merchant = (params.to || params.merchant || "").trim().toLowerCase();
+  if (merchant && /^0x[0-9a-f]{40}$/.test(merchant)) {
+    const txRows = await cdpSql<{ topics?: string[]; transaction_hash?: string }>(
+      `SELECT topics, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_name = 'Transfer' AND block_timestamp > now() - INTERVAL 45 DAY ORDER BY block_timestamp DESC LIMIT 2000`,
+    );
+    if (txRows === null) throw new Error("B20 transfer event data unavailable (data provider) — try again shortly");
+    const toTx = new Set(
+      txRows.filter((r) => topicToAddr(r.topics?.[2])?.toLowerCase() === merchant).map((r) => r.transaction_hash).filter(Boolean),
+    );
+    memos = memos.filter((m) => m.txHash && toTx.has(m.txHash));
+  }
+
   const uniqueMemos = new Set(memos.map((m) => m.memo)).size;
   const uniqueCallers = new Set(memos.map((m) => m.caller).filter(Boolean)).size;
 
@@ -1150,7 +1188,7 @@ export async function b20Memo(params: Record<string, string>) {
     memoCount: memos.length,
     uniqueMemos,
     uniqueCallers,
-    filtered: Boolean(memoFilter || caller),
+    filtered: Boolean(memoFilter || caller || (merchant && /^0x[0-9a-f]{40}$/.test(merchant))),
     memos: memos.slice(0, 50),
     verdict: memos.length ? "tagged_settlement" : "no_memos",
     recommendation: memoFilter
@@ -1703,6 +1741,680 @@ export async function b20Stablecoin(params: Record<string, string>) {
       s.canSeize ? "The issuer can freeze/seize holders (standard for regulated stablecoins) — trust the operator." : "No active sender-blocklist right now."
     } Pair with b20-control for who holds the mint/seize roles.`,
     note: "B20 Stablecoin profile: the self-declared fiat currency code plus issuance (supply/cap) and control powers. The currency code is a claim, not attested backing. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 15. B20 Authenticity — is this a REAL B20, or a lookalike contract? ----
+
+/**
+ * Nothing stops a scammer from deploying a plain EVM contract at a vanity
+ * 0xB200… address that fakes the B20 read surface (supplyCap(), policyId(), …).
+ * The B20Factory is the one authority that can't be spoofed: real B20s are
+ * chain-native precompiles it registered, and they hold NO bytecode.
+ */
+export async function b20Authenticity(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… token address (address=)");
+  const addr = getAddress(address);
+
+  // 10-byte B20 prefix (0xb2 + 9 zero bytes), byte 10 = variant.
+  const looksB20 = addr.toLowerCase().startsWith("0xb2" + "0".repeat(18));
+  const contracts = [
+    { address: B20_FACTORY, abi: FACTORY_ABI, functionName: "isB20", args: [addr] },
+    { address: B20_FACTORY, abi: FACTORY_ABI, functionName: "isB20Initialized", args: [addr] },
+  ] as const;
+  type MC = { status: "success"; result: unknown } | { status: "failure"; error: Error };
+  let r: MC[];
+  try {
+    r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as unknown as MC[];
+  } catch {
+    await sleep(400);
+    r = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as unknown as MC[];
+  }
+  const [isRes, initRes] = r;
+  if (isRes.status !== "success") throw new Error("B20 factory read unavailable (RPC) — try again shortly");
+  const factorySaysB20 = isRes.result === true;
+  const initialized = initRes.status === "success" ? initRes.result === true : null;
+
+  await sleep(120);
+  const code = await withRetry<string | null>(
+    async () => (await client.getCode({ address: addr })) ?? "0x",
+    null,
+    true,
+  );
+  const hasBytecode = code !== null && code !== "0x" && code.length > 2;
+
+  const verdict = factorySaysB20
+    ? initialized === false
+      ? "genuine_uninitialized"
+      : "genuine"
+    : looksB20
+      ? "fake_lookalike"
+      : "not_b20";
+
+  return {
+    address: addr,
+    prefixLooksB20: looksB20,
+    factoryConfirms: factorySaysB20,
+    initialized,
+    hasBytecode, // real B20 precompiles hold NO bytecode; a lookalike contract does
+    verdict, // genuine | genuine_uninitialized | fake_lookalike | not_b20
+    recommendation: factorySaysB20
+      ? "Genuine B20 — registered by the B20Factory precompile. Safe to run the rest of the B20 suite (b20-safety, b20-gate, b20-dossier) against it."
+      : looksB20
+        ? "🚨 FAKE — the address is shaped like a B20 (0xB200… prefix) but the B20Factory does NOT recognize it. This is a lookalike impersonating a Base-native token. Distrust every 'B20' claim it makes; at best treat it as an unknown ERC-20 (token-risk, contract-danger)."
+        : "Not a B20 — the factory doesn't recognize this address and it doesn't carry the B20 prefix. Use the ERC-20 tools (token-risk, rug-score).",
+    note: "Authenticity check against the B20Factory precompile — the one signal a vanity-address impersonator can't fake. Genuine B20s are chain-native precompiles with no bytecode; a 0xB200…-prefixed EVM contract is an impersonation. Run FIRST, before trusting any B20 analysis of an unknown token. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 16. B20 Config Audit — bricked scopes, dangling policies, frozen lists ----
+
+const POLICY_EXISTS_ABI = [
+  { type: "function", name: "policyExists", stateMutability: "view", inputs: [{ type: "uint64" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "policyAdmin", stateMutability: "view", inputs: [{ type: "uint64" }], outputs: [{ type: "address" }] },
+] as const;
+
+const ALWAYS_BLOCK_ID = (1n << 56n) | 1n; // (uint64(ALLOWLIST) << 56) | 1 per B20Constants
+
+/**
+ * The Base docs warn issuers directly: binding a scope to a NON-EXISTENT policy
+ * silently collapses to empty-set semantics — a non-existent ALLOWLIST denies
+ * EVERYONE (transfers bricked), a non-existent BLOCKLIST allows everyone
+ * (gating silently off). This audits every scope for those footguns plus
+ * ALWAYS_BLOCK bindings, renounced (frozen) policy admins, and live pauses.
+ */
+export async function b20ConfigAudit(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  const pids = await readPolicyIds(addr);
+  if (!pids) return notB20(address);
+
+  const scopeDefs: Array<[string, bigint, string]> = [
+    ["transfer-sender", pids.sender, "outbound transfers"],
+    ["transfer-receiver", pids.receiver, "inbound transfers"],
+    ["transfer-executor", pids.executor, "third-party transferFrom (approvals, DEXs, smart wallets)"],
+    ["mint-receiver", pids.mint, "minting new supply"],
+  ];
+
+  const findings: Array<{ severity: string; scope: string; issue: string }> = [];
+  const scopes: Array<Record<string, unknown>> = [];
+  for (const [scope, pid, gates] of scopeDefs) {
+    if (pid === 0n) {
+      scopes.push({ scope, policyId: "0", type: "none", state: "open" });
+      continue;
+    }
+    const type = policyType(pid);
+    let exists: boolean | null = null;
+    let admin: string | null = null;
+    if (pid !== ALWAYS_BLOCK_ID) {
+      await sleep(120);
+      exists = await withRetry<boolean | null>(
+        () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_EXISTS_ABI, functionName: "policyExists", args: [pid] }) as Promise<boolean>,
+        null,
+        true,
+      );
+      if (exists) {
+        await sleep(120);
+        admin = await withRetry<string | null>(
+          () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_EXISTS_ABI, functionName: "policyAdmin", args: [pid] }) as Promise<string>,
+          null,
+          true,
+        );
+      }
+    }
+
+    let state = "ok";
+    if (pid === ALWAYS_BLOCK_ID) {
+      state = "deny_all";
+      findings.push({ severity: "critical", scope, issue: `Scope is bound to ALWAYS_BLOCK — ${gates} are DEAD (every account denied).` });
+    } else if (exists === false && type === "allowlist") {
+      state = "deny_all_dangling";
+      findings.push({ severity: "critical", scope, issue: `Scope points to a NON-EXISTENT allowlist policy (#${pid}) — empty-set semantics deny EVERYONE; ${gates} are bricked. The exact footgun the Base docs warn about.` });
+    } else if (exists === false && type === "blocklist") {
+      state = "open_dangling";
+      findings.push({ severity: "warning", scope, issue: `Scope points to a NON-EXISTENT blocklist policy (#${pid}) — gating is silently OFF (everyone allowed). Likely a misconfiguration.` });
+    } else if (admin === ZERO_ADDR) {
+      state = "frozen";
+      findings.push({ severity: "info", scope, issue: `Policy #${pid} admin is renounced — membership is frozen forever (no new blocks/allows possible on this list).` });
+    }
+    scopes.push({
+      scope,
+      policyId: pid.toString(),
+      type,
+      exists,
+      admin: admin && admin !== ZERO_ADDR ? getAddress(admin) : null,
+      renounced: admin === ZERO_ADDR,
+      state,
+    });
+  }
+
+  if (s.paused.transfer) findings.push({ severity: "critical", scope: "pause", issue: "TRANSFER is paused right now — the token cannot move." });
+  if (s.paused.mint) findings.push({ severity: "info", scope: "pause", issue: "MINT is paused." });
+  if (s.paused.burn) findings.push({ severity: "info", scope: "pause", issue: "BURN is paused." });
+
+  const critical = findings.filter((f) => f.severity === "critical").length;
+  const warnings = findings.filter((f) => f.severity === "warning").length;
+  const transferDead =
+    s.paused.transfer ||
+    scopes.some((x) => (x.scope === "transfer-sender" || x.scope === "transfer-receiver") && (x.state === "deny_all" || x.state === "deny_all_dangling"));
+
+  const verdict = transferDead ? "bricked" : critical ? "critical_misconfig" : warnings ? "misconfigured" : "clean";
+
+  return {
+    address,
+    isB20: true,
+    symbol: s.symbol,
+    variant: s.variant,
+    ...(s.degraded || pids.degraded ? { degraded: true } : {}),
+    verdict, // bricked | critical_misconfig | misconfigured | clean
+    transferDead,
+    findings,
+    scopes,
+    recommendation: transferDead
+      ? "🚨 This token CANNOT MOVE right now (paused and/or a transfer scope denies everyone). Do not buy or accept it until the issuer fixes the configuration — funds sent in may be stuck."
+      : critical
+        ? "Critical configuration faults found — a scope is dead or dangling. Issuers: fix the policy binding (validate policyExists before updatePolicy). Holders: treat operational risk as elevated."
+        : warnings
+          ? "Configuration is sloppy (dangling policy binding) but the token functions. Issuers should rebind the scope to a real policy."
+          : "Configuration is clean: every bound policy exists, no deny-all scopes, nothing paused.",
+    note: "Lints a B20's policy wiring for the misconfigurations the Base docs warn about: scopes bound to non-existent policies (a dangling ALLOWLIST silently bricks transfers), ALWAYS_BLOCK bindings, renounced/frozen lists, and live pauses. Pre-launch lint for issuers; a can-it-even-move check for holders. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 17. B20 Policy Members — the FULL blocklist/allowlist, not one wallet ----
+
+/** parameters.accounts may come back as a real array OR as the CDP indexer's
+ * flat-string form "{0xabc 0xdef}" (same quirk as SpendPermission tuples). */
+function parseAccountsParam(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x));
+  if (typeof v === "string") return v.replace(/^[{[]|[}\]]$/g, "").split(/[\s,]+/).filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x));
+  return [];
+}
+
+/**
+ * b20-freeze-check answers "is THIS wallet blocked"; this reconstructs the
+ * ENTIRE membership of a token's blocklist/allowlist by replaying the Policy
+ * Registry's BlocklistUpdated / AllowlistUpdated events — every address ever
+ * blocked (or whitelisted), when, by whom, and the current member set.
+ * Compliance-grade visibility no other tool provides. Pass policy= to read a
+ * registry policy directly, or address= to resolve a token's active policies.
+ */
+export async function b20PolicyMembers(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  const policyParam = (params.policy || params.policyId || "").trim();
+
+  // Which policy ids do we replay?
+  let targets: Array<{ scope: string; pid: bigint }> = [];
+  let tokenMeta: { symbol: string | null; degraded: boolean } | null = null;
+  if (policyParam) {
+    if (!/^\d+$/.test(policyParam)) throw new Error("policy= must be a numeric uint64 policy ID");
+    targets = [{ scope: "direct", pid: BigInt(policyParam) }];
+  } else {
+    if (!validAddr(address)) throw new Error("Provide a B20 token (address=) or a registry policy ID (policy=)");
+    const addr = getAddress(address);
+    const s = await readB20Signals(addr);
+    if (!s.isB20) return notB20(address);
+    const pids = await readPolicyIds(addr);
+    if (!pids) return notB20(address);
+    tokenMeta = { symbol: s.symbol, degraded: s.degraded || pids.degraded };
+    targets = (
+      [
+        ["transfer-sender", pids.sender],
+        ["transfer-receiver", pids.receiver],
+        ["transfer-executor", pids.executor],
+        ["mint-receiver", pids.mint],
+      ] as Array<[string, bigint]>
+    )
+      .filter(([, pid]) => pid !== 0n && pid !== ALWAYS_BLOCK_ID)
+      .map(([scope, pid]) => ({ scope, pid }));
+    if (targets.length === 0) {
+      return {
+        address, isB20: true, symbol: tokenMeta.symbol,
+        policies: [], verdict: "no_policies",
+        recommendation: "No registry-backed transfer/mint policies on this token — there is no blocklist or allowlist membership to enumerate.",
+        note: "Full blocklist/allowlist membership replay for a B20's policies. This token has none bound.",
+        checkedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  // One scan of the registry's membership events (B20 is weeks old — the full
+  // history fits; ordered ASC for replay). Filter per policy id JS-side:
+  // topics[1] is the indexed uint64 policyId as a 32-byte word.
+  const rows = await cdpSql<{ event_name?: string; block_timestamp?: string; topics?: string[]; parameters?: Record<string, unknown>; transaction_hash?: string }>(
+    `SELECT event_name, block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE address = '${B20_POLICY_REGISTRY.toLowerCase()}' AND (event_name = 'BlocklistUpdated' OR event_name = 'AllowlistUpdated') AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp ASC LIMIT 5000`,
+  );
+  if (rows === null) throw new Error("Policy Registry event data unavailable (data provider) — try again shortly");
+  const truncated = rows.length >= 5000;
+
+  const policies: Array<Record<string, unknown>> = [];
+  for (const { scope, pid } of targets) {
+    const pidHex = "0x" + pid.toString(16).padStart(64, "0");
+    const members = new Set<string>();
+    const changes: Array<Record<string, unknown>> = [];
+    for (const r of rows) {
+      if ((r.topics?.[1] ?? "").toLowerCase() !== pidHex) continue;
+      const flagRaw = r.parameters?.allowed ?? r.parameters?.blocked;
+      const setMembership = String(flagRaw).toLowerCase() === "true" || flagRaw === true;
+      const accounts = parseAccountsParam(r.parameters?.accounts);
+      for (const a of accounts) {
+        try {
+          const acct = getAddress(a);
+          if (setMembership) members.add(acct);
+          else members.delete(acct);
+        } catch { /* skip malformed */ }
+      }
+      changes.push({
+        time: r.block_timestamp ?? null,
+        action: setMembership ? "added" : "removed",
+        updater: topicToAddr(r.topics?.[2]),
+        accounts: accounts.slice(0, 20),
+        txHash: r.transaction_hash ?? null,
+      });
+    }
+    policies.push({
+      scope,
+      policyId: pid.toString(),
+      type: policyType(pid),
+      memberCount: members.size,
+      members: [...members].slice(0, 200),
+      changeCount: changes.length,
+      recentChanges: changes.slice(-25).reverse(),
+    });
+  }
+
+  const totalMembers = policies.reduce((n, p) => n + (p.memberCount as number), 0);
+  const anyBlocklist = policies.some((p) => p.type === "blocklist" && (p.memberCount as number) > 0);
+  const verdict = anyBlocklist ? "active_blocklist" : totalMembers > 0 ? "allowlist_membership" : "empty_lists";
+
+  return {
+    ...(address && validAddr(address) ? { address, isB20: true, symbol: tokenMeta?.symbol ?? null } : {}),
+    ...(tokenMeta?.degraded ? { degraded: true } : {}),
+    ...(truncated ? { truncated: true, truncationNote: "Registry event scan hit the 5000-row cap — member sets may be incomplete." } : {}),
+    policies,
+    totalMembers,
+    verdict, // active_blocklist | allowlist_membership | empty_lists | no_policies
+    recommendation: anyBlocklist
+      ? "⚠️ This token's blocklist has real members — the issuer actively blocks addresses (blocked holders with a sender policy are seizable via burnBlocked). Check the members list; cross-check seizures with b20-seizure-history."
+      : totalMembers > 0
+        ? "Allowlist membership found — this is a permissioned token; only the listed addresses can participate on the gated scopes."
+        : "The bound policies currently have no members (empty lists) — gating exists but nobody is blocked/whitelisted yet. Note: members seeded via createPolicyWithAccounts at creation may predate the event history.",
+    note: "Reconstructs the FULL membership of a B20's blocklist/allowlist policies (BlocklistUpdated/AllowlistUpdated replay from the Policy Registry): every blocked/whitelisted address, when, and by whom. b20-freeze-check answers it for one wallet; this enumerates the whole list. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 18. B20 Genesis Audit — what did the issuer do in the initCalls bypass window? ----
+
+/**
+ * createB20's initCalls run with role gates AND transfer-side policy gates
+ * BYPASSED (a factory-only privilege window). Whatever the issuer did there —
+ * pre-mints, role grants, policy bindings, blocklist seeding — happened before
+ * any external control existed. This reconstructs the creation transaction's
+ * full event trail: the token's true starting conditions.
+ */
+export async function b20GenesisAudit(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  // Earliest events emitted BY the token = its creation tx (initCalls execute
+  // inside createB20's transaction).
+  const firstRows = await cdpSql<{ block_timestamp?: string; transaction_hash?: string }>(
+    `SELECT block_timestamp, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' ORDER BY block_timestamp ASC LIMIT 1`,
+  );
+  if (firstRows === null) throw new Error("B20 event data unavailable (data provider) — try again shortly");
+  if (!firstRows.length || !firstRows[0].transaction_hash) {
+    return {
+      address, isB20: true, symbol: s.symbol,
+      verdict: "no_genesis_activity",
+      note: "No indexed events from this token yet — either it was created with no initCalls and has never been used, or indexing hasn't caught up.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  const genesisTx = firstRows[0].transaction_hash;
+  const genesisTime = firstRows[0].block_timestamp ?? null;
+
+  // Everything that happened in that tx — token, registry AND factory events.
+  const rows = await cdpSql<{ address?: string; event_name?: string; topics?: string[]; parameters?: Record<string, unknown> }>(
+    `SELECT address, event_name, topics, parameters FROM base.events WHERE transaction_hash = '${genesisTx}' LIMIT 500`,
+  );
+  if (rows === null) throw new Error("B20 event data unavailable (data provider) — try again shortly");
+
+  const factoryConfirmed = rows.some(
+    (r) => (r.address ?? "").toLowerCase() === B20_FACTORY.toLowerCase() && /^B20Created/.test(r.event_name ?? ""),
+  );
+  const tokenRows = rows.filter((r) => (r.address ?? "").toLowerCase() === addr.toLowerCase());
+
+  const preMints: Array<{ to: string | null; amount: string }> = [];
+  const roleGrants: Array<{ role: string; account: string | null }> = [];
+  const policyBindings: Array<{ scope: string; policyId: string }> = [];
+  const listSeeds: Array<{ policy: string; action: string; accounts: string[] }> = [];
+  let capSetAtGenesis: string | null = null;
+
+  const scopeNames = new Map<string, string>([
+    [TRANSFER_SENDER_POLICY.toLowerCase(), "transfer-sender"],
+    [TRANSFER_RECEIVER_POLICY.toLowerCase(), "transfer-receiver"],
+    [TRANSFER_EXECUTOR_POLICY.toLowerCase(), "transfer-executor"],
+    [MINT_RECEIVER_POLICY.toLowerCase(), "mint-receiver"],
+  ]);
+
+  for (const r of tokenRows) {
+    const name = r.event_name ?? "";
+    const t = r.topics ?? [];
+    if (name === "Transfer") {
+      const from = topicToAddr(t[1]);
+      if (from === ZERO_ADDR || from === null || /^0x0{40}$/i.test(from ?? "")) {
+        preMints.push({ to: topicToAddr(t[2]), amount: String((r.parameters as { amount?: string })?.amount ?? "0") });
+      }
+    } else if (name === "RoleGranted") {
+      roleGrants.push({ role: String(t[1] ?? "").slice(0, 10), account: topicToAddr(t[2]) });
+    } else if (name === "PolicyUpdated") {
+      const scope = scopeNames.get(String(t[1] ?? "").toLowerCase()) ?? String(t[1] ?? "").slice(0, 10);
+      policyBindings.push({ scope, policyId: String((r.parameters as { newPolicyId?: string })?.newPolicyId ?? "?") });
+    } else if (name === "SupplyCapUpdated") {
+      capSetAtGenesis = String((r.parameters as { newSupplyCap?: string })?.newSupplyCap ?? null);
+    }
+  }
+  for (const r of rows) {
+    if ((r.address ?? "").toLowerCase() !== B20_POLICY_REGISTRY.toLowerCase()) continue;
+    const name = r.event_name ?? "";
+    if (name === "BlocklistUpdated" || name === "AllowlistUpdated") {
+      const flagRaw = (r.parameters as Record<string, unknown>)?.allowed ?? (r.parameters as Record<string, unknown>)?.blocked;
+      listSeeds.push({
+        policy: name === "BlocklistUpdated" ? "blocklist" : "allowlist",
+        action: String(flagRaw).toLowerCase() === "true" || flagRaw === true ? "seeded" : "removed",
+        accounts: parseAccountsParam((r.parameters as Record<string, unknown>)?.accounts).slice(0, 20),
+      });
+    }
+  }
+
+  const totalPreMinted = preMints.reduce((n, m) => { try { return n + BigInt(m.amount); } catch { return n; } }, 0n);
+  const flags: string[] = [];
+  if (preMints.length) flags.push(`pre-minted ${totalPreMinted.toString()} raw units to ${new Set(preMints.map((m) => m.to)).size} address(es) inside the bypass window`);
+  if (policyBindings.length) flags.push("transfer/mint policies were bound at genesis (gating designed-in, not added later)");
+  if (listSeeds.length) flags.push("blocklist/allowlist membership was SEEDED at genesis");
+  if (roleGrants.length) flags.push(`${roleGrants.length} role grant(s) at genesis`);
+
+  const verdict = listSeeds.some((x) => x.policy === "blocklist" && x.action === "seeded")
+    ? "blocklist_seeded"
+    : preMints.length && policyBindings.length
+      ? "configured_launch"
+      : preMints.length
+        ? "premined"
+        : policyBindings.length || roleGrants.length
+          ? "configured_launch"
+          : "bare_launch";
+
+  return {
+    address, isB20: true, symbol: s.symbol, variant: s.variant,
+    genesisTx, genesisTime, factoryConfirmed,
+    ...(factoryConfirmed ? {} : { caveat: "The earliest indexed activity tx does not contain B20Created — the true creation emitted no token events; showing earliest activity instead." }),
+    preMints: preMints.slice(0, 25),
+    totalPreMinted: totalPreMinted.toString(),
+    roleGrants: roleGrants.slice(0, 25),
+    policyBindings,
+    listSeeds,
+    ...(capSetAtGenesis ? { supplyCapAtGenesis: capSetAtGenesis } : {}),
+    flags,
+    verdict, // blocklist_seeded | premined | configured_launch | bare_launch | no_genesis_activity
+    recommendation: verdict === "blocklist_seeded"
+      ? "⚠️ The issuer seeded blocklist membership AT CREATION — addresses were blocked before the token ever traded. Deliberate, compliance-style launch; review the seeded list (b20-policy-members)."
+      : preMints.length
+        ? `The issuer pre-minted supply during the initCalls bypass window (role/policy gates OFF). Check who received it and how concentrated it is before sizing in.`
+        : "Clean/bare genesis — no pre-mint, no seeded lists detected at creation.",
+    note: "Reconstructs a B20's creation transaction — everything the issuer did in the initCalls bypass window (pre-mints, role grants, policy bindings, blocklist seeding), when role and transfer-policy gates were suspended. The token's true starting conditions. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 19. B20 Mint Watch — the live dilution feed (who is printing, right now) ----
+
+const ZERO_TOPIC = "0x" + "0".repeat(64);
+
+/**
+ * b20-supply reads the dilution CEILING (cap vs minted); this reads the actual
+ * mint STREAM: every mint/batchMint (Transfer from 0x0) in the window — how
+ * much was printed, to whom, how fast, and what share of current supply that is.
+ */
+export async function b20MintWatch(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const days = Math.min(90, Math.max(1, Number(params.days || 30) || 30));
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  await sleep(120);
+  const totalSupply = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>,
+    0n,
+    true,
+  );
+
+  const rows = await cdpSql<{ block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string }>(
+    `SELECT block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_name = 'Transfer' AND block_timestamp > now() - INTERVAL ${days} DAY ORDER BY block_timestamp DESC LIMIT 2000`,
+  );
+  if (rows === null) throw new Error("B20 transfer event data unavailable (data provider) — try again shortly");
+  const truncated = rows.length >= 2000;
+
+  const mints = rows
+    .filter((r) => (r.topics?.[1] ?? "").toLowerCase() === ZERO_TOPIC)
+    .map((r) => ({
+      time: r.block_timestamp ?? null,
+      to: topicToAddr(r.topics?.[2]),
+      amount: String(r.parameters?.amount ?? "0"),
+      txHash: r.transaction_hash ?? null,
+    }));
+
+  let minted = 0n;
+  for (const m of mints) { try { minted += BigInt(m.amount); } catch { /* skip */ } }
+  const recipients = new Set(mints.map((m) => m.to).filter(Boolean));
+  const pctOfSupply = totalSupply > 0n ? Number((minted * 10000n) / totalSupply) / 100 : null;
+
+  const verdict = mints.length === 0
+    ? "quiet"
+    : pctOfSupply !== null && pctOfSupply >= 20
+      ? "heavy_dilution"
+      : pctOfSupply !== null && pctOfSupply >= 5
+        ? "active_minting"
+        : "minor_minting";
+
+  return {
+    address, isB20: true, symbol: s.symbol, variant: s.variant,
+    windowDays: days,
+    mintCount: mints.length,
+    mintedInWindow: minted.toString(),
+    pctOfCurrentSupply: pctOfSupply,
+    distinctRecipients: recipients.size,
+    totalSupply: totalSupply.toString(),
+    supplyCap: s.supplyCapped ? s.supplyCap.toString() : "uncapped",
+    mintGated: s.mintGated,
+    mintPaused: s.paused.mint,
+    ...(truncated ? { truncated: true } : {}),
+    mints: mints.slice(0, 50),
+    verdict, // heavy_dilution | active_minting | minor_minting | quiet
+    recommendation: verdict === "heavy_dilution"
+      ? `⚠️ ${pctOfSupply}% of the current supply was minted in the last ${days} days — the issuer is printing aggressively. Existing holders are being diluted in real time; check the cap ceiling with b20-supply before holding.`
+      : verdict === "active_minting"
+        ? `Meaningful issuance: ${pctOfSupply}% of current supply minted in ${days} days across ${recipients.size} recipient(s). Normal for a growing stablecoin/RWA — but verify the mint role holders (b20-control) and cap (b20-supply).`
+        : mints.length
+          ? "Minor minting activity — issuance is present but small relative to supply."
+          : `No mints in the last ${days} days — supply is static in this window.${s.supplyCapped ? "" : " Note: the token is UNCAPPED, so this can change at any time."}`,
+    note: "The live dilution feed for a B20: every mint (Transfer from 0x0, incl. batchMint) in the window — amount, recipients, and share of current supply. b20-supply shows the ceiling; this shows the printing. Pass days= (1-90, default 30). Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 20. B20 Rebase History — silent balance rescaling, on the record ----
+
+/**
+ * An Asset-variant B20's multiplier rescales EVERY holder's visible balance in
+ * one call (updateMultiplier — no per-account events, nothing in your tx
+ * history). b20-rebase reads today's multiplier; this replays MultiplierUpdated
+ * to show every rescaling that ever happened — especially DOWNWARD moves, which
+ * cut every holder's balance silently.
+ */
+export async function b20RebaseHistory(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  if (s.variant !== "asset") {
+    return {
+      address, isB20: true, variant: s.variant, symbol: s.symbol,
+      verdict: "n/a",
+      note: "The rebase multiplier is an Asset-variant feature; this Stablecoin B20 has no multiplier (balances are never rescaled).",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  await sleep(120);
+  const current = await withRetry<bigint>(
+    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint>,
+    WAD,
+    true,
+  );
+
+  const rows = await cdpSql<{ block_timestamp?: string; parameters?: { multiplier?: string }; transaction_hash?: string }>(
+    `SELECT block_timestamp, parameters, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_name = 'MultiplierUpdated' AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp ASC LIMIT 200`,
+  );
+  if (rows === null) throw new Error("B20 rebase event data unavailable (data provider) — try again shortly");
+
+  let prev = WAD; // multiplier starts at 1.0 (WAD)
+  const changes = rows.map((r) => {
+    const to = (() => { try { return BigInt(String(r.parameters?.multiplier ?? "0")); } catch { return 0n; } })();
+    const direction = to > prev ? "up" : to < prev ? "down" : "flat";
+    const pct = prev > 0n ? Number(((to - prev) * 10000n) / prev) / 100 : null;
+    const entry = {
+      time: r.block_timestamp ?? null,
+      multiplier: to.toString(),
+      asFloat: Number(to) / 1e18,
+      direction,
+      changePct: pct,
+      txHash: r.transaction_hash ?? null,
+    };
+    prev = to;
+    return entry;
+  });
+  const downMoves = changes.filter((c) => c.direction === "down");
+
+  const verdict = downMoves.length
+    ? "negative_rebase_history"
+    : changes.length
+      ? "rebasing"
+      : "static";
+
+  return {
+    address, isB20: true, variant: "asset", symbol: s.symbol,
+    currentMultiplier: current.toString(),
+    currentAsFloat: Number(current) / 1e18,
+    rebaseCount: changes.length,
+    negativeRebases: downMoves.length,
+    changes: changes.slice(-50).reverse(),
+    verdict, // negative_rebase_history | rebasing | static
+    recommendation: downMoves.length
+      ? `⚠️ This token has rebased DOWNWARD ${downMoves.length} time(s) — every holder's balance was silently cut (no transfer, no per-account event). Understand the operator's rebase policy before holding; watch b20-rebase for the live value.`
+      : changes.length
+        ? `${changes.length} multiplier update(s) on record, all upward/flat — yield-style rebasing. Balances scale by the multiplier; the operator (OPERATOR_ROLE) controls it.`
+        : "No multiplier changes on record — balances have never been rescaled (multiplier is at its launch value).",
+    note: "Replays every MultiplierUpdated on an Asset B20 — the full history of balance rescaling, including downward moves that cut every holder silently. b20-rebase reads today's value; this shows the operator's track record. 365-day window. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ---- 21. B20 Peg Check — declared currency vs actual market price ----
+
+interface DexPair {
+  priceUsd?: string;
+  liquidity?: { usd?: number };
+  baseToken?: { address?: string };
+  dexId?: string;
+  pairAddress?: string;
+}
+
+/**
+ * A B20 Stablecoin's currency() is SELF-DECLARED — nothing verifies it. This is
+ * the missing verification: read the declared peg, then check what the market
+ * actually prices the token at (DEX pools). "Says USD, trades at $0.71" is the
+ * one-call rug signal for agents settling in B20 stablecoins.
+ */
+export async function b20Peg(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+  if (s.variant !== "stablecoin") {
+    return {
+      address, isB20: true, variant: s.variant, symbol: s.symbol,
+      verdict: "not_stablecoin",
+      note: "Peg verification applies to Stablecoin-variant B20s (declared currency()). For Asset variants use b20-rebase / b20-info.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  await sleep(120);
+  const declaredCurrency = await withRetry<string | null>(
+    () => client.readContract({ address: addr, abi: CURRENCY_ABI, functionName: "currency" }) as Promise<string>,
+    null,
+    true,
+  );
+
+  const pairs = await dexTokenPairs<DexPair>(addr);
+  const own = (pairs ?? [])
+    .filter((p) => (p.baseToken?.address ?? "").toLowerCase() === addr.toLowerCase() && p.priceUsd)
+    .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+  const best = own[0] ?? null;
+  const priceUsd = best?.priceUsd ? Number(best.priceUsd) : null;
+  const liquidityUsd = best?.liquidity?.usd ?? null;
+
+  const isUsdPeg = (declaredCurrency ?? "").toUpperCase() === "USD";
+  let deviationPct: number | null = null;
+  if (priceUsd !== null && isUsdPeg) deviationPct = Math.round(Math.abs(priceUsd - 1) * 10000) / 100;
+
+  const verdict = pairs === null
+    ? "unknown"
+    : priceUsd === null
+      ? "no_market"
+      : !isUsdPeg
+        ? "unverifiable_fx"
+        : deviationPct !== null && deviationPct <= 1
+          ? "on_peg"
+          : deviationPct !== null && deviationPct <= 5
+            ? "depeg_warning"
+            : "depegged";
+
+  return {
+    address, isB20: true, variant: "stablecoin", symbol: s.symbol,
+    declaredCurrency,
+    marketPriceUsd: priceUsd,
+    liquidityUsd,
+    ...(best ? { dex: best.dexId ?? null, pair: best.pairAddress ?? null } : {}),
+    ...(deviationPct !== null ? { deviationPct } : {}),
+    verdict, // on_peg | depeg_warning | depegged | no_market | unverifiable_fx | unknown | not_stablecoin
+    recommendation: verdict === "depegged"
+      ? `🚨 DEPEGGED — declares ${declaredCurrency} but trades at $${priceUsd} (${deviationPct}% off). The self-declared peg is NOT holding; do not treat this as a dollar. Check issuer control (b20-stablecoin) and seizure posture (b20-safety) before touching it.`
+      : verdict === "depeg_warning"
+        ? `⚠️ Trading ${deviationPct}% off its declared ${declaredCurrency} peg ($${priceUsd}). Thin liquidity or early stress — recheck before settling meaningful size.`
+        : verdict === "on_peg"
+          ? `Holding its declared ${declaredCurrency} peg ($${priceUsd}, ${deviationPct}% deviation) on $${liquidityUsd ? Math.round(liquidityUsd).toLocaleString() : "?"} of DEX liquidity.`
+          : verdict === "no_market"
+            ? `Declares ${declaredCurrency || "no currency"} but has NO DEX market — the peg is a pure claim with zero price discovery. Fine for closed-loop/institutional settlement; do not assume exchangeability.`
+            : verdict === "unverifiable_fx"
+              ? `Declares ${declaredCurrency} — a non-USD peg; USD-denominated DEX pricing ($${priceUsd}) can't verify it directly without an FX oracle. Compare against the ${declaredCurrency}/USD rate yourself.`
+              : "Market data unavailable right now — peg could not be verified this call.",
+    note: "Verifies a B20 Stablecoin's SELF-DECLARED currency() against its actual DEX market price — the check the standard itself doesn't do (the docs: the code is 'not verified against any external registry'). USD pegs get a deviation verdict; non-USD pegs report price for FX comparison. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
