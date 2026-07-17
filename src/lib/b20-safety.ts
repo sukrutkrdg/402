@@ -2069,8 +2069,10 @@ export async function b20GenesisAudit(params: Record<string, string>) {
 
   // Earliest events emitted BY the token = its creation tx (initCalls execute
   // inside createB20's transaction).
+  // Lower-bounded at Beryl activation (no B20 exists before 2026-06) — keeps
+  // the scan inside CDP SQL's read limits as the chain grows.
   const firstRows = await cdpSql<{ block_timestamp?: string; transaction_hash?: string }>(
-    `SELECT block_timestamp, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' ORDER BY block_timestamp ASC LIMIT 1`,
+    `SELECT block_timestamp, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND block_timestamp > '2026-06-01' ORDER BY block_timestamp ASC LIMIT 1`,
   );
   if (firstRows === null) throw new Error("B20 event data unavailable (data provider) — try again shortly");
   if (!firstRows.length || !firstRows[0].transaction_hash) {
@@ -2083,10 +2085,16 @@ export async function b20GenesisAudit(params: Record<string, string>) {
   }
   const genesisTx = firstRows[0].transaction_hash;
   const genesisTime = firstRows[0].block_timestamp ?? null;
+  if (!genesisTime) throw new Error("B20 event data unavailable (data provider) — try again shortly");
 
   // Everything that happened in that tx — token, registry AND factory events.
+  // A bare transaction_hash filter is rejected by CDP SQL (unbounded scan);
+  // a ±1-day timestamp window around the known genesis time prunes it.
+  const gDay = new Date(genesisTime);
+  const lo = new Date(gDay.getTime() - 86_400_000).toISOString().slice(0, 10);
+  const hi = new Date(gDay.getTime() + 86_400_000).toISOString().slice(0, 10);
   const rows = await cdpSql<{ address?: string; event_name?: string; topics?: string[]; parameters?: Record<string, unknown> }>(
-    `SELECT address, event_name, topics, parameters FROM base.events WHERE transaction_hash = '${genesisTx}' LIMIT 500`,
+    `SELECT address, event_name, topics, parameters FROM base.events WHERE transaction_hash = '${genesisTx}' AND block_timestamp BETWEEN '${lo}' AND '${hi}' LIMIT 500`,
   );
   if (rows === null) throw new Error("B20 event data unavailable (data provider) — try again shortly");
 
