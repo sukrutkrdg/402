@@ -49,7 +49,7 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin } from "./b20-safety";
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 
@@ -241,7 +241,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "One GO/HOLD/STOP before you touch a B20 token",
     description:
       "🆕 The single call before trading a Base-native B20: seize (burnBlocked) + freeze (Policy Registry) + rebase + pause + uncapped-mint, collapsed into one GO/HOLD/STOP verdict with an auditable receipt. Pass wallet= to also check if YOUR address is already blocked on that token. The B20 tool to bind first.",
-    price: "$0.05",
+    price: "$0.10",
     icon: "🚦",
     category: "B20",
     params: [
@@ -249,6 +249,24 @@ export const SERVICES: ServiceDef[] = [
       { name: "wallet", label: "Your wallet (optional — checks if you're blocked)", placeholder: "0x… wallet" },
     ],
     handler: b20Gate,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-transfer-preflight",
+    name: "B20 Transfer Preflight",
+    tagline: "Will THIS transfer (from→to) clear right now?",
+    description:
+      "🆕 The per-transaction B20 rail check: pass token + from + to (+ optional executor) and get one GO/HOLD/STOP on whether this exact transfer clears NOW — sender policy resolved against the sender, receiver policy against the recipient, executor policy against the operator, plus live transfer-pause. Every other B20 tool is per-token due diligence bought once; this is the check an agent runs on every payment. No ERC-20 tool can see it.",
+    price: "$0.04",
+    icon: "🚦",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true },
+      { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
+      { name: "to", label: "Recipient address", placeholder: "0x… recipient", required: true },
+      { name: "executor", label: "Executor (optional — transferFrom operator)", placeholder: "0x… operator" },
+    ],
+    handler: b20TransferPreflight,
     noFreeTier: true,
   },
   {
@@ -433,7 +451,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Real-time alerts the moment a B20 token turns seizable",
     description:
       "The live layer over B20 Policy Watch: a network-wide onchain webhook captures every B20 PolicyUpdated/Paused sub-second. Pass a token address for its live guard status, or call with no address for the feed of tokens that JUST attached a sender blocklist (turned seizable) across all of Base.",
-    price: "$0.02",
+    price: "$0.05",
     icon: "🚨",
     category: "B20",
     params: [{ name: "address", label: "B20 token (optional — omit for network feed)", placeholder: "0x… B20 token" }],
@@ -488,7 +506,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Freeze/seize scan for up to 5 B20 tokens",
     description:
       "Runs the B20 safety verdict across up to 5 B20 tokens in one call — each scored for freeze/seize/pause/rebase/uncapped-mint, with the worst score surfaced. For portfolio holders and agents screening several B20s at once.",
-    price: "$0.06",
+    price: "$0.08",
     icon: "🗂️",
     category: "B20",
     params: [{ name: "addresses", label: "B20 addresses (comma-separated)", placeholder: "0x…, 0x…", required: true }],

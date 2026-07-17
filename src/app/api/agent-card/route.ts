@@ -38,6 +38,17 @@ export function GET() {
     },
     freeTrial: "1 free call per service per day per IP (AI and metered services excluded) — try before you pay, no signup.",
     tryExample: `${SITE}/api/x402/token-risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
+    // The 3 tools most agents should bind first, and the B20 suite grouped into 5
+    // fronts so a tool-binding client isn't lost among ~20 similar B20 skills.
+    startHere: ["pre-trade-gate", "b20-gate", "sign-guard"],
+    b20Suite: {
+      about: "Base-native B20 tokens: protocol-level freeze/seize/pause powers no ERC-20 tool can see.",
+      gate: ["b20-gate", "b20-transfer-preflight"],
+      dossier: ["b20-safety", "b20-info", "b20-control", "b20-policy-admin", "b20-access-type", "b20-supply", "b20-metadata", "b20-rebase", "b20-stablecoin"],
+      myWallet: ["b20-freeze-check", "b20-portfolio"],
+      monitoring: ["b20-policy-watch", "b20-guard", "b20-launch-radar", "b20-announcements"],
+      rails: ["b20-memo", "b20-permit"],
+    },
     skills: SERVICES.filter((s) => !s.hidden).map((s) => ({
       id: s.id,
       name: s.name,
@@ -45,6 +56,8 @@ export function GET() {
       tags: [s.category.toLowerCase()],
       price: s.price,
       endpoint: `${SITE}/api/x402/${s.id}`,
+      // params so a binding agent knows how to call it without a second fetch
+      parameters: s.params.map((p) => ({ name: p.name, required: Boolean(p.required), description: p.label })),
     })),
   });
 }

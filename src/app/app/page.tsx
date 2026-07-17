@@ -41,7 +41,7 @@ const CHECKS = [
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP", price: "$0.10" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.12" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize", price: "$0.04" },
-  { id: "b20-gate", label: "🚦 B20 Pre-Trade Gate", price: "$0.05" },
+  { id: "b20-gate", label: "🚦 B20 Pre-Trade Gate", price: "$0.10" },
   { id: "b20-policy-watch", label: "👁️ B20: when did it turn seizable?", price: "$0.03" },
   { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.08" },
   { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.75" },

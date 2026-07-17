@@ -435,6 +435,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         if (freeEligible) body.freeCall = "This service gives 1 free call/day per IP — retry without a payment header.";
         body.prepaidCredits =
           "One x402 settlement on /api/x402/buy-credits?tier=0.25|1|5|20 mints a bearer credit token; send it as the x-credit-token header and later calls debit the balance — no wallet or signature per call after that first purchase.";
+        // Machine-readable on-ramps (x402 clients read `accepts` and stop; this
+        // gives an AGENT a structured, cheaper path it can act on programmatically
+        // instead of the prose above). Starter credit is first: one $0.25
+        // settlement converts a wallet-less caller into a retained customer with a
+        // stored balance — the lowest-friction way in.
+        const origin = getSiteUrl();
+        const alternatives: Array<Record<string, unknown>> = [
+          {
+            action: "buy-credits",
+            recommended: true,
+            method: "POST",
+            url: `${origin}/api/x402/buy-credits?tier=0.25`,
+            priceUsdc: "0.25",
+            then: "Send the returned token as the `x-credit-token` header on this and any paid call; each debits its price from the balance — no per-call signature.",
+            gives: "≈8 calls at this service's price from one settlement; lowest-friction start.",
+          },
+        ];
+        if (freeEligible) {
+          alternatives.push({ action: "free-call", method: "GET", url: req.url, gives: "1 free full call/day per IP — repeat this exact request with no payment header." });
+        }
+        alternatives.push({ action: "pay-x402", method: "GET", url: req.url, gives: "Pay this exact call now over x402 — see the `accepts` array for scheme/amount/asset/payTo." });
+        body.alternatives = alternatives;
         const headers = new Headers(res.headers);
         headers.delete("content-length");
         return NextResponse.json(body, { status: 402, headers });

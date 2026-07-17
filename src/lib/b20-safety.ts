@@ -446,6 +446,101 @@ export async function b20Gate(params: Record<string, string>) {
   };
 }
 
+// ---- B20 Transfer Preflight — will THIS specific transfer clear right now? ----
+
+/**
+ * Every other B20 check is per-token or per-wallet due diligence, bought once.
+ * This is the PER-TRANSFER rail check an agent runs on every payment: given
+ * (token, from, to), does this exact transfer clear NOW? It resolves the sender
+ * policy against `from`, the receiver policy against `to`, the executor policy
+ * against an optional `executor`, plus the live transfer-pause state — one
+ * GO/HOLD/STOP. Any read it can't complete degrades to HOLD, never a false GO.
+ */
+export async function b20TransferPreflight(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  const from = (params.from || params.sender || "").trim();
+  const to = (params.to || params.recipient || "").trim();
+  const executor = (params.executor || params.spender || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address (address=)");
+  if (!validAddr(from)) throw new Error("Provide the sender address (from=)");
+  if (!validAddr(to)) throw new Error("Provide the recipient address (to=)");
+  const addr = getAddress(address);
+
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return { ...notB20(address), decision: "N/A" };
+  if (s.degraded) {
+    return {
+      address, isB20: true, decision: "HOLD", degraded: true, variant: s.variant, symbol: s.symbol,
+      note: "⚠️ A policy/pause precompile read failed (RPC) — this transfer could NOT be cleared. Re-check; do not treat as GO.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  const pids = await readPolicyIds(addr);
+  if (!pids) return { ...notB20(address), decision: "N/A" };
+
+  // isAuthorized(policyId, account): true = allowed, false = blocked, null = read
+  // failed (→ unknown, degrade to HOLD, never a false GO).
+  const authOf = async (policyId: bigint, account: string): Promise<boolean | null> => {
+    if (policyId === 0n) return true; // no policy on this leg → not gated
+    return withRetry<boolean | null>(
+      () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [policyId, getAddress(account)] }) as Promise<boolean | null>,
+      null,
+      true, // soft: an RPC failure returns null → we degrade the verdict, not 500
+    );
+  };
+
+  await sleep(120);
+  const senderOk = await authOf(pids.sender, from);
+  await sleep(120);
+  const receiverOk = await authOf(pids.receiver, to);
+  let executorOk: boolean | null = true;
+  if (pids.executor !== 0n) {
+    // Executor policy gates WHO may execute the transfer (transferFrom operator).
+    // Check the given executor; if none supplied, the executor leg is unknown.
+    await sleep(120);
+    executorOk = validAddr(executor) ? await authOf(pids.executor, executor) : null;
+  }
+
+  const legs = [
+    { leg: "sender", policyId: pids.sender.toString(), party: from, type: policyType(pids.sender), authorized: senderOk },
+    { leg: "receiver", policyId: pids.receiver.toString(), party: to, type: policyType(pids.receiver), authorized: receiverOk },
+    ...(pids.executor !== 0n ? [{ leg: "executor", policyId: pids.executor.toString(), party: validAddr(executor) ? executor : null, type: policyType(pids.executor), authorized: executorOk }] : []),
+  ];
+
+  const observedRisks: string[] = [];
+  let stop = false, hold = false;
+  if (s.paused.transfer) { observedRisks.push("transfers are PAUSED on this token right now — nothing moves"); stop = true; }
+  if (senderOk === false) { observedRisks.push("sender is NOT authorized under the sender policy — this transfer reverts (and the sender is burnBlocked-seizable)"); stop = true; }
+  if (receiverOk === false) { observedRisks.push("recipient is NOT authorized under the receiver policy — this transfer reverts (recipient not whitelisted)"); stop = true; }
+  if (executorOk === false) { observedRisks.push("executor is NOT authorized under the executor policy — a transferFrom by this operator reverts"); stop = true; }
+  const unknownLegs = legs.filter((l) => l.authorized === null).map((l) => l.leg);
+  if (unknownLegs.length) { observedRisks.push(`could not confirm the ${unknownLegs.join(" + ")} authorization this call`); hold = true; }
+  if (pids.executor !== 0n && !validAddr(executor)) { observedRisks.push("this token gates the EXECUTOR too — pass executor= (the transferFrom operator) to fully clear a delegated transfer"); hold = true; }
+
+  const decision = stop ? "STOP" : hold ? "HOLD" : "GO";
+  return {
+    address, isB20: true, variant: s.variant, symbol: s.symbol,
+    from, to, executor: validAddr(executor) ? executor : null,
+    decision, // GO | HOLD | STOP — would this exact transfer clear now?
+    pausedNow: s.paused.transfer,
+    legs, // per-policy leg: which party, policy type, authorized true/false/null
+    observedRisks,
+    receipt: {
+      checked: `${short(from)}→${short(to)} · ${s.symbol ?? short(address)}`,
+      decision, at: new Date().toISOString(), endpoint: "b20-transfer-preflight", observedRisks,
+      wouldChangeCall: stop
+        ? "Nothing while a policy blocks a party or transfers are paused — the transfer will revert."
+        : "Authorize the pending party, an executor address, or an unpause — re-check immediately before submitting.",
+    },
+    recommendation:
+      decision === "STOP" ? "Do NOT submit — this transfer will revert (or the sender is seizable). Resolve the blocked leg first."
+        : decision === "HOLD" ? "Likely clears, but at least one leg couldn't be fully verified — re-check right before submitting."
+          : "All policy legs authorized and transfers active — this exact transfer should clear now. Re-check just before submit (policies can change any block).",
+    note: "Per-transfer B20 rail check: resolves sender/receiver/executor policies against the actual parties + live pause state for THIS transfer. State can change block to block — call immediately before submitting. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 // ---- B20 Portfolio Guard — which B20s in a wallet can freeze/seize it? ----
 
 export async function b20Portfolio(params: Record<string, string>) {
