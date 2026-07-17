@@ -3,7 +3,7 @@
   "name": "x402-bazaar-mcp",
   "display_name": "x402 Bazaar",
   "version": "0.2.2",
-  "description": "The Base token-safety toolkit for agents: the only B20 (Base-native token) freeze/seize/rug suite, pre-trade GO/HOLD/STOP gates, honeypot checks, wallet + approval audits, prices & AI reports over x402 — free tier, zero config.",
+  "description": "Base token-safety for agents: the only B20 freeze/seize/rug suite + pre-trade gates, over x402.",
   "long_description": "MCP server exposing x402 Bazaar's paid Base APIs as agent tools. Its edge is Base token safety: the only B20 (Base-native token standard) suite anywhere — freeze/seize/rebase/policy checks no ERC-20 tool can see — plus pre-trade GO/HOLD/STOP gates, honeypot/sellability/rug scores, wallet & approval audits, sign-guard, prices, and Claude-written AI reports. Every tool works instantly on the free tier (one call per day per service, then a preview). Add a prepaid credit token (buy once with USDC, no wallet in the agent) or a Base wallet private key to unlock unlimited paid calls via x402 micro-payments in USDC — no API keys anywhere.",
   "author": {
     "name": "sukrutkrdg",
