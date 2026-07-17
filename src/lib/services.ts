@@ -23,7 +23,8 @@ import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
-import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence } from "./ai-report";
+import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence, b20Dossier } from "./ai-report";
+import { agentWalletAudit } from "./agent-wallet-audit";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -49,7 +50,7 @@ import { revokeBuilder } from "./revoke-builder";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
-import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin } from "./b20-safety";
+import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin, b20SeizureHistory } from "./b20-safety";
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 
@@ -139,6 +140,19 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: spendAudit,
+    noFreeTier: true,
+  },
+  {
+    id: "agent-wallet-audit",
+    name: "Agent Wallet Audit",
+    tagline: "Every way this wallet can be drained without a fresh signature",
+    description:
+      "🆕 The complete fund-movement authority on a Base wallet in one call: ERC-20 approvals (a spender you approved can pull the token) PLUS Base Account spend permissions (the agent-era scoped recurring allowance) — unified into one drain-surface verdict with the ERC-20 revoke queue to act on. ERC-20 approval tools miss the spend permissions; spend-permission tools miss the approvals. This is the only combined check — built for agent wallets that need to know their whole exposure before holding funds.",
+    price: "$0.06",
+    icon: "🛡️",
+    category: "Onchain",
+    params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: agentWalletAudit,
     noFreeTier: true,
   },
   {
@@ -293,6 +307,35 @@ export const SERVICES: ServiceDef[] = [
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
     handler: b20Control,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-seizure-history",
+    name: "B20 Seizure History",
+    tagline: "Has this issuer ever actually SEIZED holders?",
+    description:
+      "🆕 Every other B20 check reads what the issuer CAN do; this reads what they HAVE done. Scans the token's actual burnBlocked seizures (the distinct BurnedBlocked event) — whether the issuer has ever burned a blocked holder's balance, who was seized, and how much. verdict: enforced (has seized) / armed (can, hasn't) / no_seize_power. Pass wallet= to check a specific address, or omit address= for the network-wide seizure feed. The enforcement-history signal no ERC-20 or other B20 tool can show.",
+    price: "$0.05",
+    icon: "🔫",
+    category: "B20",
+    params: [
+      { name: "address", label: "B20 token (omit for network feed)", placeholder: "0x… B20 token" },
+      { name: "wallet", label: "Victim wallet (optional)", placeholder: "0x… wallet" },
+    ],
+    handler: b20SeizureHistory,
+    noFreeTier: true,
+  },
+  {
+    id: "b20-dossier",
+    name: "B20 Due-Diligence Dossier",
+    tagline: "Institutional AI report on a Base-native B20 token",
+    description:
+      "🆕 The premium tier of the B20 suite — no ERC-20 tool can produce it. Composes the full picture of a B20: which seize/freeze/pause/mint powers exist, WHO holds them (and whether admin is renounced), allowlist-vs-blocklist access model, supply-cap dilution headroom, metadata mutability, and ACTUAL seizure history (burnBlocked) — then Claude writes an institutional due-diligence verdict: issuer-control score, seizure risk (enforced/armed/none), red flags, and a hold/avoid recommendation. Built for funds and treasuries holding tokenized/regulated Base-native assets.",
+    price: "$0.75",
+    icon: "📚",
+    category: "B20",
+    params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
+    handler: b20Dossier,
     noFreeTier: true,
   },
   {

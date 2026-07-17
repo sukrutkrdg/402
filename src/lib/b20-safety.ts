@@ -1017,6 +1017,93 @@ const topicToAddr = (t?: string): string | null => {
   }
 };
 
+// ---- B20 Seizure History — has the issuer ever FIRED the gun (burnBlocked)? ----
+
+/**
+ * Every other B20 check reads what the issuer CAN do; this reads what they HAVE
+ * done. burnBlocked() seizes a blocked holder's balance and emits a distinct
+ * `BurnedBlocked(address indexed caller, address indexed from, uint256 amount)`
+ * event (IB20) — the one unambiguous, hard-to-get signal that an issuer's
+ * coercive power isn't just theoretical. Scans that history per token (or a
+ * specific victim wallet), or network-wide with no address. No other tool
+ * surfaces actual seizures.
+ */
+export async function b20SeizureHistory(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  const wallet = (params.wallet || params.victim || "").trim();
+
+  // Network-wide feed when no token is given: recent seizures across all B20s.
+  if (!address) {
+    const rows = await cdpSql<{ address?: string; block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string }>(
+      `SELECT address, block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE event_signature LIKE 'BurnedBlocked%' AND block_timestamp > now() - INTERVAL 30 DAY ORDER BY block_timestamp DESC LIMIT 50`,
+    );
+    if (rows === null) throw new Error("B20 seizure event data unavailable (data provider) — try again shortly");
+    const feed = rows.map((r) => ({
+      token: r.address ?? null,
+      caller: topicToAddr(r.topics?.[1]),
+      victim: topicToAddr(r.topics?.[2]),
+      amount: String(r.parameters?.amount ?? "0"),
+      time: r.block_timestamp ?? null,
+      txHash: r.transaction_hash ?? null,
+    }));
+    return {
+      windowDays: 30,
+      seizureCount: feed.length,
+      distinctTokens: new Set(feed.map((f) => f.token).filter(Boolean)).size,
+      seizures: feed,
+      verdict: feed.length ? "active_enforcement" : "quiet",
+      note: "Network-wide feed of actual B20 seizures (burnBlocked → BurnedBlocked events) in the last 30 days — issuers that DID seize holders, not just could. Not financial advice.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address (address=)");
+  const addr = getAddress(address);
+  const s = await readB20Signals(addr);
+  if (!s.isB20) return notB20(address);
+
+  const rows = await cdpSql<{ block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string }>(
+    `SELECT block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_signature LIKE 'BurnedBlocked%' AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp DESC LIMIT 500`,
+  );
+  if (rows === null) throw new Error("B20 seizure event data unavailable (data provider) — try again shortly");
+
+  const w = validAddr(wallet) ? getAddress(wallet).toLowerCase() : null;
+  const seizures = rows.map((r) => ({
+    caller: topicToAddr(r.topics?.[1]),
+    victim: topicToAddr(r.topics?.[2]),
+    amount: String(r.parameters?.amount ?? "0"),
+    time: r.block_timestamp ?? null,
+    txHash: r.transaction_hash ?? null,
+  }));
+  const victims = new Set(seizures.map((x) => x.victim?.toLowerCase()).filter(Boolean));
+  const walletSeized = w ? seizures.filter((x) => x.victim?.toLowerCase() === w) : null;
+
+  // "Armed" = has the sender blocklist power. "Enforced" = has actually used it.
+  const verdict = seizures.length
+    ? "enforced"
+    : s.canSeize
+      ? "armed"
+      : "no_seize_power";
+
+  return {
+    address, isB20: true, symbol: s.symbol, variant: s.variant,
+    canSeize: s.canSeize,
+    seizureCount: seizures.length,
+    distinctVictims: victims.size,
+    verdict, // enforced | armed | no_seize_power
+    ...(w ? { wallet, walletSeized: (walletSeized?.length ?? 0) > 0, walletSeizures: walletSeized } : {}),
+    seizures: seizures.slice(0, 100),
+    recommendation:
+      verdict === "enforced"
+        ? `⚠️ This issuer HAS seized holders — ${seizures.length} burnBlocked seizure(s) across ${victims.size} wallet(s). The coercive power is not theoretical; treat holding risk as REAL.`
+        : verdict === "armed"
+          ? "The issuer CAN seize (sender blocklist set) but has no recorded burnBlocked seizures yet — armed but not fired. Watch policy changes (b20-policy-watch)."
+          : "No sender blocklist and no seizure history — this token has no active protocol-level seize surface.",
+    note: "Reads actual B20 seizures (burnBlocked → BurnedBlocked events, 365-day window) — whether the issuer has ever burned a blocked holder's balance, not just whether they could. Pass wallet= to check a specific address. The enforcement-history signal ERC-20 (and every other B20 tool) can't show. Not financial advice.",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 // ---- 7. B20 Memo Tracker — payment IDs / compliance tags on a B20 ----
 
 /**

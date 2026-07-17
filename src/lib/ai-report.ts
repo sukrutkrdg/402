@@ -18,6 +18,7 @@ import { walletNetworth, walletSummary, walletActivity, tokenApprovals } from ".
 import { trendingTokens } from "./onchain-extra2";
 import { newTokens } from "./onchain-extra4";
 import { exitLiquidity } from "./liquidity";
+import { b20Safety, b20Control, b20AccessType, b20Supply, b20Metadata, b20SeizureHistory } from "./b20-safety";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
@@ -244,6 +245,116 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
     model: MODEL,
     generatedAt: new Date().toISOString(),
     checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
+  };
+}
+
+/**
+ * B20 Dossier — institutional due-diligence on a Base-native B20 token. The
+ * premium tier of the B20 suite (uncontested: no one else has the B20
+ * primitives). Composes the full picture — powers, who holds them, allowlist vs
+ * blocklist, dilution headroom, metadata mutability, and ACTUAL seizure history
+ * (burnBlocked) — then Claude writes an institutional verdict. Priced for the
+ * depth. Not financial advice.
+ */
+export async function b20Dossier(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… B20 token address");
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+
+  const [safety, control, access, supply, metadata, seizures] = await Promise.allSettled([
+    b20Safety({ address }),
+    b20Control({ address }),
+    b20AccessType({ address }),
+    b20Supply({ address }),
+    b20Metadata({ address }),
+    b20SeizureHistory({ address }),
+  ]);
+  const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
+  const data = {
+    safety: val(safety),
+    control: val(control),
+    accessType: val(access),
+    supply: val(supply),
+    metadata: val(metadata),
+    seizureHistory: val(seizures),
+  };
+  // If the core safety read failed OR the token isn't a B20, don't fabricate a report.
+  const s = data.safety as { isB20?: boolean } | null;
+  if (!s) throw new Error("B20 data unavailable — try again shortly");
+  if (s.isB20 === false) {
+    return { address, isB20: false, note: "Not a B20 (Base-native) token — use deep-dd / ai-token-report for standard ERC-20 diligence.", checkedAt: new Date().toISOString() };
+  }
+
+  const facts = JSON.stringify(data).slice(0, 9000);
+  const schema = {
+    type: "object",
+    properties: {
+      verdict: { type: "string", enum: ["avoid", "high_caution", "caution", "neutral", "favorable"] },
+      issuerControlScore: { type: "integer" }, // 0 = fully issuer-controlled/coercive, 100 = minimal control
+      seizureRisk: { type: "string", enum: ["enforced", "armed", "none", "unknown"] },
+      powers: { type: "string" },
+      whoControls: { type: "string" },
+      enforcementHistory: { type: "string" },
+      dilutionRisk: { type: "string" },
+      metadataRisk: { type: "string" },
+      summary: { type: "string" },
+      factors: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            status: { type: "string", enum: ["good", "neutral", "warning", "critical"] },
+            note: { type: "string" },
+          },
+          required: ["name", "status", "note"],
+          additionalProperties: false,
+        },
+      },
+      redFlags: { type: "array", items: { type: "string" } },
+      positives: { type: "array", items: { type: "string" } },
+      recommendation: { type: "string" },
+    },
+    required: [
+      "verdict", "issuerControlScore", "seizureRisk", "powers", "whoControls",
+      "enforcementHistory", "dilutionRisk", "metadataRisk", "summary", "factors", "redFlags", "positives", "recommendation",
+    ],
+    additionalProperties: false,
+  };
+
+  const msg = await new Anthropic().messages.create({
+    model: MODEL,
+    max_tokens: 1600,
+    system:
+      "You are an institutional due-diligence analyst producing a report on a B20 (Base's native token standard) for a fund or treasury. " +
+      "Unlike ERC-20, a B20 issuer can FREEZE (Policy Registry blocklist) and SEIZE (burnBlocked burns a blocked holder's balance) at the protocol level, gate transfers by allowlist, pause, rebase, and mint. " +
+      "You are given JSON facts: safety (which powers exist), control (WHO holds the mint/seize/pause/admin roles + whether admin is renounced), accessType (allowlist=permissioned vs blocklist=open-unless-blocked), supply (cap headroom / dilution), metadata (name/symbol mutability), and seizureHistory (ACTUAL burnBlocked seizures — verdict 'enforced'/'armed'/'no_seize_power'). Produce:\n" +
+      "- issuerControlScore: integer 0-100 (0 = the issuer can and does coercively control holders, 100 = renounced/minimal control). Be conservative.\n" +
+      "- seizureRisk: 'enforced' if seizureHistory shows real seizures; 'armed' if a sender blocklist exists but no seizures; 'none' if no seize power; 'unknown' if the data was degraded/unavailable.\n" +
+      "- powers, whoControls, enforcementHistory, dilutionRisk, metadataRisk: one crisp factual sentence each from the data.\n" +
+      "- factors: one per dimension (Seize/freeze power, Control & renouncement, Access model, Dilution, Metadata integrity, Enforcement history) with status + note.\n" +
+      "- verdict, summary (2-3 sentences distinguishing what the issuer CAN do from what they HAVE done), redFlags, positives, and a one-line recommendation for the fund.\n" +
+      "A token with recorded seizures ('enforced') or a non-renounced admin holding the seize role => low score + at least 'high_caution'. A permissioned (allowlist) token an uninvited holder can't hold/receive => flag prominently. Factual, not financial advice. JSON only.",
+    output_config: { format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content: `B20 token ${address} full facts:\n${facts}` }],
+  });
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(textOf(msg));
+  } catch {
+    throw new Error("Model did not return valid JSON");
+  }
+
+  return {
+    address,
+    isB20: true,
+    ...parsed,
+    data,
+    model: MODEL,
+    note: "Institutional B20 due-diligence: powers + who holds them + access model + dilution + metadata + ACTUAL seizure history, synthesized. B20 is Base-native; these powers have no ERC-20 equivalent. Not financial advice.",
+    generatedAt: new Date().toISOString(),
+    checkedAt: new Date().toISOString(),
   };
 }
 
