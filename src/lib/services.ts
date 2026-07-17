@@ -148,7 +148,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Every way this wallet can be drained without a fresh signature",
     description:
       "🆕 The complete fund-movement authority on a Base wallet in one call: ERC-20 approvals (a spender you approved can pull the token) PLUS Base Account spend permissions (the agent-era scoped recurring allowance) — unified into one drain-surface verdict with the ERC-20 revoke queue to act on. ERC-20 approval tools miss the spend permissions; spend-permission tools miss the approvals. This is the only combined check — built for agent wallets that need to know their whole exposure before holding funds.",
-    price: "$0.06",
+    price: "$0.05",
     icon: "🛡️",
     category: "Onchain",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -331,7 +331,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Institutional AI report on a Base-native B20 token",
     description:
       "🆕 The premium tier of the B20 suite — no ERC-20 tool can produce it. Composes the full picture of a B20: which seize/freeze/pause/mint powers exist, WHO holds them (and whether admin is renounced), allowlist-vs-blocklist access model, supply-cap dilution headroom, metadata mutability, and ACTUAL seizure history (burnBlocked) — then Claude writes an institutional due-diligence verdict: issuer-control score, seizure risk (enforced/armed/none), red flags, and a hold/avoid recommendation. Built for funds and treasuries holding tokenized/regulated Base-native assets.",
-    price: "$0.75",
+    price: "$0.05",
     icon: "📚",
     category: "B20",
     params: [{ name: "address", label: "B20 token address", placeholder: "0x… B20 token", required: true }],
