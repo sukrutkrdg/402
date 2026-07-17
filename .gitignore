@@ -24,3 +24,6 @@ base-app-assets/
 docs/KULLANIM.md
 SUBMISSIONS.md
 listing-doctor-probe.mjs
+
+# MCP bundle build artifact
+*.mcpb
