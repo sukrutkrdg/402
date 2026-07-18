@@ -25,6 +25,8 @@ import { nftFloor, walletPortfolio } from "./alchemy";
 import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
 import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence, b20Dossier } from "./ai-report";
 import { agentWalletAudit } from "./agent-wallet-audit";
+import { walletDelegation } from "./delegation";
+import { commerceEscrow, commerceOperatorAudit } from "./commerce";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -153,6 +155,50 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: agentWalletAudit,
+    noFreeTier: true,
+  },
+  {
+    id: "wallet-delegation",
+    name: "7702 Delegation Check",
+    tagline: "Is this EOA secretly running someone else's code?",
+    description:
+      "🆕 Since Pectra an EOA can carry EIP-7702 delegated code (the 0xef0100 designator): every call to the wallet executes the DELEGATE's contract with the wallet's funds — a malicious delegate is total takeover, invisible to approval tools. Reads the designator, resolves the delegate and verdicts it: not_delegated / delegated_known (Coinbase's EOA→SmartWallet path) / delegated_unknown (🚨) / smart_contract. The drain surface no other Base tool checks.",
+    price: "$0.03",
+    icon: "🎭",
+    category: "Onchain",
+    params: [{ name: "wallet", label: "EOA address", placeholder: "0x… wallet", required: true }],
+    handler: walletDelegation,
+    noFreeTier: true,
+  },
+  {
+    id: "commerce-escrow",
+    name: "Commerce Escrow Status",
+    tagline: "Auth/capture payment reconciliation on Base",
+    description:
+      "🆕 First tooling for Base's Commerce Payments protocol (AuthCaptureEscrow): reconciles two-phase auth/capture payments — in escrow, captured, charged, voided, refunded, or payer-RECLAIMABLE because the operator missed the capture window. Filter by payment= (infoHash), payer=, receiver= or operator=, or omit everything for the network feed. The order-reconciliation read merchants and agents need before trusting onchain commerce.",
+    price: "$0.04",
+    icon: "🛒",
+    category: "Onchain",
+    params: [
+      { name: "payment", label: "PaymentInfo hash (optional)", placeholder: "0x… 32-byte hash" },
+      { name: "payer", label: "Payer wallet (optional)", placeholder: "0x… payer" },
+      { name: "receiver", label: "Merchant wallet (optional)", placeholder: "0x… merchant" },
+      { name: "operator", label: "Operator (optional)", placeholder: "0x… operator" },
+    ],
+    handler: commerceEscrow,
+    noFreeTier: true,
+  },
+  {
+    id: "commerce-operator-audit",
+    name: "Payment Operator Audit",
+    tagline: "Should you trust this Commerce Payments operator?",
+    description:
+      "🆕 Commerce Payments flows are DRIVEN by an operator — it authorizes escrow, captures for merchants and takes the fees. This audits one before you rely on it: 90-day volumes, fees taken, capture-vs-reclaim record (missed capture windows = merchants left unpaid), distinct payers and merchants. verdict: healthy_operator / mixed / sloppy_operator / no_activity. No other tool reads this new Base commerce protocol.",
+    price: "$0.05",
+    icon: "🕴️",
+    category: "Onchain",
+    params: [{ name: "operator", label: "Operator address", placeholder: "0x… operator", required: true }],
+    handler: commerceOperatorAudit,
     noFreeTier: true,
   },
   {
