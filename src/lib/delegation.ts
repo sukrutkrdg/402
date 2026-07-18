@@ -26,6 +26,9 @@ const KNOWN_DELEGATES: Record<string, string> = {
   "0x2a8010a9d71d2a5aea19d040f8b4797789a194a9": "Coinbase 7702 infrastructure (base/eip-7702-proxy)",
   "0x79a33f950b90c7d07e66950daedf868bd0cdcf96": "Coinbase 7702 infrastructure (base/eip-7702-proxy)",
   "0xd0ff13c28679fdd75bc09c0a430a0089bf8b95a8": "Coinbase 7702 infrastructure (base/eip-7702-proxy)",
+  // Selector fingerprint (hashTypedDataSansChainId, removeOwner(bytes32), getHook)
+  // matches the CoinbaseSmartWallet family — the standard Base App 7702 upgrade.
+  "0x36d3cbd83961868398d056efbf50f5ce15528c0d": "Base Account (CoinbaseSmartWallet v2 implementation)",
 };
 
 export interface DelegationInfo {
