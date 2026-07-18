@@ -439,6 +439,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
           };
         }
         if (freeEligible) body.freeCall = "This service gives 1 free call/day per IP — retry without a payment header.";
+        // ai-extract gets 1400+ price-probes/period — show the probing agent a
+        // concrete input→output pair (static, zero AI cost) so it can see the
+        // exact value before paying. The generic `sample` above only shows an
+        // output; for an extraction tool the PAIR is what sells.
+        if (service.id === "ai-extract") {
+          body.example = {
+            request: "?text=Invoice %2318 from Acme Corp, due 2026-08-01, total $420.50, contact billing@acme.io&fields=invoice_no,company,due_date,total,email",
+            response: { invoice_no: "18", company: "Acme Corp", due_date: "2026-08-01", total: "$420.50", email: "billing@acme.io" },
+            tip: "Add list=true to extract EVERY repeated record (rows, line items, listings) as an array. Batch 10 documents in one call: ai-extract-batch.",
+          };
+        }
         body.prepaidCredits =
           "One x402 settlement on /api/x402/buy-credits?tier=0.25|1|5|20 mints a bearer credit token; send it as the x-credit-token header and later calls debit the balance — no wallet or signature per call after that first purchase.";
         // Machine-readable on-ramps (x402 clients read `accepts` and stop; this

@@ -8,7 +8,7 @@
  * an LLM call is a one-line change.
  */
 
-import { aiSummarize, aiExtract, aiTranslate } from "./ai";
+import { aiSummarize, aiExtract, aiExtractBatch, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo, tokenPools } from "./onchain-extra";
 import { holderDistribution } from "./holders";
@@ -1475,18 +1475,34 @@ export const SERVICES: ServiceDef[] = [
   {
     id: "ai-extract",
     name: "AI Extract",
-    tagline: "Unstructured text → structured JSON",
+    tagline: "Unstructured text → structured JSON, one call",
     description:
-      "Pull named fields out of any text as clean JSON (e.g. name, email, company, date). Powered by Claude structured outputs.",
+      "Turn ANY text into clean, schema-enforced JSON: pass text= plus the fields you want (fields=name,email,price,date — up to 10) and get exactly those keys back, guaranteed-valid JSON via Claude structured outputs. Add list=true to extract EVERY repeated record (invoice lines, listings, table rows) as an array. Up to 16K chars per call. Not crypto-specific — the universal parse step for agent pipelines: pages, emails, receipts, logs.",
     price: "$0.03",
     icon: "🗂️",
     category: "AI",
     params: [
       { name: "text", label: "Source text", placeholder: "Paste text containing the data…", required: true, multiline: true },
       { name: "fields", label: "Fields (comma-separated)", placeholder: "name, email, company, date" },
+      { name: "list", label: "Extract all records (true/false)", placeholder: "false" },
     ],
     handler: aiExtract,
-    hidden: true,
+  },
+  {
+    id: "ai-extract-batch",
+    name: "AI Extract Batch",
+    tagline: "Same fields across up to 10 texts, one payment",
+    description:
+      "The pipeline version of ai-extract: send up to 10 documents (text1=…&text2=… or texts= with ||| separators) and one field list — get one schema-enforced JSON object per document, in order, from a single paid call. 10 extractions for $0.10 instead of 10× the per-call overhead: built for agents parsing feeds, inboxes, scrape batches and receipt piles. Up to 6K chars per document.",
+    price: "$0.10",
+    icon: "🗃️",
+    category: "AI",
+    params: [
+      { name: "text1", label: "Document 1", placeholder: "First text…", required: true, multiline: true },
+      { name: "text2", label: "Document 2 (optional)", placeholder: "Second text…", multiline: true },
+      { name: "fields", label: "Fields (comma-separated)", placeholder: "name, email, company, date" },
+    ],
+    handler: aiExtractBatch,
   },
   {
     id: "ai-translate",
