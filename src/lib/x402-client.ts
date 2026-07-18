@@ -1,7 +1,7 @@
 /**
  * Buyer-side x402 wiring.
  *
- * Builds a payment-enabled `fetch` from the demo buyer's signer. The
+ * Builds a payment-enabled `fetch` from the server buyer's signer. The
  * `BuilderCodeClientExtension` attaches our client code (`s`) to every payment
  * and automatically echoes the seller's app code (`a`) from the 402 response.
  */

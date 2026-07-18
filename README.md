@@ -19,7 +19,7 @@ One Next.js app plays all three roles in the x402 flow:
 ## What it does
 
 - **Marketplace** (`/`): 66 real x402-protected, pay-per-call endpoints — pay from your own
-  browser wallet (or the demo buyer), a USDC micro-payment settles on Base, you get the data +
+  browser wallet (or the server buyer), a USDC micro-payment settles on Base, you get the data +
   the settlement tx. Safety responses include an auditable pre-spend `receipt` (GO/HOLD/STOP).
 - **B20 protection suite**: 8 tools reading Base's native-token precompiles — freeze/seize risk,
   "when did it turn seizable", real-time PolicyUpdated alerts (CDP webhooks), launch radar.
@@ -68,7 +68,7 @@ const attribution = parseBuilderCodeSuffixFromCalldata(tx.input); // { a, w, s }
    - `APP_BUILDER_CODE` / `CLIENT_BUILDER_CODE` — your codes (`^[a-z0-9_]{1,32}$`)
    - `PAY_TO_ADDRESS` — wallet that receives USDC
    - `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` — from [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) (needed for **mainnet** settlement)
-   - `BUYER_PRIVATE_KEY` — a wallet with USDC + a little ETH on Base, used by the demo *Pay & call* button
+   - `BUYER_PRIVATE_KEY` — a wallet with USDC + a little ETH on Base, used by the server-side *Pay & call* button
    - `NEXT_PUBLIC_BASE_APP_ID` — your `base:app_id` (renders the Base App verification meta tag). **Not** the Builder Code — that's a separate short code under base.dev → Settings → Builder Code.
    - `ENABLE_BUYER` (`true`/`false`) and `BUY_ACCESS_TOKEN` — public-deploy safety (see below)
 
@@ -88,7 +88,7 @@ above in **Project → Settings → Environment Variables**, and deploy.
 
 **Before exposing it publicly, read this:**
 
-- 🔑 **The buyer wallet spends real USDC.** `/api/buy` is the demo spend endpoint.
+- 🔑 **The buyer wallet spends real USDC.** `/api/buy` is the server-side spend endpoint.
   On a public URL, anyone could trigger payments. Protect it:
   - `ENABLE_BUYER=false` → fully view-only showcase (browse + on-chain dashboard, no spending), **or**
   - `BUY_ACCESS_TOKEN=<secret>` → callers must supply the token (UI field / `x-buy-token` header).

@@ -24,7 +24,7 @@ const NO_SAMPLE = new Set([
   "revoke-builder", "b20-freeze-check",
 ]);
 
-// Stale demo beats no demo, but two weeks past is no longer representative.
+// A stale sample beats none, but two weeks past is no longer representative.
 const SAMPLE_TTL = 60 * 60 * 24 * 14;
 
 // Strings allowed to survive into a sample. Samples are served to OTHER callers
@@ -62,7 +62,7 @@ export async function saveSample(serviceId: string, data: unknown): Promise<void
 
 // Process-local micro-cache so loadSample (hit on every request that builds a
 // route config, for both the 402 shop window and the discovery output.example)
-// doesn't add a KV round-trip to the hot path. Short TTL — a stale demo is fine.
+// doesn't add a KV round-trip to the hot path. Short TTL — a stale sample is fine.
 const mem = new Map<string, { at: number; v: Record<string, unknown> | null }>();
 const MEM_TTL_MS = 60_000;
 

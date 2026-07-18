@@ -41,7 +41,7 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
 // Category display order — earlier index = rendered first.
-const CATEGORY_ORDER = ["B20", "AI", "Onchain", "Markets", "Data", "Utility", "Fun", "Demo"];
+const CATEGORY_ORDER = ["B20", "AI", "Onchain", "Markets", "Data", "Utility", "Fun"];
 
 // The AI synthesis suite — the differentiated moat, featured up top.
 const AI_FLAGSHIP_IDS = [
@@ -215,7 +215,7 @@ function ServiceCard({
 
       {buyerEnabled && (
         <button className="btn-ghost !py-2 text-xs" onClick={buy} disabled={loading || walletBusy}>
-          {loading ? "Processing…" : "Demo pay (server wallet)"}
+          {loading ? "Processing…" : "Server pay (owner wallet)"}
         </button>
       )}
 

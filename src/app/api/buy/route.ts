@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
   // 4) Extra guard on the expensive/metered services. Without a configured
   // BUY_ACCESS_TOKEN a public URL lets anyone drive AI (Anthropic-cost) and
-  // metered-upstream calls; cap those hard per IP so the demo stays open for the
+  // metered-upstream calls; cap those hard per IP so the public endpoint stays open for the
   // cheap onchain calls but the cost-drain vector is bounded. Setting
   // BUY_ACCESS_TOKEN or ENABLE_BUYER=false remains the full lockdown.
   if (!cfg.buyAccessToken && (service.category === "AI" || service.noFreeTier)) {
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "This service is rate-limited on the public demo. Set an access token for unrestricted use.",
+            "This service is rate-limited without an access token. Set one for unrestricted use.",
         },
         { status: 429, headers: { "retry-after": String(Math.ceil(rlAi.retryAfterMs / 1000)) } },
       );
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
 
   let res: Response;
   try {
-    // Force the paid flow (skip free tier) so the demo always settles a real payment.
+    // Force the paid flow (skip free tier) so this endpoint always settles a real payment.
     res = await payingFetch(target.toString(), { headers: { "x-x402-force": "1" } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Payment failed";

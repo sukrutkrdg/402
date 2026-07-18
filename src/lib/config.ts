@@ -43,14 +43,14 @@ export interface AppConfig {
   clientBuilderCode: string;
   /** Address that receives the USDC payments (the seller's wallet). */
   payTo: string;
-  /** Buyer signer key used by the demo buyer to pay. Server-only secret. */
+  /** Buyer signer key used by the server buyer to pay. Server-only secret. */
   buyerPrivateKey: string | undefined;
   /** CDP API credentials for the Base mainnet facilitator. */
   cdpApiKeyId: string | undefined;
   cdpApiKeySecret: string | undefined;
   /** Optional RPC override for reading settlement calldata. */
   rpcUrl: string | undefined;
-  /** Master switch for the demo buyer (`/api/buy`). Off → view-only showcase. */
+  /** Master switch for the server buyer (`/api/buy`). Off → view-only showcase. */
   enableBuyer: boolean;
   /** Optional shared secret required to call `/api/buy` when set. */
   buyAccessToken: string | undefined;
@@ -114,7 +114,7 @@ export function sellerReady(c: AppConfig): { ok: boolean; missing: string[] } {
   return { ok: missing.length === 0, missing };
 }
 
-/** True when the demo buyer can actually pay. */
+/** True when the server buyer can actually pay. */
 export function buyerReady(c: AppConfig): { ok: boolean; missing: string[] } {
   const missing: string[] = [];
   if (!c.buyerPrivateKey) missing.push("BUYER_PRIVATE_KEY");

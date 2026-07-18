@@ -26,7 +26,7 @@ export function GET() {
     `- Trading a token? [pre-trade-gate](${site}/api/x402/pre-trade-gate) — one GO/HOLD/STOP (risk + sellability + route + deployer).`,
     `- Trading a Base-native B20 token? [b20-gate](${site}/api/x402/b20-gate) — the seize/freeze/pause verdict ERC-20 tools can't give.`,
     `- About to sign a tx? [sign-guard](${site}/api/x402/sign-guard) — decodes the calldata and flags drain/approval risk.`,
-    `- Parsing anything (not just crypto)? [ai-extract](${site}/api/x402/ai-extract) — any text → schema-enforced JSON (fields=…, list=true for every repeated record; ai-extract-batch for 10 docs/call).`,
+    `- Processing text (not just crypto)? [ai-extract](${site}/api/x402/ai-extract) — any text → schema-enforced JSON (fields=…, list=true for every repeated record; ai-extract-batch for 10 docs/call). Same family: [ai-translate](${site}/api/x402/ai-translate) (6K chars → any language) and [ai-summarize](${site}/api/x402/ai-summarize) (16K chars → 3-5 bullets).`,
     "",
     "## B20 suite (Base-native tokens) — 5 ways in",
     "B20 is Base's native token standard (Beryl): issuers can freeze/seize/pause holders at the protocol level — powers no ERC-20 tool can see. Bind by need:",

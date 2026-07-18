@@ -1,4 +1,4 @@
-/** Recent settlements recorded by the demo buyer — OWNER ONLY (STATS_TOKEN gated). */
+/** Recent settlements recorded by the server buyer — OWNER ONLY (STATS_TOKEN gated). */
 
 import { NextRequest, NextResponse } from "next/server";
 import { listPayments } from "@/lib/store";

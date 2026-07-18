@@ -3,7 +3,7 @@
  *
  * Each entry is an x402-protected, pay-per-call API. The `handler` produces the
  * actual response a buyer receives *after* their payment settles. Everything is
- * self-contained (no external API keys) so the demo runs out of the box — but
+ * self-contained (no external API keys) so the marketplace runs out of the box — but
  * each handler is a normal async function, so swapping in a real upstream API or
  * an LLM call is a one-line change.
  */
@@ -1464,13 +1464,12 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Summarize",
     tagline: "Any text → crisp bullet points",
     description:
-      "Paste text and get a 3-5 bullet summary from Claude. Pay-per-call — no API key or subscription needed on your side.",
+      "Compress up to 16K characters of anything — articles, transcripts, email threads, reports — into 3-5 precise bullet points, one micro-payment per call. No API key, no subscription, no prompt engineering: send text=, get bullets back as clean JSON. The digest step for agent pipelines that read more than they can carry in context.",
     price: "$0.03",
     icon: "🧠",
     category: "AI",
     params: [{ name: "text", label: "Text to summarize", placeholder: "Paste an article, email, or notes…", required: true, multiline: true }],
     handler: aiSummarize,
-    hidden: true,
   },
   {
     id: "ai-extract",
@@ -1507,8 +1506,9 @@ export const SERVICES: ServiceDef[] = [
   {
     id: "ai-translate",
     name: "AI Translate",
-    tagline: "Translate text to any language",
-    description: "Translate text into a target language with Claude. One micro-payment per translation.",
+    tagline: "Translate up to 6K chars to any language",
+    description:
+      "Claude-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. One USDC micro-payment per call, no API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users.",
     price: "$0.03",
     icon: "🌐",
     category: "AI",
@@ -1517,14 +1517,13 @@ export const SERVICES: ServiceDef[] = [
       { name: "to", label: "Target language", placeholder: "English" },
     ],
     handler: aiTranslate,
-    hidden: true,
   },
   {
     id: "secure-token",
     name: "Secure Token",
     tagline: "Cryptographically strong random IDs",
     description:
-      "Generate N url-safe random tokens server-side. Demonstrates a paid utility endpoint with a query parameter.",
+      "Generate N cryptographically-strong, url-safe random tokens server-side — session IDs, API nonces, one-time codes, coupon secrets. Pass count= for how many. A tiny paid utility for agents that need entropy without a crypto library.",
     price: "$0.01",
     icon: "🔐",
     category: "Utility",

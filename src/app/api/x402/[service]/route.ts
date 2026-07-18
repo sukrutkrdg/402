@@ -53,6 +53,27 @@ function payerFrom(request: NextRequest): string {
   }
 }
 
+/** Static input→output pairs served inside the 402 challenge for the
+ * text-transform AI services (the biggest probe magnets). Never computed —
+ * an unpaid handler run would be a cost-drain vector. */
+const CHALLENGE_EXAMPLES: Record<string, Record<string, unknown>> = {
+  "ai-extract": {
+    request: "?text=Invoice %2318 from Acme Corp, due 2026-08-01, total $420.50, contact billing@acme.io&fields=invoice_no,company,due_date,total,email",
+    response: { invoice_no: "18", company: "Acme Corp", due_date: "2026-08-01", total: "$420.50", email: "billing@acme.io" },
+    tip: "Add list=true to extract EVERY repeated record (rows, line items, listings) as an array. Batch 10 documents in one call: ai-extract-batch.",
+  },
+  "ai-translate": {
+    request: "?text=Der Vertrag endet am 1. August und verlängert sich automatisch.&to=English",
+    response: { to: "English", translation: "The contract ends on August 1 and renews automatically." },
+    tip: "Any source language, any target (to=Spanish, to=Japanese…). Up to 6K characters; the response is the bare translation — safe to pipe into the next step.",
+  },
+  "ai-summarize": {
+    request: "?text=<a 16K-char article, transcript or email thread>",
+    response: { bullets: ["Q2 revenue grew 18% to $4.2M, driven by the enterprise tier", "Two security incidents were disclosed; both patched within 24h", "Guidance for Q3 raised to $4.6-4.8M"] },
+    tip: "3-5 fact-dense bullets from up to 16K characters — the digest step for agents that read more than their context carries.",
+  },
+};
+
 export const dynamic = "force-dynamic";
 // AI services aggregate several upstreams + Claude, and x402 settlement adds a few
 // seconds — well over the serverless default. Give the handler room so paid AI
@@ -225,7 +246,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   }
 
   // Free tier: an unpaid request (no payment header) that isn't the internal
-  // demo buy flow gets one free trial call/day per IP, then must pay. This is the
+  // server buy flow gets one free trial call/day per IP, then must pay. This is the
   // agent trial funnel.
   const hasPayment = Boolean(req.headers.get("x-payment") || req.headers.get("payment-signature"));
   const forcePay = req.headers.get("x-x402-force") === "1";
@@ -439,17 +460,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
           };
         }
         if (freeEligible) body.freeCall = "This service gives 1 free call/day per IP — retry without a payment header.";
-        // ai-extract gets 1400+ price-probes/period — show the probing agent a
-        // concrete input→output pair (static, zero AI cost) so it can see the
-        // exact value before paying. The generic `sample` above only shows an
-        // output; for an extraction tool the PAIR is what sells.
-        if (service.id === "ai-extract") {
-          body.example = {
-            request: "?text=Invoice %2318 from Acme Corp, due 2026-08-01, total $420.50, contact billing@acme.io&fields=invoice_no,company,due_date,total,email",
-            response: { invoice_no: "18", company: "Acme Corp", due_date: "2026-08-01", total: "$420.50", email: "billing@acme.io" },
-            tip: "Add list=true to extract EVERY repeated record (rows, line items, listings) as an array. Batch 10 documents in one call: ai-extract-batch.",
-          };
-        }
+        // The text-in AI services get 1000+ price-probes each — show the probing
+        // agent a concrete input→output pair (static, zero AI cost) so it can
+        // see the exact value before paying. The generic `sample` above only
+        // shows an output; for text-transform tools the PAIR is what sells.
+        const example = CHALLENGE_EXAMPLES[service.id];
+        if (example) body.example = example;
         body.prepaidCredits =
           "One x402 settlement on /api/x402/buy-credits?tier=0.25|1|5|20 mints a bearer credit token; send it as the x-credit-token header and later calls debit the balance — no wallet or signature per call after that first purchase.";
         // Machine-readable on-ramps (x402 clients read `accepts` and stop; this

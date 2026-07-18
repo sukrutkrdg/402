@@ -46,7 +46,7 @@ function clamp(s: string, max: number): { text: string; truncated: boolean } {
 export async function aiSummarize(params: Record<string, string>) {
   const input = (params.text || "").trim();
   if (!input) throw new Error("Missing 'text'");
-  const { text, truncated } = clamp(input, 6000);
+  const { text, truncated } = clamp(input, 16000);
 
   const msg = await client().messages.create({
     model: MODEL,
@@ -178,11 +178,11 @@ export async function aiTranslate(params: Record<string, string>) {
   if (!input) throw new Error("Missing 'text'");
   // Sanitize the language so it can't inject instructions into the system prompt.
   const to = ((params.to || "English").replace(/[^a-zA-Z\s-]/g, "").trim().slice(0, 40)) || "English";
-  const { text, truncated } = clamp(input, 1200);
+  const { text, truncated } = clamp(input, 6000);
 
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 2500,
     system: `Translate the user's text into ${to}. Output only the translation — no notes, no quotes, no preamble.`,
     messages: [{ role: "user", content: text }],
   });
