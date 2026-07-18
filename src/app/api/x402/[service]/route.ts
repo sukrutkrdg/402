@@ -20,7 +20,7 @@ import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
-import { kvGet, kvSet, kvDel } from "@/lib/kv";
+import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
 import { riskSignal } from "@/lib/envelope";
@@ -330,6 +330,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // address from CDP SQL — a checksummed hash here would never match it.
     const payer = payerFrom(request).toLowerCase();
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "", false, false, false, payer ? srcHash(payer) : "");
+    // buy-credits settles at the CHOSEN tier, not the listed price — record the
+    // real cents so the revenue dashboard doesn't count every pack as $5.
+    if (service.id === "buy-credits") {
+      const cents = Math.round((parseFloat(tierPrice(paramsFrom(request, service).tier || "").replace(/[^0-9.]/g, "")) || 0) * 100);
+      if (cents > 0) await kvIncrBy("usage:revenue-cents:buy-credits", cents);
+    }
     await attachRetention(service.id, data, srcHash(clientIp(request)));
     return NextResponse.json({
       service: service.id,

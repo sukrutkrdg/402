@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getUsage, srcHash } from "@/lib/usage";
+import { kvGetNumber } from "@/lib/kv";
 import { SERVICES } from "@/lib/services";
 import { safeEqual } from "@/lib/secure";
 import { clientIp } from "@/lib/rate-limit";
@@ -34,6 +35,9 @@ export async function GET(req: NextRequest) {
   // (paid × price), and conversion rate (paid ÷ external non-internal calls) —
   // so the dashboard shows which services actually make money and which give
   // their value away for free.
+  // buy-credits settles at the buyer's CHOSEN tier ($0.25-$20), so paid×listed-price
+  // is wrong for it — the gateway records the real cents in a KV counter instead.
+  const creditCents = await kvGetNumber("usage:revenue-cents:buy-credits");
   const per = data.per.map((r) => {
     const price = priceById[r.id] ?? 0;
     const external = Math.max(0, r.total - r.internal); // strip our own first-party calls
@@ -41,7 +45,7 @@ export async function GET(req: NextRequest) {
       ...r,
       name: nameById[r.id] ?? r.id,
       price,
-      revenue: +(r.paid * price).toFixed(4),
+      revenue: r.id === "buy-credits" ? +(creditCents / 100).toFixed(2) : +(r.paid * price).toFixed(4),
       conversionPct: external > 0 ? +((r.paid / external) * 100).toFixed(1) : 0,
       // Of those shown the 402 price, how many actually paid. Every successful
       // x402 purchase necessarily logs one pre-flight 402 first, so challenges
