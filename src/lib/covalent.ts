@@ -150,6 +150,23 @@ export async function walletSummary(params: Record<string, string>) {
   };
 }
 
+/** Earliest transaction the address ever appears in (all-history, via Covalent —
+ * CDP SQL can't scan all-history without hitting its read cap). Powers first-funder. */
+export async function walletFirstTx(address: string): Promise<{ txHash: string | null; firstAt: string | null; txCount: number }> {
+  const a = reqAddr(address);
+  const data = await cov<{ items?: CovTxSummary[] }>(
+    `/${CHAIN}/address/${a}/transactions_summary/`,
+    `sum:${a.toLowerCase()}`,
+    120,
+  );
+  const s = data.items?.[0] ?? {};
+  return {
+    txHash: s.earliest_transaction?.tx_hash ?? null,
+    firstAt: s.earliest_transaction?.block_signed_at ?? null,
+    txCount: s.total_count ?? 0,
+  };
+}
+
 interface CovTx {
   tx_hash?: string;
   block_signed_at?: string;

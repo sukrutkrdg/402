@@ -28,7 +28,9 @@ import { agentWalletAudit } from "./agent-wallet-audit";
 import { walletDelegation } from "./delegation";
 import { commerceEscrow, commerceOperatorAudit } from "./commerce";
 import { morphoHealth, morphoLiquidations } from "./morpho";
-import { gasSponsor } from "./aa";
+import { gasSponsor, paymasterAudit } from "./aa";
+import { firstFunder } from "./provenance";
+import { freshBridge } from "./bridge";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -262,6 +264,54 @@ export const SERVICES: ServiceDef[] = [
     // requirements byte-identical to services that pay (morpho-health, an equally
     // new resource, settles fine). Matches the CDP discovery/settlement pipeline
     // issue tracked in cdp-sdk#759. Unhide once new resources settle on x402.
+    hidden: true,
+  },
+  {
+    id: "paymaster-audit",
+    name: "Paymaster Audit",
+    tagline: "Should you trust this Base gas paymaster?",
+    description:
+      "🆕 The gas-sponsor sibling, for the OTHER side: given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints and returns sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (share from its busiest app). The read a builder pulls before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or an agent pulls to judge who funds a counterparty's gas. No other tool serves it. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
+    price: "$0.05",
+    icon: "🛢️",
+    category: "Accounts",
+    params: [
+      { name: "paymaster", label: "Paymaster address", placeholder: "0x... paymaster", required: true },
+      { name: "days", label: "Lookback days (optional)", placeholder: "30 (max 90)" },
+    ],
+    handler: paymasterAudit,
+    noFreeTier: true,
+    hidden: true,
+  },
+  {
+    id: "first-funder",
+    name: "First Funder",
+    tagline: "Where did this wallet's money originally come from?",
+    description:
+      "🆕 Funding provenance in one call. Traces a Base wallet back to its EARLIEST transaction and resolves who first funded it: a recognized exchange/bridge (real on-ramp, lower risk), an anon EOA (possible sybil/burner — trace the cluster), or a contract. Returns the first funder, whether it's a contract or EOA, the initial value, and wallet age. The sybil/origin screen no other Base tool gives — the counterparty check before you transact. wallet= required. Not financial advice.",
+    price: "$0.04",
+    icon: "🌱",
+    category: "Onchain",
+    params: [{ name: "wallet", label: "Wallet address", placeholder: "0x... wallet to trace", required: true }],
+    handler: firstFunder,
+    noFreeTier: true,
+    hidden: true,
+  },
+  {
+    id: "fresh-bridge",
+    name: "Fresh Bridge Check",
+    tagline: "Is this wallet's USDC freshly bridged, and from where?",
+    description:
+      "🆕 Cross-chain inflow detection. Reads a wallet's recent USDC MINTS and correlates them with Circle CCTP receives to tell you whether its USDC is freshly bridged in (and from which source chain — Ethereum, Arbitrum, OP, Polygon, Solana…) vs natively issued. Freshly bridged capital is new money / a possible cross-chain hop — a real signal for trading and liquidation agents that no other Base tool surfaces. wallet= required, days= optional (default 30, max 90). Not financial advice.",
+    price: "$0.04",
+    icon: "🌉",
+    category: "Onchain",
+    params: [
+      { name: "wallet", label: "Wallet address", placeholder: "0x... wallet", required: true },
+      { name: "days", label: "Lookback days (optional)", placeholder: "30 (max 90)" },
+    ],
+    handler: freshBridge,
+    noFreeTier: true,
     hidden: true,
   },
   {
