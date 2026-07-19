@@ -28,6 +28,7 @@ import { agentWalletAudit } from "./agent-wallet-audit";
 import { walletDelegation } from "./delegation";
 import { commerceEscrow, commerceOperatorAudit } from "./commerce";
 import { morphoHealth, morphoLiquidations } from "./morpho";
+import { gasSponsor } from "./aa";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -239,6 +240,22 @@ export const SERVICES: ServiceDef[] = [
     // requirements byte-identical to services that pay. Unhide once the x402
     // direct-pay path works so agents don't hit a dead payment loop.
     hidden: true,
+  },
+  {
+    id: "gas-sponsor",
+    name: "Gas Sponsor Check",
+    tagline: "Who pays this wallet's gas? Is it a sponsored smart account?",
+    description:
+      "🆕 The first onchain gas-sponsorship read on Base. Base pushes ERC-4337 smart accounts, and a smart account's gas can be paid by a PAYMASTER instead of the account itself — invisible to every 'does this wallet spend ETH' heuristic and to approval/delegation tools. Reads a wallet's UserOperationEvents across BOTH EntryPoints (v0.6 + v0.7) and returns: is it a smart account, its op count and success rate, and WHO sponsors its gas (self vs which paymaster, with per-sponsor share). A fully-sponsored account is typically app- or agent-operated — a real counterparty signal no other tool serves. wallet= required, days= optional (default 30, max 90). Not financial advice.",
+    price: "$0.05",
+    icon: "⛽",
+    category: "Accounts",
+    params: [
+      { name: "wallet", label: "Wallet address", placeholder: "0x... smart account / agent wallet", required: true },
+      { name: "days", label: "Lookback days (optional)", placeholder: "30 (max 90)" },
+    ],
+    handler: gasSponsor,
+    noFreeTier: true,
   },
   {
     id: "address-trust",
