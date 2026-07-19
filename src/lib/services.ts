@@ -223,13 +223,13 @@ export const SERVICES: ServiceDef[] = [
     name: "Morpho Liquidation Feed",
     tagline: "Which Base Morpho positions are liquidatable right now?",
     description:
-      "🆕 Built for liquidator / MEV searchers. Reconstructs the active borrower set on a Morpho Blue market from Borrow events, prices every position onchain in one multicall, and ranks them by liquidation health — flagging positions liquidatable NOW (health ≤ 1.0) and those one small move away, with the collateral price drop that tips each over. The data directly makes searchers money; nobody else in the catalog serves it. market= optional (defaults cbBTC/USDC), maxHealth= cutoff (default 1.1). Not financial advice.",
+      "🆕 Built for liquidator / MEV searchers. Reconstructs the active borrower set on a Morpho Blue market from Borrow events, prices every position onchain in one multicall, and ranks them by liquidation health — flagging positions liquidatable NOW (health <= 1.0) and those one small move away, with the collateral price drop that tips each over. The data directly makes searchers money; nobody else in the catalog serves it. market= optional (defaults cbBTC/USDC), maxHealth= cutoff (default 1.1). Not financial advice.",
     price: "$0.06",
     icon: "⚔️",
     category: "Lending",
     params: [
       { name: "market", label: "Morpho market id (optional)", placeholder: "0x… 32-byte id (default cbBTC/USDC)" },
-      { name: "maxHealth", label: "Health cutoff (optional)", placeholder: "1.1 (≤1.0 = already liquidatable)" },
+      { name: "maxHealth", label: "Health cutoff (optional)", placeholder: "1.1 (<=1.0 = already liquidatable)" },
     ],
     handler: morphoLiquidations,
     noFreeTier: true,
@@ -921,7 +921,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Volume Authenticity Check",
     tagline: "Is this trading volume real — or painted on by bots?",
     description:
-      "Reads the deepest pool's 24h volume, buy/sell counts, liquidity and price move, and scores how organic the activity looks. Volume 10×+ the pool's liquidity, near-perfect buy/sell symmetry, or big volume that moves the price nowhere are the classic wash-trading signatures used to bait buyers. Returns a 0-100 suspicion score and verdict.",
+      "Reads the deepest pool's 24h volume, buy/sell counts, liquidity and price move, and scores how organic the activity looks. Volume 10x+ the pool's liquidity, near-perfect buy/sell symmetry, or big volume that moves the price nowhere are the classic wash-trading signatures used to bait buyers. Returns a 0-100 suspicion score and verdict.",
     price: "$0.02",
     icon: "🎭",
     category: "Markets",
@@ -977,7 +977,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Approval Exposure + Revoke Advisor",
     tagline: "Which approvals could drain you — and revoke order",
     description:
-      "Ranks a wallet's active token approvals by USD-at-risk × unlimited-allowance × unlabelled-spender, and returns a prioritised revoke queue. Approvals are the #1 drain vector; this tells an agent exactly what to revoke first.",
+      "Ranks a wallet's active token approvals by USD-at-risk x unlimited-allowance x unlabelled-spender, and returns a prioritised revoke queue. Approvals are the #1 drain vector; this tells an agent exactly what to revoke first.",
     price: "$0.05",
     icon: "🧹",
     category: "Onchain",
@@ -1525,7 +1525,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Extract Batch",
     tagline: "Same fields across up to 10 texts, one payment",
     description:
-      "The pipeline version of ai-extract: send up to 10 documents (text1=…&text2=… or texts= with ||| separators) and one field list — get one schema-enforced JSON object per document, in order, from a single paid call. 10 extractions for $0.10 instead of 10× the per-call overhead: built for agents parsing feeds, inboxes, scrape batches and receipt piles. Up to 6K chars per document.",
+      "The pipeline version of ai-extract: send up to 10 documents (text1=…&text2=… or texts= with ||| separators) and one field list — get one schema-enforced JSON object per document, in order, from a single paid call. 10 extractions for $0.10 instead of 10x the per-call overhead: built for agents parsing feeds, inboxes, scrape batches and receipt piles. Up to 6K chars per document.",
     price: "$0.10",
     icon: "🗃️",
     category: "AI",

@@ -2,7 +2,7 @@
  * Morpho Position Health — is this Morpho Blue position about to be liquidated?
  *
  * Morpho Blue is the largest lending venue on Base (singleton
- * 0xBBBB…EFFCb). A position liquidates when its LTV crosses the market's LLTV;
+ * 0xBBBB...EFFCb). A position liquidates when its LTV crosses the market's LLTV;
  * borrowers (and the agents/treasuries managing them) need one call that answers
  * "how close am I, and how far can the collateral price fall before I'm cut."
  * The catalog had zero lending tooling and Morpho's own API is deferred — this
@@ -60,11 +60,11 @@ function fmt(v: bigint, decimals: number): string {
 
 export async function morphoHealth(params: Record<string, string>) {
   const wallet = (params.wallet || params.user || params.address || "").trim();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new Error("Provide a valid 0x… wallet address (wallet=)");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new Error("Provide a valid 0x... wallet address (wallet=)");
   const user = getAddress(wallet);
 
   const market = (params.market || params.id || DEFAULT_MARKET).trim().toLowerCase();
-  if (!/^0x[0-9a-f]{64}$/.test(market)) throw new Error("market= must be a 32-byte Morpho market id (0x… 64 hex). Omit it to use the cbBTC/USDC market.");
+  if (!/^0x[0-9a-f]{64}$/.test(market)) throw new Error("market= must be a 32-byte Morpho market id (0x... 64 hex). Omit it to use the cbBTC/USDC market.");
   const id = market as `0x${string}`;
 
   // 1) Resolve market params (need the oracle address before we can price collateral).
@@ -192,7 +192,7 @@ function positionHealth(collateral: bigint, borrowShares: bigint, tBorrowA: bigi
  */
 export async function morphoLiquidations(params: Record<string, string>) {
   const market = (params.market || params.id || DEFAULT_MARKET).trim().toLowerCase();
-  if (!/^0x[0-9a-f]{64}$/.test(market)) throw new Error("market= must be a 32-byte Morpho market id (0x… 64 hex). Omit it to use the cbBTC/USDC market.");
+  if (!/^0x[0-9a-f]{64}$/.test(market)) throw new Error("market= must be a 32-byte Morpho market id (0x... 64 hex). Omit it to use the cbBTC/USDC market.");
   const id = market as `0x${string}`;
   // Health cutoff: report positions at or below this (1.0 = already liquidatable).
   const maxHealth = Math.min(2, Math.max(1, Number(params.maxHealth || params.threshold || "1.1") || 1.1));
@@ -209,7 +209,7 @@ export async function morphoLiquidations(params: Record<string, string>) {
   }
 
   // Active borrower set: onBehalf from Borrow events on THIS market over 90 days.
-  // Borrow(Id indexed id, …, address indexed onBehalf, …): the market id is the
+  // Borrow(Id indexed id, ..., address indexed onBehalf, ...): the market id is the
   // first indexed arg, so it lands in topics[2] (ClickHouse 1-indexed, topic0 =
   // signature at [1]). Filtering there scopes the scan to the requested market;
   // the decoded parameters.id comes back as raw bytes (unusable as hex), so we
@@ -287,10 +287,10 @@ export async function morphoLiquidations(params: Record<string, string>) {
     positions: positions.slice(0, 30),
     verdict: liquidatable.length ? "liquidatable_now" : positions.length ? "watch" : "none",
     recommendation: liquidatable.length
-      ? `${liquidatable.length} position(s) are liquidatable RIGHT NOW (health ≤ 1.0) on the ${collSymbol}/${loanSymbol} market — call Morpho's liquidate(marketParams, borrower, …) to seize collateral at the incentive. ${positions.length - liquidatable.length} more within ${maxHealth}× health.`
+      ? `${liquidatable.length} position(s) are liquidatable RIGHT NOW (health <= 1.0) on the ${collSymbol}/${loanSymbol} market — call Morpho's liquidate(marketParams, borrower, ...) to seize collateral at the incentive. ${positions.length - liquidatable.length} more within ${maxHealth}x health.`
       : positions.length
-        ? `No positions are liquidatable yet, but ${positions.length} sit within ${maxHealth}× health — a small ${collSymbol} price drop puts the closest (${positions[0].priceDropToLiquidationPct}% away) in range. Poll to catch the crossover.`
-        : `No ${collSymbol}/${loanSymbol} positions under ${maxHealth}× health among the ${borrowers.length} most recent borrowers. Nothing to liquidate right now.`,
-    note: "Live liquidation feed for a Base Morpho Blue market: active borrowers ranked by liquidation health, flagging positions liquidatable now (health ≤ 1.0) and those close. Reconstructed from Borrow events + onchain pricing over the 60 most-recently-active borrowers. market= optional (defaults cbBTC/USDC); maxHealth= cutoff (default 1.1). Not financial advice.",
+        ? `No positions are liquidatable yet, but ${positions.length} sit within ${maxHealth}x health — a small ${collSymbol} price drop puts the closest (${positions[0].priceDropToLiquidationPct}% away) in range. Poll to catch the crossover.`
+        : `No ${collSymbol}/${loanSymbol} positions under ${maxHealth}x health among the ${borrowers.length} most recent borrowers. Nothing to liquidate right now.`,
+    note: "Live liquidation feed for a Base Morpho Blue market: active borrowers ranked by liquidation health, flagging positions liquidatable now (health <= 1.0) and those close. Reconstructed from Borrow events + onchain pricing over the 60 most-recently-active borrowers. market= optional (defaults cbBTC/USDC); maxHealth= cutoff (default 1.1). Not financial advice.",
   });
 }
