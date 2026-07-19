@@ -446,6 +446,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // away — log it so we can measure challenge→paid conversion per service.
     if (res.status === 402) {
       await logUsage(service.id, false, srcHash(clientIp(req)), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, true);
+      // A 402 on a request that DID carry a payment is a verify/settle FAILURE, not
+      // a plain challenge — surface the facilitator's real error instead of masking
+      // it with the credit-path upsell, which would mislead a caller who just paid.
+      if (hasPayment) {
+        const raw = await res.clone().text();
+        console.error(`[x402 verify-fail] ${service.id}: ${raw.slice(0, 500)}`);
+        return res;
+      }
       // Make the challenge sell, not just charge: show a preview of a real recent
       // response (cached at serve time — never computed here, an unpaid handler
       // run would be a cost-drain vector) plus the no-wallet payment path. Extra
