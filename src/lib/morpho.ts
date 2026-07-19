@@ -215,9 +215,15 @@ export async function morphoLiquidations(params: Record<string, string>) {
   // the decoded parameters.id comes back as raw bytes (unusable as hex), so we
   // never match on it. id is regex-validated above, safe to interpolate.
   const rows = await cdpSql<{ parameters?: Record<string, unknown> }>(
-    `SELECT parameters FROM base.events WHERE address = '${MORPHO_BLUE.toLowerCase()}' AND event_name = 'Borrow' AND topics[2] = '${id}' AND block_timestamp > now() - INTERVAL 90 DAY ORDER BY block_timestamp DESC LIMIT 2000`,
+    `SELECT parameters FROM base.events WHERE address = '${MORPHO_BLUE.toLowerCase()}' AND event_name = 'Borrow' AND topics[2] = '${id}' AND block_timestamp > now() - INTERVAL 90 DAY ORDER BY block_timestamp DESC LIMIT 800`,
   );
   if (rows === null) throw new Error("Morpho borrower data unavailable (data provider) — try again shortly");
+  // Cap the scan at the 60 most-recently-active borrowers. This keeps the whole
+  // handler (one multicall of ~66 reads + settlement) fast enough for the x402
+  // paid path — a heavier 200-position scan settles fine on the credit path but
+  // is too slow for x402 verify+settle in one request. Recently-active borrowers
+  // are also the ones most likely to be at the edge.
+  const SCAN_CAP = 60;
   const borrowers: `0x${string}`[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
@@ -226,7 +232,7 @@ export async function morphoLiquidations(params: Record<string, string>) {
       const a = getAddress(ob);
       if (!seen.has(a)) { seen.add(a); borrowers.push(a as `0x${string}`); }
     }
-    if (borrowers.length >= 200) break; // cap the scan; most recent borrowers first
+    if (borrowers.length >= SCAN_CAP) break;
   }
 
   // Price every position in one multicall (market totals + oracle + N positions + token metadata).
@@ -285,6 +291,6 @@ export async function morphoLiquidations(params: Record<string, string>) {
       : positions.length
         ? `No positions are liquidatable yet, but ${positions.length} sit within ${maxHealth}× health — a small ${collSymbol} price drop puts the closest (${positions[0].priceDropToLiquidationPct}% away) in range. Poll to catch the crossover.`
         : `No ${collSymbol}/${loanSymbol} positions under ${maxHealth}× health among the ${borrowers.length} most recent borrowers. Nothing to liquidate right now.`,
-    note: "Live liquidation feed for a Base Morpho Blue market: active borrowers ranked by liquidation health, flagging positions liquidatable now (health ≤ 1.0) and those close. Reconstructed from Borrow events + onchain pricing over the 200 most-recent borrowers. market= optional (defaults cbBTC/USDC); maxHealth= cutoff (default 1.1). Not financial advice.",
+    note: "Live liquidation feed for a Base Morpho Blue market: active borrowers ranked by liquidation health, flagging positions liquidatable now (health ≤ 1.0) and those close. Reconstructed from Borrow events + onchain pricing over the 60 most-recently-active borrowers. market= optional (defaults cbBTC/USDC); maxHealth= cutoff (default 1.1). Not financial advice.",
   });
 }
