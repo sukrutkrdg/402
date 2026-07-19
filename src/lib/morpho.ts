@@ -20,6 +20,7 @@ import "server-only";
 import { createPublicClient, getAddress } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
+import { cdpSql } from "./covalent";
 import { finish } from "./envelope";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
@@ -167,5 +168,123 @@ export async function morphoHealth(params: Record<string, string>) {
               ? `Moderate buffer: ${collSymbol} can fall ${priceDropToLiqPct}% before liquidation (health ${health.toFixed(3)}).`
               : `Healthy: ${collSymbol} would need to fall ${priceDropToLiqPct}% to reach liquidation (health ${health.toFixed(3)}).`,
     note: "Morpho Blue liquidation-health read on Base: health factor, current vs liquidation LTV, and the collateral price drop that triggers liquidation. Borrowed amount reflects the last on-chain interest accrual (accrues slightly higher between blocks). wallet= required; market= optional (defaults to cbBTC/USDC). Not financial advice.",
+  });
+}
+
+/** Health for one position given the shared market context — used by the feed. */
+function positionHealth(collateral: bigint, borrowShares: bigint, tBorrowA: bigint, tBorrowS: bigint, price: bigint, lltv: bigint) {
+  const borrowed = toAssetsUp(borrowShares, tBorrowA, tBorrowS);
+  const collateralValue = (collateral * price) / ORACLE_SCALE;
+  const maxBorrow = (collateralValue * lltv) / WAD;
+  const health = borrowed > 0n ? Number((maxBorrow * 10000n) / borrowed) / 10000 : Infinity;
+  const ltvPct = collateralValue > 0n ? Number((borrowed * 10000n) / collateralValue) / 100 : 0;
+  const dropToLiq = health > 1 ? +((1 - 1 / health) * 100).toFixed(2) : 0;
+  return { borrowed, health, ltvPct, dropToLiq };
+}
+
+/**
+ * Morpho Liquidation Feed — which Base Morpho positions are liquidatable right
+ * now (or one small move away). Built for liquidator / MEV searchers: the data
+ * directly makes them money, so it's the highest willingness-to-pay read on the
+ * platform, and nobody else in the catalog serves it. Reconstructs the active
+ * borrower set from Borrow events (CDP SQL), then prices every position onchain
+ * in one multicall and ranks by health. Not financial advice.
+ */
+export async function morphoLiquidations(params: Record<string, string>) {
+  const market = (params.market || params.id || DEFAULT_MARKET).trim().toLowerCase();
+  if (!/^0x[0-9a-f]{64}$/.test(market)) throw new Error("market= must be a 32-byte Morpho market id (0x… 64 hex). Omit it to use the cbBTC/USDC market.");
+  const id = market as `0x${string}`;
+  // Health cutoff: report positions at or below this (1.0 = already liquidatable).
+  const maxHealth = Math.min(2, Math.max(1, Number(params.maxHealth || params.threshold || "1.1") || 1.1));
+
+  let mp: readonly [string, string, string, string, bigint];
+  try {
+    mp = await client.readContract({ address: MORPHO_BLUE, abi: morphoAbi, functionName: "idToMarketParams", args: [id] });
+  } catch {
+    throw new Error("Morpho read unavailable (RPC) — try again shortly");
+  }
+  const [loanToken, collateralToken, oracle, , lltv] = mp;
+  if (lltv === 0n || loanToken === "0x0000000000000000000000000000000000000000") {
+    throw new Error(`Unknown Morpho market id ${id} — no market with those params exists on Base.`);
+  }
+
+  // Active borrower set: onBehalf from Borrow events on THIS market over 90 days.
+  // Borrow(Id indexed id, …, address indexed onBehalf, …): the market id is the
+  // first indexed arg, so it lands in topics[2] (ClickHouse 1-indexed, topic0 =
+  // signature at [1]). Filtering there scopes the scan to the requested market;
+  // the decoded parameters.id comes back as raw bytes (unusable as hex), so we
+  // never match on it. id is regex-validated above, safe to interpolate.
+  const rows = await cdpSql<{ parameters?: Record<string, unknown> }>(
+    `SELECT parameters FROM base.events WHERE address = '${MORPHO_BLUE.toLowerCase()}' AND event_name = 'Borrow' AND topics[2] = '${id}' AND block_timestamp > now() - INTERVAL 90 DAY ORDER BY block_timestamp DESC LIMIT 2000`,
+  );
+  if (rows === null) throw new Error("Morpho borrower data unavailable (data provider) — try again shortly");
+  const borrowers: `0x${string}`[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const ob = r.parameters?.onBehalf;
+    if (typeof ob === "string" && /^0x[0-9a-fA-F]{40}$/.test(ob)) {
+      const a = getAddress(ob);
+      if (!seen.has(a)) { seen.add(a); borrowers.push(a as `0x${string}`); }
+    }
+    if (borrowers.length >= 200) break; // cap the scan; most recent borrowers first
+  }
+
+  // Price every position in one multicall (market totals + oracle + N positions + token metadata).
+  const contracts = [
+    { address: MORPHO_BLUE, abi: morphoAbi, functionName: "market", args: [id] } as const,
+    { address: oracle as `0x${string}`, abi: oracleAbi, functionName: "price" } as const,
+    { address: loanToken as `0x${string}`, abi: erc20Abi, functionName: "decimals" } as const,
+    { address: collateralToken as `0x${string}`, abi: erc20Abi, functionName: "decimals" } as const,
+    { address: loanToken as `0x${string}`, abi: erc20Abi, functionName: "symbol" } as const,
+    { address: collateralToken as `0x${string}`, abi: erc20Abi, functionName: "symbol" } as const,
+    ...borrowers.map((u) => ({ address: MORPHO_BLUE, abi: morphoAbi, functionName: "position", args: [id, u] } as const)),
+  ];
+  const res = await client.multicall({ allowFailure: true, contracts });
+  const mk = res[0].result as readonly [bigint, bigint, bigint, bigint, bigint, bigint] | undefined;
+  const price = res[1].result as bigint | undefined;
+  if (!mk || price === undefined) throw new Error("Morpho market/oracle read failed — try again shortly");
+  const loanDecimals = typeof res[2].result === "number" ? res[2].result : 18;
+  const collDecimals = typeof res[3].result === "number" ? res[3].result : 18;
+  const loanSymbol = typeof res[4].result === "string" ? res[4].result : "loan";
+  const collSymbol = typeof res[5].result === "string" ? res[5].result : "collateral";
+  const [, , tBorrowA, tBorrowS] = mk;
+
+  const positions = borrowers.map((wallet, i) => {
+    const pos = res[6 + i].result as readonly [bigint, bigint, bigint] | undefined;
+    if (!pos) return null;
+    const [, borrowShares, collateral] = pos;
+    if (borrowShares === 0n) return null; // repaid / never borrowed on this market
+    const h = positionHealth(collateral, borrowShares, tBorrowA, tBorrowS, price, lltv);
+    if (h.health > maxHealth) return null;
+    return {
+      wallet,
+      status: h.health <= 1 ? "liquidatable" : "at_risk",
+      healthFactor: +h.health.toFixed(4),
+      currentLtvPct: +h.ltvPct.toFixed(2),
+      priceDropToLiquidationPct: h.dropToLiq,
+      collateral: fmt(collateral, collDecimals),
+      borrowed: fmt(h.borrowed, loanDecimals),
+    };
+  }).filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => a.healthFactor - b.healthFactor);
+
+  const liquidatable = positions.filter((p) => p.status === "liquidatable");
+
+  return finish({
+    market: id,
+    pair: `${collSymbol}/${loanSymbol}`,
+    liquidationLtvPct: +(Number(lltv / 10n ** 14n) / 100).toFixed(2),
+    scannedBorrowers: borrowers.length,
+    healthCutoff: maxHealth,
+    liquidatableCount: liquidatable.length,
+    atRiskCount: positions.length - liquidatable.length,
+    positions: positions.slice(0, 30),
+    verdict: liquidatable.length ? "liquidatable_now" : positions.length ? "watch" : "none",
+    recommendation: liquidatable.length
+      ? `${liquidatable.length} position(s) are liquidatable RIGHT NOW (health ≤ 1.0) on the ${collSymbol}/${loanSymbol} market — call Morpho's liquidate(marketParams, borrower, …) to seize collateral at the incentive. ${positions.length - liquidatable.length} more within ${maxHealth}× health.`
+      : positions.length
+        ? `No positions are liquidatable yet, but ${positions.length} sit within ${maxHealth}× health — a small ${collSymbol} price drop puts the closest (${positions[0].priceDropToLiquidationPct}% away) in range. Poll to catch the crossover.`
+        : `No ${collSymbol}/${loanSymbol} positions under ${maxHealth}× health among the ${borrowers.length} most recent borrowers. Nothing to liquidate right now.`,
+    note: "Live liquidation feed for a Base Morpho Blue market: active borrowers ranked by liquidation health, flagging positions liquidatable now (health ≤ 1.0) and those close. Reconstructed from Borrow events + onchain pricing over the 200 most-recent borrowers. market= optional (defaults cbBTC/USDC); maxHealth= cutoff (default 1.1). Not financial advice.",
   });
 }

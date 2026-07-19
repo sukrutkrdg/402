@@ -27,7 +27,7 @@ import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDu
 import { agentWalletAudit } from "./agent-wallet-audit";
 import { walletDelegation } from "./delegation";
 import { commerceEscrow, commerceOperatorAudit } from "./commerce";
-import { morphoHealth } from "./morpho";
+import { morphoHealth, morphoLiquidations } from "./morpho";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -216,6 +216,22 @@ export const SERVICES: ServiceDef[] = [
       { name: "market", label: "Morpho market id (optional)", placeholder: "0x… 32-byte id (default cbBTC/USDC)" },
     ],
     handler: morphoHealth,
+    noFreeTier: true,
+  },
+  {
+    id: "morpho-liquidations",
+    name: "Morpho Liquidation Feed",
+    tagline: "Which Base Morpho positions are liquidatable right now?",
+    description:
+      "🆕 Built for liquidator / MEV searchers. Reconstructs the active borrower set on a Morpho Blue market from Borrow events, prices every position onchain in one multicall, and ranks them by liquidation health — flagging positions liquidatable NOW (health ≤ 1.0) and those one small move away, with the collateral price drop that tips each over. The data directly makes searchers money; nobody else in the catalog serves it. market= optional (defaults cbBTC/USDC), maxHealth= cutoff (default 1.1). Not financial advice.",
+    price: "$0.06",
+    icon: "⚔️",
+    category: "Lending",
+    params: [
+      { name: "market", label: "Morpho market id (optional)", placeholder: "0x… 32-byte id (default cbBTC/USDC)" },
+      { name: "maxHealth", label: "Health cutoff (optional)", placeholder: "1.1 (≤1.0 = already liquidatable)" },
+    ],
+    handler: morphoLiquidations,
     noFreeTier: true,
   },
   {
