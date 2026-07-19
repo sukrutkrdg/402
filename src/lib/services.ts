@@ -256,6 +256,13 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: gasSponsor,
     noFreeTier: true,
+    // Hidden pending the x402 first-settlement issue (same as morpho-liquidations):
+    // handler is correct and settles via the credit path, but the CDP facilitator
+    // rejects this new resource's x402 pay-per-call at verify despite payment
+    // requirements byte-identical to services that pay (morpho-health, an equally
+    // new resource, settles fine). Matches the CDP discovery/settlement pipeline
+    // issue tracked in cdp-sdk#759. Unhide once new resources settle on x402.
+    hidden: true,
   },
   {
     id: "address-trust",
