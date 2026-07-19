@@ -233,6 +233,12 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: morphoLiquidations,
     noFreeTier: true,
+    // Hidden from the storefront: the handler is correct and settles via the
+    // credit path, but the CDP facilitator rejects this resource's x402
+    // pay-per-call at verify (no charge, handler never runs) despite payment
+    // requirements byte-identical to services that pay. Unhide once the x402
+    // direct-pay path works so agents don't hit a dead payment loop.
+    hidden: true,
   },
   {
     id: "address-trust",
