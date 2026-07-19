@@ -27,6 +27,7 @@ import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDu
 import { agentWalletAudit } from "./agent-wallet-audit";
 import { walletDelegation } from "./delegation";
 import { commerceEscrow, commerceOperatorAudit } from "./commerce";
+import { morphoHealth } from "./morpho";
 import { batchRisk } from "./batch";
 import { simulateTx } from "./tx-sim";
 import { exitLiquidity } from "./liquidity";
@@ -199,6 +200,22 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "operator", label: "Operator address", placeholder: "0x… operator", required: true }],
     handler: commerceOperatorAudit,
+    noFreeTier: true,
+  },
+  {
+    id: "morpho-health",
+    name: "Morpho Position Health",
+    tagline: "Is this Morpho lending position about to be liquidated?",
+    description:
+      "🆕 First lending tooling in the catalog. Reads a Morpho Blue position on Base (the largest lending venue on Base) and returns its liquidation health in one call: health factor, current vs liquidation LTV, and the exact collateral price drop that triggers liquidation. Built for borrowing agents and treasuries that need to know how close they are before the market cuts them — Morpho's own API is deferred. Pass wallet= and optionally market= (defaults to cbBTC/USDC). Not financial advice.",
+    price: "$0.04",
+    icon: "🏦",
+    category: "Lending",
+    params: [
+      { name: "wallet", label: "Borrower wallet", placeholder: "0x… wallet", required: true },
+      { name: "market", label: "Morpho market id (optional)", placeholder: "0x… 32-byte id (default cbBTC/USDC)" },
+    ],
+    handler: morphoHealth,
     noFreeTier: true,
   },
   {

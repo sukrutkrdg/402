@@ -261,22 +261,21 @@ export async function b20Dossier(params: Record<string, string>) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… B20 token address");
   if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("AI not configured: set ANTHROPIC_API_KEY");
 
-  const [safety, control, access, supply, metadata, seizures] = await Promise.allSettled([
-    b20Safety({ address }),
-    b20Control({ address }),
-    b20AccessType({ address }),
-    b20Supply({ address }),
-    b20Metadata({ address }),
-    b20SeizureHistory({ address }),
-  ]);
-  const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
+  // Run the six B20 handlers SEQUENTIALLY, not in parallel. Each fires a
+  // Multicall3 plus extra eth_calls, and public Base RPC rate-limits concurrent
+  // eth_calls into 502s — the exact pattern readB20Signals is built to avoid.
+  // Fanning them out with Promise.allSettled produced degraded reports under load
+  // on this $0.75 flagship; one-at-a-time trades a little latency for reliability.
+  const settle = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+    try { return await fn(); } catch { return null; }
+  };
   const data = {
-    safety: val(safety),
-    control: val(control),
-    accessType: val(access),
-    supply: val(supply),
-    metadata: val(metadata),
-    seizureHistory: val(seizures),
+    safety: await settle(() => b20Safety({ address })),
+    control: await settle(() => b20Control({ address })),
+    accessType: await settle(() => b20AccessType({ address })),
+    supply: await settle(() => b20Supply({ address })),
+    metadata: await settle(() => b20Metadata({ address })),
+    seizureHistory: await settle(() => b20SeizureHistory({ address })),
   };
   // If the core safety read failed OR the token isn't a B20, don't fabricate a report.
   const s = data.safety as { isB20?: boolean } | null;

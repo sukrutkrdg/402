@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { getConfig } from "@/lib/config";
+import { rateLimitKv, clientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,15 @@ export async function POST(req: NextRequest) {
   const cfg = getConfig();
   if (!cfg.cdpApiKeyId || !cfg.cdpApiKeySecret) {
     return NextResponse.json({ error: "Onramp not configured (set CDP_API_KEY_ID/SECRET)" }, { status: 503 });
+  }
+
+  // No auth on this endpoint (it's called from the client before a wallet is
+  // funded), so cap per IP — every call mints a CDP JWT and hits the authenticated
+  // onramp API, which a loop could otherwise use to drain our CDP quota.
+  const ip = clientIp(req);
+  const rl = await rateLimitKv(`onramp:${ip}`, 10, 60);
+  if (!rl.ok) {
+    return NextResponse.json({ error: "Too many requests — try again shortly" }, { status: 429 });
   }
 
   const { address } = (await req.json().catch(() => ({}))) as { address?: string };

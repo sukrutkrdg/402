@@ -39,7 +39,6 @@ interface PayInfo {
 /** CDP SQL renders the PaymentInfo tuple either as a nested object or as a flat
  * "{0xa 0xb … 123 456}" string (same quirk as SpendPermission) — parse both. */
 function parsePaymentInfo(v: unknown): PayInfo | null {
-  const empty: PayInfo = { operator: null, payer: null, receiver: null, token: null, maxAmount: "0", preApprovalExpiry: null, authorizationExpiry: null };
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
     const g = (k: string) => (typeof o[k] === "string" && validAddr(o[k] as string) ? getAddress(o[k] as string) : null);
@@ -65,7 +64,9 @@ function parsePaymentInfo(v: unknown): PayInfo | null {
       };
     }
   }
-  return empty;
+  // Unparseable → null so the positional-tuple fallback (parameters[1]) actually
+  // runs; returning a non-null empty object here would make that fallback dead code.
+  return null;
 }
 
 interface EscrowRow {
@@ -77,11 +78,17 @@ interface EscrowRow {
 }
 
 async function fetchEscrowEvents(days: number): Promise<{ rows: EscrowRow[]; truncated: boolean }> {
+  // AuthCaptureEscrow is a network-wide singleton; a 90-day window can exceed the
+  // 5000-row cap. Select the NEWEST 5000 (DESC) so recently-queried payments are
+  // never the ones dropped, then reverse to chronological order — buildPayments
+  // accumulates lifecycle events assuming it sees them oldest-first.
   const rows = await cdpSql<EscrowRow>(
-    `SELECT event_name, block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE address = '${AUTH_CAPTURE_ESCROW.toLowerCase()}' AND block_timestamp > now() - INTERVAL ${days} DAY ORDER BY block_timestamp ASC LIMIT 5000`,
+    `SELECT event_name, block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE address = '${AUTH_CAPTURE_ESCROW.toLowerCase()}' AND block_timestamp > now() - INTERVAL ${days} DAY ORDER BY block_timestamp DESC LIMIT 5000`,
   );
   if (rows === null) throw new Error("Commerce escrow event data unavailable (data provider) — try again shortly");
-  return { rows, truncated: rows.length >= 5000 };
+  const truncated = rows.length >= 5000;
+  rows.reverse();
+  return { rows, truncated };
 }
 
 interface Payment {

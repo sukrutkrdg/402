@@ -41,7 +41,7 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
 // Category display order — earlier index = rendered first.
-const CATEGORY_ORDER = ["B20", "AI", "Onchain", "Markets", "Data", "Utility", "Fun"];
+const CATEGORY_ORDER = ["B20", "AI", "Onchain", "Lending", "Markets", "Data", "Utility", "Fun"];
 
 // The AI synthesis suite — the differentiated moat, featured up top.
 const AI_FLAGSHIP_IDS = [
