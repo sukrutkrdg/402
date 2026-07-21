@@ -222,7 +222,7 @@ export const SERVICES: ServiceDef[] = [
     noFreeTier: true,
   },
   {
-    id: "morpho-liquidations",
+    id: "morpho-liquidatable",
     name: "Morpho Liquidation Feed",
     tagline: "Which Base Morpho positions are liquidatable right now?",
     description:
@@ -244,7 +244,7 @@ export const SERVICES: ServiceDef[] = [
     hidden: true,
   },
   {
-    id: "gas-sponsor",
+    id: "gas-payer",
     name: "Gas Sponsor Check",
     tagline: "Who pays this wallet's gas? Is it a sponsored smart account?",
     description:
@@ -267,8 +267,8 @@ export const SERVICES: ServiceDef[] = [
     hidden: true,
   },
   {
-    id: "paymaster-audit",
-    name: "Paymaster Audit",
+    id: "paymaster-check",
+    name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
       "🆕 The gas-sponsor sibling, for the OTHER side: given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints and returns sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (share from its busiest app). The read a builder pulls before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or an agent pulls to judge who funds a counterparty's gas. No other tool serves it. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
