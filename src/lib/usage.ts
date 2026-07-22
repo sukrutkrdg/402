@@ -49,6 +49,10 @@ export function shortUa(ua: string): string {
 }
 
 /** Host of the referring page, if any (where the caller came from). */
+/** Sentinel referer host the hosted MCP endpoint (/api/mcp) stamps on its proxied
+ * calls so usage can count the Glama-connector channel apart from direct agents. */
+export const MCP_CHANNEL_HOST = "mcp.402.com.tr";
+
 export function refHost(ref: string): string {
   if (!ref) return "";
   try {
@@ -206,6 +210,14 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
   externalSourcesToday: number;
   payersToday: number;
   degraded: boolean;
+  channels: {
+    sample: number;
+    viaMcp: number;
+    viaMcpPaid: number;
+    clients: { browser: number; bot: number; api: number };
+    referers: { host: string; count: number }[];
+    noReferer: number;
+  };
 }> {
   const d = day();
   // Per-service counters, read in parallel (the proven path). Each kvGetNumber
@@ -222,9 +234,38 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
       challenge: await kvGetNumber(`usage:challenge:${id}`),
     })),
   );
-  const recent = (await kvLRange("usage:recent", 0, 29))
+  // Read a wider window (up to the 500-entry cap) for channel/referer breakdowns;
+  // the UI activity feed still shows just the newest 30.
+  const recentAll = (await kvLRange("usage:recent", 0, 499))
     .map((s) => { try { return JSON.parse(s) as RecentCall; } catch { return null; } })
     .filter((x): x is RecentCall => x !== null);
+  const recent = recentAll.slice(0, 30);
+
+  // Channel breakdown. NOTE: direct agent/x402 calls carry no Referer (only the
+  // hosted MCP proxy tags itself via MCP_CHANNEL_HOST), so `referers` mostly
+  // reflects web + MCP, not upstream discovery. `viaMcp` and `clients` are the
+  // reliable signals — how much flows through the hosted MCP, and the browser/
+  // bot/api mix.
+  const refTally = new Map<string, number>();
+  const clients = { browser: 0, bot: 0, api: 0 };
+  let viaMcp = 0;
+  let viaMcpPaid = 0;
+  let noReferer = 0;
+  for (const r of recentAll) {
+    const host = (r.ref || "").trim();
+    if (host) refTally.set(host, (refTally.get(host) ?? 0) + 1);
+    else noReferer++;
+    if (host === MCP_CHANNEL_HOST) { viaMcp++; if (r.p) viaMcpPaid++; }
+    if (r.k) clients[r.k]++;
+  }
+  const channels = {
+    sample: recentAll.length,
+    viaMcp, // calls that came through the hosted MCP endpoint (Glama-connector channel)
+    viaMcpPaid,
+    clients, // browser / bot / api mix
+    referers: [...refTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([host, count]) => ({ host, count })),
+    noReferer,
+  };
 
   const perTotalCalls = per.reduce((a, r) => a + r.total, 0); // current-services sum (≤ total)
   // Global counters (same never-regress floor as the public strip) so /stats and
@@ -263,5 +304,6 @@ export async function getUsage(serviceIds: string[], ownerSources: string[] = []
     externalSourcesToday: all.filter((s) => !bots.has(s) && !owner.has(s) && !internals.has(s)).length,
     payersToday: payerArr.length,
     degraded,
+    channels,
   };
 }

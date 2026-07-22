@@ -15,6 +15,7 @@
 import { NextRequest } from "next/server";
 import { SERVICES } from "@/lib/services";
 import { getSiteUrl } from "@/lib/config";
+import { MCP_CHANNEL_HOST } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -60,7 +61,9 @@ async function callTool(name: string, args: Record<string, unknown>, creditToken
     if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
   }
   const url = `${getSiteUrl()}/api/x402/${svc.id}${qs.toString() ? `?${qs}` : ""}`;
-  const headers: Record<string, string> = { accept: "application/json" };
+  // Stamp a sentinel referer so usage can count the hosted-MCP (Glama-connector)
+  // channel apart from direct agent/x402 calls (which carry no referer).
+  const headers: Record<string, string> = { accept: "application/json", referer: `https://${MCP_CHANNEL_HOST}/api/mcp` };
   if (creditToken) headers["x-credit-token"] = creditToken;
 
   try {
