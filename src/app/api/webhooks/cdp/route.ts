@@ -13,10 +13,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { kvLPush, kvSet } from "@/lib/kv";
+import { kvLPush, kvSet, kvIncr } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
+import { getAddress } from "viem";
+import { isB20Token } from "@/lib/b20-safety";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 interface Rec {
   token: string;
@@ -78,10 +81,28 @@ export async function POST(req: NextRequest) {
       ? ((body as Record<string, unknown>).events as Record<string, unknown>[])
       : [body as Record<string, unknown>];
 
+  // CDP's webhook model authenticates via the target-URL secret only (no HMAC over
+  // the body), so if that secret ever leaks through logs an attacker could POST
+  // fabricated seizure events. Two defenses before we store anything served to
+  // b20-guard customers: (1) replay/dedup so a repeated event isn't re-stored, and
+  // (2) confirm the token is a GENUINE B20 on-chain (B20Factory) — this rejects
+  // forged events for arbitrary/non-B20 addresses.
   let stored = 0;
+  let skipped = 0;
   for (const e of list.slice(0, 20)) {
     const rec = extract(e);
     if (!rec) continue;
+
+    // Replay guard: fingerprint the event; skip if already processed recently.
+    const fp = `${rec.token}:${rec.txHash ?? ""}:${rec.event}:${rec.newPolicyId ?? ""}:${rec.scopeTopic ?? ""}`;
+    const seen = await kvIncr(`b20guard:seen:${fp}`, 60 * 60 * 24 * 2);
+    if (seen !== null && seen > 1) { skipped++; continue; }
+
+    // Authenticity: only store events for a real B20 (defeats forged addresses).
+    let real = false;
+    try { real = await isB20Token(getAddress(rec.token)); } catch { real = false; }
+    if (!real) { skipped++; continue; }
+
     const json = JSON.stringify(rec);
     await kvLPush("b20guard:events", json, 300); // network-wide feed
     await kvLPush(`b20guard:token:${rec.token}`, json, 30); // per-token history
@@ -89,5 +110,5 @@ export async function POST(req: NextRequest) {
     stored++;
   }
 
-  return NextResponse.json({ ok: true, stored });
+  return NextResponse.json({ ok: true, stored, skipped });
 }

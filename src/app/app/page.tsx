@@ -18,12 +18,14 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
 import OnrampButton from "@/components/OnrampButton";
 import WalletProtect from "@/components/WalletProtect";
+import { PAY_TO } from "@/lib/x402-wallet";
 
 // On-chain pay rail (opt-in): a REAL USDC transfer broadcast from the user's own
 // wallet, so it registers as a Base App transacting user (climbs App Rankings).
 // The gasless x402 flow below is unchanged and stays the default.
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const PAY_TO = (process.env.NEXT_PUBLIC_PAY_TO_ADDRESS || "0x973a31858f4d2125f48c880542da11a2796f12d6") as `0x${string}`;
+// PAY_TO is imported from @/lib/x402-wallet — one client-side source of truth,
+// so the on-chain transfer target and the self-pay guard can't drift apart.
 const ERC20_TRANSFER_ABI = [
   { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
 ] as const;
@@ -317,6 +319,11 @@ export default function MiniApp() {
             : "Couldn't connect a wallet. Approve the connection in your wallet extension and try again.",
         );
       }
+      // Self-pay guard: x402 rejects paying yourself (buyer == seller/payTo) with a
+      // confusing empty-402 that looks like "out of USDC" — catch it with a clear message.
+      if (acct.toLowerCase() === PAY_TO.toLowerCase()) {
+        throw new Error("This is the seller (payTo) wallet — you can't pay yourself. Connect a different wallet with USDC on Base.");
+      }
       // Get the connected EIP-1193 provider from the connector and reuse the
       // existing x402 signing flow unchanged.
       const provider = (await conn.getProvider()) as EthProvider;
@@ -457,6 +464,10 @@ export default function MiniApp() {
             : "Couldn't connect a wallet. Approve the connection and try again.",
         );
       }
+      // Self-pay guard: an on-chain self-transfer to payTo is pointless and confusing.
+      if (acct.toLowerCase() === PAY_TO.toLowerCase()) {
+        throw new Error("This is the seller (payTo) wallet — you can't pay yourself. Connect a different wallet with USDC on Base.");
+      }
       const provider = (await conn.getProvider()) as EthProvider;
 
       // Ensure a plain browser wallet is on Base (mini-app host already is).
@@ -479,6 +490,16 @@ export default function MiniApp() {
               ],
             });
           }
+          // Any other error (e.g. 4901/4001 user-rejected the switch) is NOT 4902 —
+          // fall through and let the chainId assertion below abort. Don't proceed.
+        }
+        // HARD GUARD: this path BROADCASTS a real tx to the Base USDC address. If the
+        // wallet is still on another chain (switch rejected/failed), that same
+        // address isn't Circle USDC there — the user would spend gas on the wrong
+        // network and the payment would never reach the seller on Base. Abort.
+        const cid = (await provider.request({ method: "eth_chainId" }).catch(() => null)) as string | null;
+        if (cid?.toLowerCase() !== "0x2105") {
+          throw new Error("Your wallet isn't on Base. Approve the switch to Base (chain 8453) and try again — the payment must be sent on Base.");
         }
       }
 

@@ -16,6 +16,9 @@ import { NextRequest } from "next/server";
 import { SERVICES } from "@/lib/services";
 import { getSiteUrl } from "@/lib/config";
 import { MCP_CHANNEL_HOST } from "@/lib/usage";
+import { rateLimitKv, clientIp } from "@/lib/rate-limit";
+
+const MAX_BATCH = 20; // cap JSON-RPC batch fan-out so one POST can't amplify to N outbound calls
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -114,6 +117,12 @@ async function handle(rpc: RpcReq, creditToken: string): Promise<object | null> 
 }
 
 export async function POST(req: NextRequest) {
+  // The endpoint is unauthenticated (a credit token is optional and per-caller), so
+  // cap it per IP — without this a loop of tool-calls fans out to the gateway.
+  const rl = await rateLimitKv(`mcp:${clientIp(req)}`, 60, 60);
+  if (!rl.ok) {
+    return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Too many requests — retry shortly" } }, { status: 429, headers: CORS });
+  }
   const creditToken = (req.headers.get("x-credit-token") || "").trim();
   let payload: unknown;
   try {
@@ -122,8 +131,9 @@ export async function POST(req: NextRequest) {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: CORS });
   }
 
-  // Streamable HTTP allows a single request or a batch.
-  const batch = Array.isArray(payload) ? (payload as RpcReq[]) : [payload as RpcReq];
+  // Streamable HTTP allows a single request or a batch; cap batch size so one POST
+  // can't spawn an unbounded number of concurrent outbound calls to the gateway.
+  const batch = (Array.isArray(payload) ? (payload as RpcReq[]) : [payload as RpcReq]).slice(0, MAX_BATCH);
   const responses = (await Promise.all(batch.map((r) => handle(r, creditToken)))).filter((x): x is object => x !== null);
 
   // Only notifications (no responses) → 202 Accepted, empty body.

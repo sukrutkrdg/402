@@ -110,6 +110,11 @@ export async function POST(req: NextRequest) {
 
   // Per-sender daily cap (only on the final sponsorship call, not the stub).
   if (body.method === "pm_getPaymasterData") {
+    // The sender-keyed cap is client-chosen (userOp.sender), so an attacker rotates
+    // it to dodge the cap; add a per-IP cap too so this billed sponsorship branch
+    // can't be looped to drain the upstream paymaster-RPC quota.
+    const rlIp = await rateLimitKv(`pmdata:${clientIp(req)}`, 20, 60);
+    if (!rlIp.ok) return reject("rate limited — retry shortly");
     const sender = (userOp.sender ?? "unknown").toLowerCase();
     const day = new Date().toISOString().slice(0, 10);
     const n = await kvIncr(`pm:day:${sender}:${day}`, 60 * 60 * 25);

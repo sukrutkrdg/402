@@ -70,8 +70,13 @@ export async function freshBridge(params: Record<string, string>) {
   }
 
   // 2) Which of those inflow txs are CCTP receives — and from which source chain.
-  const txs = [...new Set(incoming.map((m) => String(m.transaction_hash ?? "").toLowerCase()).filter(Boolean))].map((t) => `'${t}'`);
-  const cctpByTx = new Map<string, string>(); // tx -> source chain name
+  // Validate the DB-sourced tx hashes to 0x+64hex before interpolating (consistent
+  // with every other query), and collect the SET of source domains per tx: a single
+  // relayer tx can batch-settle from multiple source chains, so a tx with >1 domain
+  // is genuinely ambiguous for a per-recipient attribution (recipient isn't in the
+  // event) — label it as such rather than silently picking the last one.
+  const txs = [...new Set(incoming.map((m) => String(m.transaction_hash ?? "").toLowerCase()).filter((t) => /^0x[0-9a-f]{64}$/.test(t)))].map((t) => `'${t}'`);
+  const domainsByTx = new Map<string, Set<string>>();
   if (txs.length) {
     const recv = await cdpSql<{ tx?: string; sd?: string }>(
       `SELECT transaction_hash AS tx, toString(parameters['sourceDomain']) AS sd FROM base.events WHERE address='${CCTP_MESSAGE_TRANSMITTER}' AND event_name='MessageReceived' AND transaction_hash IN (${txs.join(",")}) AND block_timestamp > now() - INTERVAL ${days} DAY`,
@@ -79,8 +84,13 @@ export async function freshBridge(params: Record<string, string>) {
     for (const r of recv ?? []) {
       const tx = String(r.tx ?? "").toLowerCase();
       const sd = String(r.sd ?? "");
-      if (tx) cctpByTx.set(tx, CCTP_DOMAIN[sd] ?? `domain ${sd}`);
+      if (!tx) continue;
+      (domainsByTx.get(tx) ?? domainsByTx.set(tx, new Set()).get(tx)!).add(CCTP_DOMAIN[sd] ?? `domain ${sd}`);
     }
+  }
+  const cctpByTx = new Map<string, string>(); // tx -> source chain name (or ambiguous)
+  for (const [tx, set] of domainsByTx) {
+    cctpByTx.set(tx, set.size === 1 ? [...set][0] : `multiple (${[...set].join(", ")})`);
   }
 
   const rows = incoming.map((m) => {

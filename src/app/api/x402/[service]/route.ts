@@ -85,9 +85,15 @@ function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>
   const params: Record<string, string> = {};
   for (const p of service!.params) {
     const v = url.searchParams.get(p.name);
-    // Defensive ceiling — handlers clamp their own params, but never allocate
-    // oversized values. No legitimate param here exceeds 2000 chars.
-    if (v) params[p.name] = v.slice(0, 2000);
+    // Defensive ceiling. Most params are short (addresses etc.) so 2000 is plenty,
+    // but the text-AI services legitimately take large inputs — text/texts/text1..N
+    // up to ~16K each (ai-extract-batch joins up to ~40K). Those params get a wider
+    // cap so the handler's own clamp (16K/6K) is the real limit, not this slice.
+    // Without this the paid AI tools silently processed only the first 2000 chars.
+    if (v) {
+      const wide = /^text(s|\d+)?$/i.test(p.name);
+      params[p.name] = v.slice(0, wide ? 45000 : 2000);
+    }
   }
   return params;
 }

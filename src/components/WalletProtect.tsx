@@ -79,9 +79,64 @@ export default function WalletProtect() {
           },
         ],
       });
-      return typeof res === "string" ? res : ((res as { id?: string })?.id ?? "submitted");
+      // Return the real bundle id (so we can poll its status) or null. Never a
+      // fake "submitted" sentinel — that would let the caller claim success for an
+      // un-tracked bundle.
+      const id = typeof res === "string" ? res : (res as { id?: string })?.id;
+      return typeof id === "string" && id ? id : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Wait for an EIP-5792 bundle to actually land. wallet_sendCalls returns a
+   * bundle id immediately — the revoke is still PENDING and can revert (paymaster
+   * declines, approve reverts, bundle dropped). We must NOT show "revoked" until
+   * wallet_getCallsStatus confirms success, or a security tool lies about safety.
+   */
+  async function confirmCalls(id: string): Promise<boolean> {
+    try {
+      if (!connector) return false;
+      const provider = (await connector.getProvider()) as {
+        request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
+      };
+      for (let i = 0; i < 24; i++) {
+        await new Promise((r) => setTimeout(r, 2500));
+        let st: { status?: string | number; receipts?: Array<{ status?: string }> } | undefined;
+        try {
+          st = (await provider.request({ method: "wallet_getCallsStatus", params: [id] })) as typeof st;
+        } catch {
+          continue; // transient / not-yet-known
+        }
+        const receipts = st?.receipts;
+        // Any reverted receipt = the revoke did NOT take effect.
+        if (receipts?.some((r) => r.status === "0x0" || r.status === "0x00")) return false;
+        const s = st?.status;
+        const confirmed = s === "CONFIRMED" || s === "confirmed" || s === "success" || s === 200;
+        if (confirmed) return !receipts || receipts.every((r) => r.status === "0x1" || r.status === undefined);
+      }
+      return false; // timed out without confirmation — don't claim success
+    } catch {
+      return false;
+    }
+  }
+
+  /** Wait for a normal (user-pays-gas) tx receipt; false if reverted/not mined. */
+  async function confirmTx(hash: `0x${string}`): Promise<boolean> {
+    try {
+      if (!connector) return false;
+      const provider = (await connector.getProvider()) as {
+        request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
+      };
+      for (let i = 0; i < 24; i++) {
+        await new Promise((r) => setTimeout(r, 2500));
+        const rcpt = (await provider.request({ method: "eth_getTransactionReceipt", params: [hash] }).catch(() => null)) as { status?: string } | null;
+        if (rcpt?.status) return rcpt.status === "0x1";
+      }
+      return false;
+    } catch {
+      return false;
     }
   }
 
@@ -188,9 +243,14 @@ export default function WalletProtect() {
       // approve(spender, 0) — sets the allowance to zero, killing the approval.
       const data = approveZeroData(item.spender);
       // Gas-free first (smart wallets via paymaster); fall back to a normal tx.
+      // Only mark "revoked" after the tx/bundle is actually confirmed on-chain —
+      // never on mere submission (it can still revert / be declined).
       const gasless = await sendCallsGasless([{ to: item.tokenAddress as `0x${string}`, data }]);
-      if (!gasless) await sendTransactionAsync({ to: item.tokenAddress as `0x${string}`, data });
-      setDone((s) => new Set(s).add(id));
+      const ok = gasless
+        ? await confirmCalls(gasless)
+        : await confirmTx(await sendTransactionAsync({ to: item.tokenAddress as `0x${string}`, data }));
+      if (ok) setDone((s) => new Set(s).add(id));
+      else setErr("Revoke didn't confirm on-chain (it may have been rejected, reverted, or is still pending). The allowance may still be live — retry and check your wallet.");
     } catch (e) {
       setErr(e instanceof Error ? e.message.slice(0, 160) : "Revoke failed");
     } finally {
@@ -208,14 +268,17 @@ export default function WalletProtect() {
     try {
       const calls = pending.map((it) => ({ to: it.tokenAddress as `0x${string}`, data: approveZeroData(it.spender!) }));
       const gasless = await sendCallsGasless(calls);
-      if (gasless) {
+      if (!gasless) {
+        setErr("One-tap batch revoke needs a smart wallet (Base App). Revoke items individually instead.");
+      } else if (await confirmCalls(gasless)) {
+        // Only mark done once the batch actually confirmed on-chain.
         setDone((s) => {
           const n = new Set(s);
           for (const it of pending) n.add(`${it.tokenAddress}-${it.spender}`);
           return n;
         });
       } else {
-        setErr("One-tap batch revoke needs a smart wallet (Base App). Revoke items individually instead.");
+        setErr("Batch revoke didn't confirm on-chain (rejected, reverted, or still pending). Those allowances may still be live — retry and check your wallet.");
       }
     } finally {
       setRevoking(null);

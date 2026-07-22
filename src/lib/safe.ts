@@ -70,7 +70,16 @@ export async function safeCheck(params: Record<string, string>) {
   const version = typeof res[2].result === "string" ? res[2].result : "unknown";
   const nonce = res[3].result as bigint | undefined;
   const modRes = res[4].result as readonly [readonly string[], string] | undefined;
+  // CRITICAL: distinguish "no modules" from "couldn't read modules". A failed
+  // getModulesPaginated (undefined) must NOT collapse to [] and report a clean
+  // "no modules = safest" verdict — that's the exact false all-clear this tool
+  // exists to prevent (a hidden draining module reading as maximally safe).
+  const modulesRead = modRes !== undefined;
   const modules = (modRes?.[0] ?? []).map((m) => getAddress(m));
+  // The paginated `next` cursor: anything other than the sentinel or 0 means more
+  // modules exist beyond this page than we read.
+  const nextCursor = (modRes?.[1] ?? SENTINEL).toLowerCase();
+  const modulesTruncated = modulesRead && nextCursor !== SENTINEL && nextCursor !== "0x0000000000000000000000000000000000000000";
   const ownerList = owners.map((o) => getAddress(o));
   const m = Number(threshold);
   const nOwners = ownerList.length;
@@ -84,26 +93,31 @@ export async function safeCheck(params: Record<string, string>) {
 
   const singleSigner = m <= 1;
   const hasModules = modules.length > 0;
-  const verdict = hasModules ? "has_modules" : singleSigner ? "single_signer" : "multisig";
+  const verdict = !modulesRead
+    ? "modules_unknown"
+    : hasModules ? "has_modules" : singleSigner ? "single_signer" : "multisig";
 
   return finish({
     address: a,
     isSafe: true,
     version,
-    verdict, // multisig | single_signer | has_modules | not_a_safe
+    verdict, // multisig | single_signer | has_modules | modules_unknown | not_a_safe
     threshold: `${m}/${nOwners}`,
     ownerCount: nOwners,
     owners: ownerList.slice(0, 20),
-    moduleCount: modules.length,
+    moduleCount: modulesRead ? modules.length : null,
     modules: moduleDetail,
     unknownModules,
+    ...(modulesTruncated ? { modulesTruncated: true } : {}),
     txCount: nonce !== undefined ? Number(nonce) : null,
     recommendation:
-      verdict === "has_modules"
-        ? `⚠️ This Safe (${m}/${nOwners}) has ${modules.length} enabled MODULE(S)${unknownModules ? ` — ${unknownModules} unrecognized` : ""}. Each module can move the Safe's funds via execTransactionFromModule WITHOUT any owner signatures, so the ${m}/${nOwners} threshold is only as strong as the modules are trustworthy. ${singleSigner ? "Combined with a 1-signer threshold, control is highly concentrated. " : ""}Identify every module before trusting funds here.`
-        : verdict === "single_signer"
-          ? `This is a 1-of-${nOwners} Safe — a single signature moves the funds. It's a smart account with Safe's tooling, not a real multisig; treat its security like a single key, not an M-of-N.`
-          : `Healthy multisig: ${m}-of-${nOwners}, no modules enabled, ${nonce !== undefined ? `${Number(nonce)} txs` : "active"}. Moving funds needs ${m} of ${nOwners} owner signatures and nothing can bypass that — the strongest counterparty setup.`,
+      verdict === "modules_unknown"
+        ? `⚠️ This IS a Safe (${m}/${nOwners}), but its enabled MODULES couldn't be read (getModulesPaginated failed — possibly an older Safe mastercopy). An enabled module can move funds WITHOUT owner signatures, so this is NOT an all-clear: don't assume it's module-free. Retry, or inspect modules on a Safe explorer before trusting funds here.`
+        : verdict === "has_modules"
+          ? `⚠️ This Safe (${m}/${nOwners}) has ${modules.length}${modulesTruncated ? "+" : ""} enabled MODULE(S)${unknownModules ? ` — ${unknownModules} unrecognized` : ""}. Each module can move the Safe's funds via execTransactionFromModule WITHOUT any owner signatures, so the ${m}/${nOwners} threshold is only as strong as the modules are trustworthy. ${singleSigner ? "Combined with a 1-signer threshold, control is highly concentrated. " : ""}Identify every module before trusting funds here.`
+          : verdict === "single_signer"
+            ? `This is a 1-of-${nOwners} Safe — a single signature moves the funds. It's a smart account with Safe's tooling, not a real multisig; treat its security like a single key, not an M-of-N.`
+            : `Healthy multisig: ${m}-of-${nOwners}, no modules enabled, ${nonce !== undefined ? `${Number(nonce)} txs` : "active"}. Moving funds needs ${m} of ${nOwners} owner signatures and nothing can bypass that — the strongest counterparty setup.`,
     note: "Reads Gnosis Safe multisig config on Base: is it a Safe, owners + M-of-N threshold, version, tx count, and enabled MODULES — each of which can execute without owner signatures (the multisig's real drain surface). The counterparty/treasury check no other Base tool serves. address= required. Not financial advice.",
   });
 }

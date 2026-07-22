@@ -42,6 +42,13 @@ const erc20Abi = [
 
 const ORACLE_SCALE = 10n ** 36n;
 const WAD = 10n ** 18n;
+// Fallback decimals when a token's on-chain decimals() read fails, so displayed
+// amounts don't render at the wrong scale (18) for 6/8-decimal assets.
+const KNOWN_DECIMALS: Record<string, number> = {
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6, // USDC
+  "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf": 8, // cbBTC
+  "0x4200000000000000000000000000000000000006": 18, // WETH
+};
 
 /** shares → assets, rounding up (matches Morpho's toAssetsUp for debt). */
 function toAssetsUp(shares: bigint, totalAssets: bigint, totalShares: bigint): bigint {
@@ -98,8 +105,13 @@ export async function morphoHealth(params: Record<string, string>) {
   if (!pos || !mk || price === undefined) {
     throw new Error("Morpho position/oracle read failed — try again shortly");
   }
-  const loanDecimals = typeof res[3].result === "number" ? res[3].result : 18;
-  const collDecimals = typeof res[4].result === "number" ? res[4].result : 18;
+  // A 0 oracle price (stale/unavailable feed) would zero collateralValue and make
+  // every position read as liquidatable — refuse to price rather than lie.
+  if (price === 0n) {
+    throw new Error("Market oracle returned 0 (stale/unavailable) — can't price collateral right now; try again shortly.");
+  }
+  const loanDecimals = typeof res[3].result === "number" ? res[3].result : (KNOWN_DECIMALS[loanToken.toLowerCase()] ?? 18);
+  const collDecimals = typeof res[4].result === "number" ? res[4].result : (KNOWN_DECIMALS[collateralToken.toLowerCase()] ?? 18);
   const loanSymbol = typeof res[5].result === "string" ? res[5].result : "loan";
   const collSymbol = typeof res[6].result === "string" ? res[6].result : "collateral";
 
@@ -249,6 +261,9 @@ export async function morphoLiquidations(params: Record<string, string>) {
   const mk = res[0].result as readonly [bigint, bigint, bigint, bigint, bigint, bigint] | undefined;
   const price = res[1].result as bigint | undefined;
   if (!mk || price === undefined) throw new Error("Morpho market/oracle read failed — try again shortly");
+  // A 0 oracle price would flip every borrower to "liquidatable" — refuse rather
+  // than emit a false liquidation feed to searchers.
+  if (price === 0n) throw new Error("Market oracle returned 0 (stale/unavailable) — can't price this market right now; try again shortly.");
   const loanDecimals = typeof res[2].result === "number" ? res[2].result : 18;
   const collDecimals = typeof res[3].result === "number" ? res[3].result : 18;
   const loanSymbol = typeof res[4].result === "string" ? res[4].result : "loan";

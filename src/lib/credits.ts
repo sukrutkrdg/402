@@ -102,7 +102,10 @@ export async function debitCredit(token: string, priceCents: number): Promise<De
     // Overdraw (or unknown token, which DECRBY treats as 0) → put it back. When
     // the restored balance is exactly 0 the key was almost certainly minted by
     // this very probe (unknown token) — delete it so bad-token spam can't grow
-    // KV with permanent zero-value keys.
+    // KV with permanent zero-value keys. (A rare 3-way concurrent-overdraw race can
+    // resurrect a tiny key via a refund landing after this delete; left as-is
+    // deliberately — it's customer-favorable, ≤ one call's price, and any atomic
+    // fix would risk the far worse inverse: zeroing a legitimately-restored balance.)
     await kvIncrBy(key, priceCents);
     const balance = after + priceCents;
     if (balance === 0) await kvDel(key);
@@ -119,7 +122,13 @@ export async function debitCredit(token: string, priceCents: number): Promise<De
 export async function refundCredit(token: string, cents: number): Promise<void> {
   const t = (token || "").trim();
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return;
-  await kvIncrBy(keyFor(t), cents);
+  // The refund undoes a charge for a call that FAILED, so silently losing it (a
+  // transient KV blip returning null) would leave the customer paying for nothing.
+  // Best-effort retry once after a short delay before giving up.
+  if ((await kvIncrBy(keyFor(t), cents)) === null) {
+    await new Promise((r) => setTimeout(r, 400));
+    await kvIncrBy(keyFor(t), cents);
+  }
 }
 
 /** Read-only balance for a token (cents). 0 when unknown/expired/no-KV. */

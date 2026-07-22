@@ -297,6 +297,9 @@ export async function b20FreezeCheck(params: Record<string, string>) {
   if (!validAddr(token)) throw new Error("Provide a valid 0x… B20 token address (token=)");
   if (!validAddr(wallet)) throw new Error("Provide the wallet to check (wallet=)");
   const tokenAddr = getAddress(token);
+  // Factory-authoritative authenticity — a lookalike implementing policyId() at a
+  // vanity 0xB200… address can't spoof this (the supplyCap/policyId probe alone can).
+  if (!(await isB20Token(tokenAddr))) return notB20(token);
 
   const senderPol = await withRetry<bigint | null>(
     () => client.readContract({ address: tokenAddr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint | null>, null);
@@ -342,14 +345,15 @@ export async function b20Rebase(params: Record<string, string>) {
   const address = (params.address || "").trim();
   if (!validAddr(address)) throw new Error("Provide a valid 0x… B20 token address");
   const addr = getAddress(address);
+  // Factory-authoritative authenticity before trusting multiplier() (a lookalike
+  // implementing multiplier() at a vanity 0xB200… address can't spoof isB20).
+  if (!(await isB20Token(addr))) return notB20(address);
 
   const mult = await withRetry<bigint | null>(
     () => client.readContract({ address: addr, abi: B20_ABI, functionName: "multiplier" }) as Promise<bigint | null>, null);
 
   if (mult === null) {
-    // Either not a B20, or a Stablecoin (no multiplier).
-    const s = await readB20Signals(addr);
-    if (!s.isB20) return notB20(address);
+    // Factory already confirmed B20 above, so no multiplier ⇒ Stablecoin variant.
     return {
       address, isB20: true, variant: "stablecoin", rebase: false,
       note: "Stablecoin variant — no rebase multiplier. Balances are 1:1, no scaling risk.",
@@ -654,12 +658,10 @@ export async function b20PolicyWatch(params: Record<string, string>) {
   const addr = getAddress(address);
   const a = addr.toLowerCase();
 
-  // Is it a B20 at all? (supplyCap exists on every B20, reverts on ERC-20.)
-  const cap = await withRetry<bigint | null>(
-    () => client.readContract({ address: addr, abi: B20_ABI, functionName: "supplyCap" }) as Promise<bigint | null>,
-    null,
-  );
-  if (cap === null) return notB20(address);
+  // Factory-authoritative authenticity — a lookalike implementing supplyCap() at a
+  // vanity 0xB200… address (and emitting fake PolicyUpdated logs) can't spoof this,
+  // so its forged policy history isn't served as a real seize/freeze verdict.
+  if (!(await isB20Token(addr))) return notB20(address);
 
   // Live policy state (authoritative "now").
   await sleep(120);
@@ -715,7 +717,11 @@ export async function b20PolicyWatch(params: Record<string, string>) {
   const seizableSince = senderPol > 0n ? (senderSets.at(-1)?.time ?? null) : null;
 
   const seizableNow = senderPol > 0n;
-  const verdict = seizableNow ? "seizable" : events.length > 0 ? "watch" : "clean";
+  const historyAvailable = rows !== null;
+  // Don't claim "clean" (no change history) when we never actually read the
+  // history — a CDP outage returns null, which must degrade to clean_unverified,
+  // not overstate confidence.
+  const verdict = seizableNow ? "seizable" : events.length > 0 ? "watch" : historyAvailable ? "clean" : "clean_unverified";
 
   return {
     address,
@@ -725,13 +731,15 @@ export async function b20PolicyWatch(params: Record<string, string>) {
     transferGatedNow: senderPol > 0n || recvPol > 0n,
     changeCount: events.length,
     events, // chronological policy/pause timeline
-    historyAvailable: rows !== null,
-    verdict, // seizable | watch (had changes) | clean
+    historyAvailable,
+    verdict, // seizable | watch (had changes) | clean | clean_unverified
     recommendation: seizableNow
       ? `Sender blocklist policy is ACTIVE${seizableSince ? ` (set ${seizableSince})` : ""} — the issuer can block and burnBlocked-seize holders. Treat as high-control.`
       : events.length > 0
         ? "No active sender policy now, but this token's policies/pauses HAVE changed — the issuer uses these controls; re-check before large positions."
-        : "No policy or pause changes on record and no active sender policy — no freeze/seize surface detected.",
+        : historyAvailable
+          ? "No policy or pause changes on record and no active sender policy — no freeze/seize surface detected."
+          : "No active sender policy right now (live read), but the policy CHANGE HISTORY couldn't be read this time (data provider) — can't confirm it was always clean. Re-check shortly before relying on it.",
     note: "B20-only rug vector: a token can launch clean and later attach a blocklist (PolicyUpdated) — becoming seizable. This combines live policy state with the onchain event timeline (CDP-indexed, 45-day window). Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
@@ -1015,7 +1023,7 @@ export async function b20Control(params: Record<string, string>) {
 }
 
 // ---- Confirm a B20 (supplyCap reverts on a plain ERC-20) — shared by the below ----
-async function isB20Token(addr: `0x${string}`): Promise<boolean> {
+export async function isB20Token(addr: `0x${string}`): Promise<boolean> {
   // Factory-first: isB20() can't be spoofed by a lookalike contract that
   // implements supplyCap(). Falls back to the supplyCap probe only if the
   // factory read itself fails (transport).
@@ -2122,7 +2130,7 @@ export async function b20GenesisAudit(params: Record<string, string>) {
     if (name === "Transfer") {
       const from = topicToAddr(t[1]);
       if (from === ZERO_ADDR || from === null || /^0x0{40}$/i.test(from ?? "")) {
-        preMints.push({ to: topicToAddr(t[2]), amount: String((r.parameters as { amount?: string })?.amount ?? "0") });
+        preMints.push({ to: topicToAddr(t[2]), amount: String((r.parameters as { value?: string })?.value ?? "0") });
       }
     } else if (name === "RoleGranted") {
       roleGrants.push({ role: String(t[1] ?? "").slice(0, 10), account: topicToAddr(t[2]) });
@@ -2220,7 +2228,7 @@ export async function b20MintWatch(params: Record<string, string>) {
     .map((r) => ({
       time: r.block_timestamp ?? null,
       to: topicToAddr(r.topics?.[2]),
-      amount: String(r.parameters?.amount ?? "0"),
+      amount: String((r.parameters as { value?: string })?.value ?? "0"),
       txHash: r.transaction_hash ?? null,
     }));
 

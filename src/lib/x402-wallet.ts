@@ -25,6 +25,11 @@ type TypedData = {
 };
 export type EthProvider = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
 
+/** The seller / payTo wallet — the CLIENT-side single source of truth (server truth
+ * is PAY_TO_ADDRESS in config.ts). The on-chain transfer target and the self-pay
+ * guard both derive from this so they can't silently drift to different addresses. */
+export const PAY_TO = ((process.env.NEXT_PUBLIC_PAY_TO_ADDRESS as `0x${string}`) || "0x973a31858f4d2125f48c880542da11a2796f12d6") as `0x${string}`;
+
 // Minimal ClientEvmSigner x402 needs, from any EIP-1193 provider.
 function makeSigner(provider: EthProvider, address: `0x${string}`, onSigning?: () => void) {
   const domainType = (d: Record<string, unknown>) => {
@@ -109,7 +114,7 @@ export function useX402Pay() {
     // x402 rejects self-payments: the buyer can't equal the seller (payTo). If
     // the connected wallet is the app's own payTo, the facilitator returns an
     // empty 402 that looks like "out of USDC" — catch it here with a clear message.
-    if (acct.toLowerCase() === "0x973a31858f4d2125f48c880542da11a2796f12d6") {
+    if (acct.toLowerCase() === PAY_TO.toLowerCase()) {
       throw new Error(
         "This is the seller (payTo) wallet — x402 doesn't allow paying yourself. Connect a different wallet with USDC on Base.",
       );

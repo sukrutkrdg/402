@@ -21,7 +21,18 @@ import { finish } from "./envelope";
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 const ZERO = "0x0000000000000000000000000000000000000000";
 const WAD = 10n ** 18n;
-const MAX_MARKETS = 12;
+// Read up to this many withdraw-queue markets. The queue is a withdrawal-priority
+// ordering, NOT size — the largest allocation can sit late, so truncating low
+// corrupts concentration/idle. 30 covers even large multi-market vaults; if a
+// vault exceeds it we flag the result as partial rather than silently mis-report.
+const MAX_MARKETS = 30;
+// Fallback decimals for the vault's asset when the on-chain decimals() read fails,
+// so amounts don't silently render with the wrong scale (18) for 6/8-dec assets.
+const KNOWN_DECIMALS: Record<string, number> = {
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6, // USDC
+  "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf": 8, // cbBTC
+  "0x4200000000000000000000000000000000000006": 18, // WETH
+};
 
 const vaultAbi = [
   { type: "function", name: "totalAssets", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
@@ -95,7 +106,8 @@ export async function metamorphoVault(params: Record<string, string>) {
     ] }),
     n ? client.multicall({ allowFailure: true, contracts: queueCalls }) : Promise.resolve([]),
   ]);
-  const assetDecimals = typeof assetMeta[0].result === "number" ? assetMeta[0].result : 18;
+  const assetDecimals = typeof assetMeta[0].result === "number" ? assetMeta[0].result : (KNOWN_DECIMALS[asset.toLowerCase()] ?? 18);
+  const queueTruncated = wql > MAX_MARKETS;
   const assetSymbol = typeof assetMeta[1].result === "string" ? assetMeta[1].result : "asset";
   const marketIds = (queue as { result?: string }[]).map((r) => r.result).filter((x): x is string => typeof x === "string" && /^0x[0-9a-f]{64}$/i.test(x));
 
@@ -169,6 +181,7 @@ export async function metamorphoVault(params: Record<string, string>) {
     assetSymbol,
     totalAssets: `${fmt(totalAssets, assetDecimals)} ${assetSymbol}`,
     verdict, // diversified | concentrated | control_risk | no_allocation
+    ...(queueTruncated ? { partial: `Vault has ${wql} queued markets; only the first ${MAX_MARKETS} were read — concentration/idle below are a partial view.` } : {}),
     marketCount: markets.length,
     concentrationPct, // share in the single largest market
     idlePct,
