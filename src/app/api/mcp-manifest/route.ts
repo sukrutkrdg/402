@@ -18,6 +18,9 @@ export function GET() {
     npm: "https://www.npmjs.com/package/x402-bazaar-mcp",
     transport: "stdio",
     install: { command: "npx", args: ["-y", "x402-bazaar-mcp"], env: ["X402_CREDIT_TOKEN", "AGENT_PRIVATE_KEY"] },
+    // Hosted / no-install: connect over the network (Streamable HTTP). Pass a
+    // prepaid credit token via the `x-credit-token` header for unlimited calls.
+    remote: { transport: "streamable-http", url: `${SITE}/api/mcp`, auth: { header: "x-credit-token", note: "prepaid credit token (ck_…) from buy-credits — optional; without it you get 1 free call/day/tool" } },
     serverCard: `${SITE}/.well-known/mcp/server-card.json`,
     catalog: `${SITE}/.well-known/x402`,
     homepage: SITE,
