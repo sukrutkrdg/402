@@ -29,6 +29,7 @@ import { walletDelegation } from "./delegation";
 import { commerceEscrow, commerceOperatorAudit } from "./commerce";
 import { morphoHealth, morphoLiquidations } from "./morpho";
 import { gasSponsor, paymasterAudit } from "./aa";
+import { metamorphoVault } from "./vault";
 import { firstFunder } from "./provenance";
 import { freshBridge } from "./bridge";
 import { batchRisk } from "./batch";
@@ -220,6 +221,20 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: morphoHealth,
     noFreeTier: true,
+  },
+  {
+    id: "morpho-vault",
+    name: "Morpho Vault Risk",
+    tagline: "Should you deposit into this MetaMorpho vault?",
+    description:
+      "🆕 The depositor-side complement to Morpho Position Health. A MetaMorpho vault spreads your deposit across Morpho Blue markets — your real risk is WHERE the curator put it and WHO can move it. Reads the vault's live allocation across markets (concentration, per-market collateral + liquidation LTV), idle share, performance fee, timelock, and control (curator/owner/guardian, and whether one address holds both). Returns a diversified / concentrated / control_risk verdict. The read an agent pulls before parking funds in a yield vault — no other Base tool surfaces it. vault= required. Not financial advice.",
+    price: "$0.05",
+    icon: "🗄️",
+    category: "Lending",
+    params: [{ name: "vault", label: "MetaMorpho vault address", placeholder: "0x… vault", required: true }],
+    handler: metamorphoVault,
+    noFreeTier: true,
+    hidden: true,
   },
   {
     id: "morpho-liquidatable",
