@@ -27,3 +27,7 @@ listing-doctor-probe.mjs
 
 # MCP bundle build artifact
 *.mcpb
+
+# local scratch/bootstrap tools
+_*.mts
+_*.mjs
