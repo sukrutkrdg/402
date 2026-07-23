@@ -37,7 +37,10 @@ interface RpcReq { jsonrpc: "2.0"; id?: string | number | null; method: string; 
 
 const visibleServices = () => SERVICES.filter((s) => !s.hidden);
 
-/** Catalog → MCP tool list. Each service becomes one tool. */
+/** Catalog → MCP tool list. Each service becomes one tool. The description uses
+ * the full catalog description (what it does + inputs + verdict), not just the
+ * tagline — richer, self-disambiguating tool defs that a model/agent (and Glama's
+ * quality scorer) can actually reason about. */
 function toolList() {
   return visibleServices().map((s) => {
     const properties: Record<string, { type: "string"; description?: string }> = {};
@@ -46,9 +49,13 @@ function toolList() {
       properties[p.name] = { type: "string", description: p.label };
       if (p.required) required.push(p.name);
     }
+    // Rich, self-contained description: purpose (tagline) + the full catalog blurb
+    // (stripped of the 🆕 marker) + explicit required inputs + how it's paid.
+    const blurb = s.description.replace(/^\s*🆕\s*/u, "").trim();
+    const reqNote = required.length ? ` Required input${required.length > 1 ? "s" : ""}: ${required.join(", ")}.` : "";
     return {
       name: s.id,
-      description: `${s.name} — ${s.tagline} (${s.price}, paid over x402 on Base; send a prepaid x-credit-token, or get 1 free call/day).`,
+      description: `${s.tagline} — ${blurb}${reqNote} Priced ${s.price} per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.`,
       inputSchema: { type: "object", properties, ...(required.length ? { required } : {}) },
     };
   });
