@@ -8,6 +8,7 @@
  */
 
 import "server-only";
+import { decisionReceipt } from "./envelope";
 import { tokenRisk } from "./onchain";
 import { sellability } from "./sellability";
 import { swapRoute } from "./swap-route";
@@ -83,6 +84,12 @@ export async function preTradeGate(params: Record<string, string>) {
       at: new Date().toISOString(),
       endpoint: "pre-trade-gate",
       decision,
+      ...decisionReceipt({
+        endpoint: "pre-trade-gate",
+        params: { address },
+        degraded,
+        missing: degraded ? unavailable : [],
+      }),
       observedRisks,
       checks: {
         tokenRisk: risk ? { score: riskScore, level: risk.riskLevel } : "unavailable",

@@ -11,6 +11,7 @@
  */
 
 import "server-only";
+import { decisionReceipt } from "./envelope";
 import { createPublicClient, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
 import { baseTransport } from "./base-transport";
 import { base } from "viem/chains";
@@ -228,6 +229,17 @@ export async function b20Safety(params: Record<string, string>) {
   if (s.degraded) {
     return {
       address, isB20: true, variant: s.variant, symbol: s.symbol, verdict: "unknown", degraded: true,
+      receipt: {
+        checked: address,
+        endpoint: "b20-safety",
+        decision: "REFUSE",
+        ...decisionReceipt({
+          endpoint: "b20-safety",
+          params: { address },
+          degraded: true,
+          missing: ["b20-policy/pause-precompile-read"],
+        }),
+      },
       note: "⚠️ A seize/freeze-critical precompile read failed (RPC) — this token's risk could NOT be determined. Do not treat as safe; re-check.",
       checkedAt: new Date().toISOString(),
     };
@@ -248,6 +260,12 @@ export async function b20Safety(params: Record<string, string>) {
     address, isB20: true, variant: s.variant, symbol: s.symbol, riskScore: risk, verdict,
     powers: { seizable: s.canSeize, freezable: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
     flags,
+    receipt: {
+      checked: address,
+      endpoint: "b20-safety",
+      decision: verdict === "avoid" ? "STOP" : verdict === "caution" ? "HOLD" : "GO",
+      ...decisionReceipt({ endpoint: "b20-safety", params: { address }, degraded: false }),
+    },
     recommendation:
       verdict === "avoid" ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
         : verdict === "caution" ? "Usable but the issuer retains control (policy/rebase/uncapped). Size accordingly."

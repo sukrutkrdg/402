@@ -39,6 +39,9 @@ export const POLICY_VERSION: Record<string, string> = {
   "token-risk": "1.2.0",
   "rug-score": "1.1.0",
   "sellability": "1.0.0",
+  "pre-trade-gate": "1.0.0",
+  "b20-safety": "1.0.0",
+  "deep-dd": "1.0.0",
 };
 
 /** Confidence in the verdict, derived from how complete the inputs were. */
@@ -58,6 +61,25 @@ export interface DecisionReceiptMeta {
   refundable: boolean;
   /** The stated, enforced rule an agent can rely on. */
   refundRule: string;
+}
+
+/** Attach a BASELINE decision receipt (inputHash + policyVersion + endpoint) to
+ * any paid response that doesn't already carry a richer one — so EVERY service,
+ * not just the verdict checks, is verifiable/dedupable by an agent. A service's
+ * own receipt fields always win (spread last). No-op on non-object payloads. */
+export function withBaseReceipt(data: unknown, endpoint: string, params: Record<string, unknown>): unknown {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const d = data as Record<string, unknown>;
+  const existing = d.receipt && typeof d.receipt === "object" ? (d.receipt as Record<string, unknown>) : {};
+  return {
+    ...d,
+    receipt: {
+      endpoint,
+      inputHash: inputHash(endpoint, params),
+      policyVersion: `${endpoint}@${POLICY_VERSION[endpoint] ?? "1.0.0"}`,
+      ...existing,
+    },
+  };
 }
 
 /** True when a handler output is a refusal that must not be billed — the gateway

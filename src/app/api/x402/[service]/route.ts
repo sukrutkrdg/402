@@ -23,7 +23,7 @@ import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
-import { riskSignal, isRefundable } from "@/lib/envelope";
+import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
@@ -236,7 +236,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     }
     let data: unknown;
     try {
-      data = await service.handler(paramsFrom(req, service));
+      const p = paramsFrom(req, service);
+      data = withBaseReceipt(await service.handler(p), service.id, p);
     } catch (err) {
       await refundCredit(creditToken, cents); // charged but never delivered → give it back
       return handlerErrorResponse(err);
@@ -361,7 +362,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const handler = async (request: NextRequest) => {
     let data: unknown;
     try {
-      data = await service.handler(paramsFrom(request, service));
+      const p = paramsFrom(request, service);
+      data = withBaseReceipt(await service.handler(p), service.id, p);
     } catch (err) {
       return handlerErrorResponse(err);
     }
