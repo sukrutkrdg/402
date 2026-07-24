@@ -12,6 +12,7 @@
 
 import "server-only";
 import { goPlusSecurity } from "./upstream-cache";
+import { decisionReceipt } from "./envelope";
 import { createPublicClient, http, getAddress, formatEther, formatUnits, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
@@ -285,6 +286,15 @@ export async function tokenRisk(params: Record<string, string>) {
       atBlock,
       at: new Date().toISOString(),
       endpoint: "token-risk",
+      // Decision-quality receipt (axiombot spec): input hash, policy version,
+      // confidence band, refusal shape, refund rule — how an agent trusts this
+      // verdict enough to route by default.
+      ...decisionReceipt({
+        endpoint: "token-risk",
+        params: { address },
+        degraded: !securityChecked,
+        missing: securityChecked ? [] : ["goplus-security-feed (honeypot/taxes/holders)"],
+      }),
       // Never GO on missing security data — a clean RPC read with no honeypot/tax
       // check is HOLD, not GO. Only RPC-proven high-risk yields STOP.
       decision: riskLevel === "high" ? "STOP" : !securityChecked ? "HOLD" : riskLevel === "medium" ? "HOLD" : "GO",

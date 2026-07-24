@@ -23,7 +23,7 @@ import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
-import { riskSignal } from "@/lib/envelope";
+import { riskSignal, isRefundable } from "@/lib/envelope";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
@@ -245,9 +245,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     const ip = clientIp(req);
     await attachRetention(service.id, data, srcHash(ip));
     await logUsage(service.id, true, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, false, srcHash(`credit:${creditToken}`));
+    // Refund rule (decision receipt): a refusal — a low-confidence non-decision
+    // because our core data feed was unavailable — is delivered but NOT billed.
+    // Give the debit back and tell the caller via `x-refunded`.
+    const refunded = isRefundable(data);
+    if (refunded) await refundCredit(creditToken, cents);
+    const remaining = refunded ? debit.remaining + cents : debit.remaining;
     return NextResponse.json(
-      { service: service.id, builderCode: cfg.appBuilderCode, data, paidVia: "credits", creditBalanceUsd: +(debit.remaining / 100).toFixed(2) },
-      { headers: { "x-credit-balance": String(debit.remaining), "x-paid-via": "credits" } },
+      {
+        service: service.id,
+        builderCode: cfg.appBuilderCode,
+        data,
+        paidVia: refunded ? "credits-refunded" : "credits",
+        creditBalanceUsd: +(remaining / 100).toFixed(2),
+        ...(refunded ? { refunded: true, refundReason: "Refusal (core data feed unavailable) — not billed per this check's refundRule." } : {}),
+      },
+      { headers: { "x-credit-balance": String(remaining), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },
     );
   }
 

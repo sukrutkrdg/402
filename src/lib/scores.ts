@@ -9,6 +9,7 @@ import "server-only";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { tokenPrice } from "./onchain-extra";
+import { decisionReceipt } from "./envelope";
 
 export async function rugScore(params: Record<string, string>) {
   const address = (params.address || "").trim();
@@ -97,6 +98,19 @@ export async function rugScore(params: Record<string, string>) {
     note: degraded
       ? "PARTIAL: security provider (honeypot/taxes) was unavailable this call — score reflects holders/liquidity/RPC only and cannot certify low risk. Re-check shortly."
       : "Composite of security flags, holder concentration and liquidity depth. Higher = riskier. Heuristic, not financial advice.",
+    // Decision-quality receipt (axiombot spec) — input hash, policy version,
+    // confidence band, refusal shape, refund rule.
+    receipt: {
+      checked: address,
+      endpoint: "rug-score",
+      decision: level === "high" ? "STOP" : degraded ? "REFUSE" : level === "medium" ? "HOLD" : "GO",
+      ...decisionReceipt({
+        endpoint: "rug-score",
+        params: { address },
+        degraded,
+        missing: securityChecked ? [] : ["goplus-security-feed (honeypot/taxes)"],
+      }),
+    },
     // Funnel: the natural next step after a raw rug score.
     upgrade: {
       service: "ai-token-report",

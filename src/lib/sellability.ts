@@ -15,7 +15,7 @@ import { getAddress } from "viem";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { exitLiquidity } from "./liquidity";
-import { securityChecked as wasSecurityChecked, type TokenRiskResult } from "./envelope";
+import { securityChecked as wasSecurityChecked, decisionReceipt, type TokenRiskResult } from "./envelope";
 
 const rpcUrl = (k: string) => `https://base-mainnet.g.alchemy.com/v2/${k}`;
 const ZERO_ISH = new Set([
@@ -142,6 +142,17 @@ export async function sellability(params: Record<string, string>) {
       liveSimulation: sim,
       reasons,
       verdict: "unknown",
+      receipt: {
+        checked: token,
+        endpoint: "sellability",
+        decision: "REFUSE",
+        ...decisionReceipt({
+          endpoint: "sellability",
+          params: { address: token },
+          degraded: true,
+          missing: ["goplus-security-feed", "live-transfer-simulation"],
+        }),
+      },
       note: "PARTIAL: sell-mechanics providers were unavailable this call — cannot confirm the token is sellable. Re-check shortly. Not financial advice.",
       checkedAt: new Date().toISOString(),
     };
@@ -167,6 +178,17 @@ export async function sellability(params: Record<string, string>) {
         ? "sellable_with_high_tax"
         : "sellable"
       : "do_not_buy_cannot_sell",
+    receipt: {
+      checked: token,
+      endpoint: "sellability",
+      decision: !canSell ? "STOP" : level === "medium" ? "HOLD" : "GO",
+      ...decisionReceipt({
+        endpoint: "sellability",
+        params: { address: token },
+        degraded,
+        missing: securityChecked ? [] : ["goplus-security-feed (verdict rests on live simulation + RPC)"],
+      }),
+    },
     note: degraded
       ? "PARTIAL: security feed unavailable — verdict rests on the live simulation and RPC only. Not financial advice."
       : "Combines security simulation, a live transfer simulation we run, and exit-liquidity. Simulate again before trading; state can change. Not financial advice.",
