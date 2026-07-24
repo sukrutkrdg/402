@@ -36,6 +36,14 @@ export function GET() {
       llms: `${SITE}/llms.txt`,
       mcp: "npx x402-bazaar-mcp",
     },
+    // Decision quality, not just payment success — how an agent decides to route
+    // work here by default. Full schema in the catalog under `decisionReceipt`.
+    decisionReceipt: {
+      summary:
+        "Every paid response carries a verifiable receipt: inputHash (sha256 of exact inputs) + policyVersion (endpoint@semver); verdict checks add a confidence band, a structured refusal shape, and an enforced refund rule (a refusal is auto-refunded on the credit path, x-refunded:true).",
+      schema: `${SITE}/.well-known/x402`,
+      docs: "https://github.com/sukrutkrdg/402/blob/main/docs/decision-receipt.md",
+    },
     freeTrial: "1 free call per service per day per IP (AI and metered services excluded) — try before you pay, no signup.",
     tryExample: `${SITE}/api/x402/token-risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
     // The 3 tools most agents should bind first, and the B20 suite grouped into 5
