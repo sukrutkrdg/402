@@ -12,6 +12,7 @@
 
 import "server-only";
 import { getAddress } from "viem";
+import { decisionReceipt } from "./envelope";
 import { basenameResolve } from "./basename";
 
 const EAS = "https://base.easscan.org/graphql";
@@ -77,6 +78,17 @@ export async function addressTrust(params: Record<string, string>) {
     verdict, // verified | named | anonymous | unknown
     trustScore, // 0–90 soft signal
     signals,
+    receipt: {
+      checked: addr,
+      endpoint: "address-trust",
+      decision: degraded ? "REFUSE" : coinbaseVerifiedFlag ? "GO" : "HOLD",
+      ...decisionReceipt({
+        endpoint: "address-trust",
+        params: { address: addr },
+        degraded,
+        missing: degraded ? ["coinbase-verification-lookup (EAS)"] : [],
+      }),
+    },
     recommendation:
       degraded ? "Could not read Coinbase verification right now — do not treat as verified OR anonymous; re-check before trusting."
         : coinbaseVerifiedFlag ? "Tied to a KYC'd Coinbase account — the strongest onchain sybil-resistance signal. Still verify the specific transaction; identity ≠ intent."

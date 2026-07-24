@@ -12,6 +12,7 @@
 
 import "server-only";
 import { getAddress } from "viem";
+import { decisionReceipt } from "./envelope";
 import { addressIntel, tokenRisk } from "./onchain";
 
 // Maintained mirror of OFAC-sanctioned ETH-format addresses (applies to Base too,
@@ -60,6 +61,19 @@ export async function sanctionsCheck(params: Record<string, string>) {
     listSize: size,
     listFetchedAt: new Date(fetchedAt).toISOString(),
     stale,
+    receipt: {
+      checked: address,
+      endpoint: "sanctions",
+      decision: sanctioned ? "STOP" : "GO",
+      // A stale list still gives a real answer (it can only MISS a very recent
+      // addition) → medium confidence, not a refusal.
+      ...decisionReceipt({
+        endpoint: "sanctions",
+        params: { address },
+        degraded: false,
+        missing: stale ? ["fresh-OFAC-list-refresh (served a cached list)"] : [],
+      }),
+    },
     note: sanctioned
       ? "Address is on the OFAC sanctions list — do not transact."
       : "No direct match on the OFAC list (direct-address match only; does not trace indirect exposure).",

@@ -42,6 +42,8 @@ export const POLICY_VERSION: Record<string, string> = {
   "pre-trade-gate": "1.0.0",
   "b20-safety": "1.0.0",
   "deep-dd": "1.0.0",
+  "sanctions": "1.0.0",
+  "address-trust": "1.0.0",
 };
 
 /** Confidence in the verdict, derived from how complete the inputs were. */
