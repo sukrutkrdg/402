@@ -109,6 +109,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               >
                 For agents
               </Link>
+              <Link
+                href="/credits"
+                className="shrink-0 rounded-lg px-3 py-1.5 font-medium text-emerald-300 hover:bg-white/5 hover:text-emerald-200"
+              >
+                💳 Credits
+              </Link>
               <a
                 href="https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes"
                 target="_blank"
