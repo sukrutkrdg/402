@@ -31,6 +31,28 @@ export const CREDIT_TIERS: Record<string, { usd: number; credits: number }> = {
 };
 export const DEFAULT_TIER = "5";
 
+/**
+ * Card packs — deliberately NOT the same table as the x402 tiers above.
+ *
+ * A card sale costs us a merchant-of-record fee (≈5% + $0.50, plus 1.5% on
+ * non-US cards). The x402 bonuses were priced against a rail that costs us
+ * essentially nothing; applying them here would hand out $5.50 of credit for
+ * $4.17 of net proceeds — a loss before we serve a single call. So card packs
+ * credit 1:1, and the small packs stay off this rail entirely: the fixed $0.50
+ * alone eats a $1 purchase.
+ *
+ * Keeping the bonus on x402 also points buyers at the cheaper rail, which is
+ * the incentive we actually want.
+ */
+export const CARD_PACKS: Record<string, { usd: number; credits: number }> = {
+  "5": { usd: 5, credits: 500 },
+  "20": { usd: 20, credits: 2000 },
+  "50": { usd: 50, credits: 5000 },
+};
+
+/** Cents credited per USD on the card rail — used to check what was really paid. */
+export const CARD_CENTS_PER_USD = 100;
+
 // 180-day balance TTL — long enough to feel like money in the bank, short enough
 // that abandoned balances don't accrue in KV forever.
 const BALANCE_TTL = 60 * 60 * 24 * 180;
@@ -49,13 +71,25 @@ const keyFor = (token: string) => `credit:${createHash("sha256").update(token).d
  * means the buyer has paid. Returns the bearer token exactly once.
  */
 export async function buyCredits(params: Record<string, string>) {
-  if (!kvConfigured()) throw new Error("Credits unavailable: durable storage not configured");
   const tier = (params.tier || DEFAULT_TIER).trim();
   const pack = CREDIT_TIERS[tier];
   if (!pack) throw new Error(`Invalid tier — choose one of: ${Object.keys(CREDIT_TIERS).join(", ")}`);
+  return mintCredits(pack.credits, pack.usd);
+}
+
+/**
+ * Mint a fresh credit token carrying `credits` cents. Shared by both purchase
+ * rails (x402 settlement and card checkout) so there is exactly one place that
+ * can create spendable balance.
+ *
+ * Callers MUST have confirmed payment first — this function does not check.
+ */
+export async function mintCredits(credits: number, paidUsd: number) {
+  if (!kvConfigured()) throw new Error("Credits unavailable: durable storage not configured");
+  if (!Number.isInteger(credits) || credits <= 0) throw new Error("Invalid credit amount");
 
   const token = `ck_${randomBytes(18).toString("hex")}`;
-  const set = await kvIncrBy(keyFor(token), pack.credits); // create/topup atomically
+  const set = await kvIncrBy(keyFor(token), credits); // create/topup atomically
   // A null here means the ledger write did NOT happen (KV unreachable). Throwing
   // makes the response ≥400 so withX402 never settles — the one path that mints
   // money must fail CLOSED, or the customer pays for a token with no balance.
@@ -66,9 +100,9 @@ export async function buyCredits(params: Record<string, string>) {
   return {
     creditToken: token,
     balanceUsd: +(set / 100).toFixed(2),
-    paidUsd: pack.usd,
-    creditedUsd: +(pack.credits / 100).toFixed(2),
-    bonusUsd: +((pack.credits - pack.usd * 100) / 100).toFixed(2),
+    paidUsd,
+    creditedUsd: +(credits / 100).toFixed(2),
+    bonusUsd: +((credits - paidUsd * 100) / 100).toFixed(2),
     howToSpend:
       "Send this token as the `x-credit-token` header on any paid service call. Each call debits its price from your balance — no x402 settlement, no per-call signature. The response returns your remaining balance in `x-credit-balance` (cents).",
     security: "This token is a bearer key — anyone holding it can spend the balance. Store it secretly; it is shown only once and cannot be recovered.",

@@ -1,7 +1,7 @@
 /**
  * Card checkout for prepaid credits — the wallet-free way in.
  *
- * POST { tier } → a Stripe Checkout URL. The buyer (or the human behind an
+ * POST { pack } → a hosted Polar checkout URL. The buyer (or the human behind an
  * agent) pays by card; the credit token is handed over afterwards by
  * /api/credits/claim. Nothing is minted here — this only opens a payment page.
  *
@@ -11,8 +11,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { CREDIT_TIERS, DEFAULT_TIER } from "@/lib/credits";
-import { createCreditCheckout, stripeConfig } from "@/lib/stripe";
+import { CARD_PACKS } from "@/lib/credits";
+import { createCreditCheckout, polarConfig } from "@/lib/polar";
 import { getSiteUrl } from "@/lib/config";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { kvConfigured } from "@/lib/kv";
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  const cfg = stripeConfig();
+  const cfg = polarConfig();
   if (!cfg) {
     return NextResponse.json(
       { error: "Card checkout is not enabled on this deployment. Pay with USDC over x402 instead: /api/x402/buy-credits" },
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Creating sessions is free but not free of abuse — cap per IP.
-  const rl = await rateLimitKv(`stripe:checkout:${clientIp(req)}`, 10, 300);
+  const rl = await rateLimitKv(`card:checkout:${clientIp(req)}`, 10, 300);
   if (!rl.ok) {
     return NextResponse.json(
       { error: `Rate limit: try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` },
@@ -43,37 +43,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let tier = DEFAULT_TIER;
+  let key = "5";
   try {
-    const body = (await req.json()) as { tier?: string };
-    if (body?.tier) tier = String(body.tier).trim();
+    const body = (await req.json()) as { pack?: string; tier?: string };
+    if (body?.pack || body?.tier) key = String(body.pack ?? body.tier).trim();
   } catch {
-    // No body → default tier.
+    // No body → default pack.
   }
-  const pack = CREDIT_TIERS[tier];
+  const pack = CARD_PACKS[key];
   if (!pack) {
     return NextResponse.json(
-      { error: `Unknown tier. Choose one of: ${Object.keys(CREDIT_TIERS).join(", ")}` },
+      {
+        error: `Unknown pack. Card packs: ${Object.keys(CARD_PACKS).join(", ")}. Smaller amounts are available with USDC over x402 (/api/x402/buy-credits) — card fees make them uneconomic.`,
+      },
       { status: 400 },
     );
   }
 
-  const site = getSiteUrl();
   try {
-    const session = await createCreditCheckout(cfg, {
-      tier,
-      usd: pack.usd,
-      credits: pack.credits,
-      successUrl: `${site}/credits`,
-      cancelUrl: `${site}/credits?canceled=1`,
-    });
-    if (!session.url) throw new Error("Stripe returned no checkout URL");
+    const checkout = await createCreditCheckout(cfg, { usd: pack.usd, successUrl: `${getSiteUrl()}/credits` });
+    if (!checkout.url) throw new Error("Polar returned no checkout URL");
     return NextResponse.json({
-      checkoutUrl: session.url,
-      sessionId: session.id,
-      tier,
+      checkoutUrl: checkout.url,
+      checkoutId: checkout.id,
+      pack: key,
       paidUsd: pack.usd,
       creditedUsd: +(pack.credits / 100).toFixed(2),
+      sandbox: cfg.sandbox || undefined,
       next: "Open checkoutUrl, pay, and you'll be returned to /credits where the credit token is shown once.",
     });
   } catch (e) {

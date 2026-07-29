@@ -1,5 +1,5 @@
-import { CREDIT_TIERS } from "@/lib/credits";
-import { stripeConfig } from "@/lib/stripe";
+import { CARD_PACKS } from "@/lib/credits";
+import { polarConfig } from "@/lib/polar";
 import { SERVICES } from "@/lib/services";
 import CreditsClient from "./CreditsClient";
 
@@ -12,8 +12,8 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default function CreditsPage() {
-  const enabled = stripeConfig() !== null;
-  const tiers = Object.entries(CREDIT_TIERS).map(([tier, v]) => ({ tier, ...v }));
+  const enabled = polarConfig() !== null;
+  const packs = Object.entries(CARD_PACKS).map(([pack, v]) => ({ pack, ...v }));
   const visible = SERVICES.filter((s) => !s.hidden).length;
 
   return (
@@ -29,7 +29,7 @@ export default function CreditsPage() {
         </p>
       </section>
 
-      <CreditsClient tiers={tiers} enabled={enabled} />
+      <CreditsClient packs={packs} enabled={enabled} />
 
       <section className="flex flex-col gap-3 rounded-2xl border border-base-line bg-black/30 p-5">
         <h2 className="text-lg font-semibold">How it works</h2>
