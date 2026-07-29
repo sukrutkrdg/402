@@ -22,17 +22,21 @@
     "@farcaster/miniapp-wagmi-connector": "^2.0.0",
     "@noble/curves": "^1.9.7",
     "@tanstack/react-query": "^5.101.2",
-    "@x402/core": "^2.16.0",
-    "@x402/evm": "^2.16.0",
-    "@x402/extensions": "^2.16.0",
-    "@x402/fetch": "^2.16.0",
-    "@x402/next": "^2.16.0",
-    "next": "^16.2.9",
+    "@x402/core": "2.16.0",
+    "@x402/evm": "2.16.0",
+    "@x402/extensions": "2.16.0",
+    "@x402/fetch": "2.16.0",
+    "@x402/next": "2.16.0",
+    "next": "^16.2.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
     "viem": "^2.21.0",
     "wagmi": "^2.19.5"
+  },
+  "x402PinNote": "@x402/* are pinned to an exact, matching version on purpose: they implement one payment protocol together and `npm audit fix` will happily bump a subset (it moved extensions+next to 2.20 while core/evm/fetch stayed 2.16, which broke typecheck and tests). Bump all five together, then re-verify a live settlement.",
+  "overrides": {
+    "axios": "^1.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -43,5 +47,6 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.0",
     "vitest": "^2.1.9"
-  }
+  },
+  "overridesNote": "axios: @coinbase/x402 → @coinbase/cdp-sdk still pins axios 1.16, which carries 10 open advisories (DoS via formDataToJSON recursion, prototype-pollution gadgets, maxBodyLength/NO_PROXY bypasses). 1.18 is a semver-compatible minor. Drop the override once Coinbase ships it upstream."
 }
