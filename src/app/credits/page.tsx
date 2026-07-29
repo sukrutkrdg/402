@@ -1,53 +1,62 @@
-import { CARD_PACKS } from "@/lib/credits";
-import { polarConfig } from "@/lib/polar";
+import { CREDIT_TIERS } from "@/lib/credits";
 import { SERVICES } from "@/lib/services";
+import { Providers } from "../app/providers";
 import CreditsClient from "./CreditsClient";
 
 export const metadata = {
-  title: "Buy API credits with a card — x402 Bazaar",
+  title: "Prepaid API credits — x402 Bazaar",
   description:
-    "Prepaid balance for 100+ pay-per-call APIs on Base. Pay by card, get a token, use every service with no wallet and no API key.",
+    "Buy a prepaid balance once and your agent calls 100+ APIs with no wallet, no signature per call and no API key. Fund with a card through Coinbase if you hold no USDC.",
 };
 
 export const dynamic = "force-dynamic";
 
 export default function CreditsPage() {
-  const enabled = polarConfig() !== null;
-  const packs = Object.entries(CARD_PACKS).map(([pack, v]) => ({ pack, ...v }));
+  const tiers = Object.entries(CREDIT_TIERS).map(([tier, v]) => ({ tier, ...v }));
   const visible = SERVICES.filter((s) => !s.hidden).length;
 
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-2">
-        <span className="pill w-fit">💳 Prepaid credits</span>
-        <h1 className="text-3xl font-bold tracking-tight">Your agent doesn&apos;t need a wallet</h1>
+        <span className="pill w-fit">🎟️ Prepaid credits</span>
+        <h1 className="text-3xl font-bold tracking-tight">Pay once. Your agent never signs again.</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
-          Pay once by card and get a credit token. Send it as the{" "}
+          One purchase gives you a credit token. Send it as the{" "}
           <code className="text-sky-300">x-credit-token</code> header and all {visible} services work — no
-          wallet, no signature per call, no API key, no subscription. Already onchain? Buy the same credit
-          with USDC over x402 at <code className="text-sky-300">/api/x402/buy-credits</code>.
+          wallet, no signature per call, no API key, no subscription. Each call debits its own price from the
+          balance.
         </p>
       </section>
 
-      <CreditsClient packs={packs} enabled={enabled} />
+      <Providers>
+        <CreditsClient tiers={tiers} />
+      </Providers>
 
       <section className="flex flex-col gap-3 rounded-2xl border border-base-line bg-black/30 p-5">
-        <h2 className="text-lg font-semibold">How it works</h2>
-        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-gray-400">
-          <li>Pick a pack and pay by card. Nothing is stored on your side.</li>
+        <h2 className="text-lg font-semibold">Why buy credit instead of paying per call</h2>
+        <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-gray-400">
           <li>
-            You get a one-time <code className="text-sky-300">ck_…</code> token. It&apos;s a bearer key —
-            save it, it can&apos;t be shown again.
+            <strong className="text-gray-200">Your agent needs no wallet.</strong> Paying x402 per call means
+            a funded key and a signature every time. A credit token is just a header — safe to hand to an MCP
+            client, a CI job, or a teammate.
           </li>
           <li>
-            Every call debits its price from the balance and returns what&apos;s left in the{" "}
-            <code className="text-sky-300">x-credit-balance</code> header.
+            <strong className="text-gray-200">No per-call settlement.</strong> Calls answer immediately
+            instead of waiting on a facilitator round trip.
           </li>
           <li>
-            If a check can&apos;t be answered because an upstream feed is down, the call is refunded
-            automatically — you aren&apos;t billed for a refusal.
+            <strong className="text-gray-200">Refusals aren&apos;t billed.</strong> If a check can&apos;t be
+            answered because an upstream feed is down, the call is refunded automatically.
           </li>
-        </ol>
+          <li>
+            <strong className="text-gray-200">Bigger packs carry a bonus</strong> and the balance is good for
+            180 days. Re-buying tops up the same way.
+          </li>
+        </ul>
+        <p className="text-xs text-gray-500">
+          Prefer to script it? The same purchase works headlessly over x402:{" "}
+          <code className="text-sky-300">/api/x402/buy-credits?tier=0.25|1|5|20</code>.
+        </p>
       </section>
     </div>
   );

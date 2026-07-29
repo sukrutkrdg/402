@@ -31,28 +31,6 @@ export const CREDIT_TIERS: Record<string, { usd: number; credits: number }> = {
 };
 export const DEFAULT_TIER = "5";
 
-/**
- * Card packs — deliberately NOT the same table as the x402 tiers above.
- *
- * A card sale costs us a merchant-of-record fee (≈5% + $0.50, plus 1.5% on
- * non-US cards). The x402 bonuses were priced against a rail that costs us
- * essentially nothing; applying them here would hand out $5.50 of credit for
- * $4.17 of net proceeds — a loss before we serve a single call. So card packs
- * credit 1:1, and the small packs stay off this rail entirely: the fixed $0.50
- * alone eats a $1 purchase.
- *
- * Keeping the bonus on x402 also points buyers at the cheaper rail, which is
- * the incentive we actually want.
- */
-export const CARD_PACKS: Record<string, { usd: number; credits: number }> = {
-  "5": { usd: 5, credits: 500 },
-  "20": { usd: 20, credits: 2000 },
-  "50": { usd: 50, credits: 5000 },
-};
-
-/** Cents credited per USD on the card rail — used to check what was really paid. */
-export const CARD_CENTS_PER_USD = 100;
-
 // 180-day balance TTL — long enough to feel like money in the bank, short enough
 // that abandoned balances don't accrue in KV forever.
 const BALANCE_TTL = 60 * 60 * 24 * 180;
@@ -78,9 +56,8 @@ export async function buyCredits(params: Record<string, string>) {
 }
 
 /**
- * Mint a fresh credit token carrying `credits` cents. Shared by both purchase
- * rails (x402 settlement and card checkout) so there is exactly one place that
- * can create spendable balance.
+ * Mint a fresh credit token carrying `credits` cents. The single place that can
+ * create spendable balance, so every purchase rail funnels through here.
  *
  * Callers MUST have confirmed payment first — this function does not check.
  */
