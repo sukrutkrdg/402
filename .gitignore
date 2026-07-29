@@ -31,3 +31,4 @@ listing-doctor-probe.mjs
 # local scratch/bootstrap tools
 _*.mts
 _*.mjs
+_*.json
