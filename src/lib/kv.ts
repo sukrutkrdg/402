@@ -248,3 +248,12 @@ export async function kvSMembers(key: string): Promise<string[]> {
   if (kvConfigured()) return (await cmd<string[]>(["SMEMBERS", key])) ?? [];
   return memList.get(`set:${key}`) ?? [];
 }
+
+/**
+ * Set/refresh a TTL on an existing key. Used to keep an index from outliving the
+ * records it points at. No-op on the in-memory fallback for list/set keys, which
+ * only live as long as the process anyway.
+ */
+export async function kvExpire(key: string, ttlSeconds: number): Promise<void> {
+  if (kvConfigured()) await cmd(["EXPIRE", key, ttlSeconds]);
+}

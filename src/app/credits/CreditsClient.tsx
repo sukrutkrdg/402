@@ -1,10 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useReadContract } from "wagmi";
+import { useEffect, useState } from "react";
+import { useAccount, useReadContract, useSignMessage } from "wagmi";
 import type { Connector } from "wagmi";
 import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
 import OnrampButton from "@/components/OnrampButton";
+
+/** Must match recoveryMessage() in /api/credits/recover. */
+function recoveryMessage(address: string, issuedAt: string): string {
+  return [
+    "x402 Bazaar — recover credit balance",
+    "",
+    `Address: ${address.toLowerCase()}`,
+    `Issued: ${issuedAt}`,
+    "",
+    "Signing this re-issues your credit token and moves the remaining balance to it.",
+    "Any token issued earlier stops working.",
+  ].join("\n");
+}
+
+// Survives a refresh or an accidental navigation until the buyer confirms they
+// saved it. sessionStorage (not localStorage) so it dies with the tab.
+const STASH = "x402-credit-token";
 
 interface Tier {
   tier: string;
@@ -35,10 +52,55 @@ const ERC20_BALANCE = [
 export default function CreditsClient({ tiers }: { tiers: Tier[] }) {
   const { address, isConnected } = useAccount();
   const { pay, picker, setPicker, step } = useX402Pay();
+  const { signMessageAsync } = useSignMessage();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [minted, setMinted] = useState<Minted | null>(null);
   const [copied, setCopied] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recovered, setRecovered] = useState<number | null>(null);
+
+  // Re-show an unconfirmed token after a refresh — the buyer paid for it.
+  useEffect(() => {
+    try {
+      const stashed = sessionStorage.getItem(STASH);
+      if (stashed) setMinted(JSON.parse(stashed) as Minted);
+    } catch {
+      /* storage unavailable — nothing to restore */
+    }
+  }, []);
+
+  function keep(m: Minted) {
+    setMinted(m);
+    try {
+      sessionStorage.setItem(STASH, JSON.stringify(m));
+    } catch {
+      /* private mode — the token is still on screen */
+    }
+  }
+
+  async function recover() {
+    if (!address) return;
+    setRecovering(true);
+    setError(null);
+    try {
+      const issuedAt = new Date().toISOString();
+      const signature = await signMessageAsync({ message: recoveryMessage(address, issuedAt) });
+      const r = await fetch("/api/credits/recover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address, issuedAt, signature }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Recovery failed");
+      setRecovered(j.recoveredUsd as number);
+      keep(j as Minted);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Recovery failed");
+    } finally {
+      setRecovering(false);
+    }
+  }
 
   const { data: balance } = useReadContract({
     address: USDC,
@@ -71,7 +133,7 @@ export default function CreditsClient({ tiers }: { tiers: Tier[] }) {
       }
       const parsed = JSON.parse(text) as { data?: Minted } & Minted;
       // Paid responses are wrapped by the gateway; unwrap when present.
-      setMinted(parsed.data?.creditToken ? parsed.data : parsed);
+      keep(parsed.data?.creditToken ? parsed.data : parsed);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Purchase failed");
     } finally {
@@ -83,11 +145,22 @@ export default function CreditsClient({ tiers }: { tiers: Tier[] }) {
     return (
       <div className="flex flex-col gap-4 rounded-2xl border border-emerald-500/40 bg-emerald-500/5 p-5">
         <div>
-          <h2 className="text-lg font-semibold text-emerald-300">${minted.balanceUsd.toFixed(2)} credit is live</h2>
+          <h2 className="text-lg font-semibold text-emerald-300">
+            ${minted.balanceUsd.toFixed(2)} credit is live
+            {recovered !== null && <span className="text-sm font-normal"> · recovered</span>}
+          </h2>
           <p className="mt-1 text-sm text-gray-400">
-            Paid ${minted.paidUsd.toFixed(2)}
-            {minted.bonusUsd > 0 && <span className="text-emerald-400"> · bonus ${minted.bonusUsd.toFixed(2)}</span>} ·
-            expires in {minted.expiresInDays} days
+            {recovered !== null ? (
+              <>Re-issued for your wallet. Any earlier token has stopped working.</>
+            ) : (
+              <>
+                Paid ${minted.paidUsd.toFixed(2)}
+                {minted.bonusUsd > 0 && (
+                  <span className="text-emerald-400"> · bonus ${minted.bonusUsd.toFixed(2)}</span>
+                )}
+              </>
+            )}{" "}
+            · expires in {minted.expiresInDays} days
           </p>
         </div>
 
@@ -111,8 +184,44 @@ export default function CreditsClient({ tiers }: { tiers: Tier[] }) {
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob(
+                  [
+                    `x402 Bazaar credit token\n${minted.creditToken}\n\n` +
+                      `Balance: $${minted.balanceUsd.toFixed(2)}\nIssued: ${new Date().toISOString()}\n\n` +
+                      `Send it as the x-credit-token header on any call to https://402.com.tr\n`,
+                  ],
+                  { type: "text/plain" },
+                );
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "x402-bazaar-credit-token.txt";
+                a.click();
+                URL.revokeObjectURL(a.href);
+              }}
+              className="rounded-xl border border-base-line px-3 py-1.5 text-xs hover:border-emerald-400"
+            >
+              ⬇ Download as file
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem(STASH);
+                setMinted(null);
+                setRecovered(null);
+              }}
+              className="rounded-xl border border-emerald-500/40 px-3 py-1.5 text-xs text-emerald-300 hover:border-emerald-400"
+            >
+              I&apos;ve saved it — done
+            </button>
+          </div>
           <p className="text-xs text-gray-500">
-            This is a bearer key: anyone holding it can spend the balance. It cannot be recovered if lost.
+            This is a bearer key: anyone holding it can spend the balance. It stays on this screen until you
+            confirm, and survives a refresh. If you lose it later, you can re-issue it by signing with the
+            wallet that paid — see &ldquo;Lost your token?&rdquo; below.
           </p>
         </div>
 
@@ -222,6 +331,25 @@ X402_CREDIT_TOKEN=${minted.creditToken} npx x402-bazaar-mcp`}
           One signature, one on-chain settlement. After that the token is all your agent needs — no wallet, no
           signature per call, no API key.
         </p>
+      </div>
+
+      {/* Recovery. The token is shown once and we only ever store its hash, so
+          the wallet that paid is the only thing that can prove ownership. */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-base-line bg-black/30 p-5">
+        <h2 className="text-sm font-semibold">Lost your token?</h2>
+        <p className="text-xs text-gray-500">
+          Sign a message with the wallet that paid and we&apos;ll re-issue a fresh token carrying your
+          remaining balance. We never stored the original — only its hash — so recovery replaces it rather
+          than reprinting it. Any earlier token stops working, which also means a leaked one is killed.
+        </p>
+        <button
+          type="button"
+          onClick={recover}
+          disabled={!isConnected || recovering}
+          className="w-fit rounded-xl border border-base-line px-4 py-2 text-sm hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {recovering ? "Waiting for signature…" : isConnected ? "Recover my balance" : "Connect a wallet first"}
+        </button>
       </div>
     </div>
   );

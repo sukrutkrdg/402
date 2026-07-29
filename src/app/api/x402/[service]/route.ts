@@ -21,7 +21,7 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
-import { debitCredit, refundCredit, tierPrice } from "@/lib/credits";
+import { debitCredit, refundCredit, tierPrice, linkCreditOwner } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
 import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { saveSample, loadSample } from "@/lib/sample-cache";
@@ -377,6 +377,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     if (service.id === "buy-credits") {
       const cents = Math.round((parseFloat(tierPrice(paramsFrom(request, service).tier || "").replace(/[^0-9.]/g, "")) || 0) * 100);
       if (cents > 0) await kvIncrBy("usage:revenue-cents:buy-credits", cents);
+      // Index the balance against the wallet that paid. The token is shown once
+      // and only its hash is stored, so without this a buyer who didn't copy it
+      // has paid for something unusable with no way back. /api/credits/recover
+      // turns this index into a door that only that wallet can open.
+      const minted = (data as { creditToken?: unknown })?.creditToken;
+      if (payer && typeof minted === "string") await linkCreditOwner(payer, minted);
     }
     await attachRetention(service.id, data, srcHash(clientIp(request)));
     return NextResponse.json({

@@ -20,7 +20,18 @@
 
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { kvConfigured, kvGetNumber, kvSet, kvDecrBy, kvIncrBy, kvDel } from "./kv";
+import {
+  kvConfigured,
+  kvGetNumber,
+  kvSet,
+  kvDecrBy,
+  kvIncrBy,
+  kvDel,
+  kvSAdd,
+  kvSRem,
+  kvSMembers,
+  kvExpire,
+} from "./kv";
 
 /** Prepaid packs: pay `usd`, receive `credits` (a small bonus rewards prepaying). */
 export const CREDIT_TIERS: Record<string, { usd: number; credits: number }> = {
@@ -86,6 +97,74 @@ export async function mintCredits(credits: number, paidUsd: number) {
     expiresInDays: 180,
     note: "Prepaid credits. Buy more anytime (re-buy tops up the same flow). Not refundable to chain.",
   };
+}
+
+const ownerKey = (addr: string) => `credit:owner:${addr.toLowerCase()}`;
+
+/**
+ * Remember which wallet paid for a token, so the balance can be recovered if the
+ * one-time token is lost.
+ *
+ * Only the token's HASH is indexed — the plaintext is still never stored. That
+ * means recovery cannot return the original token; it re-issues a new one and
+ * moves the balance, which is the same thing a customer wants and is strictly
+ * safer (a lost-but-leaked token stops working the moment the owner recovers).
+ */
+export async function linkCreditOwner(owner: string, token: string): Promise<void> {
+  if (!kvConfigured() || !/^0x[0-9a-fA-F]{40}$/.test(owner)) return;
+  await kvSAdd(ownerKey(owner), keyFor(token));
+  // Match the balance TTL so the index can't outlive what it points at.
+  await kvExpire(ownerKey(owner), BALANCE_TTL);
+}
+
+export interface RecoverResult {
+  recoveredCents: number;
+  tokensMerged: number;
+  minted?: Awaited<ReturnType<typeof mintCredits>>;
+}
+
+/**
+ * Re-issue a single fresh token carrying every remaining cent this wallet has
+ * bought, and invalidate the old ones.
+ *
+ * Callers MUST have verified that the requester controls `owner` (a signature)
+ * before calling — this function does not authenticate.
+ */
+export async function recoverCredits(owner: string): Promise<RecoverResult> {
+  if (!kvConfigured()) throw new Error("Credits unavailable: durable storage not configured");
+  const keys = await kvSMembers(ownerKey(owner));
+  let total = 0;
+  let merged = 0;
+
+  for (const key of keys) {
+    const balance = await kvGetNumber(key);
+    if (balance <= 0) {
+      await kvSRem(ownerKey(owner), key); // spent or expired — stop tracking it
+      continue;
+    }
+    // Drain the old key so the previous token can't keep spending what we're
+    // about to re-issue. A concurrent call may have taken some of it between the
+    // read and the decrement, which shows up as a negative remainder — put that
+    // part back and only move what was actually ours to move.
+    const after = await kvDecrBy(key, balance);
+    if (after === null) throw new Error("Credits unavailable: ledger read failed — nothing was changed");
+    let moved = balance;
+    if (after < 0) {
+      await kvIncrBy(key, -after);
+      moved = balance + after;
+    }
+    if (moved <= 0) continue;
+    total += moved;
+    merged++;
+    if ((await kvGetNumber(key)) <= 0) await kvDel(key);
+    await kvSRem(ownerKey(owner), key);
+  }
+
+  if (total <= 0) return { recoveredCents: 0, tokensMerged: 0 };
+
+  const minted = await mintCredits(total, total / 100);
+  await linkCreditOwner(owner, minted.creditToken);
+  return { recoveredCents: total, tokensMerged: merged, minted };
 }
 
 export interface DebitResult {
