@@ -1205,7 +1205,6 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "selector", label: "Function selector", placeholder: "0x70a08231", required: true }],
     handler: decodeSelector,
-    hidden: true,
   },
   {
     id: "basename",
@@ -1242,7 +1241,6 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "query", label: "ENS name or address", placeholder: "vitalik.eth or 0x…", required: true }],
     handler: ensResolve,
-    hidden: true,
   },
   {
     id: "encode-selector",
@@ -1255,7 +1253,6 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "signature", label: "Function signature", placeholder: "transfer(address,uint256)", required: true }],
     handler: encodeSelector,
-    hidden: true,
   },
   {
     id: "sanctions",
@@ -1538,7 +1535,6 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: aiWalletReport,
-    hidden: true,
   },
   {
     id: "ai-token-report",
@@ -1678,7 +1674,6 @@ export const SERVICES: ServiceDef[] = [
       });
       return { count, tokens, generatedAt: new Date().toISOString() };
     },
-    hidden: true,
   },
   {
     id: "buy-credits",
