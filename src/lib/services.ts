@@ -286,11 +286,6 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: paymasterAudit,
     noFreeTier: true,
-    // The last of the five that could never be paid. Its four siblings started
-    // settling the moment their descriptions came under the limit; this one has
-    // not been proven yet only because the test wallet ran dry mid-run, so it
-    // stays out of the storefront until one real payment goes through.
-    hidden: true,
   },
   {
     id: "safe-check",
