@@ -33,3 +33,7 @@ _*.mts
 _*.mjs
 _*.json
 _*.txt
+
+.vercel
+.env*
+!.env.example
