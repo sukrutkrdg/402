@@ -46,7 +46,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.0",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.10"
   },
   "overridesNote": "axios: @coinbase/x402 → @coinbase/cdp-sdk still pins axios 1.16, which carries 10 open advisories (DoS via formDataToJSON recursion, prototype-pollution gadgets, maxBodyLength/NO_PROXY bypasses). 1.18 is a semver-compatible minor. Drop the override once Coinbase ships it upstream."
 }

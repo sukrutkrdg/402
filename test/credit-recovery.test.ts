@@ -144,9 +144,14 @@ describe("linkCreditOwner", () => {
  * a signature over a mismatched string verifies as "not yours". That failure is
  * silent and only shows up when a real customer tries to recover, so pin the
  * exact bytes here and round-trip a real signature through viem.
+ *
+ * These two import the route module and viem at call time, which the runner has
+ * to transform first — seconds, not milliseconds, when the whole suite is warming
+ * up at once. The default 5s timeout fails them for that alone, so it is raised
+ * here: what is being asserted is string equality, not speed.
  */
 describe("recovery message + signature round-trip", () => {
-  it("produces the exact string both sides must agree on", async () => {
+  it("produces the exact string both sides must agree on", { timeout: 30_000 }, async () => {
     const { recoveryMessage } = await import("@/app/api/credits/recover/route");
     expect(recoveryMessage("0xABCdef0000000000000000000000000000000001", "2026-07-29T00:00:00.000Z")).toBe(
       [
@@ -161,7 +166,7 @@ describe("recovery message + signature round-trip", () => {
     );
   });
 
-  it("verifies a signature produced by the paying wallet, and rejects another wallet's", async () => {
+  it("verifies a signature produced by the paying wallet, and rejects another wallet's", { timeout: 30_000 }, async () => {
     const { recoveryMessage } = await import("@/app/api/credits/recover/route");
     const { privateKeyToAccount } = await import("viem/accounts");
     const { verifyMessage } = await import("viem");
