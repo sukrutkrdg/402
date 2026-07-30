@@ -238,7 +238,6 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "vault", label: "MetaMorpho vault address", placeholder: "0x… vault", required: true }],
     handler: metamorphoVault,
     noFreeTier: true,
-    hidden: true,
   },
   {
     id: "morpho-liquidatable",
@@ -255,12 +254,6 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: morphoLiquidations,
     noFreeTier: true,
-    // Hidden from the storefront: the handler is correct and settles via the
-    // credit path, but the CDP facilitator rejects this resource's x402
-    // pay-per-call at verify (no charge, handler never runs) despite payment
-    // requirements byte-identical to services that pay. Unhide once the x402
-    // direct-pay path works so agents don't hit a dead payment loop.
-    hidden: true,
   },
   {
     id: "gas-payer",
@@ -277,13 +270,6 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: gasSponsor,
     noFreeTier: true,
-    // Hidden pending the x402 first-settlement issue (same as morpho-liquidations):
-    // handler is correct and settles via the credit path, but the CDP facilitator
-    // rejects this new resource's x402 pay-per-call at verify despite payment
-    // requirements byte-identical to services that pay (morpho-health, an equally
-    // new resource, settles fine). Matches the CDP discovery/settlement pipeline
-    // issue tracked in cdp-sdk#759. Unhide once new resources settle on x402.
-    hidden: true,
   },
   {
     id: "paymaster-check",
@@ -300,6 +286,10 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: paymasterAudit,
     noFreeTier: true,
+    // The last of the five that could never be paid. Its four siblings started
+    // settling the moment their descriptions came under the limit; this one has
+    // not been proven yet only because the test wallet ran dry mid-run, so it
+    // stays out of the storefront until one real payment goes through.
     hidden: true,
   },
   {
@@ -317,7 +307,6 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Address to check", placeholder: "0x… Safe / treasury / counterparty", required: true }],
     handler: safeCheck,
     noFreeTier: true,
-    hidden: true,
   },
   {
     id: "first-funder",
