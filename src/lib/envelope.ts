@@ -43,6 +43,7 @@ export const POLICY_VERSION: Record<string, string> = {
   "b20-safety": "1.0.0",
   "deep-dd": "1.0.0",
   "sanctions": "1.0.0",
+  "sanctions-name": "1.0.0",
   "address-trust": "1.0.0",
 };
 

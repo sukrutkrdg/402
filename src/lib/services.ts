@@ -62,6 +62,7 @@ import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
+import { sanctionsName } from "./sanctions-name";
 
 export interface ServiceParam {
   name: string;
@@ -1656,6 +1657,21 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: urlToJson,
     noFreeTier: true, // one LLM call per request — a free tier would be a real cost
+  },
+  {
+    id: "sanctions-name",
+    name: "OFAC Name Screening",
+    tagline: "Screen a person or company against the OFAC SDN list",
+    description:
+      "Sanctions screening for NAMES, not wallets: pass a person or company and get a GO / HOLD / STOP verdict against the official U.S. Treasury OFAC SDN export — primary names AND a.k.a. aliases, which is where listed parties actually appear. Returns every match with its SDN entity number, sanctions programme and whether it hit a primary name or an alias, plus a decision receipt (input hash, policy version, confidence band). Conservative by design: only a full-name match counts as a hit, partial overlap is surfaced as 'needs review', and single-word queries are labelled unreliable rather than scored. A screening aid for onboarding, vendor and payment checks — not a compliance determination.",
+    price: "$0.05",
+    icon: "⚖️",
+    category: "Compliance",
+    params: [
+      { name: "name", label: "Person or company name", placeholder: "Acme Trading LLC", required: true },
+    ],
+    handler: sanctionsName,
+    noFreeTier: true, // the OFAC export is a multi-megabyte fetch; free calls would carry real cost
   },
   {
     id: "ai-extract-batch",
