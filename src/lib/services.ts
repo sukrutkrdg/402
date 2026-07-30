@@ -231,7 +231,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Morpho Vault Risk",
     tagline: "Should you deposit into this MetaMorpho vault?",
     description:
-      "🆕 The depositor-side complement to Morpho Position Health. A MetaMorpho vault spreads your deposit across Morpho Blue markets — your real risk is WHERE the curator put it and WHO can move it. Reads the vault's live allocation across markets (concentration, per-market collateral + liquidation LTV), idle share, performance fee, timelock, and control (curator/owner/guardian, and whether one address holds both). Returns a diversified / concentrated / control_risk verdict. The read an agent pulls before parking funds in a yield vault — no other Base tool surfaces it. vault= required. Not financial advice.",
+      "🆕 A MetaMorpho vault spreads your deposit across Morpho Blue markets — your real risk is WHERE the curator put it and WHO can move it. Reads the vault's live allocation (concentration, per-market collateral + liquidation LTV), idle share, performance fee, timelock, and control (curator/owner/guardian, and whether one address holds both). Returns a diversified / concentrated / control_risk verdict: the read before parking funds in a yield vault. vault= required. Not financial advice.",
     price: "$0.05",
     icon: "🗄️",
     category: "Lending",
@@ -245,7 +245,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Morpho Liquidation Feed",
     tagline: "Which Base Morpho positions are liquidatable right now?",
     description:
-      "🆕 Built for liquidator / MEV searchers. Reconstructs the active borrower set on a Morpho Blue market from Borrow events, prices every position onchain in one multicall, and ranks them by liquidation health — flagging positions liquidatable NOW (health <= 1.0) and those one small move away, with the collateral price drop that tips each over. The data directly makes searchers money; nobody else in the catalog serves it. market= optional (defaults cbBTC/USDC), maxHealth= cutoff (default 1.1). Not financial advice.",
+      "🆕 Built for liquidator / MEV searchers. Reconstructs the active borrower set on a Morpho Blue market from Borrow events, prices every position onchain in one multicall, and ranks them by liquidation health — flagging positions liquidatable NOW (health <= 1.0) and those one small move away, with the collateral price drop that tips each over. market= optional (defaults cbBTC/USDC), maxHealth= cutoff (default 1.1). Not financial advice.",
     price: "$0.06",
     icon: "⚔️",
     category: "Lending",
@@ -267,7 +267,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Gas Sponsor Check",
     tagline: "Who pays this wallet's gas? Is it a sponsored smart account?",
     description:
-      "🆕 The first onchain gas-sponsorship read on Base. Base pushes ERC-4337 smart accounts, and a smart account's gas can be paid by a PAYMASTER instead of the account itself — invisible to every 'does this wallet spend ETH' heuristic and to approval/delegation tools. Reads a wallet's UserOperationEvents across BOTH EntryPoints (v0.6 + v0.7) and returns: is it a smart account, its op count and success rate, and WHO sponsors its gas (self vs which paymaster, with per-sponsor share). A fully-sponsored account is typically app- or agent-operated — a real counterparty signal no other tool serves. wallet= required, days= optional (default 30, max 90). Not financial advice.",
+      "🆕 A smart account's gas can be paid by a PAYMASTER instead of the account itself — invisible to every 'does this wallet spend ETH' heuristic. Reads a wallet's UserOperationEvents across BOTH EntryPoints (v0.6 + v0.7): is it a smart account, its op count and success rate, and WHO sponsors its gas (self vs which paymaster, per-sponsor share). A fully-sponsored account is typically app- or agent-operated. wallet= required, days= optional (default 30, max 90). Not financial advice.",
     price: "$0.05",
     icon: "⛽",
     category: "Accounts",
@@ -290,7 +290,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
-      "🆕 The gas-sponsor sibling, for the OTHER side: given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints and returns sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (share from its busiest app). The read a builder pulls before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or an agent pulls to judge who funds a counterparty's gas. No other tool serves it. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
+      "🆕 Given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints: sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (share from its busiest app). The read before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or judging who funds a counterparty's gas. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
     price: "$0.05",
     icon: "🛢️",
     category: "Accounts",
