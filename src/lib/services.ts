@@ -492,7 +492,7 @@ export const SERVICES: ServiceDef[] = [
     name: "B20 Seizure History",
     tagline: "Has this issuer ever actually SEIZED holders?",
     description:
-      "🆕 Every other B20 check reads what the issuer CAN do; this reads what they HAVE done. Scans the token's actual burnBlocked seizures (the distinct BurnedBlocked event) — whether the issuer has ever burned a blocked holder's balance, who was seized, and how much. verdict: enforced (has seized) / armed (can, hasn't) / no_seize_power. Pass wallet= to check a specific address, or omit address= for the network-wide seizure feed. The enforcement-history signal no ERC-20 or other B20 tool can show.",
+      "🆕 Every other B20 check reads what the issuer CAN do; this reads what they HAVE done. Scans the token's actual burnBlocked seizures (the BurnedBlocked event) — whether the issuer has ever burned a blocked holder's balance, who was seized, and how much. verdict: enforced (has seized) / armed (can, hasn't) / no_seize_power. Pass wallet= for one address, or omit address= for the network-wide feed.",
     price: "$0.05",
     icon: "🔫",
     category: "B20",

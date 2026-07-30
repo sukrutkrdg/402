@@ -26,6 +26,8 @@ const BOOTSTRAP_TTL_MS = 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 8000;
 const MAX_BYTES = 1_000_000;
 const MAX_REDIRECTS = 3;
+/** Stop walking up the name chain once this much of the request budget is gone. */
+const WALK_BUDGET_MS = 25_000;
 const UA = "x402-bazaar/1.0 (+https://402.com.tr; paid API on behalf of a caller)";
 
 /** Fresh enough to be the fraud signal callers actually screen for. */
@@ -40,6 +42,18 @@ const DEAD_STATUS = new Set([
 /** EPP statuses worth a human look before trusting the domain. */
 const WATCH_STATUS = new Set([
   "pending transfer", "pending update", "pending renew", "pending create", "inactive",
+]);
+/**
+ * Statuses we recognise as benign. Anything outside these three sets is a code
+ * we do not understand, and the honest response to that is reduced confidence —
+ * not a clean GO, which is what an unmatched hold code used to produce.
+ */
+const BENIGN_STATUS = new Set([
+  "active", "ok", "locked", "client delete prohibited", "client transfer prohibited",
+  "client update prohibited", "client renew prohibited", "server delete prohibited",
+  "server transfer prohibited", "server update prohibited", "server renew prohibited",
+  "add period", "auto renew period", "renew period", "transfer period", "associated",
+  "validated", "registrar lock", "registry lock",
 ]);
 
 interface Bootstrap {
@@ -57,19 +71,38 @@ let bootstrapCache: Bootstrap | null = null;
  * the first is a permanent property of the TLD and belongs in the answer, the
  * second is a retry. Cached for a day; the file changes rarely and is ~300 KB.
  */
+let bootstrapInFlight: Promise<Map<string, string[]>> | null = null;
+
 async function loadBootstrap(): Promise<Map<string, string[]>> {
   if (bootstrapCache && Date.now() - bootstrapCache.at < BOOTSTRAP_TTL_MS) return bootstrapCache.map;
-  const res = await timedFetch(BOOTSTRAP_URL, "application/json");
-  const json = (await res.json()) as { services?: Array<[string[], string[]]> };
-  const map = new Map<string, string[]>();
-  for (const [tlds, urls] of json.services ?? []) {
-    const bases = urls.filter((u) => u.startsWith("https://"));
-    if (!bases.length) continue;
-    for (const t of tlds) map.set(t.toLowerCase(), bases);
+  // One fetch at a time: a cold burst would otherwise pull the ~300 KB file once
+  // per concurrent request.
+  if (bootstrapInFlight) return bootstrapInFlight;
+  bootstrapInFlight = (async () => {
+    const res = await timedFetch(BOOTSTRAP_URL, "application/json");
+    if (!res.ok) throw new Error(`RDAP bootstrap returned ${res.status}`);
+    const json = JSON.parse(await readCapped(res)) as { services?: Array<[string[], string[]]> };
+    const map = new Map<string, string[]>();
+    for (const [tlds, urls] of json.services ?? []) {
+      const bases = urls.filter((u) => u.startsWith("https://"));
+      if (!bases.length) continue;
+      for (const t of tlds) map.set(t.toLowerCase(), bases);
+    }
+    if (map.size === 0) throw new Error("RDAP bootstrap returned no services");
+    bootstrapCache = { at: Date.now(), map };
+    return map;
+  })();
+  try {
+    return await bootstrapInFlight;
+  } catch (err) {
+    // A day-old directory of which registry serves which TLD is still true —
+    // IANA changes it rarely. Refusing every lookup because one refresh failed
+    // would turn a blip into a total outage of a paid endpoint.
+    if (bootstrapCache) return bootstrapCache.map;
+    throw err;
+  } finally {
+    bootstrapInFlight = null;
   }
-  if (map.size === 0) throw new Error("RDAP bootstrap returned no services");
-  bootstrapCache = { at: Date.now(), map };
-  return map;
 }
 
 /**
@@ -84,6 +117,9 @@ async function timedFetch(url: string, accept: string): Promise<Response> {
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const safe = await assertSafeUrl(current, "RDAP endpoint");
     const ctrl = new AbortController();
+    // NOT cleared when the headers land: the body has to be read inside the same
+    // deadline, or a server that answers instantly and then dribbles bytes holds
+    // the function open until the platform kills it.
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     let res: Response;
     try {
@@ -92,20 +128,75 @@ async function timedFetch(url: string, accept: string): Promise<Response> {
         signal: ctrl.signal,
         headers: { accept, "user-agent": UA },
       });
-    } finally {
+    } catch (e) {
       clearTimeout(timer);
+      throw e;
     }
     if (res.status >= 300 && res.status < 400) {
+      clearTimeout(timer);
       const loc = res.headers.get("location");
       if (!loc) throw new Error("RDAP redirect without a location");
       current = new URL(loc, safe).toString();
       continue;
     }
     const len = Number(res.headers.get("content-length") || 0);
-    if (len > MAX_BYTES) throw new Error("RDAP response too large");
+    if (len > MAX_BYTES) {
+      clearTimeout(timer);
+      throw new Error("RDAP response too large");
+    }
+    // The caller reads the body through readCapped, which clears this.
+    pendingTimers.set(res, timer);
     return res;
   }
   throw new Error("Too many RDAP redirects");
+}
+
+/** Timers still covering a response whose body has not been read yet. */
+const pendingTimers = new WeakMap<Response, ReturnType<typeof setTimeout>>();
+
+/** Release a response we are not going to read (a 404 on the way up the chain). */
+async function discard(res: Response): Promise<void> {
+  const timer = pendingTimers.get(res);
+  if (timer) clearTimeout(timer);
+  pendingTimers.delete(res);
+  try {
+    await res.body?.cancel();
+  } catch {
+    /* nothing to release */
+  }
+}
+
+/**
+ * Read a response body under a hard byte cap.
+ *
+ * `content-length` alone was not a cap: IANA's own bootstrap file answers
+ * chunked with no such header, so the check it was written for never fired and
+ * the parse was unbounded.
+ */
+async function readCapped(res: Response): Promise<string> {
+  const timer = pendingTimers.get(res);
+  try {
+    const reader = res.body?.getReader();
+    if (!reader) return await res.text();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.byteLength;
+        if (total > MAX_BYTES) {
+          await reader.cancel();
+          throw new Error("RDAP response too large");
+        }
+        chunks.push(value);
+      }
+    }
+    return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8");
+  } finally {
+    if (timer) clearTimeout(timer);
+    pendingTimers.delete(res);
+  }
 }
 
 /** Normalise what a caller typed into a bare, punycoded domain name. */
@@ -252,6 +343,9 @@ export async function domainCheck(params: Record<string, string>) {
         params: { domain },
         degraded: true,
         missing,
+        // A TLD with no RDAP service will never have one on retry; saying
+        // "upstream unavailable" would send an agent into a permanent loop.
+        refusalReason: reason === "registry_publishes_no_rdap" ? "not_supported_for_this_tld" : "upstream_data_unavailable",
         confidenceBasis: "the registry did not provide the registration record",
       }),
     },
@@ -303,10 +397,16 @@ export async function domainCheck(params: Record<string, string>) {
   let resolvedName = domain;
   let anyRegistryAnswered = false;
   for (const candidate of candidates) {
+    // The walk multiplies the worst case by the number of labels, and the
+    // gateway kills the request at 60s. Stop asking rather than time out.
+    if (Date.now() - now > WALK_BUDGET_MS) break;
     const r = await query(candidate);
     if (!r) continue;
     anyRegistryAnswered = true;
-    if (r.status === 404) continue; // not this level — try the parent
+    if (r.status === 404) {
+      await discard(r); // not this level — release the body and its timer
+      continue;
+    }
     res = r;
     resolvedName = candidate;
     break;
@@ -360,7 +460,7 @@ export async function domainCheck(params: Record<string, string>) {
 
   let doc: RdapDomain;
   try {
-    doc = (await res.json()) as RdapDomain;
+    doc = JSON.parse(await readCapped(res)) as RdapDomain;
   } catch {
     return refuse("registry_response_unreadable", [`rdap-query-.${tld}`], "The registry returned a response we could not parse.", { tld });
   }
@@ -402,7 +502,17 @@ export async function domainCheck(params: Record<string, string>) {
   const isNew = ageDays < NEW_DOMAIN_DAYS;
   const expiringSoon = daysToExpiry !== null && daysToExpiry >= 0 && daysToExpiry <= EXPIRING_SOON_DAYS;
 
+  // What the registry did NOT give us. A .nl/.be/.ch record with no expiry, or a
+  // status code none of our sets spell, used to fall through to a confident
+  // "nothing unusual in its registry record" — a clean bill of health issued on
+  // fields we never read.
+  const unknownStatuses = statuses.filter((s) => !BENIGN_STATUS.has(s) && !DEAD_STATUS.has(s) && !WATCH_STATUS.has(s));
+  const gaps: string[] = [];
+  if (!expiresAt) gaps.push("expiration-event (registry does not publish it)");
+  if (unknownStatuses.length) gaps.push(`unrecognised-status: ${unknownStatuses.join(", ")}`);
+
   const reasons: string[] = [];
+  if (unknownStatuses.length) reasons.push("unrecognised_registry_status");
   if (dead.length) reasons.push("registry_hold_or_deletion");
   if (expired) reasons.push("registration_expired");
   if (isNew) reasons.push("recently_registered");
@@ -454,9 +564,12 @@ export async function domainCheck(params: Record<string, string>) {
         endpoint: "domain-check",
         params: { domain },
         degraded: false,
-        confidenceBasis: isSubdomain
-          ? `registry RDAP record for ${resolvedName}, the registrable domain under which ${domain} sits`
-          : "registry RDAP record consulted: registration and expiry events, status codes and delegation",
+        missing: gaps,
+        confidenceBasis: gaps.length
+          ? `registration date and delegation read; ${gaps.join("; ")}`
+          : isSubdomain
+            ? `registry RDAP record for ${resolvedName}, the registrable domain under which ${domain} sits`
+            : "registry RDAP record consulted: registration and expiry events, status codes and delegation",
       }),
     },
     guidance: isSubdomain ? `${domain} is a subdomain of ${resolvedName}; registries only record registrable domains, so this is ${resolvedName}'s record. ${guidance}` : guidance,

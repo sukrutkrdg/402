@@ -27,7 +27,7 @@ const ORIGIN = process.env.X402_BAZAAR_ORIGIN || "https://402.com.tr";
 export const x402BazaarAction = customActionProvider({
   name: "x402_bazaar",
   description:
-    "Fetch onchain data or AI reports on Base from x402 Bazaar (43+ services). " +
+    "Fetch onchain data, web, business or AI reports on Base from x402 Bazaar (118 services). " +
     "Examples: service='ai-token-report' query='address=0x..' for a buy/avoid verdict; " +
     "service='wallet-networth' query='address=0x..'; service='sanctions' query='address=0x..'; " +
     "service='token-momentum' query='address=0x..'. Discover all services at /.well-known/x402. " +

@@ -12,31 +12,70 @@ import { readFileSync } from "node:fs";
  *
  * Read from source rather than importing SERVICES: the module pulls in
  * server-only handlers, and this check only needs the declared text.
+ *
+ * The parsing is deliberately paranoid. A first version paired each `id:` with
+ * the NEXT `description:` it could find, which silently mismeasured whenever a
+ * description was a template literal, a concatenation, a constant, or written
+ * above its id — a 600-char description could pass while wearing a neighbour's
+ * label. A guard that reports the wrong endpoint, or quietly skips one, is worse
+ * than no guard, so this splits into entries first and then refuses to run at
+ * all if anything about an entry is not a plain single-line string literal.
  */
 const LIMIT = 500;
 
-function declaredDescriptions(): Array<{ id: string; description: string }> {
+interface Declared {
+  id: string;
+  description: string;
+  /** Bytes on the wire — the declaration is serialised as UTF-8, and these
+   *  descriptions are full of emoji and em-dashes that cost 3-4 bytes each. */
+  bytes: number;
+}
+
+function parseServices(): { declared: Declared[]; unparsable: string[] } {
   const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
-  const out: Array<{ id: string; description: string }> = [];
-  // Entries are written as `id: "x",` … `description:\n  "…",` in that order.
-  const re = /\bid:\s*"([\w-]+)"[\s\S]*?\bdescription:\s*(?:\/\/[^\n]*\n\s*)*"((?:[^"\\]|\\.)*)"/g;
-  for (const m of src.matchAll(re)) {
-    out.push({ id: m[1], description: JSON.parse(`"${m[2]}"`) });
+  // Entry boundaries: each service is an object literal opening at this indent.
+  const chunks = src.split(/\n {2}\{\n/).slice(1);
+  const declared: Declared[] = [];
+  const unparsable: string[] = [];
+  for (const chunk of chunks) {
+    const body = chunk.split(/\n {2}\},?\n/)[0];
+    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+    if (!id) continue; // not a service entry (nested object, params list, …)
+    // Skip commented-out entries: they declare nothing at runtime.
+    if (/^\s*\/\//.test(body)) continue;
+    const desc = body.match(/^\s*description:\s*(?:\/\/[^\n]*\n\s*)*"((?:[^"\\]|\\.)*)",?\s*$/m);
+    if (!desc) {
+      // A description this parser cannot read is exactly the case that used to
+      // slip through. Name it and fail rather than measure the wrong string.
+      if (/^\s*description:/m.test(body)) unparsable.push(id);
+      continue;
+    }
+    const description = JSON.parse(`"${desc[1]}"`) as string;
+    declared.push({ id, description, bytes: Buffer.byteLength(description, "utf8") });
   }
-  return out;
+  return { declared, unparsable };
 }
 
 describe("service declarations stay payable", () => {
-  it("finds the declarations it is supposed to police", () => {
-    const found = declaredDescriptions();
-    expect(found.length).toBeGreaterThan(100);
-    expect(found.map((f) => f.id)).toContain("safe-check");
+  it("parses every declaration, or says which one it could not read", () => {
+    const { declared, unparsable } = parseServices();
+    expect(unparsable, `description not a plain string literal: ${unparsable.join(", ")}`).toEqual([]);
+    expect(declared.length).toBeGreaterThan(100);
+    // No id may be measured twice, and none of the well-known ones may be missing.
+    const ids = declared.map((d) => d.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const known of ["safe-check", "domain-check", "email-verify", "token-risk", "url-extract"]) {
+      expect(ids, `${known} was not measured`).toContain(known);
+    }
   });
 
   it("keeps every description under the size the facilitator will verify", () => {
-    const tooLong = declaredDescriptions()
-      .filter((s) => s.description.length >= LIMIT)
-      .map((s) => `${s.id} (${s.description.length} chars)`);
+    const { declared } = parseServices();
+    // Measured both ways: characters are what we type, bytes are what is sent,
+    // and emoji make those differ by dozens. Fail on whichever is larger.
+    const tooLong = declared
+      .filter((s) => Math.max(s.description.length, s.bytes) >= LIMIT)
+      .map((s) => `${s.id} (${s.description.length} chars / ${s.bytes} bytes)`);
     expect(tooLong, `these will silently stop settling on x402: ${tooLong.join(", ")}`).toEqual([]);
   });
 });

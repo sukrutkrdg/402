@@ -1,6 +1,6 @@
 # x402 Bazaar — onchain data & intelligence skill for Base agents
 
-Give your assistant **48 pay-per-call APIs on Base** for token safety, wallet
+Give your assistant **118 pay-per-call APIs on Base** for token safety, wallet
 intelligence, compliance, prices, NFTs, and AI-written reports. Every call is a
 tiny **USDC micro-payment over x402** — no API keys, no subscriptions. Works
 alongside **Base MCP / Base Account** (x402 is a first-class Base agent payment

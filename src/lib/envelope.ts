@@ -117,6 +117,10 @@ export function decisionReceipt(opts: {
   missing?: string[];
   /** Optional human-readable confidence rationale override. */
   confidenceBasis?: string;
+  /** Why the check refused, when "the upstream is down, retry" is not the truth.
+   *  A registry that publishes no RDAP at all is permanent: an agent branching on
+   *  `refusal.reason` would otherwise retry forever against a wall. */
+  refusalReason?: string;
 }): DecisionReceiptMeta {
   const missing = opts.missing ?? [];
   const band: ConfidenceBand = opts.degraded ? "low" : missing.length ? "medium" : "high";
@@ -131,7 +135,7 @@ export function decisionReceipt(opts: {
     inputHash: inputHash(opts.endpoint, opts.params),
     policyVersion: `${opts.endpoint}@${POLICY_VERSION[opts.endpoint] ?? "1.0.0"}`,
     confidence: { band, basis },
-    refusal: opts.degraded ? { reason: "upstream_data_unavailable", missing } : null,
+    refusal: opts.degraded ? { reason: opts.refusalReason ?? "upstream_data_unavailable", missing } : null,
     refundable: opts.degraded,
     refundRule:
       "A refusal (confidence=low: our core data feed was unavailable) is not billed on the credit path — the debit is auto-refunded and x-refunded:true is returned. Full-confidence verdicts are final.",

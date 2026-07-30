@@ -207,7 +207,7 @@ Two ways in:
 
 1. **As MCP tools** — load this server into your AgentKit agent's MCP config
    (`command: "npx"`, `args: ["-y", "x402-bazaar-mcp"]`, and `X402_CREDIT_TOKEN`
-   or `AGENT_PRIVATE_KEY` in `env`). The agent gains all 80+ Bazaar tools —
+   or `AGENT_PRIVATE_KEY` in `env`). The agent gains all 118 Bazaar tools —
    B20 freeze/seize checks, pre-trade gates, honeypot/sellability, deployer
    reputation, exit liquidity, live DEX prices, gas, tx decode, Claude reports —
    as pay-per-call actions, no action provider to write.

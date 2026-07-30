@@ -26,7 +26,9 @@ call). Free-tier preview responses omit it.
 
 - **Verdict / risk checks** carry the full receipt (all fields above): `token-risk`,
   `rug-score`, `sellability`, `pre-trade-gate`, `b20-safety`, `sanctions`,
-  `address-trust`.
+  `sanctions-name`, `email-verify`, `domain-check`, `address-trust`.
+  The live list is published in the catalog at `/.well-known/x402` under
+  `decisionReceipt.tiers.full` — trust that over this page if they ever disagree.
 - **Every other paid service** carries a **baseline** receipt — `endpoint`,
   `inputHash`, `policyVersion` — so any call is verifiable and dedupable even when
   a confidence/decision would not be meaningful (e.g. data lookups, AI reports).
@@ -34,7 +36,10 @@ call). Free-tier preview responses omit it.
 ## Refund rule
 
 A **refusal** — a `confidence: low` non-decision because our core data feed was
-unavailable this call — is **delivered but not billed on the credit path**. The
+unavailable this call — is **delivered but not billed on the credit path**. Some
+refusals are permanent rather than transient: `refusal.reason` distinguishes them
+(`not_supported_for_this_tld` will never succeed on retry; `upstream_data_unavailable`
+will). The
 gateway auto-refunds the debit and returns `x-refunded: true`, with
 `paidVia: "credits-refunded"` and `refunded: true` in the body. Full-confidence
 verdicts are final.
@@ -53,6 +58,9 @@ verdicts are final.
 | pre-trade-gate | `pre-trade-gate@1.0.0` |
 | b20-safety | `b20-safety@1.0.0` |
 | sanctions | `sanctions@1.0.0` |
+| sanctions-name | `sanctions-name@1.0.0` |
+| email-verify | `email-verify@1.0.0` |
+| domain-check | `domain-check@1.0.0` |
 | address-trust | `address-trust@1.0.0` |
 | deep-dd | `deep-dd@1.0.0` |
 | *(all other paid services)* | `<endpoint>@1.0.0` |

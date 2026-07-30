@@ -6,7 +6,7 @@ import CreditsClient from "./CreditsClient";
 export const metadata = {
   title: "Prepaid API credits — x402 Bazaar",
   description:
-    "Buy a prepaid balance once and your agent calls 100+ APIs with no wallet, no signature per call and no API key. Fund with a card through Coinbase if you hold no USDC.",
+    "Buy a prepaid balance once and your agent calls every API in the catalog with no wallet, no signature per call and no API key. Fund with a card through Coinbase if you hold no USDC.",
 };
 
 export const dynamic = "force-dynamic";
