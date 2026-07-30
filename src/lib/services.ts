@@ -63,6 +63,7 @@ import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
 import { sanctionsName } from "./sanctions-name";
+import { emailVerify } from "./email-verify";
 
 export interface ServiceParam {
   name: string;
@@ -1672,6 +1673,18 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: sanctionsName,
     noFreeTier: true, // the OFAC export is a multi-megabyte fetch; free calls would carry real cost
+  },
+  {
+    id: "email-verify",
+    name: "Email Verify",
+    tagline: "Is this address worth sending to?",
+    description:
+      "Syntax + live DNS (MX/A) + disposable, role and consumer-mailbox detection, as one GO / HOLD / STOP verdict with the reasons listed. Catches throwaway inboxes, support@-style shared mailboxes and one-character domain typos (gmial.com). No SMTP probe, so mailbox existence is not claimed.",
+    price: "$0.02",
+    icon: "✉️",
+    category: "Business",
+    params: [{ name: "email", label: "Email address", placeholder: "someone@example.com", required: true }],
+    handler: emailVerify,
   },
   {
     id: "ai-extract-batch",

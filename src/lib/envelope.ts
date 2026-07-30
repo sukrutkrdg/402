@@ -44,6 +44,7 @@ export const POLICY_VERSION: Record<string, string> = {
   "deep-dd": "1.0.0",
   "sanctions": "1.0.0",
   "sanctions-name": "1.0.0",
+  "email-verify": "1.0.0",
   "address-trust": "1.0.0",
 };
 
