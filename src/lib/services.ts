@@ -1663,7 +1663,7 @@ export const SERVICES: ServiceDef[] = [
     name: "OFAC Name Screening",
     tagline: "Screen a person or company against the OFAC SDN list",
     description:
-      "Sanctions screening for NAMES, not wallets: pass a person or company and get a GO / HOLD / STOP verdict against the official U.S. Treasury OFAC SDN export — primary names AND a.k.a. aliases, which is where listed parties actually appear. Returns every match with its SDN entity number, sanctions programme and whether it hit a primary name or an alias, plus a decision receipt (input hash, policy version, confidence band). Conservative by design: only a full-name match counts as a hit, partial overlap is surfaced as 'needs review', and single-word queries are labelled unreliable rather than scored. A screening aid for onboarding, vendor and payment checks — not a compliance determination.",
+      "Sanctions screening for NAMES, not wallets. Pass a person or company; get GO / HOLD / STOP against the official U.S. Treasury OFAC SDN export, including a.k.a. aliases. Conservative by design: only a full-name match is a hit. Screening aid, not a compliance determination.",
     price: "$0.05",
     icon: "⚖️",
     category: "Compliance",

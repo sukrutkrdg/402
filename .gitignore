@@ -32,3 +32,4 @@ listing-doctor-probe.mjs
 _*.mts
 _*.mjs
 _*.json
+_*.txt
