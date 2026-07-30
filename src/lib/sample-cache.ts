@@ -22,6 +22,9 @@ import { toPreview } from "./preview";
 const NO_SAMPLE = new Set([
   "buy-credits", "secure-token", "rug-monitor", "price-alert", "watchlist-diff", "pre-sign",
   "revoke-builder", "b20-freeze-check",
+  // Its whole response is a signed upload URL — caching one caller's slot and
+  // serving it to everyone else would hand strangers write access to it.
+  "file-slot",
 ]);
 
 // A stale sample beats none, but two weeks past is no longer representative.

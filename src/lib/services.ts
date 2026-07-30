@@ -65,6 +65,7 @@ import { urlExtract, urlToJson } from "./web-services";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
+import { fileSlot } from "./file-store";
 
 export interface ServiceParam {
   name: string;
@@ -1685,6 +1686,26 @@ export const SERVICES: ServiceDef[] = [
     category: "Business",
     params: [{ name: "domain", label: "Domain name", placeholder: "example.com", required: true }],
     handler: domainCheck,
+  },
+  {
+    id: "file-slot",
+    name: "Agent File Slot",
+    tagline: "Somewhere to put the file your agent just made",
+    description:
+      "Get a signed upload URL and a retrieval URL for one file, in one call. Your agent PUTs the bytes straight to storage — they never pass through this API, so there is no size ceiling imposed by a serverless runtime and no proxy in the middle. Declare bytes= and the size is signed into the URL. Up to 25 MB, retention 1-30 days, unguessable key. The step every agent hits the moment it produces a report, chart, CSV or build and has nowhere to put it.",
+    price: "$0.005",
+    icon: "📦",
+    category: "Files",
+    params: [
+      { name: "bytes", label: "Exact file size in bytes", placeholder: "e.g. 20480", required: true },
+      { name: "name", label: "File name (optional hint)", placeholder: "report.csv" },
+      { name: "contentType", label: "Content type (optional)", placeholder: "text/csv" },
+      { name: "ttlDays", label: "Retention in days (optional)", placeholder: "7 (1-30)" },
+    ],
+    handler: fileSlot,
+    // No free tier: a free call here is free storage, and the response is a
+    // credential rather than a report — there is nothing to preview.
+    noFreeTier: true,
   },
   {
     id: "ai-extract-batch",
