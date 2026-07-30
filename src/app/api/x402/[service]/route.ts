@@ -27,9 +27,21 @@ import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
-/** Service price string ("$0.03") → integer cents (3). */
+/**
+ * Service price string ("$0.03") → integer cents (3), for the credit ledger.
+ *
+ * Rounds UP with a floor of one cent, because the ledger's unit is a whole cent
+ * and a sub-cent price would otherwise round to zero — making the service free
+ * for every credit holder, permanently and silently. Prices below $0.01 (set to
+ * compete on per-call rails where they're paid in USDC micro-units) therefore
+ * cost 1¢ on the credit path; the response reports what was actually charged so
+ * the difference is never hidden. Batch endpoints are the way to get true
+ * sub-cent economics on this rail.
+ */
 function priceCents(price: string): number {
-  return Math.round((parseFloat(price.replace(/[^0-9.]/g, "")) || 0) * 100);
+  const usd = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
+  if (usd <= 0) return 0;
+  return Math.max(1, Math.ceil(usd * 100));
 }
 
 /** Best-effort payer wallet from the x-payment header (base64 JSON) — used only
@@ -258,6 +270,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         builderCode: cfg.appBuilderCode,
         data,
         paidVia: refunded ? "credits-refunded" : "credits",
+        // What we actually took, not what the price string says. They differ for
+        // sub-cent services, and the buyer should see that rather than discover it.
+        chargedUsd: refunded ? 0 : +(cents / 100).toFixed(3),
         creditBalanceUsd: +(remaining / 100).toFixed(2),
         ...(refunded ? { refunded: true, refundReason: "Refusal (core data feed unavailable) — not billed per this check's refundRule." } : {}),
       },

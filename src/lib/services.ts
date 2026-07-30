@@ -1633,7 +1633,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Any web page → clean, agent-ready text",
     description:
       "Pass a URL and get the page as clean text — furniture (nav, scripts, ads, footers) stripped, paragraphs preserved — plus its title, description and site name. The step every agent needs before it can reason about a page, and the one most agents can't do themselves: serverless runtimes and MCP clients have no browser and no HTML parser. Follows redirects safely, refuses non-text content, caps at 2 MB. Nothing crypto about it.",
-    price: "$0.01",
+    price: "$0.002",
     icon: "🌐",
     category: "Web",
     params: [
