@@ -41,7 +41,9 @@ const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
 const CHECKER = "https://buildercode-checker.vercel.app/";
 
 // Category display order — earlier index = rendered first.
-const CATEGORY_ORDER = ["B20", "AI", "Onchain", "Accounts", "Lending", "Markets", "Data", "Utility", "Fun"];
+// "Web" sits high on purpose: it's the category that isn't crypto, and it's the
+// one a non-crypto agent operator can recognise on the first screen.
+const CATEGORY_ORDER = ["B20", "Web", "AI", "Onchain", "Accounts", "Lending", "Markets", "Data", "Utility", "Fun"];
 
 // The AI synthesis suite — the differentiated moat, featured up top.
 const AI_FLAGSHIP_IDS = [

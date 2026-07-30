@@ -61,6 +61,7 @@ import { watchlistDiff } from "./watchlist";
 import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin, b20SeizureHistory, b20Authenticity, b20ConfigAudit, b20PolicyMembers, b20GenesisAudit, b20MintWatch, b20RebaseHistory, b20Peg } from "./b20-safety";
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
+import { urlExtract, urlToJson } from "./web-services";
 
 export interface ServiceParam {
   name: string;
@@ -1623,6 +1624,38 @@ export const SERVICES: ServiceDef[] = [
       { name: "list", label: "Extract all records (true/false)", placeholder: "false" },
     ],
     handler: aiExtract,
+  },
+  {
+    id: "url-extract",
+    name: "URL to Text",
+    tagline: "Any web page → clean, agent-ready text",
+    description:
+      "Pass a URL and get the page as clean text — furniture (nav, scripts, ads, footers) stripped, paragraphs preserved — plus its title, description and site name. The step every agent needs before it can reason about a page, and the one most agents can't do themselves: serverless runtimes and MCP clients have no browser and no HTML parser. Follows redirects safely, refuses non-text content, caps at 2 MB. Nothing crypto about it.",
+    price: "$0.01",
+    icon: "🌐",
+    category: "Web",
+    params: [
+      { name: "url", label: "Page URL", placeholder: "https://example.com/article", required: true },
+      { name: "maxChars", label: "Max characters (optional)", placeholder: "40000" },
+    ],
+    handler: urlExtract,
+  },
+  {
+    id: "url-to-json",
+    name: "URL to JSON",
+    tagline: "Point at a page, name the fields, get JSON",
+    description:
+      "One call replaces two: fetches the page, strips it to readable text, then returns exactly the fields you asked for as schema-enforced JSON (fields=price,author,published — up to 10). Add list=true to pull EVERY repeated record on the page (listings, table rows, search results) as an array. Built for agents that need a fact off a page, not a pile of HTML — no browser, no parser, no scraping code.",
+    price: "$0.04",
+    icon: "🧩",
+    category: "Web",
+    params: [
+      { name: "url", label: "Page URL", placeholder: "https://example.com/product", required: true },
+      { name: "fields", label: "Fields (comma-separated)", placeholder: "title, price, author, published", required: true },
+      { name: "list", label: "Extract all records (true/false)", placeholder: "false" },
+    ],
+    handler: urlToJson,
+    noFreeTier: true, // one LLM call per request — a free tier would be a real cost
   },
   {
     id: "ai-extract-batch",
