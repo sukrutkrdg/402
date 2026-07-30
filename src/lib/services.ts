@@ -64,6 +64,7 @@ import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
+import { domainCheck } from "./domain-check";
 
 export interface ServiceParam {
   name: string;
@@ -1672,6 +1673,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Business",
     params: [{ name: "email", label: "Email address", placeholder: "someone@example.com", required: true }],
     handler: emailVerify,
+  },
+  {
+    id: "domain-check",
+    name: "Domain Check",
+    tagline: "How old is this domain, and is it still live?",
+    description:
+      "Registration age, expiry and registry status for any domain, from RDAP — the registries' own protocol. Returns days since registration, days to expiry, registrar, EPP status codes, nameservers and DNSSEC as one GO / HOLD / STOP verdict. Domain age is the strongest cheap signal in invoice and vendor-impersonation fraud: the payment details that change always arrive from a domain registered weeks ago. Refuses rather than guessing when a registry publishes no RDAP.",
+    price: "$0.02",
+    icon: "🌍",
+    category: "Business",
+    params: [{ name: "domain", label: "Domain name", placeholder: "example.com", required: true }],
+    handler: domainCheck,
   },
   {
     id: "ai-extract-batch",

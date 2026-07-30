@@ -268,9 +268,11 @@ writing it includes:
 | `buy_credits` | $0.25–$20 | Buy a prepaid credit pack (tier param) — unlocks walletless calls |
 
 Prices shown as of this release — the authoritative price is always in the live
-catalog and in each 402 challenge. …plus ~50 more tools loaded **live from the
-catalog** (66 total), including `whale_flow`, `watchlist_diff` and the 8-tool
-B20 safety suite.
+catalog and in each 402 challenge. The table above is a sample: the tool list is
+loaded **live from the catalog** at startup, so the server always exposes
+everything the marketplace currently sells (118 tools today) — including the
+B20 safety suite, the web and business checks (`url_extract`, `email_verify`,
+`domain_check`) and anything added since this README was written.
 
 ### Example
 

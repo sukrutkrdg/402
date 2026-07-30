@@ -28,7 +28,7 @@ import { z } from "zod";
 // — free-tier and prepaid-credit callers never load it, so the server boots and
 // serves those modes even without the crypto deps present, and startup is lighter.
 
-const VERSION = "0.2.1";
+const VERSION = "0.2.2";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
