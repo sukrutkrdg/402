@@ -398,6 +398,23 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // turns this index into a door that only that wallet can open.
       const minted = (data as { creditToken?: unknown })?.creditToken;
       if (payer && typeof minted === "string") await linkCreditOwner(payer, minted);
+      // Tell the buyer whether recovery is actually armed for them. Silence here
+      // is what made a broken index look like a working feature: the promise
+      // "you can recover this with your wallet" is only true if we managed to
+      // read the payer, and only the buyer can act on it being false.
+      if (data && typeof data === "object") {
+        (data as Record<string, unknown>).recovery = payer
+          ? {
+              armed: true,
+              wallet: payer,
+              how: "Lost the token? POST /api/credits/recover with a signature from this wallet, or use the form at /credits.",
+            }
+          : {
+              armed: false,
+              reason:
+                "The paying wallet could not be read from this request, so this balance is NOT recoverable. Save the token now — it cannot be reissued.",
+            };
+      }
     }
     await attachRetention(service.id, data, srcHash(clientIp(request)));
     return NextResponse.json({
