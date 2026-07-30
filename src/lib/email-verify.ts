@@ -143,10 +143,23 @@ export async function emailVerify(params: Record<string, string>) {
   if (raw.length > 254) throw new Error("Address too long (max 254 characters)");
 
   const email = raw.toLowerCase();
-  const syntaxValid = SYNTAX.test(email);
   const at = email.lastIndexOf("@");
   const local = at > 0 ? email.slice(0, at) : "";
-  const domain = at > 0 ? email.slice(at + 1) : "";
+  // Punycode the domain half before validating it. Without this, `münchen.de`
+  // and every internationalised TLD fail an ASCII-only syntax check and are told
+  // "not a valid address — do not send", which is simply wrong: DNS resolves
+  // them fine, and the sibling domain endpoint already handles them correctly.
+  const rawDomain = at > 0 ? email.slice(at + 1) : "";
+  let domain = rawDomain;
+  if (rawDomain) {
+    try {
+      const ascii = new URL(`https://${rawDomain}`).hostname;
+      if (ascii) domain = ascii;
+    } catch {
+      /* leave it as typed — the syntax check below will reject it */
+    }
+  }
+  const syntaxValid = Boolean(local) && SYNTAX.test(`${local}@${domain}`);
 
   // Nothing DNS can tell us about a string that isn't an address — answer from
   // syntax alone rather than burning a lookup on it.
@@ -165,7 +178,7 @@ export async function emailVerify(params: Record<string, string>) {
       syntaxValid: false,
       domain: domain || null,
       checkedAt: new Date().toISOString(),
-      ...receipt,
+      receipt: { checked: email, endpoint: "email-verify", decision: "STOP", ...receipt },
       guidance: "Not a valid address — do not attempt to send.",
       method: "syntax only",
     };
@@ -177,12 +190,22 @@ export async function emailVerify(params: Record<string, string>) {
     lookup(resolve6(domain), DNS_TIMEOUT_MS),
   ]);
 
-  // We only say "we don't know" when DNS genuinely failed to answer. If every
-  // lookup answered — even to say the domain doesn't exist — that's a result.
+  // "We don't know" has to survive a PARTIAL read, not just a total one. If the
+  // MX lookup timed out we cannot say the domain accepts no mail, however
+  // clearly the A lookup answered — an empty `records` from a failed lookup is
+  // absence of evidence, and reporting it as "nothing resolves" is how a working
+  // address gets told it will bounce. So the verdict needs every lookup it
+  // depends on to have actually answered.
   const dnsUnavailable = !mx.answered && !a4.answered && !a6.answered;
-  // Nothing resolves AND DNS answered → the domain isn't registered/served.
+  const partialDns = !dnsUnavailable && (!mx.answered || !a4.answered || !a6.answered);
+  const unanswered = [
+    ...(mx.answered ? [] : ["mx"]),
+    ...(a4.answered ? [] : ["a"]),
+    ...(a6.answered ? [] : ["aaaa"]),
+  ];
+  // Nothing resolves AND every lookup answered → the domain isn't registered/served.
   const domainMissing =
-    !dnsUnavailable && !(mx.records ?? []).length && !(a4.records ?? []).length && !(a6.records ?? []).length;
+    !dnsUnavailable && !partialDns && !(mx.records ?? []).length && !(a4.records ?? []).length && !(a6.records ?? []).length;
   const mxHosts = (mx.records ?? [])
     .slice()
     .sort((x, y) => x.priority - y.priority)
@@ -203,36 +226,57 @@ export async function emailVerify(params: Record<string, string>) {
   // mail cannot be delivered. So report both rather than replacing one with the
   // other — a caller filtering on "accepts no mail" must still catch this case.
   if (domainMissing) reasons.push("domain_does_not_resolve");
-  if (!acceptsMail && !dnsUnavailable) reasons.push("domain_accepts_no_mail");
-  if (mxHosts.length === 0 && domainResolves) reasons.push("no_mx_falls_back_to_a_record");
+  if (!acceptsMail && !dnsUnavailable && !partialDns) reasons.push("domain_accepts_no_mail");
+  // Only claim the A-record fallback when the MX lookup actually came back empty.
+  if (mx.answered && mxHosts.length === 0 && domainResolves) reasons.push("no_mx_falls_back_to_a_record");
   if (disposable) reasons.push("disposable_provider");
   if (role) reasons.push("role_account");
   if (freeProvider) reasons.push("consumer_mailbox");
   if (suggestion) reasons.push("possible_domain_typo");
   if (dnsUnavailable) reasons.push("dns_unavailable");
+  // Only worth reporting when it changes the answer. If a record we DID read
+  // proves mail is accepted, a gap elsewhere is noise; if nothing proves it, the
+  // gap is the whole story — we cannot tell "no mail" from "didn't look".
+  // A gap only counts when it could change the answer: no MX read at all, or
+  // nothing that proves mail is accepted. A missing AAAA behind a healthy MX
+  // changes nothing and should not dent the caller's confidence.
+  const materialGap = partialDns && (!mx.answered || !acceptsMail);
+  if (materialGap) reasons.push("dns_partially_unavailable");
 
+  // A partial read can still say GO — records we DID see prove mail is accepted.
+  // It can never say STOP: "no records" from a lookup that never answered is not
+  // evidence of absence, so that case refuses instead.
   const decision = dnsUnavailable
     ? "REFUSE"
-    : !acceptsMail
-      ? "STOP"
-      : disposable || suggestion || role
+    : acceptsMail
+      ? disposable || suggestion || role
         ? "HOLD"
-        : "GO";
+        : "GO"
+      : partialDns
+        ? "REFUSE"
+        : "STOP";
 
+  const degraded = dnsUnavailable || (partialDns && !acceptsMail);
   const receipt = decisionReceipt({
     endpoint: "email-verify",
     params: { email },
-    degraded: dnsUnavailable,
-    missing: dnsUnavailable ? ["dns-mx-and-address-records"] : [],
+    degraded,
+    missing: dnsUnavailable
+      ? ["dns-mx-and-address-records"]
+      : materialGap
+        ? unanswered.map((r) => `dns-${r}-record`)
+        : [],
     confidenceBasis: dnsUnavailable
       ? "DNS did not answer — deliverability could not be established"
-      : "syntax, MX/A records and provider classification all consulted; mailbox existence is not probed",
+      : materialGap
+        ? `some DNS lookups did not answer (${unanswered.join(", ")}); the verdict rests only on the records that did`
+        : "syntax, MX/A records and provider classification all consulted; mailbox existence is not probed",
   });
 
   return {
     email: raw,
     decision,
-    deliverable: dnsUnavailable ? null : acceptsMail,
+    deliverable: dnsUnavailable || (partialDns && !acceptsMail) ? null : acceptsMail,
     reasons,
     syntaxValid: true,
     domain,
@@ -244,9 +288,11 @@ export async function emailVerify(params: Record<string, string>) {
     roleAccount: role,
     suggestedDomain: suggestion,
     checkedAt: new Date().toISOString(),
-    ...receipt,
+    receipt: { checked: email, endpoint: "email-verify", decision, ...receipt },
     guidance: dnsUnavailable
       ? "DNS was unreachable for this domain — retry rather than treating this as a result."
+      : partialDns && !acceptsMail
+        ? `Part of DNS did not answer (${unanswered.join(", ")}), and nothing we could read shows a way to receive mail — that is not the same as "it will bounce". Retry before acting.`
       : domainMissing
         ? "Nothing resolves for that domain — no MX, A or AAAA records. Mail cannot be delivered; check for a typo."
         : !acceptsMail

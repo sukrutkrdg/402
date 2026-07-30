@@ -176,6 +176,8 @@ export interface Screening {
   norm: string;
   singleToken: boolean;
   matches: Match[];
+  /** Weak matches encountered, including those past the retention cap. */
+  partialsSeen: number;
   hit: boolean;
 }
 
@@ -184,12 +186,23 @@ export interface Screening {
  * tested for real, since a wrong tier here is what would brand an innocent party
  * as sanctioned.
  */
+/**
+ * How many weak (partial) matches we keep. The scan itself is never cut short:
+ * entries arrive primaries-first and aliases last, so stopping early stopped
+ * before the alias list — the very place a sanctioned party hides behind a
+ * different spelling — and returned "no hit" on a screen that never finished.
+ * Capping only what we RETAIN keeps the memory bounded without ever deciding
+ * from a partial pass.
+ */
+const MAX_PARTIALS = 200;
+
 export function screen(entries: Entry[], query: string): Screening {
   const norm = normalizeName(query);
   const qTokens = norm.split(" ").filter((t) => t.length > 1);
   const singleToken = qTokens.length < 2;
 
   const matches: Match[] = [];
+  let partialsSeen = 0;
   for (const e of entries) {
     let kind: MatchKind | null = null;
     if (e.norm === norm) kind = "exact";
@@ -198,6 +211,10 @@ export function screen(entries: Entry[], query: string): Screening {
       kind = "partial";
     } else if (singleToken && e.tokens.includes(qTokens[0] ?? norm)) kind = "partial";
     if (!kind) continue;
+    if (kind === "partial") {
+      partialsSeen++;
+      if (partialsSeen > MAX_PARTIALS) continue; // counted, not kept — the scan goes on
+    }
     matches.push({
       name: e.name,
       matchedAs: e.alias ? "alias" : "primary",
@@ -206,7 +223,6 @@ export function screen(entries: Entry[], query: string): Screening {
       type: e.type,
       program: e.program,
     });
-    if (matches.length >= 200) break; // a query this broad is not a screening
   }
 
   const rank: Record<MatchKind, number> = { exact: 0, strong: 1, partial: 2 };
@@ -215,6 +231,7 @@ export function screen(entries: Entry[], query: string): Screening {
     norm,
     singleToken,
     matches,
+    partialsSeen,
     hit: matches.some((m) => m.match === "exact" || m.match === "strong"),
   };
 }
@@ -226,17 +243,26 @@ export async function sanctionsName(params: Record<string, string>) {
   if (!normalizeName(query)) throw new Error("Name contains no comparable characters");
 
   const { entries, fetchedAt, stale } = await loadList();
-  const { norm, singleToken, matches, hit } = screen(entries, query);
+  const { norm, singleToken, matches, partialsSeen, hit } = screen(entries, query);
   const top = matches.slice(0, 25);
 
-  const decision = stale ? "REFUSE" : hit ? "STOP" : top.length ? "HOLD" : "GO";
+  // A stale list still screens: it can only MISS an addition made since the last
+  // successful fetch, so it answers at reduced confidence rather than refusing —
+  // the same rule the address screen documents, instead of two opposite
+  // behaviours for one buyer facing one list.
+  const decision = hit ? "STOP" : top.length ? "HOLD" : "GO";
+  const missing: string[] = [];
+  if (stale) missing.push("current-OFAC-export (served a cached list)");
+  // A one-word query cannot be scored, and the machine-readable band has to say
+  // so — prose that contradicts `confidence.band` is worse than no prose.
+  if (singleToken) missing.push("multi-token-name (a single word cannot be scored reliably)");
   const receipt = decisionReceipt({
     endpoint: "sanctions-name",
     params: { name: query },
-    degraded: stale,
-    missing: stale ? ["current-OFAC-export (served a cached list)"] : [],
+    degraded: false,
+    missing,
     confidenceBasis: stale
-      ? "Treasury export was unreachable — screened against a cached list"
+      ? "Treasury export was unreachable — screened against a cached list, which can only miss very recent additions"
       : singleToken
         ? "screened against the current OFAC export, but a single-word name cannot be scored reliably"
         : "screened against the current OFAC export (SDN primary names + aliases)",
@@ -246,17 +272,22 @@ export async function sanctionsName(params: Record<string, string>) {
     query,
     normalized: norm,
     decision,
-    sanctioned: stale ? null : hit,
-    matchCount: matches.length,
+    sanctioned: hit,
+    matchCount: partialsSeen > MAX_PARTIALS ? matches.length + (partialsSeen - MAX_PARTIALS) : matches.length,
     matches: top,
     truncatedMatches: matches.length > top.length,
+    // Weak matches beyond what we return. Strong and exact matches are never
+    // dropped, so this bounds the noise, not the screen.
+    weakMatchesOmitted: Math.max(0, partialsSeen - MAX_PARTIALS),
     singleTokenQuery: singleToken,
     source: "OFAC SDN — U.S. Treasury official export (SDN.CSV primary names + ALT.CSV aliases)",
     listEntries: entries.length,
     listFetchedAt: new Date(fetchedAt).toISOString(),
     listStale: stale,
     checkedAt: new Date().toISOString(),
-    ...receipt, // carries inputHash, policyVersion, confidence, refusal, refundable
+    // Nested on purpose: the gateway refunds on `receipt.refundable`, and a
+    // spread-at-top-level receipt is invisible to it.
+    receipt: { checked: query, endpoint: "sanctions-name", decision, ...receipt },
     guidance: hit
       ? "Name matches an OFAC-listed party. This is a screening signal, NOT an identity determination — confirm date of birth, address or registration number against the SDN entry before acting, and consult counsel."
       : top.length

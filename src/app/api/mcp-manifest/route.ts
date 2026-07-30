@@ -4,16 +4,20 @@
  */
 
 import { getSiteUrl } from "@/lib/config";
+import { SERVICES } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
 
 export function GET() {
   const SITE = getSiteUrl();
+  // Counted, never typed: this manifest is read by registries, and a hardcoded
+  // number here was still advertising "60+" at 118 tools.
+  const toolCount = SERVICES.filter((s) => !s.hidden).length;
   return Response.json({
     name: "x402-bazaar-mcp",
     description:
-      "MCP server exposing x402 Bazaar's 60+ onchain safety, wallet-intel & AI tools on Base. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.",
-    version: "0.2.1",
+      `MCP server exposing x402 Bazaar's ${toolCount} onchain safety, wallet-intel, web, business and AI tools on Base. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.`,
+    version: "0.2.2",
     registry: "io.github.sukrutkrdg/x402-bazaar-mcp",
     npm: "https://www.npmjs.com/package/x402-bazaar-mcp",
     transport: "stdio",

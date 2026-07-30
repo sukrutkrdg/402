@@ -127,6 +127,34 @@ export function normaliseDomain(raw: string): string {
 
 const SHAPE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
+/**
+ * Second-level labels that are themselves registry space (`co.uk`, `com.tr`,
+ * `ac.jp`), not somebody's domain. Used to stop the walk below from ever
+ * reporting a public suffix as "the registered domain".
+ */
+const REGISTRY_SLD = new Set(["co", "com", "net", "org", "edu", "gov", "mil", "ac", "or", "ne", "gr", "sch", "nom", "info", "biz"]);
+
+/**
+ * The names to ask the registry about, longest first.
+ *
+ * A registry only knows registrable domains: ask it about `blog.github.com` and
+ * it answers 404, exactly as it would for a name nobody ever bought. Reading
+ * that 404 as "not registered" is how this endpoint told a caller that mail from
+ * a real company's subdomain was forged. So we walk up to the parent and report
+ * on that, stopping before anything that is registry space rather than a domain.
+ */
+export function lookupCandidates(domain: string): string[] {
+  const labels = domain.split(".");
+  const out: string[] = [];
+  for (let i = 0; i + 2 <= labels.length; i++) {
+    const candidate = labels.slice(i).join(".");
+    const parts = candidate.split(".");
+    if (parts.length === 2 && REGISTRY_SLD.has(parts[0])) break; // co.uk, com.tr …
+    out.push(candidate);
+  }
+  return out;
+}
+
 interface RdapEvent {
   eventAction?: string;
   eventDate?: string;
@@ -187,12 +215,17 @@ export async function domainCheck(params: Record<string, string>) {
       registered: null,
       reasons: ["invalid_domain_syntax"],
       checkedAt: new Date(now).toISOString(),
-      ...decisionReceipt({
+      receipt: {
+        checked: raw,
         endpoint: "domain-check",
-        params: { domain },
-        degraded: false,
-        confidenceBasis: "input is not a valid domain name; no registry lookup was needed",
-      }),
+        decision: "STOP",
+        ...decisionReceipt({
+          endpoint: "domain-check",
+          params: { domain },
+          degraded: false,
+          confidenceBasis: "input is not a valid domain name; no registry lookup was needed",
+        }),
+      },
       guidance: "Not a valid domain name — check for a typo before using it anywhere.",
       method: "syntax only",
     };
@@ -201,20 +234,27 @@ export async function domainCheck(params: Record<string, string>) {
   const tld = domain.slice(domain.lastIndexOf(".") + 1);
 
   // Anything below is a refusal rather than a verdict: we could not read the
-  // registry, so we do not know, and saying so is the only honest answer.
+  // registry, so we do not know, and saying so is the only honest answer. The
+  // receipt has to be NESTED — the gateway refunds on `receipt.refundable`, so a
+  // spread-at-top-level refusal is billed while its own body promises a refund.
   const refuse = (reason: string, missing: string[], guidance: string, extra: Record<string, unknown> = {}) => ({
     domain,
     decision: "REFUSE",
     registered: null,
     reasons: [reason],
     checkedAt: new Date(now).toISOString(),
-    ...decisionReceipt({
+    receipt: {
+      checked: domain,
       endpoint: "domain-check",
-      params: { domain },
-      degraded: true,
-      missing,
-      confidenceBasis: "the registry did not provide the registration record",
-    }),
+      decision: "REFUSE",
+      ...decisionReceipt({
+        endpoint: "domain-check",
+        params: { domain },
+        degraded: true,
+        missing,
+        confidenceBasis: "the registry did not provide the registration record",
+      }),
+    },
     guidance,
     method: "RDAP (IANA bootstrap → registry endpoint)",
     ...extra,
@@ -241,39 +281,73 @@ export async function domainCheck(params: Record<string, string>) {
     );
   }
 
-  const base = bases[0].endsWith("/") ? bases[0] : `${bases[0]}/`;
-  let res: Response;
-  try {
-    res = await timedFetch(`${base}domain/${encodeURIComponent(domain)}`, "application/rdap+json, application/json");
-  } catch {
-    return refuse(
-      "registry_unreachable",
-      [`rdap-query-.${tld}`],
-      "The registry's RDAP service did not answer — retry rather than treating this as a result.",
-      { tld },
-    );
+  // Try each registry base in turn: IANA lists more than one for some TLDs, and
+  // one dead base should not turn a checkable domain into a billed refusal.
+  const query = async (name: string): Promise<Response | null> => {
+    for (const raw of bases) {
+      const base = raw.endsWith("/") ? raw : `${raw}/`;
+      try {
+        return await timedFetch(`${base}domain/${encodeURIComponent(name)}`, "application/rdap+json, application/json");
+      } catch {
+        /* try the next base for this TLD */
+      }
+    }
+    return null;
+  };
+
+  // Walk from the name we were given up to its registrable parent (see
+  // lookupCandidates): a registry 404s for a subdomain exactly as it does for a
+  // name nobody registered, and the two must not produce the same answer.
+  const candidates = lookupCandidates(domain);
+  let res: Response | null = null;
+  let resolvedName = domain;
+  let anyRegistryAnswered = false;
+  for (const candidate of candidates) {
+    const r = await query(candidate);
+    if (!r) continue;
+    anyRegistryAnswered = true;
+    if (r.status === 404) continue; // not this level — try the parent
+    res = r;
+    resolvedName = candidate;
+    break;
   }
 
-  // 404 is an answer, and a useful one: the registry has no such registration.
-  if (res.status === 404) {
+  if (!res) {
+    if (!anyRegistryAnswered) {
+      return refuse(
+        "registry_unreachable",
+        [`rdap-query-.${tld}`],
+        "The registry's RDAP service did not answer — retry rather than treating this as a result.",
+        { tld },
+      );
+    }
+    // Every level answered 404, including the registrable parent: nobody owns it.
     return {
       domain,
       decision: "STOP",
       registered: false,
       reasons: ["not_registered"],
       tld,
+      checkedNames: candidates,
       checkedAt: new Date(now).toISOString(),
-      ...decisionReceipt({
+      receipt: {
+        checked: domain,
         endpoint: "domain-check",
-        params: { domain },
-        degraded: false,
-        confidenceBasis: "registry answered that no such domain is registered",
-      }),
+        decision: "STOP",
+        ...decisionReceipt({
+          endpoint: "domain-check",
+          params: { domain },
+          degraded: false,
+          confidenceBasis: `registry answered that no such domain is registered (checked ${candidates.join(", ")})`,
+        }),
+      },
       guidance:
-        "The registry has no registration for this domain. Mail from it cannot be genuine and links to it will not resolve — treat any message claiming to come from it as forged.",
+        "The registry has no registration for this domain, nor for the domain it sits under. Mail from it cannot be genuine and links to it will not resolve — treat any message claiming to come from it as forged.",
       method: "RDAP (IANA bootstrap → registry endpoint)",
     };
   }
+
+  const isSubdomain = resolvedName !== domain;
 
   if (!res.ok) {
     return refuse(
@@ -353,6 +427,11 @@ export async function domainCheck(params: Record<string, string>) {
 
   return {
     domain,
+    // What the registry actually answered about. For a subdomain that is the
+    // parent — say so, rather than letting the caller read the parent's age as
+    // if the exact name they asked about had been registered that long.
+    registrableDomain: resolvedName,
+    isSubdomain,
     decision,
     registered: true,
     ageDays,
@@ -367,13 +446,20 @@ export async function domainCheck(params: Record<string, string>) {
     tld,
     reasons,
     checkedAt: new Date(now).toISOString(),
-    ...decisionReceipt({
+    receipt: {
+      checked: resolvedName,
       endpoint: "domain-check",
-      params: { domain },
-      degraded: false,
-      confidenceBasis: "registry RDAP record consulted: registration and expiry events, status codes and delegation",
-    }),
-    guidance,
+      decision,
+      ...decisionReceipt({
+        endpoint: "domain-check",
+        params: { domain },
+        degraded: false,
+        confidenceBasis: isSubdomain
+          ? `registry RDAP record for ${resolvedName}, the registrable domain under which ${domain} sits`
+          : "registry RDAP record consulted: registration and expiry events, status codes and delegation",
+      }),
+    },
+    guidance: isSubdomain ? `${domain} is a subdomain of ${resolvedName}; registries only record registrable domains, so this is ${resolvedName}'s record. ${guidance}` : guidance,
     method: "RDAP (IANA bootstrap → registry endpoint). Registry data only — no page fetch, no reputation feed.",
     disclaimer:
       "Age and status come from the registry, which is authoritative for those. They say nothing about what the domain is used for: an old domain can be compromised and a new one can be legitimate.",

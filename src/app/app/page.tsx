@@ -39,26 +39,30 @@ type TypedData = {
 };
 
 // Consumer-friendly "paste a token → get an answer" checks for the mini-app.
+// Labels are curated here; PRICES are not. They used to be, and two of them had
+// drifted from the catalog — which matters more than a wrong label, because the
+// gas-mode payment transfers exactly this amount on-chain: one was overcharging
+// the user and the other was paying too little to redeem the report.
 const CHECKS = [
-  { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP", price: "$0.10" },
-  { id: "ai-token-report", label: "🛡️ AI Token Safety", price: "$0.12" },
-  { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize", price: "$0.04" },
-  { id: "b20-gate", label: "🚦 B20 Pre-Trade Gate", price: "$0.10" },
-  { id: "b20-policy-watch", label: "👁️ B20: when did it turn seizable?", price: "$0.03" },
-  { id: "sellability", label: "🔒 Can I sell? (honeypot)", price: "$0.08" },
-  { id: "deep-dd", label: "🏛️ Deep Due-Diligence", price: "$0.75" },
-  { id: "position-health", label: "🩺 Position Health (I'm in it)", price: "$0.04" },
-  { id: "whale-flow", label: "🐋 Whale Flow · selling now?", price: "$0.04" },
-  { id: "deployer-rep", label: "🕵️ Deployer Reputation", price: "$0.04" },
-  { id: "holder-forensics", label: "🧬 Holder Forensics", price: "$0.03" },
-  { id: "volume-check", label: "📊 Volume Authenticity (wash?)", price: "$0.03" },
-  { id: "exit-liquidity", label: "🚪 Exit Liquidity", price: "$0.02" },
-  { id: "lp-lock", label: "🔐 LP Lock Details", price: "$0.02" },
-  { id: "token-unlock", label: "📆 LP Unlock Calendar", price: "$0.02" },
-  { id: "proxy-check", label: "🧩 Proxy / Upgrade Risk", price: "$0.02" },
-  { id: "contract-danger", label: "⚠️ Contract Danger", price: "$0.04" },
-  { id: "token-momentum", label: "📈 Momentum (price/volume)", price: "$0.02" },
-  { id: "token-risk", label: "🔎 Token Risk", price: "$0.03" },
+  { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
+  { id: "ai-token-report", label: "🛡️ AI Token Safety" },
+  { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize" },
+  { id: "b20-gate", label: "🚦 B20 Pre-Trade Gate" },
+  { id: "b20-policy-watch", label: "👁️ B20: when did it turn seizable?" },
+  { id: "sellability", label: "🔒 Can I sell? (honeypot)" },
+  { id: "deep-dd", label: "🏛️ Deep Due-Diligence" },
+  { id: "position-health", label: "🩺 Position Health (I'm in it)" },
+  { id: "whale-flow", label: "🐋 Whale Flow · selling now?" },
+  { id: "deployer-rep", label: "🕵️ Deployer Reputation" },
+  { id: "holder-forensics", label: "🧬 Holder Forensics" },
+  { id: "volume-check", label: "📊 Volume Authenticity (wash?)" },
+  { id: "exit-liquidity", label: "🚪 Exit Liquidity" },
+  { id: "lp-lock", label: "🔐 LP Lock Details" },
+  { id: "token-unlock", label: "📆 LP Unlock Calendar" },
+  { id: "proxy-check", label: "🧩 Proxy / Upgrade Risk" },
+  { id: "contract-danger", label: "⚠️ Contract Danger" },
+  { id: "token-momentum", label: "📈 Momentum (price/volume)" },
+  { id: "token-risk", label: "🔎 Token Risk" },
 ] as const;
 
 type EthProvider = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
@@ -198,6 +202,28 @@ export default function MiniApp() {
   // score once the address state has taken → instant value on open from a cast.
   const [prefill, setPrefill] = useState(false);
 
+  // Live prices, straight from the catalog that charges them. Until they load we
+  // show no price and don't let a payment start, rather than quoting a number we
+  // haven't confirmed — this screen's gas mode transfers exactly what it shows.
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/catalog")
+      .then((r) => r.json())
+      .then((j: { services?: Array<{ id: string; price: string }> }) => {
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const s of j.services ?? []) map[s.id] = s.price;
+        setPrices(map);
+      })
+      .catch(() => {
+        /* leave prices empty — the UI degrades to "price unavailable" */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Deep links: /app?mode=wallet → Protect-wallet mode; /app?token=0x…&check=… →
   // preload a token (and optional check) so a shared cast opens on the answer.
   useEffect(() => {
@@ -223,6 +249,7 @@ export default function MiniApp() {
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
   const check = CHECKS.find((c) => c.id === selected) ?? CHECKS[0];
+  const price = prices[check.id] ?? null;
 
   // A cast deep-linked a token → run the free rug-score automatically so the
   // opener lands on an answer, not an empty form (the top of the funnel).
@@ -504,8 +531,11 @@ export default function MiniApp() {
       }
 
       // Broadcast the USDC transfer — THIS is the on-chain transaction that makes
-      // the wallet a Base App transacting user. Amount = price in 6-dp USDC micro.
-      const amount = BigInt(priceToCents(check.price)) * 10_000n;
+      // the wallet a Base App transacting user. Amount = price in 6-dp USDC micro,
+      // and it comes from the live catalog: paying a stale number sends the wrong
+      // amount, which either overcharges the user or fails to redeem.
+      if (!price) throw new Error("Price unavailable right now — reload before paying.");
+      const amount = BigInt(priceToCents(price)) * 10_000n;
       const data = encodeFunctionData({ abi: ERC20_TRANSFER_ABI, functionName: "transfer", args: [PAY_TO, amount] });
       setStep("⛽ Confirm the on-chain payment in your wallet…");
       const txHash = (await withTimeout(
@@ -520,7 +550,7 @@ export default function MiniApp() {
 
       // Payment is confirmed — remember it so a redeem hiccup never loses the paid
       // report (the user can retry the same tx, never re-charged).
-      const pay = { hash: txHash, service: selected, address: addr.trim(), label: check.label, price: check.price };
+      const pay = { hash: txHash, service: selected, address: addr.trim(), label: check.label, price };
       setLastPaid(pay);
       await withTimeout(redeemReport(pay), 90000, "report");
     } catch (e) {
@@ -620,7 +650,8 @@ export default function MiniApp() {
       >
         {CHECKS.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.label} · {c.price}
+            {c.label}
+            {prices[c.id] ? ` · ${prices[c.id]}` : ""}
           </option>
         ))}
       </select>
@@ -629,8 +660,8 @@ export default function MiniApp() {
         <button onClick={freeCheck} disabled={!valid || busy !== null} className="btn-ghost flex-1 !py-2 text-sm disabled:opacity-40">
           {busy === "free" ? "Checking…" : "Free rug-score"}
         </button>
-        <button onClick={() => (gasMode ? payOnchain() : paidReport())} disabled={!valid || busy !== null} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "paid" ? "Paying…" : `${gasMode ? "⛽ Pay onchain" : "Run"} · ${check.price}`}
+        <button onClick={() => (gasMode ? payOnchain() : paidReport())} disabled={!valid || busy !== null || !price} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
+          {busy === "paid" ? "Paying…" : `${gasMode ? "⛽ Pay onchain" : "Run"}${price ? ` · ${price}` : " · loading price…"}`}
         </button>
       </div>
 
@@ -681,7 +712,8 @@ export default function MiniApp() {
 
       {previewShown && busy === null && (
         <button onClick={() => (gasMode ? payOnchain() : paidReport())} className="btn-primary !py-2 text-sm">
-          🔓 Unlock full report · {check.label} · {check.price}
+          🔓 Unlock full report · {check.label}
+          {price ? ` · ${price}` : ""}
         </button>
       )}
 

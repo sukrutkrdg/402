@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { normaliseDomain, domainCheck } from "@/lib/domain-check";
+import { normaliseDomain, domainCheck, lookupCandidates } from "@/lib/domain-check";
+import { isRefundable } from "@/lib/envelope";
 
 /** The handler returns one of several shapes; a test reads across all of them. */
 type Result = {
@@ -11,9 +12,15 @@ type Result = {
   ageDays?: number;
   createdAt?: string;
   nameservers?: string[];
-  refusal?: { reason: string } | null;
-  refundable?: boolean;
-  confidence?: { band: string; basis: string };
+  registrableDomain?: string;
+  isSubdomain?: boolean;
+  receipt?: {
+    checked?: string;
+    decision?: string;
+    refusal?: { reason: string } | null;
+    refundable?: boolean;
+    confidence?: { band: string; basis: string };
+  };
 };
 const check = async (domain: string) => (await domainCheck({ domain })) as Result;
 
@@ -59,7 +66,23 @@ describe("domainCheck — live RDAP", () => {
     expect(r.ageDays).toBeGreaterThan(365 * 5);
     expect(r.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(r.nameservers?.length).toBeGreaterThan(0);
-    expect(r.confidence?.band).toBe("high");
+    expect(r.receipt?.confidence?.band).toBe("high");
+  }, 30_000);
+
+  /**
+   * A registry only records registrable domains, so it 404s for `blog.github.com`
+   * exactly as it does for a name nobody bought. Reading that as "not registered"
+   * told callers that mail from a real company's subdomain was forged — on an
+   * endpoint sold for screening invoice fraud, that is the worst answer we can give.
+   */
+  it("answers about the registrable parent for a subdomain, instead of calling it forged", async () => {
+    const r = await check("blog.github.com");
+    expect(r.decision).not.toBe("STOP");
+    expect(r.registered).toBe(true);
+    expect(r.isSubdomain).toBe(true);
+    expect(r.registrableDomain).toBe("github.com");
+    expect(r.ageDays).toBeGreaterThan(365 * 5);
+    expect(r.guidance).toMatch(/subdomain of github\.com/i);
   }, 30_000);
 
   it("says STOP — not 'unknown' — when the registry has no such registration", async () => {
@@ -78,14 +101,26 @@ describe("domainCheck — live RDAP", () => {
     const r = await check("402.com.tr");
     expect(r.decision).toBe("REFUSE");
     expect(r.reasons).toContain("registry_publishes_no_rdap");
-    expect(r.refusal).not.toBeNull();
-    expect(r.refundable).toBe(true);
+    expect(r.receipt?.refusal).not.toBeNull();
     expect(r.guidance).toMatch(/permanent property/i);
   }, 30_000);
 
-  it("marks a refusal refundable so a caller is not billed for a non-answer", async () => {
+  /**
+   * The gateway refunds by calling isRefundable() on the handler's output, which
+   * reads `receipt.refundable`. Asserting the flag at top level passed happily
+   * while every refusal was still being billed, so assert through the same
+   * function the money path uses.
+   */
+  it("is refundable through the check the billing path actually performs", async () => {
     const r = await check("402.com.tr");
-    expect(r.refundable).toBe(true);
-    expect(r.confidence?.band).toBe("low");
+    expect(isRefundable(r)).toBe(true);
+    expect(r.receipt?.confidence?.band).toBe("low");
   }, 30_000);
+
+  it("never walks up into registry space like co.uk", () => {
+    expect(lookupCandidates("blog.github.com")).toEqual(["blog.github.com", "github.com"]);
+    expect(lookupCandidates("shop.acme.co.uk")).toEqual(["shop.acme.co.uk", "acme.co.uk"]);
+    expect(lookupCandidates("402.com.tr")).toEqual(["402.com.tr"]);
+    expect(lookupCandidates("github.com")).toEqual(["github.com"]);
+  });
 });

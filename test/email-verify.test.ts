@@ -103,7 +103,7 @@ describe("emailVerify — deliverability", () => {
     expect(r.deliverable).toBe(false);
     expect(r.reasons).toContain("domain_does_not_resolve");
     expect(r.reasons).toContain("domain_accepts_no_mail"); // the actionable fact, still reported
-    expect(r.confidence.band).toBe("high"); // we know the answer, so confidence is not degraded
+    expect(r.receipt.confidence.band).toBe("high"); // we know the answer, so confidence is not degraded
   });
 
   it("says STOP for a domain that exists with no mail records (ENODATA)", async () => {
@@ -135,8 +135,8 @@ describe("emailVerify — deliverability", () => {
     expect(r.decision).toBe("REFUSE");
     expect(r.deliverable).toBeNull();
     expect(r.reasons).toContain("dns_unavailable");
-    expect(r.confidence.band).toBe("low");
-    expect(r.refusal).not.toBeNull();
+    expect(r.receipt.confidence.band).toBe("low");
+    expect(r.receipt.refusal).not.toBeNull();
   }, 20000);
 });
 
@@ -185,9 +185,9 @@ describe("emailVerify — classification", () => {
 
   it("carries a decision receipt and states that SMTP was not probed", async () => {
     const r = (await emailVerify({ email: "jane@acme-corp.com" })) as Result;
-    expect(r.policyVersion).toBe("email-verify@1.0.0");
-    expect(r.inputHash).toMatch(/^sha256:/);
-    expect(r.confidence.band).toBe("high");
+    expect(r.receipt.policyVersion).toBe("email-verify@1.0.0");
+    expect(r.receipt.inputHash).toMatch(/^sha256:/);
+    expect(r.receipt.confidence.band).toBe("high");
     expect(r.method).toMatch(/no smtp probe/i);
   });
 });

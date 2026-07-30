@@ -63,7 +63,12 @@ function toolList() {
 
 /** Run a tool = proxy to the real x402 gateway, forwarding the caller's credit token. */
 async function callTool(name: string, args: Record<string, unknown>, creditToken: string) {
-  const svc = visibleServices().find((s) => s.id === name);
+  // Accept the underscore spelling too. Our own server card published
+  // `token_risk` while this endpoint served `token-risk`, so an agent that bound
+  // its tool names from the card missed on every single call. The card now
+  // matches, and this keeps anything already bound to the old spelling working.
+  const wanted = name.replace(/_/g, "-");
+  const svc = visibleServices().find((s) => s.id === wanted);
   if (!svc) return { isError: true, text: `Unknown tool: ${name}` };
 
   const qs = new URLSearchParams();

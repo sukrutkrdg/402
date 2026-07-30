@@ -14,13 +14,16 @@ import { getSiteUrl } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 // Keep in step with the published npm package + registry entry.
-const MCP_VERSION = "0.2.1";
+const MCP_VERSION = "0.2.2";
 
 export function GET() {
   const SITE = getSiteUrl();
 
   // One MCP tool per non-hidden service — same underscore naming and input schema
-  // the stdio server builds at registration time.
+  // the stdio server builds at registration time. The hosted endpoint
+  // (/api/mcp) lists the dashed service ids instead, so it accepts BOTH
+  // spellings on tools/call: an agent that bound its names from this card used
+  // to miss on every call against the hosted server.
   const tools = SERVICES.filter((s) => !s.hidden).map((s) => {
     const properties: Record<string, { type: string; description: string }> = {};
     const required: string[] = [];
