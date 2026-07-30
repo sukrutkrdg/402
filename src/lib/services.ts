@@ -65,7 +65,7 @@ import { urlExtract, urlToJson } from "./web-services";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
-import { fileSlot } from "./file-store";
+import { fileSlot, s3Config } from "./file-store";
 
 export interface ServiceParam {
   name: string;
@@ -1706,6 +1706,10 @@ export const SERVICES: ServiceDef[] = [
     // No free tier: a free call here is free storage, and the response is a
     // credential rather than a report — there is nothing to preview.
     noFreeTier: true,
+    // Listed only once a bucket is actually connected. Advertising a slot we
+    // cannot issue would send an agent through the payment handshake to reach a
+    // 503 — the same dead payment loop the five stuck endpoints were hidden for.
+    hidden: !s3Config(),
   },
   {
     id: "ai-extract-batch",
