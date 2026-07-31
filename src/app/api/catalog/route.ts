@@ -34,7 +34,7 @@ export function GET() {
     // How to pay, and what each status means — so an agent handles non-200s.
     payment: {
       how: "GET the endpoint; on 402 read the accepts[] (price, payTo, asset, network), pay a USDC micro-payment via x402, and retry with the x-payment header. Libraries (@x402/fetch) do this automatically.",
-      freeTier: "1 free call per service per day per IP (full result); after that, unpaid calls return a preview (headline only) with an 'unlock' message. Services with freeTier:false (AI/metered) are always paid.",
+      freeTier: "1 free call per service per day per IP (full result) — ASK for it with ?free=1 or the header x-402-free: 1; a request without that flag returns the 402 challenge. After the daily call is used the same flag returns a preview (headline only) with an 'unlock' message. Services with freeTier:false (AI/metered) are always paid.",
       credits: "Prepaid alternative: one x402 settlement on /api/x402/buy-credits (tier=0.25|1|5|20 USD; $5/$20 carry a bonus) returns a bearer creditToken (shown once). Send it as the x-credit-token header on any paid call — the price is debited from your balance, no per-call signature or settlement. Responses carry paidVia:'credits', creditBalanceUsd, and the x-credit-balance header (cents). Balance lasts 180 days.",
     },
     errors: {

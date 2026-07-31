@@ -280,16 +280,29 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     );
   }
 
-  // Free tier: an unpaid request (no payment header) that isn't the internal
-  // server buy flow gets one free trial call/day per IP, then must pay. This is the
-  // agent trial funnel.
+  // Free tier: one free trial call/day per IP, then a preview. This is the agent
+  // trial funnel — but it now has to be ASKED for (`?free=1`, or the
+  // `x-402-free: 1` header).
+  //
+  // Why opt-in, when it used to be automatic: an unpaid GET that answers 200
+  // never shows the caller a payment challenge, and the discovery indexer reads
+  // the challenge to learn what an endpoint sells. Every one of our free-eligible
+  // endpoints was therefore invisible in the catalogue — 35 of them, some paid
+  // dozens of times over months — while every paid-only endpoint was listed
+  // within a second of its first settlement. Proven twice: flipping `gas-oracle`
+  // and `ens-resolve` to paid-only put both in the index on the next payment,
+  // after months of nothing. A trial nobody can discover is worth less than the
+  // listing it was costing us, so the default answer to a bare request is now
+  // the 402 — which is also what every x402 client already expects.
   const hasPayment = Boolean(req.headers.get("x-payment") || req.headers.get("payment-signature"));
   const forcePay = req.headers.get("x-x402-force") === "1";
+  const freeAsked =
+    new URL(req.url).searchParams.get("free") === "1" || req.headers.get("x-402-free") === "1";
   // AI services have real upstream cost (Claude) — never give them away on the
   // free tier (the in-memory counter resets per serverless instance, so free
   // AI calls could run up the owner's bill). Cheap RPC services stay free-eligible.
   const freeEligible = service.category !== "AI" && !service.noFreeTier;
-  if (!hasPayment && !forcePay && freeEligible) {
+  if (!hasPayment && !forcePay && freeEligible && freeAsked) {
     const ip = clientIp(req);
     // Keyed per IP AND service: every published surface (MCP readme/registry,
     // server card, catalog) promises "one free call per day per service" — one
@@ -526,7 +539,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
             data: sample,
           };
         }
-        if (freeEligible) body.freeCall = "This service gives 1 free call/day per IP — retry without a payment header.";
+        if (freeEligible) {
+          body.freeCall =
+            "This service gives 1 free call/day per IP — retry with `?free=1` (or the header `x-402-free: 1`) and no payment header. After that the same flag returns a preview.";
+        }
         // The text-in AI services get 1000+ price-probes each — show the probing
         // agent a concrete input→output pair (static, zero AI cost) so it can
         // see the exact value before paying. The generic `sample` above only
@@ -553,7 +569,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
           },
         ];
         if (freeEligible) {
-          alternatives.push({ action: "free-call", method: "GET", url: req.url, gives: "1 free full call/day per IP — repeat this exact request with no payment header." });
+          alternatives.push({
+            action: "free-call",
+            method: "GET",
+            url: `${req.url}${req.url.includes("?") ? "&" : "?"}free=1`,
+            gives: "1 free full call/day per IP — repeat this request with free=1 (or the header x-402-free: 1) and no payment header.",
+          });
         }
         alternatives.push({ action: "pay-x402", method: "GET", url: req.url, gives: "Pay this exact call now over x402 — see the `accepts` array for scheme/amount/asset/payTo." });
         body.alternatives = alternatives;

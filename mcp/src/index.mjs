@@ -79,7 +79,14 @@ async function payAwareFetch(target, opts = {}) {
     const pay = await getPayingFetch();
     return pay(target, opts);
   }
-  return fetch(target, opts);
+  // Free mode: the trial call has to be asked for. A bare request now answers
+  // with the payment challenge instead, so that the discovery index can read
+  // what each endpoint sells — endpoints that answered 200 to an unpaid GET were
+  // never catalogued at all.
+  return fetch(target, {
+    ...opts,
+    headers: { ...(opts.headers ?? {}), "x-402-free": "1" },
+  });
 }
 
 // ---------------------------------------------------------------------------

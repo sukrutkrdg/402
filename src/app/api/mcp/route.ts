@@ -80,6 +80,10 @@ async function callTool(name: string, args: Record<string, unknown>, creditToken
   // channel apart from direct agent/x402 calls (which carry no referer).
   const headers: Record<string, string> = { accept: "application/json", referer: `https://${MCP_CHANNEL_HOST}/api/mcp` };
   if (creditToken) headers["x-credit-token"] = creditToken;
+  // Without a credit token the caller wants the free daily call, which now has
+  // to be requested explicitly — a bare request answers with the challenge so
+  // the discovery index can read the declaration.
+  else headers["x-402-free"] = "1";
 
   try {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(45000) });

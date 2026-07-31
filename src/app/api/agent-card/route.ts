@@ -44,7 +44,7 @@ export function GET() {
       schema: `${SITE}/.well-known/x402`,
       docs: "https://github.com/sukrutkrdg/402/blob/main/docs/decision-receipt.md",
     },
-    freeTrial: "1 free call per service per day per IP (AI and metered services excluded) — try before you pay, no signup.",
+    freeTrial: "1 free call per service per day per IP, on request: add ?free=1 (or the header x-402-free: 1). Without that flag every endpoint answers with its payment challenge, so discovery crawlers can read the declaration. AI and metered services are always paid.",
     tryExample: `${SITE}/api/x402/token-risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
     // The 3 tools most agents should bind first, and the B20 suite grouped into 5
     // fronts so a tool-binding client isn't lost among ~20 similar B20 skills.

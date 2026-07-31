@@ -267,7 +267,9 @@ export default function MiniApp() {
     setOut(null);
     setBusy("free");
     try {
-      const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}`);
+      // free=1 is required now: a bare request answers with the payment
+      // challenge so that discovery crawlers can read the declaration.
+      const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}&free=1`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Check failed");
       const d = j.data as { rugScore?: number; level?: string; signals?: string[]; signalsCount?: number };
