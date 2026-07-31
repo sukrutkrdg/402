@@ -68,6 +68,7 @@ import { domainCheck } from "./domain-check";
 import { fileSlot, s3Config } from "./file-store";
 import { fileConvert } from "./file-convert";
 import { counterpartyCheck, companyLei } from "./counterparty";
+import { fxConvert, businessDays, inflationAdjust } from "./reference";
 import { filePublish } from "./file-publish";
 
 export interface ServiceParam {
@@ -1705,6 +1706,57 @@ export const SERVICES: ServiceDef[] = [
       { name: "name", label: "Legal company name (enables OFAC + LEI)", placeholder: "Acme Supplies Ltd" },
     ],
     handler: counterpartyCheck,
+  },
+  {
+    id: "fx-convert",
+    name: "FX Convert",
+    tagline: "Convert an amount at the ECB's published rate",
+    description:
+      "Convert between 30+ currencies at the European Central Bank's daily reference rate, for today or any past date. Returns the converted amount, the per-unit rate and the date the rate is actually from — the ECB publishes on business days only, so a weekend date answers with the previous business day and says so instead of pretending. Reference rates for accounting and reporting, not tradable quotes.",
+    price: "$0.002",
+    icon: "💱",
+    category: "Business",
+    params: [
+      { name: "from", label: "Source currency", placeholder: "USD", required: true },
+      { name: "to", label: "Target currency (or several, comma-separated)", placeholder: "EUR,TRY", required: true },
+      { name: "amount", label: "Amount (optional, default 1)", placeholder: "100" },
+      { name: "date", label: "Date (optional, YYYY-MM-DD)", placeholder: "2026-07-24" },
+    ],
+    handler: fxConvert,
+  },
+  {
+    id: "business-days",
+    name: "Business Days",
+    tagline: "Net 30 — but which 30, in which country?",
+    description:
+      "Add business days to a date, or count them between two dates, for ~110 countries. Knows each country's weekend (Friday-Saturday where that applies, not just Sat-Sun) and its national public holidays, and names every day it skipped. Holidays observed only in some provinces are deliberately NOT treated as national closures — they are listed separately so you can apply them when your case is regional. Built for payment terms, SLAs and delivery dates.",
+    price: "$0.002",
+    icon: "📅",
+    category: "Business",
+    params: [
+      { name: "country", label: "Country (2-letter ISO)", placeholder: "TR", required: true },
+      { name: "from", label: "Start date (optional, defaults to today)", placeholder: "2026-08-03" },
+      { name: "add", label: "Business days to add", placeholder: "30" },
+      { name: "to", label: "…or an end date, to count business days instead", placeholder: "2026-09-15" },
+    ],
+    handler: businessDays,
+  },
+  {
+    id: "inflation-adjust",
+    name: "Inflation Adjust",
+    tagline: "What is 2015 money worth today?",
+    description:
+      "Restate an amount from one year in another year's money, for any country in the World Bank consumer-price series (1960 onwards). Returns the adjusted amount, the cumulative inflation and both index values so the arithmetic is checkable. The series is annual and published with a lag, so a request for a year that does not exist yet answers with the newest one available and says which. For contract comparisons, historical pricing and long-running budgets.",
+    price: "$0.002",
+    icon: "📉",
+    category: "Business",
+    params: [
+      { name: "from", label: "Year the amount is in", placeholder: "2015", required: true },
+      { name: "amount", label: "Amount (optional, default 1)", placeholder: "1000" },
+      { name: "to", label: "Year to restate it in (optional, defaults to latest)", placeholder: "2025" },
+      { name: "country", label: "Country ISO code (optional, default US)", placeholder: "TR" },
+    ],
+    handler: inflationAdjust,
   },
   {
     id: "company-lei",
