@@ -1244,6 +1244,9 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "query", label: "ENS name or address", placeholder: "vitalik.eth or 0x…", required: true }],
     handler: ensResolve,
+    // Second half of the same experiment as gas-oracle — one data point is a
+    // coincidence. Remove once the free-tier/discovery question is settled.
+    noFreeTier: true,
   },
   {
     id: "encode-selector",
