@@ -17,7 +17,11 @@ import "server-only";
 import { s3Config, presign, safeName } from "./file-store";
 import { markdownToHtml } from "./file-convert";
 
-const MAX_CHARS = 400_000; // a very long report; larger belongs in a file slot
+// Matches the gateway's own ceiling for text params (~45K, about 7,000 words —
+// a long report). Promising more here would just be truncated upstream, which is
+// the kind of silent lie this codebase keeps hunting down; anything bigger
+// belongs in a file slot.
+const MAX_CHARS = 45_000;
 const MIN_TTL_DAYS = 1;
 const MAX_TTL_DAYS = 30;
 const DEFAULT_TTL_DAYS = 7;

@@ -570,3 +570,51 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     return NextResponse.json({ error: message }, { status: 503 });
   }
 }
+
+/**
+ * Same endpoint, with the inputs in a JSON body.
+ *
+ * Everything here reads its parameters from the query string, which is fine for
+ * an address or a token but cannot carry a document: `file-publish` takes a
+ * whole report, and a URL is the wrong place for one. So a POST body is folded
+ * into the query string and handed to the identical GET path — one code path for
+ * payment, free tier, credits and telemetry, rather than a second one to keep in
+ * step. Query parameters win, so an explicit `?x=` is never overridden by a body.
+ *
+ * The payment is unaffected: `accepts.resource` is the canonical service URL
+ * without any query string, so rewriting the query cannot invalidate a signature.
+ */
+export async function POST(req: NextRequest, ctx: { params: Promise<{ service: string }> }) {
+  const { service: serviceId } = await ctx.params;
+  const service = getService(serviceId);
+  if (!service) {
+    return NextResponse.json({ error: `Unknown service: ${serviceId}` }, { status: 404 });
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    const raw = await req.text();
+    if (raw.trim()) body = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Body must be JSON (or send the parameters in the query string)" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Body must be a JSON object of parameters" }, { status: 400 });
+  }
+
+  const url = new URL(req.url);
+  for (const p of service.params) {
+    if (url.searchParams.has(p.name)) continue;
+    const v = body[p.name];
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      url.searchParams.set(p.name, String(v));
+    }
+  }
+
+  // Forwarded as a GET with the original headers — the payment header, the
+  // credit token and the force flag all have to survive the hand-off.
+  const headers = new Headers(req.headers);
+  headers.delete("content-type");
+  headers.delete("content-length");
+  return GET(new NextRequest(url, { method: "GET", headers }), ctx);
+}
