@@ -416,6 +416,15 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [],
     handler: gasOracle,
+    // TEMPORARY, single-variable experiment (2026-07-31): every endpoint of ours
+    // that the discovery index has ever created a record for is noFreeTier, and
+    // every one it ignores — even after a settlement proven on chain — has a free
+    // tier. The likely mechanism is that the indexer fetches the resource after
+    // settlement to read its declaration, and a free-eligible endpoint answers it
+    // with a free 200 instead of a 402, so there is nothing to read. Flipping one
+    // free-tier service and paying it is the cheapest way to find out. Revert
+    // this comment and the flag once the answer is known.
+    noFreeTier: true,
   },
   {
     id: "b20-safety",
