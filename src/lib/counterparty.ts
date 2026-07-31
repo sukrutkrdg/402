@@ -186,6 +186,12 @@ export async function counterpartyCheck(params: Record<string, string>) {
   add("domain", d);
   add("email", e);
   add("sanctions", s);
+  // The name screen returns a decision and match counts rather than a reasons
+  // list, so its finding has to be spelled out here — otherwise the composite
+  // shows HOLD with nothing in `reasons` to explain it, which is the field an
+  // agent actually reads.
+  if (s?.decision === "STOP") reasons.push("sanctions:name_on_ofac_list");
+  else if (s?.decision === "HOLD") reasons.push(`sanctions:partial_name_match_${s.matchCount ?? 0}`);
 
   // What we could not look at, so the receipt can say so rather than implying a
   // clean bill of health across checks that never ran.
