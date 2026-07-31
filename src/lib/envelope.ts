@@ -46,6 +46,7 @@ export const POLICY_VERSION: Record<string, string> = {
   "sanctions-name": "1.0.0",
   "email-verify": "1.0.0",
   "domain-check": "1.0.0",
+  "counterparty-check": "1.0.0",
   "address-trust": "1.0.0",
 };
 

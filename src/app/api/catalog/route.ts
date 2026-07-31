@@ -12,7 +12,7 @@ import { POLICY_VERSION } from "@/lib/envelope";
 
 // Checks that carry the FULL decision receipt (confidence/refusal/refund), vs the
 // baseline (inputHash + policyVersion) every other paid service carries.
-const VERDICT_CHECKS = ["token-risk", "rug-score", "sellability", "pre-trade-gate", "b20-safety", "sanctions", "sanctions-name", "email-verify", "domain-check", "address-trust"];
+const VERDICT_CHECKS = ["token-risk", "rug-score", "sellability", "pre-trade-gate", "b20-safety", "sanctions", "sanctions-name", "email-verify", "domain-check", "counterparty-check", "address-trust"];
 
 export const dynamic = "force-dynamic";
 

@@ -67,6 +67,7 @@ import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
 import { fileSlot, s3Config } from "./file-store";
 import { fileConvert } from "./file-convert";
+import { counterpartyCheck, companyLei } from "./counterparty";
 import { filePublish } from "./file-publish";
 
 export interface ServiceParam {
@@ -1688,6 +1689,34 @@ export const SERVICES: ServiceDef[] = [
     category: "Business",
     params: [{ name: "domain", label: "Domain name", placeholder: "example.com", required: true }],
     handler: domainCheck,
+  },
+  {
+    id: "counterparty-check",
+    name: "Counterparty Check",
+    tagline: "Should you pay this supplier?",
+    description:
+      "One call, four public sources: how old the domain is (RDAP), whether mail to the contact will land (DNS), whether the name is on the OFAC list, and whether the company exists in the global LEI register. Returns a single GO / HOLD / STOP with every signal that produced it. Built for the moment an agent has to trust an invoice, a new vendor or a payment-detail change — the classic fraud pattern is a real-looking name on a domain registered weeks ago.",
+    price: "$0.12",
+    icon: "🤝",
+    category: "Business",
+    params: [
+      { name: "domain", label: "Company domain", placeholder: "acme-supplies.com", required: false },
+      { name: "email", label: "Contact email (its domain is used if 'domain' is omitted)", placeholder: "billing@acme-supplies.com" },
+      { name: "name", label: "Legal company name (enables OFAC + LEI)", placeholder: "Acme Supplies Ltd" },
+    ],
+    handler: counterpartyCheck,
+  },
+  {
+    id: "company-lei",
+    name: "Company LEI",
+    tagline: "Does this company legally exist, and where?",
+    description:
+      "Look a company up in GLEIF, the global Legal Entity Identifier register: LEI code, registered legal name, entity status, registration status, jurisdiction and address. The register's own name filter is a token search that returns thousands of unrelated rows, so matches are re-checked here and only an exact one — or one differing solely in legal form (Inc/Ltd/GmbH) — is reported as found; the rest come back as candidates.",
+    price: "$0.005",
+    icon: "🏛️",
+    category: "Business",
+    params: [{ name: "name", label: "Company legal name", placeholder: "Coinbase Global, Inc.", required: true }],
+    handler: companyLei,
   },
   {
     id: "file-convert",
