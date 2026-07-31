@@ -31,6 +31,7 @@ import {
   kvSRem,
   kvSMembers,
   kvExpire,
+  kvPipeline,
 } from "./kv";
 
 /** Prepaid packs: pay `usd`, receive `credits` (a small bonus rewards prepaying). */
@@ -93,9 +94,12 @@ export async function mintCredits(credits: number, paidUsd: number) {
     bonusUsd: +((credits - paidUsd * 100) / 100).toFixed(2),
     howToSpend:
       "Send this token as the `x-credit-token` header on any paid service call. Each call debits its price from your balance — no x402 settlement, no per-call signature. The response returns your remaining balance in `x-credit-balance` (cents).",
-    security: "This token is a bearer key — anyone holding it can spend the balance. Store it secretly; it is shown only once and cannot be recovered.",
+    security:
+      "This token is a bearer key — anyone holding it can spend the balance. Store it secretly; it is shown only once. If you lose it, the balance can be moved to a fresh token by signing a message from the wallet that paid for it (POST /api/credits/recover) — the lost token stops working at that point. The token itself is never recoverable, because only its hash is stored.",
     expiresInDays: 180,
-    note: "Prepaid credits. Buy more anytime (re-buy tops up the same flow). Not refundable to chain.",
+    checkBalance:
+      "GET /api/credits/balance with the same `x-credit-token` header — reads the balance without spending any of it.",
+    note: "Prepaid credits. Buying again mints a SEPARATE token with its own balance — it does not top up this one; recovery from the paying wallet merges them into one. Not refundable to chain.",
   };
 }
 
@@ -226,4 +230,20 @@ export async function creditBalance(token: string): Promise<number> {
   const t = (token || "").trim();
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return 0;
   return await kvGetNumber(keyFor(t));
+}
+
+/**
+ * Balance plus how long it has left — what a prepaid customer needs to see
+ * without spending a call to find out. The balance TTL is the expiry, so it is
+ * read straight off the key rather than tracked separately.
+ */
+export async function creditStatus(token: string): Promise<{ cents: number; expiresInDays: number | null }> {
+  const t = (token || "").trim();
+  if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return { cents: 0, expiresInDays: null };
+  const key = keyFor(t);
+  const cents = await kvGetNumber(key);
+  if (cents <= 0) return { cents: 0, expiresInDays: null };
+  const res = await kvPipeline([["ttl", key]]);
+  const ttl = Number((res?.[0] as { result?: unknown } | undefined)?.result ?? res?.[0] ?? -1);
+  return { cents, expiresInDays: Number.isFinite(ttl) && ttl > 0 ? Math.ceil(ttl / 86400) : null };
 }
