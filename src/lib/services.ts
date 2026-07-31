@@ -66,6 +66,8 @@ import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
 import { fileSlot, s3Config } from "./file-store";
+import { fileConvert } from "./file-convert";
+import { filePublish } from "./file-publish";
 
 export interface ServiceParam {
   name: string;
@@ -1686,6 +1688,44 @@ export const SERVICES: ServiceDef[] = [
     category: "Business",
     params: [{ name: "domain", label: "Domain name", placeholder: "example.com", required: true }],
     handler: domainCheck,
+  },
+  {
+    id: "file-convert",
+    name: "Format Convert",
+    tagline: "CSV in, JSON out — and back again",
+    description:
+      "Convert between the shapes data actually arrives in: CSV or TSV to JSON, JSON to CSV or TSV, CSV to a Markdown table, Markdown to HTML. Proper RFC 4180 parsing — quoted fields, embedded commas and newlines, doubled quotes — so a spreadsheet exported by a human does not silently come apart. Numbers and booleans get real types (turn it off with typed=false). No model call and no upstream: local parsing only.",
+    price: "$0.005",
+    icon: "🔀",
+    category: "Files",
+    params: [
+      { name: "text", label: "Content to convert", placeholder: "name,qty\\nWidget,3", required: true },
+      { name: "from", label: "Source format", placeholder: "csv | tsv | json | md", required: true },
+      { name: "to", label: "Target format", placeholder: "json | csv | tsv | md | html", required: true },
+      { name: "typed", label: "Type numbers/booleans (optional)", placeholder: "true (default) | false" },
+    ],
+    handler: fileConvert,
+    // Pure CPU, no upstream: a free call costs us nothing but a millisecond, so
+    // this one keeps the trial tier that gets agents in the door.
+  },
+  {
+    id: "file-publish",
+    name: "Publish Page",
+    tagline: "Turn a report into a link a human can open",
+    description:
+      "Send Markdown (or HTML) and get back a URL that renders as a real page — headings, tables, code blocks, mobile-readable, no scripts and no external requests. The other half of an agent's output problem: file-slot is for bytes it will fetch back, this is for the report somebody has to read. Retention 1-30 days. Published on the storage origin, never on 402.com.tr.",
+    price: "$0.01",
+    icon: "📄",
+    category: "Files",
+    params: [
+      { name: "text", label: "Markdown or HTML to publish", placeholder: "# Report\\n\\nFindings…", required: true },
+      { name: "title", label: "Page title (optional)", placeholder: "Weekly report" },
+      { name: "format", label: "md (default) or html", placeholder: "md" },
+      { name: "ttlDays", label: "Retention in days (optional)", placeholder: "7 (1-30)" },
+    ],
+    handler: filePublish,
+    noFreeTier: true,
+    hidden: !s3Config(),
   },
   {
     id: "file-slot",
