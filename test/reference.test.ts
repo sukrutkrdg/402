@@ -43,6 +43,17 @@ describe("fxConvert", () => {
     const r = await fxConvert({ from: "EUR", to: "USD,TRY,GBP" });
     expect(Object.keys(r.converted).sort()).toEqual(["GBP", "TRY", "USD"]);
   }, 30_000);
+
+  /**
+   * The ECB writes its XML attributes in single quotes. A double-quote-only
+   * pattern matched nothing, so every call quietly used the third-party mirror
+   * while the code claimed the ECB was primary — working, but not what it said.
+   */
+  it("reads the ECB's own file rather than falling through to the mirror", async () => {
+    const r = await fxConvert({ from: "EUR", to: "USD" });
+    expect(r.source).toMatch(/ecb\.europa\.eu/);
+    expect(r.source).not.toMatch(/mirror/i);
+  }, 30_000);
 });
 
 describe("isWeekend", () => {

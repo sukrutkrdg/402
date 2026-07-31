@@ -61,13 +61,16 @@ async function ecbRates(date: string | null): Promise<{ date: string; rates: Rec
   } catch {
     return null;
   }
-  // <Cube time="2026-07-30"> <Cube currency="USD" rate="1.1476"/> …
-  const days = xml.split(/<Cube\s+time="/).slice(1);
+  // <Cube time='2026-07-30'> <Cube currency='USD' rate='1.1476'/> …
+  // The ECB writes attributes with SINGLE quotes; a double-quote-only pattern
+  // matches nothing, parses to an empty rate table and falls through to the
+  // mirror on every call — silently, because the fallback works.
+  const days = xml.split(/<Cube\s+time=['"]/).slice(1);
   for (const chunk of days) {
     const day = chunk.slice(0, 10);
     if (date && day > date) continue; // walk back to the requested date or earlier
     const rates: Record<string, number> = { EUR: 1 };
-    for (const m of chunk.matchAll(/currency="([A-Z]{3})"\s+rate="([\d.]+)"/g)) {
+    for (const m of chunk.matchAll(/currency=['"]([A-Z]{3})['"]\s+rate=['"]([\d.]+)['"]/g)) {
       rates[m[1]] = Number(m[2]);
     }
     if (Object.keys(rates).length < 5) continue;
