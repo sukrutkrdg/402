@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { normalizeCompany, leiLookup, companyLei } from "@/lib/counterparty";
 
 describe("normalizeCompany", () => {
@@ -46,6 +46,45 @@ describe("leiLookup — live GLEIF", () => {
     // Same entity reachable without the suffix, as "strong" rather than exact.
     if (withoutForm.record) expect(withoutForm.match).toBe("strong");
   }, 40_000);
+});
+
+/**
+ * The composite's one unforgivable failure: reporting GO for a counterparty
+ * whose sanctions screen never ran. The first live run did exactly that for
+ * "Banco Nacional de Cuba" because the OFAC feed was down and the other checks
+ * were clean, so this pins the rule — an incomplete screen is never a pass.
+ */
+describe("counterpartyCheck — an unfinished check is not a pass", () => {
+  it("never returns GO when a requested check could not run", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/sanctions-name", () => ({
+      sanctionsName: async () => {
+        throw new Error("OFAC list unavailable");
+      },
+    }));
+    vi.doMock("@/lib/domain-check", () => ({
+      domainCheck: async () => ({ decision: "GO", registered: true, ageDays: 4000, reasons: [] }),
+    }));
+    vi.doMock("@/lib/email-verify", () => ({
+      emailVerify: async () => ({ decision: "GO", deliverable: true, reasons: [] }),
+    }));
+    const { counterpartyCheck } = await import("@/lib/counterparty");
+    const r = (await counterpartyCheck({
+      domain: "example.com",
+      email: "a@example.com",
+      name: "Banco Nacional de Cuba",
+    })) as { decision: string; reasons: string[]; receipt: { confidence: { band: string; basis: string } } };
+
+    expect(r.decision).not.toBe("GO");
+    expect(r.decision).toBe("HOLD");
+    expect(r.reasons).toContain("incomplete:some_checks_could_not_run");
+    expect(r.receipt.confidence.band).toBe("medium");
+    expect(r.receipt.confidence.basis).toMatch(/sanctions-check \(did not complete\)/);
+    vi.doUnmock("@/lib/sanctions-name");
+    vi.doUnmock("@/lib/domain-check");
+    vi.doUnmock("@/lib/email-verify");
+    vi.resetModules();
+  });
 });
 
 describe("companyLei", () => {

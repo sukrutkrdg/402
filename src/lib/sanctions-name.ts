@@ -37,7 +37,7 @@ export interface Entry {
   alias: boolean;
 }
 
-let cache: { entries: Entry[]; fetchedAt: number } | null = null;
+let cache: { entries: Entry[]; fetchedAt: number; source: string } | null = null;
 
 /**
  * Normalise for comparison: OFAC writes names in many shapes, and a screening
@@ -92,11 +92,61 @@ function makeEntry(ent: number, name: string, type: string, program: string, ali
   };
 }
 
+/**
+ * Mirror of the same OFAC SDN list, published by OpenSanctions.
+ *
+ * Treasury put its export behind bot protection: a plain request is answered
+ * `403`, and a browser-shaped one gets `202` with an empty body however often it
+ * retries. A compliance endpoint cannot depend on a source that has decided we
+ * are a robot — which we are. OpenSanctions republishes the official dataset
+ * daily as structured CSV, so it takes over when the primary source will not
+ * talk to us, and the response says which feed answered.
+ */
+const MIRROR_URL = "https://data.opensanctions.org/datasets/latest/us_ofac_sdn/targets.simple.csv";
+const UA = "x402-bazaar/1.0 (+https://402.com.tr; sanctions screening)";
+
 async function download(url: string): Promise<string> {
   // Treasury 302s to a signed S3 URL, so redirects must be followed.
-  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(FETCH_TIMEOUT) });
+  const res = await fetch(url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT),
+    headers: { "user-agent": UA, accept: "text/csv,*/*" },
+  });
   if (!res.ok) throw new Error(`OFAC export responded ${res.status}`);
-  return res.text();
+  const body = await res.text();
+  // A 202 with nothing in it is the bot wall saying "queued", not a list. Left
+  // unchecked it parses to zero entries, which reads as "no match" — a clean
+  // bill of health issued by an empty file.
+  if (body.trim().length < 1000) throw new Error(`OFAC export returned no data (HTTP ${res.status})`);
+  return body;
+}
+
+/**
+ * Parse the mirror's `targets.simple.csv` into the same Entry shape.
+ * Columns: id, schema, name, aliases(;-separated), birth_date, countries, …
+ */
+export function parseMirror(csv: string): Entry[] {
+  const entries: Entry[] = [];
+  const lines = csv.split(/\r?\n/);
+  let ent = 0;
+  for (const line of lines.slice(1)) {
+    if (!line.trim()) continue;
+    const f = csvFields(line);
+    const schema = f[1] ?? "";
+    const name = f[2] ?? "";
+    if (!name) continue;
+    ent++;
+    const type = /person/i.test(schema) ? "individual" : "entity";
+    const primary = makeEntry(ent, name, type, "OFAC SDN", false);
+    if (primary) entries.push(primary);
+    for (const alias of (f[3] ?? "").split(";")) {
+      const a = alias.trim();
+      if (!a) continue;
+      const e = makeEntry(ent, a, type, "OFAC SDN", true);
+      if (e) entries.push(e);
+    }
+  }
+  return entries;
 }
 
 /**
@@ -133,20 +183,37 @@ export function parseExports(sdn: string, alt: string): Entry[] {
   return entries;
 }
 
-async function loadList(): Promise<{ entries: Entry[]; fetchedAt: number; stale: boolean }> {
+async function loadList(): Promise<{ entries: Entry[]; fetchedAt: number; stale: boolean; source: string }> {
   if (cache && Date.now() - cache.fetchedAt < TTL_MS) return { ...cache, stale: false };
-  try {
-    const [sdn, alt] = await Promise.all([download(SDN_URL), download(ALT_URL)]);
-    const entries = parseExports(sdn, alt);
-    // Sanity: an implausibly small list means a truncated or tampered download,
-    // and screening against it would return a false "clear".
-    if (entries.length < 5000) throw new Error("OFAC list implausibly small — refusing to screen against it");
-    cache = { entries, fetchedAt: Date.now() };
-    return { ...cache, stale: false };
-  } catch (err) {
-    if (cache) return { ...cache, stale: true }; // stale-but-flagged beats no answer
-    throw new Error(`OFAC list unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  const problems: string[] = [];
+  // Primary: Treasury's own export. Fallback: the OpenSanctions mirror of the
+  // same list. Both are parsed into the same shape and sanity-checked the same
+  // way — an implausibly small list is a truncated download, and screening
+  // against it would return a false "clear".
+  for (const attempt of [
+    {
+      source: "OFAC SDN — U.S. Treasury official export (SDN.CSV primary names + ALT.CSV aliases)",
+      run: async () => {
+        const [sdn, alt] = await Promise.all([download(SDN_URL), download(ALT_URL)]);
+        return parseExports(sdn, alt);
+      },
+    },
+    {
+      source: "OFAC SDN — via the OpenSanctions daily mirror of the Treasury list (primary names + aliases)",
+      run: async () => parseMirror(await download(MIRROR_URL)),
+    },
+  ]) {
+    try {
+      const entries = await attempt.run();
+      if (entries.length < 5000) throw new Error(`list implausibly small (${entries.length} entries)`);
+      cache = { entries, fetchedAt: Date.now(), source: attempt.source };
+      return { ...cache, stale: false };
+    } catch (err) {
+      problems.push(err instanceof Error ? err.message : String(err));
+    }
   }
+  if (cache) return { ...cache, stale: true }; // stale-but-flagged beats no answer
+  throw new Error(`OFAC list unavailable: ${problems.join("; ")}`);
 }
 
 type MatchKind = "exact" | "strong" | "partial";
@@ -242,7 +309,7 @@ export async function sanctionsName(params: Record<string, string>) {
   if (query.length > 200) throw new Error("Name too long (max 200 characters)");
   if (!normalizeName(query)) throw new Error("Name contains no comparable characters");
 
-  const { entries, fetchedAt, stale } = await loadList();
+  const { entries, fetchedAt, stale, source } = await loadList();
   const { norm, singleToken, matches, partialsSeen, hit } = screen(entries, query);
   const top = matches.slice(0, 25);
 
@@ -280,7 +347,9 @@ export async function sanctionsName(params: Record<string, string>) {
     // dropped, so this bounds the noise, not the screen.
     weakMatchesOmitted: Math.max(0, partialsSeen - MAX_PARTIALS),
     singleTokenQuery: singleToken,
-    source: "OFAC SDN — U.S. Treasury official export (SDN.CSV primary names + ALT.CSV aliases)",
+    // Which feed actually answered — the caller of a compliance check is
+    // entitled to know whether it screened against Treasury or the mirror.
+    source,
     listEntries: entries.length,
     listFetchedAt: new Date(fetchedAt).toISOString(),
     listStale: stale,

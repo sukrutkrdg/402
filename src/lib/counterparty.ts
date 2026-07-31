@@ -204,16 +204,23 @@ export async function counterpartyCheck(params: Record<string, string>) {
   if (leiLapsed) reasons.push(`lei:registration_${String(lei!.record!.registrationStatus).toLowerCase()}`);
   if (lei?.record && lei.record.status && lei.record.status !== "ACTIVE") reasons.push(`lei:entity_${String(lei.record.status).toLowerCase()}`);
 
-  // Refuse only when nothing usable came back at all — a single feed being down
-  // must not erase the checks that did answer.
+  // A check the caller ASKED for that could not run is not a pass. The first
+  // version of this returned GO for a sanctioned name because the OFAC feed was
+  // down and the other three checks were clean — the worst answer this endpoint
+  // can give. So: nothing usable at all → REFUSE; anything failed → never better
+  // than HOLD, with the gap named in `reasons` and in the receipt.
+  if (refusals > 0) reasons.push("incomplete:some_checks_could_not_run");
   const decision =
     refusals === ran
       ? "REFUSE"
       : stops > 0
         ? "STOP"
-        : holds > 0 || leiLapsed
+        : holds > 0 || leiLapsed || refusals > 0
           ? "HOLD"
           : "GO";
+  for (const [label, sub] of [["domain", d], ["email", e], ["sanctions", s]] as const) {
+    if (sub?.decision === "REFUSE") missing.push(`${label}-check (did not complete)`);
+  }
 
   const guidance =
     decision === "REFUSE"
@@ -221,7 +228,9 @@ export async function counterpartyCheck(params: Record<string, string>) {
       : decision === "STOP"
         ? "At least one hard signal failed. Do not send money or credentials on this counterparty until it is resolved through a channel you already trust."
         : decision === "HOLD"
-          ? "Nothing disqualifying, but something is off — the detail is in `reasons`. Verify through a channel that predates this contact (a phone number you already had, not one from the invoice)."
+          ? refusals > 0
+            ? "Not a clean result: at least one check could not be completed, so this is 'unverified', not 'fine'. See `receipt.confidence.basis` for which one, and re-run before relying on it."
+            : "Nothing disqualifying, but something is off — the detail is in `reasons`. Verify through a channel that predates this contact (a phone number you already had, not one from the invoice)."
           : "Nothing unusual across the checks that ran. That is not a guarantee of good faith, only an absence of the cheap warning signs.";
 
   return {
