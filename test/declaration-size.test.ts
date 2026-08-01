@@ -34,11 +34,14 @@ interface Declared {
 function parseServices(): { declared: Declared[]; unparsable: string[] } {
   const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
   // Entry boundaries: each service is an object literal opening at this indent.
-  const chunks = src.split(/\n {2}\{\n/).slice(1);
+  // \r is optional throughout: the file is LF in git but a Windows checkout (or
+  // any tool that rewrites it) makes it CRLF, and a guard that silently parses
+  // ZERO entries on the developer's machine is worse than no guard at all.
+  const chunks = src.split(/\r?\n {2}\{\r?\n/).slice(1);
   const declared: Declared[] = [];
   const unparsable: string[] = [];
   for (const chunk of chunks) {
-    const body = chunk.split(/\n {2}\},?\n/)[0];
+    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
     const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
     if (!id) continue; // not a service entry (nested object, params list, …)
     // Skip commented-out entries: they declare nothing at runtime.

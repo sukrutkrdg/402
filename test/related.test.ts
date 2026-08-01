@@ -10,8 +10,10 @@ import { readFileSync } from "node:fs";
 function catalogue(): Map<string, { price: string; hidden: boolean }> {
   const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
   const out = new Map<string, { price: string; hidden: boolean }>();
-  for (const chunk of src.split(/\n {2}\{\n/).slice(1)) {
-    const body = chunk.split(/\n {2}\},?\n/)[0];
+  // \r is optional: the file is LF in git, but a Windows checkout makes it CRLF
+  // and a parser that then finds zero services turns this guard into decoration.
+  for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
+    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
     const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
     const price = body.match(/^\s*price:\s*"([^"]+)",/m)?.[1];
     if (!id || !price) continue;
