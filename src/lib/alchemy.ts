@@ -404,8 +404,12 @@ interface AlchemyOwnedNft {
 export async function walletNfts(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
   const k = key();
-  const url =
-    `${NFT}/${k}/getNFTsForOwner?owner=${address}&withMetadata=true&excludeFilters[]=SPAM&excludeFilters[]=AIRDROPS&pageSize=100`;
+  // Built with URLSearchParams: the filter parameter is an array, and hand-rolling
+  // `excludeFilters[]=` left unencoded brackets in the query string.
+  const q = new URLSearchParams({ owner: address, withMetadata: "true", pageSize: "50" });
+  q.append("excludeFilters[]", "SPAM");
+  q.append("excludeFilters[]", "AIRDROPS");
+  const url = `${NFT}/${k}/getNFTsForOwner?${q}`;
 
   let data: { ownedNfts?: AlchemyOwnedNft[]; totalCount?: number };
   try {
