@@ -321,6 +321,12 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x... wallet to trace", required: true }],
     handler: firstFunder,
     noFreeTier: true,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "fresh-bridge",
@@ -1435,6 +1441,12 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNetworth,
     noFreeTier: true,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "wallet-summary",
@@ -1448,6 +1460,12 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletSummary,
     noFreeTier: true,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "wallet-activity",
@@ -1474,6 +1492,12 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: tokenApprovals,
     noFreeTier: true,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "historical-price",
@@ -1490,6 +1514,12 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: historicalPrice,
     noFreeTier: true,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "token-transfers",
@@ -1519,6 +1549,12 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNfts,
     noFreeTier: true,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "ai-wallet-report",
@@ -1531,6 +1567,12 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: aiWalletReport,
+    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
+    // cancelled — the API now answers "credit limit exceeded". The handler fails
+    // loudly so nobody is charged, but advertising an endpoint that cannot answer
+    // sends agents into a dead call. Unhide when the source is restored or the
+    // read is migrated to a feed we still have.
+    hidden: true,
   },
   {
     id: "ai-token-report",
