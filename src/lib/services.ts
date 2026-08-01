@@ -21,8 +21,8 @@ import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
-import { nftFloor, walletPortfolio } from "./alchemy";
-import { walletNetworth, walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
+import { nftFloor, walletPortfolio, walletNetworth } from "./alchemy";
+import { walletSummary, walletActivity, tokenApprovals, historicalPrice, walletNfts, tokenTransfers } from "./covalent";
 import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence, b20Dossier } from "./ai-report";
 import { agentWalletAudit } from "./agent-wallet-audit";
 import { walletDelegation } from "./delegation";
@@ -1434,19 +1434,13 @@ export const SERVICES: ServiceDef[] = [
     name: "Wallet Net Worth",
     tagline: "All tokens + USD value (reliable pricing)",
     description:
-      "Complete ERC-20 portfolio for a Base address with accurate USD values from Covalent (handles stablecoins & long-tail tokens). Spam-filtered, sorted by value, with a total. The reliable portfolio endpoint.",
+      "Complete token portfolio for a Base address with USD values: every ERC-20 the wallet holds, priced from live DEX liquidity, plus native ETH — sorted by value with a total. Holdings nobody quotes are listed and counted separately rather than silently valued at zero.",
     price: "$0.02",
     icon: "🏦",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNetworth,
     noFreeTier: true,
-    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
-    // cancelled — the API now answers "credit limit exceeded". The handler fails
-    // loudly so nobody is charged, but advertising an endpoint that cannot answer
-    // sends agents into a dead call. Unhide when the source is restored or the
-    // read is migrated to a feed we still have.
-    hidden: true,
   },
   {
     id: "wallet-summary",

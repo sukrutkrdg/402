@@ -38,6 +38,9 @@ const CURATED: Address[] = [
   "0x940181a94A35A4569E4529A3CDfB74e38FD98631", // AERO
 ];
 
+/** Wrapped ETH on Base — the pair DexScreener quotes native ETH through. */
+const WETH: Address = "0x4200000000000000000000000000000000000006";
+
 const NFT = "https://base-mainnet.g.alchemy.com/nft/v3";
 const rpcUrl = (k: string) => `https://base-mainnet.g.alchemy.com/v2/${k}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -172,7 +175,11 @@ export async function walletTokenContracts(address: Address): Promise<Address[]>
 
 export async function walletPortfolio(params: Record<string, string>) {
   const address = reqAddr(params.address || "") as Address;
-  const k = key();
+  // The Alchemy key is fetched INSIDE the fallback, not here: the primary path
+  // is CDP balances plus our own Base RPC and never touches Alchemy. Demanding
+  // the key up front meant one cancelled subscription could kill an endpoint
+  // that does not depend on it — which is exactly how the GoldRush cancellation
+  // took out seven services on 2026-08-01.
   const c = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
   // 1) Token list. Prefer Alchemy (full list, single call); if it's rate-limited
@@ -196,7 +203,7 @@ export async function walletPortfolio(params: Record<string, string>) {
     // Fallback 1: Alchemy discovery.
     source = "alchemy";
     try {
-      const balData = await rpc<TokenBalances>(k, "alchemy_getTokenBalances", [address]);
+      const balData = await rpc<TokenBalances>(key(), "alchemy_getTokenBalances", [address]);
       tokenAddrs = (balData.tokenBalances ?? [])
         .filter((b) => b.contractAddress && b.tokenBalance && /[1-9a-f]/i.test(b.tokenBalance.slice(2)))
         .slice(0, 20)
@@ -315,5 +322,64 @@ export async function walletPortfolio(params: Record<string, string>) {
     holdings: holdings.slice(0, 50),
     source, // "alchemy" (full) or "curated" (fallback when Alchemy rate-limited)
     checkedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Wallet net worth, rebuilt on the portfolio read.
+ *
+ * The original implementation was a single Covalent `balances_v2` call. That
+ * subscription was cancelled on 2026-08-01 and the endpoint now answers "credit
+ * limit exceeded", so the same answer is assembled from sources we still have:
+ * CDP token balances for discovery, our own Base RPC for the amounts, and
+ * DexScreener for prices — the exact path `wallet-portfolio` already uses.
+ *
+ * One improvement over the old version: native ETH is priced and counted. The
+ * Covalent-backed answer reported the ETH balance but valued only the tokens,
+ * which understated every wallet that holds ETH — most of them.
+ */
+export async function walletNetworth(params: Record<string, string>) {
+  const p = await walletPortfolio(params);
+  const ethBalance = parseFloat(p.eth.balance) || 0;
+
+  let ethUsd: number | null = null;
+  if (ethBalance > 0) {
+    try {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${WETH}`, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const dj = (await res.json()) as { pairs?: Array<{ priceUsd?: string; liquidity?: { usd?: number } }> | null };
+        const best = (dj.pairs ?? [])
+          .filter((x) => Number.isFinite(parseFloat(x.priceUsd ?? "")))
+          .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
+        if (best) ethUsd = +(ethBalance * parseFloat(best.priceUsd!)).toFixed(2);
+      }
+    } catch {
+      /* ETH price optional — the answer still stands without it, and says so below */
+    }
+  }
+
+  const holdings = [
+    ...(ethBalance > 1e-9
+      ? [{ symbol: "ETH", name: "Ether", address: null, native: true, balance: String(ethBalance), usdValue: ethUsd }]
+      : []),
+    ...p.holdings.map((h) => ({ symbol: h.symbol, name: null, address: h.address, native: false, balance: h.balance, usdValue: h.usdValue })),
+  ];
+  const totalUsd = +holdings.reduce((s, h) => s + (h.usdValue ?? 0), 0).toFixed(2);
+  const unpriced = holdings.filter((h) => h.usdValue === null).length;
+
+  return {
+    address: p.address,
+    totalUsd,
+    tokenCount: holdings.length,
+    holdings: holdings.slice(0, 50),
+    // Named honestly: a total that excludes tokens nobody quotes is not the same
+    // number as "everything this wallet owns".
+    unpricedHoldings: unpriced,
+    source: `${p.source}+dexscreener`,
+    checkedAt: new Date().toISOString(),
+    note:
+      unpriced > 0
+        ? `${unpriced} holding(s) have no quoted market price and contribute 0 to the total. Unpriced tokens in a Base wallet are usually airdropped spam — they are listed rather than dropped, because deciding what is spam is the caller's call, not ours.`
+        : "Every holding found had a quoted price.",
   };
 }
