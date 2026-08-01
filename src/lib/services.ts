@@ -1543,6 +1543,12 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNfts,
     noFreeTier: true,
+    // Migrated off the cancelled Covalent plan onto Alchemy's NFT API, but the
+    // rebuilt handler answers 502 through the edge in ~1-3s (too fast for a
+    // timeout) while nft-floor on the SAME key works — so the key is fine and
+    // the fault is in this call. Not diagnosed yet; hidden rather than left live,
+    // because a listed endpoint that cannot answer sends agents into a dead call.
+    hidden: true,
   },
   {
     id: "ai-wallet-report",
