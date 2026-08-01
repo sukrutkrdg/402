@@ -24,6 +24,7 @@ import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
 import { debitCredit, refundCredit, tierPrice, linkCreditOwner } from "@/lib/credits";
 import { sinceLastCheck } from "@/lib/since-last";
 import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
+import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
@@ -265,7 +266,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     if (refunded) await refundCredit(creditToken, cents);
     const remaining = refunded ? debit.remaining + cents : debit.remaining;
     return NextResponse.json(
-      {
+      withRelated({
         service: service.id,
         builderCode: cfg.appBuilderCode,
         data,
@@ -275,7 +276,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         chargedUsd: refunded ? 0 : +(cents / 100).toFixed(3),
         creditBalanceUsd: +(remaining / 100).toFixed(2),
         ...(refunded ? { refunded: true, refundReason: "Refusal (core data feed unavailable) — not billed per this check's refundRule." } : {}),
-      },
+      }, service.id),
       { headers: { "x-credit-balance": String(remaining), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },
     );
   }
@@ -430,11 +431,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       }
     }
     await attachRetention(service.id, data, srcHash(clientIp(request)));
-    return NextResponse.json({
-      service: service.id,
-      builderCode: cfg.appBuilderCode,
-      data,
-    });
+    return NextResponse.json(
+      withRelated(
+        {
+          service: service.id,
+          builderCode: cfg.appBuilderCode,
+          data,
+        },
+        service.id,
+      ),
+    );
   };
 
   const inputSchema =
