@@ -383,3 +383,72 @@ export async function walletNetworth(params: Record<string, string>) {
         : "Every holding found had a quoted price.",
   };
 }
+
+interface AlchemyOwnedNft {
+  contract?: { address?: string; name?: string; symbol?: string; openSeaMetadata?: { floorPrice?: number; safelistRequestStatus?: string } };
+  balance?: string;
+}
+
+/**
+ * NFT collections a wallet holds, rebuilt on Alchemy's NFT API.
+ *
+ * Replaces the Covalent read that died with the GoldRush cancellation. Alchemy
+ * returns NFTs one token at a time, so they are folded into collections here —
+ * an agent asking "what does this wallet hold" wants the collections, not 400
+ * token ids.
+ *
+ * Spam: Alchemy's own spam filter is applied at the query (`excludeFilters`),
+ * which is what the old provider did server-side. It is a filter, not a
+ * guarantee, and the response says so rather than implying the list is clean.
+ */
+export async function walletNfts(params: Record<string, string>) {
+  const address = reqAddr(params.address || "");
+  const k = key();
+  const url =
+    `${NFT}/${k}/getNFTsForOwner?owner=${address}&withMetadata=true&excludeFilters[]=SPAM&excludeFilters[]=AIRDROPS&pageSize=100`;
+
+  let data: { ownedNfts?: AlchemyOwnedNft[]; totalCount?: number };
+  try {
+    const res = await fetchRetry(url);
+    if (!res.ok) {
+      const body = (await res.text().catch(() => "")).slice(0, 200);
+      throw new Error(`Alchemy ${res.status}${body ? ` — ${body}` : ""}`);
+    }
+    data = (await res.json()) as typeof data;
+  } catch (err) {
+    throw new Error(`NFT holdings unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const byContract = new Map<string, { name: string | null; symbol: string | null; address: string; count: number; floorEth: number | null; verified: boolean }>();
+  for (const n of data.ownedNfts ?? []) {
+    const addr = n.contract?.address?.toLowerCase();
+    if (!addr) continue;
+    const held = Number(n.balance ?? 1) || 1;
+    const cur = byContract.get(addr);
+    if (cur) {
+      cur.count += held;
+      continue;
+    }
+    byContract.set(addr, {
+      name: n.contract?.name ?? null,
+      symbol: n.contract?.symbol ?? null,
+      address: addr,
+      count: held,
+      floorEth: typeof n.contract?.openSeaMetadata?.floorPrice === "number" ? n.contract.openSeaMetadata.floorPrice : null,
+      verified: n.contract?.openSeaMetadata?.safelistRequestStatus === "verified",
+    });
+  }
+  const collections = [...byContract.values()].sort((a, b) => (b.floorEth ?? 0) - (a.floorEth ?? 0) || b.count - a.count).slice(0, 30);
+
+  return {
+    address,
+    collectionCount: collections.length,
+    nftCount: collections.reduce((s, c) => s + c.count, 0),
+    collections,
+    truncated: (data.ownedNfts?.length ?? 0) >= 100,
+    checkedAt: new Date().toISOString(),
+    method:
+      "Alchemy NFT API with the provider's spam and airdrop filters applied, folded into collections. Floor prices are OpenSea's where the collection has one; Base coverage is partial, so a null floor means unquoted, not worthless.",
+    disclaimer: "Spam filtering is a provider heuristic, not a guarantee — an unwanted airdrop can still appear.",
+  };
+}
