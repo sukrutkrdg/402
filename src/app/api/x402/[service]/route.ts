@@ -158,7 +158,11 @@ function handlerErrorResponse(err: unknown): NextResponse {
   const message = err instanceof Error ? err.message : "Service error";
   const m = message.toLowerCase();
   const status =
-    /provide|missing|valid|invalid|required|no .*found|no .*data|no .*available|no price/.test(m)
+    // "must be", "too large/long", "choose one of", "not a" and "unsupported"
+    // are all the caller's input talking. A health sweep caught `business-days`
+    // answering 500 to a malformed date — telling an agent "our fault, retry"
+    // when retrying the same input can only fail again.
+    /provide|missing|valid|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price/.test(m)
       ? 400
       : /unavailable|failed|responded \d|timeout|fetch/.test(m)
         ? 502
