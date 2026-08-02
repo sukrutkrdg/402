@@ -298,10 +298,14 @@ export const SERVICES: ServiceDef[] = [
     name: "Safe Multisig Check",
     tagline: "Real M-of-N multisig, or a 1-of-1 that just looks like one?",
     description:
-      // Kept under 500 characters on purpose: every endpoint whose description
-      // crossed that mark has never settled through the CDP facilitator, and
-      // shortening one is what flipped it from a rejected payment to a paid call.
-      "🆕 Multisig / treasury intelligence. Given an address: is it a Gnosis Safe, its owners and M-of-N threshold, version, activity, and — critically — its enabled MODULES. A module can move the Safe's funds via execTransactionFromModule with no owner signatures, so each one is an address with unilateral control. Returns a multisig / single_signer / has_modules verdict: the counterparty check before you trust funds to a multisig. address= required. Not financial advice.",
+      // TEMPORARY (2026-08-02): the original long description, restored for one
+      // experiment. Another seller checked our threshold against the whole public
+      // index and found 90 resources with descriptions ≥517 characters that ARE
+      // taking payments — so length alone cannot be the trigger, and something in
+      // our declaration must merely co-vary with it. Capturing the failing and
+      // passing challenge for the SAME endpoint is the only way to see what.
+      // Revert immediately after, together with the test exception.
+      "🆕 Multisig / treasury intelligence. A huge share of Base treasuries, DAOs and app wallets are Gnosis Safes. Given an address: is it a Safe, its owners and M-of-N threshold, version, activity, and — critically — its enabled MODULES. An enabled module can move the Safe's funds via execTransactionFromModule WITHOUT any owner signatures, so every module is an address with unilateral control (the same drain surface a rogue 7702 delegate is for an EOA). Returns a multisig / single_signer / has_modules verdict. The counterparty/treasury check no other Base tool serves before you trust funds to a multisig. address= required. Not financial advice.",
     price: "$0.04",
     icon: "🔐",
     category: "Accounts",
