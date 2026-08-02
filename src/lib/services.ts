@@ -22,7 +22,8 @@ import { aiTokenReport, aiMarketBrief } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio, walletNetworth, walletNfts } from "./alchemy";
-import { walletSummary, walletActivity, tokenApprovals, historicalPrice, tokenTransfers } from "./covalent";
+import { walletActivity, tokenApprovals, historicalPrice, tokenTransfers } from "./covalent";
+import { walletSummary } from "./wallet-history";
 import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence, b20Dossier } from "./ai-report";
 import { agentWalletAudit } from "./agent-wallet-audit";
 import { walletDelegation } from "./delegation";
@@ -321,12 +322,6 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x... wallet to trace", required: true }],
     handler: firstFunder,
     noFreeTier: true,
-    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
-    // cancelled — the API now answers "credit limit exceeded". The handler fails
-    // loudly so nobody is charged, but advertising an endpoint that cannot answer
-    // sends agents into a dead call. Unhide when the source is restored or the
-    // read is migrated to a feed we still have.
-    hidden: true,
   },
   {
     id: "fresh-bridge",
@@ -1447,19 +1442,13 @@ export const SERVICES: ServiceDef[] = [
     name: "Wallet Age & Activity",
     tagline: "Tx count, first/last activity, wallet age",
     description:
-      "Total transaction count, first & last activity timestamps, and wallet age in days for any Base address. Built for sybil/rug screening and counterparty trust checks.",
+      "Wallet age in days, first & last activity timestamps, and outgoing transaction count for any Base address — read straight from the Base archive, not a 30-day feed, so it dates wallets of any age. Counts and last-activity cover what the wallet SENT; inbound transfers don't raise the nonce and aren't counted. Built for sybil screening and counterparty trust checks.",
     price: "$0.03",
     icon: "🕰️",
     category: "Onchain",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletSummary,
     noFreeTier: true,
-    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
-    // cancelled — the API now answers "credit limit exceeded". The handler fails
-    // loudly so nobody is charged, but advertising an endpoint that cannot answer
-    // sends agents into a dead call. Unhide when the source is restored or the
-    // read is migrated to a feed we still have.
-    hidden: true,
   },
   {
     id: "wallet-activity",

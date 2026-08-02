@@ -4,18 +4,18 @@
  * The first thing that ever touched a wallet is a strong provenance signal: an
  * agent vetting a counterparty wants to know if it was seeded from a known
  * exchange/bridge (real user) or from a fresh anon EOA (possible sybil/burner).
- * Reads the wallet's earliest transaction (all-history, via Covalent — CDP SQL
- * can't scan all-history without hitting its read cap) and resolves the funder:
- * who sent it, whether that funder is a contract (bridge/exchange/protocol) or an
- * EOA, and how old the wallet is. No other Base tool gives funding provenance in
- * one call. Not financial advice.
+ * Reads the wallet's earliest transaction — searched out of the Base archive
+ * itself, see ./wallet-history, after the Covalent feed this used to sit on was
+ * cancelled — and resolves the funder: who sent it, whether that funder is a
+ * contract (bridge/exchange/protocol) or an EOA, and how old the wallet is. No
+ * other Base tool gives funding provenance in one call. Not financial advice.
  */
 
 import "server-only";
 import { createPublicClient, getAddress } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
-import { walletFirstTx } from "./covalent";
+import { walletFirstTx } from "./wallet-history";
 import { finish } from "./envelope";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
@@ -34,11 +34,33 @@ export async function firstFunder(params: Record<string, string>) {
   const w = getAddress(wallet);
 
   const first = await walletFirstTx(w);
-  if (!first.txHash) {
+  // Two different nulls, and conflating them would be the dangerous answer. The
+  // archive search sees an account through its balance and its nonce; a wallet
+  // that only ever received tokens via internal transfers is invisible to both.
+  // "We found nothing" is therefore not "there is nothing" — only an address
+  // that is genuinely empty AND has never sent can be called untouched, and even
+  // that we report as unresolved rather than clean.
+  if (!first.resolved) {
     return finish({
       wallet: w,
       verdict: "no_history",
-      recommendation: "This address has no transaction history on Base — nothing to trace. It has never been funded or used here.",
+      recommendation:
+        "This address holds no ETH and has never sent a transaction on Base, so there is no funding event to trace. " +
+        "Token-only history received through internal transfers would not show up here — treat this as 'no funding found', not proof the address is unused.",
+      note: "Traces a Base wallet's funding provenance from its earliest transaction. wallet= required. Not financial advice.",
+    });
+  }
+  if (!first.txHash) {
+    // The account exists and we know when it appeared, but nothing at the top
+    // level of that block names it — a contract creation, an internal transfer,
+    // or a token mint. Report the age we do know rather than inventing a funder.
+    const ageOnly = first.firstAt ? Math.floor((Date.now() - new Date(first.firstAt).getTime()) / 86400000) : null;
+    return finish({
+      wallet: w,
+      verdict: "unresolved",
+      firstActivity: first.firstAt,
+      walletAgeDays: ageOnly,
+      recommendation: `First seen ${ageOnly ?? "?"}d ago, but the funding arrived through an internal transfer or contract call rather than a plain transaction, so no funder address is visible at the top level.`,
       note: "Traces a Base wallet's funding provenance from its earliest transaction. wallet= required. Not financial advice.",
     });
   }
@@ -54,7 +76,8 @@ export async function firstFunder(params: Record<string, string>) {
     toAddr = tx.to ? getAddress(tx.to) : null;
     valueWei = tx.value ?? 0n;
   } catch {
-    // Fall back to what Covalent already gave us — still report first activity.
+    // The search already established when the wallet appeared; report that much
+    // rather than failing the whole call over one unreadable transaction.
     return finish({
       wallet: w,
       verdict: "unresolved",
