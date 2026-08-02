@@ -70,6 +70,7 @@ import { fileSlot, s3Config } from "./file-store";
 import { fileConvert } from "./file-convert";
 import { counterpartyCheck, companyLei } from "./counterparty";
 import { fxConvert, businessDays, inflationAdjust } from "./reference";
+import { onrampQuote, onrampCoverage } from "./onramp";
 import { filePublish } from "./file-publish";
 
 export interface ServiceParam {
@@ -1731,6 +1732,39 @@ export const SERVICES: ServiceDef[] = [
       { name: "name", label: "Legal company name (enables OFAC + LEI)", placeholder: "Acme Supplies Ltd" },
     ],
     handler: counterpartyCheck,
+  },
+  {
+    id: "onramp-quote",
+    name: "Fiat Onramp Quote",
+    tagline: "What every payment rail really costs, side by side",
+    description:
+      "🆕 Prices the same fiat purchase across EVERY payment method a country allows, and ranks them by what the buyer actually receives. On $100 in the US the spread is real: card takes 2.44, bank transfer 0.50, a funded fiat wallet nothing. Returns each rail's fee, net amount, min/max limits, and the cheapest one. Live Coinbase pricing, not a rate card. Pass address= for a payable checkout link. Not financial advice.",
+    price: "$0.03",
+    icon: "🏦",
+    category: "Business",
+    params: [
+      { name: "country", label: "ISO country code", placeholder: "US", required: true },
+      { name: "amount", label: "Fiat amount", placeholder: "100", required: true },
+      { name: "asset", label: "Asset to buy (optional, default USDC)", placeholder: "USDC" },
+      { name: "network", label: "Network (optional, default base)", placeholder: "base" },
+      { name: "currency", label: "Fiat currency (optional, default USD)", placeholder: "EUR" },
+      { name: "address", label: "Destination wallet (optional — needed for a checkout link)", placeholder: "0x… wallet" },
+    ],
+    handler: onrampQuote,
+    noFreeTier: true,
+  },
+  {
+    id: "onramp-coverage",
+    name: "Fiat Rails by Country",
+    tagline: "Can money get in and out of crypto here, and how?",
+    description:
+      "🆕 The feasibility check before you ask a user for money: which fiat-in and cash-out rails Coinbase actually runs in a country, the currencies and min/max limits for each, and how many assets across which networks. Distinguishes a country with card rails from one where crypto can only be transferred in — a difference most integrations discover only after a user fails. 122 countries covered.",
+    price: "$0.02",
+    icon: "🌍",
+    category: "Business",
+    params: [{ name: "country", label: "ISO country code", placeholder: "DE", required: true }],
+    handler: onrampCoverage,
+    noFreeTier: true,
   },
   {
     id: "fx-convert",
