@@ -284,14 +284,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
-      // EXPERIMENT (x402-foundation/x402#2993, step 5 - is the limit 500 chars or
-      // 500 bytes?). Passes: 469ch/471B, 494/496. Failures: 509/511, 519/521,
-      // 582/584 (twice, two unrelated strings). So the boundary sits between 496
-      // and 511 bytes, and 500 fits in EITHER unit - which is why this probe is
-      // 499 chars / 501 bytes: under 500 characters but over 500 bytes. A pass
-      // means the limit counts characters; a failure means it counts bytes, and
-      // every emoji in a description costs three of them. Revert to 494 once read.
-      "🆕 Paymaster health, read from the sponsor's own records. Given a paymaster address, this reads every UserOperationEvent it has settled across both EntryPoint contracts and reports the volume of operations it sponsored, how many separate accounts it served, the share that succeeded, the total gas it has covered, and how much of that came from just one single app. Builders run it before wiring a paymaster into production, whether Coinbase or Alchemy. paymaster= required, days= optional. Not advi",
+      "🆕 Given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints: sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (the share coming from its single busiest app). The read to run before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or judging who funds a counterparty's gas. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
     price: "$0.05",
     icon: "🛢️",
     category: "Accounts",

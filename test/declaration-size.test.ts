@@ -10,6 +10,25 @@ import { readFileSync } from "node:fs";
  * facilitator documents (or lifts) the limit, a long description is a silent
  * outage, so it is worth failing the build over.
  *
+ * The limit started as a guess and is now measured, on one resource in one
+ * afternoon (x402-foundation/x402#2993):
+ *
+ *   469 chars / 471 B  settled      509 / 511  refused
+ *   494 / 496          settled      519 / 521  refused
+ *   499 / 501          settled      582 / 584  refused, twice, on two
+ *                                              unrelated strings
+ *
+ * Three things fall out. It counts CHARACTERS, not bytes — 501 bytes settled
+ * while 509 characters did not. It is not about the specific text: two entirely
+ * different 582-character strings failed identically. And 500 is the right
+ * place to draw the line, since 499 settles and everything from 509 up does
+ * not; the exact cutoff between 500 and 508 is untested and not worth the
+ * deploys to find.
+ *
+ * A control rules out the confusion that cost a day the first time round: the
+ * same buyer wallet settled a different endpoint in the same minute as each
+ * refusal, holding well over the price. The refusals are the facilitator's.
+ *
  * Read from source rather than importing SERVICES: the module pulls in
  * server-only handlers, and this check only needs the declared text.
  *
@@ -39,14 +58,7 @@ const LIMIT = 500;
  * becomes a permanent hole. So each one names the issue it serves and the state
  * it must be returned to, and the list is expected to be empty.
  */
-const EXPERIMENTS: Record<string, string> = {
-  // x402-foundation/x402#2993 step 1: restore the exact 582-character text that
-  // was unpayable before, to test whether the failure reproduces on the same
-  // string. Revert to the 494-character version either way — a pass means the
-  // effect is gone, a failure means we have what we need and the endpoint should
-  // stop being broken.
-  "paymaster-check": "restore to the 494-char description once #2993 step 1 is read",
-};
+const EXPERIMENTS: Record<string, string> = {};
 
 interface Declared {
   id: string;
