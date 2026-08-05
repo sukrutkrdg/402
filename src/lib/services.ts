@@ -284,11 +284,15 @@ export const SERVICES: ServiceDef[] = [
     name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
-      // EXPERIMENT (x402-foundation/x402#2993, step 1): this is the EXACT
-      // 582-character string that was unpayable before, restored byte for byte to
-      // test whether the failure reproduces on the same text. Revert to the
-      // 494-character version once the result is read — see test EXPERIMENTS.
-      "🆕 The gas-sponsor sibling, for the OTHER side: given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints and returns sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (share from its busiest app). The read a builder pulls before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or an agent pulls to judge who funds a counterparty's gas. No other tool serves it. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
+      // EXPERIMENT (x402-foundation/x402#2993, step 2). Step 1 reproduced: the
+      // original 582-character text was refused twice with a 402 in ~1.2s while
+      // the same wallet settled another endpoint in the same minute. This is a
+      // DIFFERENT string of exactly 582 characters and exactly 584 bytes — same
+      // leading emoji, same punctuation classes, different words. If it settles,
+      // length is eliminated and the cause is the text itself or per-resource
+      // state. Revert to the 494-character version once read — see test
+      // EXPERIMENTS.
+      "🆕 Paymaster health, read from the sponsor's own records. Given a paymaster address, this reads every UserOperationEvent it has settled across both EntryPoint contracts and reports the volume of operations it sponsored, how many separate accounts it served, the share that succeeded, the total gas it has covered, and how much of that came from just one single app. Builders run it before wiring a paymaster into production (Coinbase, Pimlico, Alchemy, or a custom one); agents run it to judge whoever is paying a counterparty's gas. paymaster= required, days= optional. Not advice.",
     price: "$0.05",
     icon: "🛢️",
     category: "Accounts",
