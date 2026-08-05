@@ -28,7 +28,9 @@ import { z } from "zod";
 // — free-tier and prepaid-credit callers never load it, so the server boots and
 // serves those modes even without the crypto deps present, and startup is lighter.
 
-const VERSION = "0.2.2";
+// Keep in step with package.json and server.json — all three are published and
+// a stale one here is what the MCP registry reports.
+const VERSION = "0.2.3";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
