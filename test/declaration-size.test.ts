@@ -23,6 +23,31 @@ import { readFileSync } from "node:fs";
  */
 const LIMIT = 500;
 
+/**
+ * Endpoints deliberately parked over the limit to run an experiment, and the
+ * commit that must revert them.
+ *
+ * The limit above is a guess about the facilitator's behaviour, and the guess is
+ * now known to be wrong in general — another seller measured 90 indexed
+ * resources at 517+ characters, 89 of which took paid calls in the last 30 days.
+ * What is NOT explained is why five of ours became unpayable and recovered the
+ * moment their text changed. Settling that needs one endpoint held above the
+ * limit on purpose, which is exactly what this guard would otherwise block.
+ *
+ * An exemption here is a liability, not a convenience: while an id sits in this
+ * list it is unprotected, and if the experiment is abandoned the entry silently
+ * becomes a permanent hole. So each one names the issue it serves and the state
+ * it must be returned to, and the list is expected to be empty.
+ */
+const EXPERIMENTS: Record<string, string> = {
+  // x402-foundation/x402#2993 step 1: restore the exact 582-character text that
+  // was unpayable before, to test whether the failure reproduces on the same
+  // string. Revert to the 494-character version either way — a pass means the
+  // effect is gone, a failure means we have what we need and the endpoint should
+  // stop being broken.
+  "paymaster-check": "restore to the 494-char description once #2993 step 1 is read",
+};
+
 interface Declared {
   id: string;
   description: string;
@@ -78,7 +103,23 @@ describe("service declarations stay payable", () => {
     // and emoji make those differ by dozens. Fail on whichever is larger.
     const tooLong = declared
       .filter((s) => Math.max(s.description.length, s.bytes) >= LIMIT)
+      .filter((s) => !(s.id in EXPERIMENTS))
       .map((s) => `${s.id} (${s.description.length} chars / ${s.bytes} bytes)`);
     expect(tooLong, `these will silently stop settling on x402: ${tooLong.join(", ")}`).toEqual([]);
+  });
+
+  it("keeps the experiment list honest — every exemption is still being used", () => {
+    // An exemption for an id that is already back under the limit is finished
+    // business, and leaving it behind turns a deliberate hole into a permanent
+    // one. Fail so the entry gets deleted with the revert that earned it.
+    const { declared } = parseServices();
+    const byId = new Map(declared.map((d) => [d.id, d]));
+    const stale: string[] = [];
+    for (const [id, why] of Object.entries(EXPERIMENTS)) {
+      const s = byId.get(id);
+      if (!s) stale.push(`${id} (no longer a service) — ${why}`);
+      else if (Math.max(s.description.length, s.bytes) < LIMIT) stale.push(`${id} (already ${s.description.length} chars) — ${why}`);
+    }
+    expect(stale, `remove these from EXPERIMENTS: ${stale.join("; ")}`).toEqual([]);
   });
 });

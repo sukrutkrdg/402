@@ -284,7 +284,11 @@ export const SERVICES: ServiceDef[] = [
     name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
-      "🆕 Given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints: sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (the share coming from its single busiest app). The read to run before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or judging who funds a counterparty's gas. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
+      // EXPERIMENT (x402-foundation/x402#2993, step 1): this is the EXACT
+      // 582-character string that was unpayable before, restored byte for byte to
+      // test whether the failure reproduces on the same text. Revert to the
+      // 494-character version once the result is read — see test EXPERIMENTS.
+      "🆕 The gas-sponsor sibling, for the OTHER side: given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints and returns sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (share from its busiest app). The read a builder pulls before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or an agent pulls to judge who funds a counterparty's gas. No other tool serves it. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
     price: "$0.05",
     icon: "🛢️",
     category: "Accounts",
