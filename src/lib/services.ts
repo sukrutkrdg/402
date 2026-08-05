@@ -284,15 +284,15 @@ export const SERVICES: ServiceDef[] = [
     name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
-      // EXPERIMENT (x402-foundation/x402#2993, step 2). Step 1 reproduced: the
-      // original 582-character text was refused twice with a 402 in ~1.2s while
-      // the same wallet settled another endpoint in the same minute. This is a
-      // DIFFERENT string of exactly 582 characters and exactly 584 bytes — same
-      // leading emoji, same punctuation classes, different words. If it settles,
-      // length is eliminated and the cause is the text itself or per-resource
-      // state. Revert to the 494-character version once read — see test
-      // EXPERIMENTS.
-      "🆕 Paymaster health, read from the sponsor's own records. Given a paymaster address, this reads every UserOperationEvent it has settled across both EntryPoint contracts and reports the volume of operations it sponsored, how many separate accounts it served, the share that succeeded, the total gas it has covered, and how much of that came from just one single app. Builders run it before wiring a paymaster into production (Coinbase, Pimlico, Alchemy, or a custom one); agents run it to judge whoever is paying a counterparty's gas. paymaster= required, days= optional. Not advice.",
+      // EXPERIMENT (x402-foundation/x402#2993, step 3 — narrowing the threshold).
+      // Steps 1 and 2 both failed at 582 characters on two unrelated strings,
+      // while 469 and 494 settled, so on this resource the trigger tracks length.
+      // 519 is the deliberate probe: it sits just above the 517 mark where
+      // another seller measured 90 indexed resources taking paid calls. If this
+      // settles, our threshold is between 520 and 582 and their data holds; if it
+      // fails, ours is lower than the range theirs demonstrably works in, which
+      // is the sharpest contradiction available. Revert to 494 once read.
+      "🆕 Paymaster health, read from the sponsor's own records. Given a paymaster address, this reads every UserOperationEvent it has settled across both EntryPoint contracts and reports the volume of operations it sponsored, how many separate accounts it served, the share that succeeded, the total gas it has covered, and how much of that came from just one single app. Builders run it before wiring a paymaster into production, whether that is Coinbase, Pimlico or Alchemy. paymaster= required, days= optional. Not advice.",
     price: "$0.05",
     icon: "🛢️",
     category: "Accounts",
