@@ -284,16 +284,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Paymaster Check",
     tagline: "Should you trust this Base gas paymaster?",
     description:
-      // EXPERIMENT (x402-foundation/x402#2993, step 6 - which unit is counted).
-      // Another seller checked the whole index: of the 70 resources at 517+
-      // characters that settle, not one contains a surrogate pair, so nobody
-      // else can separate UTF-16 code units from code points. This string can.
-      // 498 code points / 518 UTF-16 units / 558 bytes: the code-point count is
-      // one we have already seen SETTLE, while both other counts sit in ranges we
-      // have already seen REFUSED. A pass therefore means code points and rules
-      // out UTF-16 units and bytes at once; a failure leaves those two, which one
-      // more probe separates. Revert to the 494-character version once read.
-      "🆕 Paymaster health 🔍 read from the sponsor's own records 🧾 Given a paymaster address this reads every UserOperationEvent 📊 it has settled across both EntryPoint contracts 🚀 🔐 distinct accounts served 🌍 success rate 🏦 total gas covered 🧠 and concentration 🔁 the share from its busiest app 📅 Builders run it before wiring a paymaster into production 💱 Coinbase 📈 Pimlico 🔎 or Alchemy 📝 agents run it to judge who funds a counterparty gas 🔧 paymaster= required 📦 days= optional 🌐 max 90 💡 Not advice 🎯",
+      "🆕 Given a paymaster address, audits whether it's a healthy, active gas sponsor. Reads its UserOperationEvents across both EntryPoints: sponsored op volume, distinct accounts served, success rate, total gas sponsored, and concentration (the share coming from its single busiest app). The read to run before integrating a paymaster (Coinbase / Pimlico / Alchemy / custom), or judging who funds a counterparty's gas. paymaster= required, days= optional (default 30, max 90). Not financial advice.",
     price: "$0.05",
     icon: "🛢️",
     category: "Accounts",
