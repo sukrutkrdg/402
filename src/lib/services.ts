@@ -71,6 +71,7 @@ import { fileConvert } from "./file-convert";
 import { counterpartyCheck, companyLei } from "./counterparty";
 import { fxConvert, businessDays, inflationAdjust } from "./reference";
 import { onrampQuote, onrampCoverage } from "./onramp";
+import { baseBlock, baseReceipt, baseNonce, tokenSupply, tokenBalance, contractInfo, baseTx } from "./primitives";
 import { filePublish } from "./file-publish";
 
 export interface ServiceParam {
@@ -1732,6 +1733,93 @@ export const SERVICES: ServiceDef[] = [
       { name: "name", label: "Legal company name (enables OFAC + LEI)", placeholder: "Acme Supplies Ltd" },
     ],
     handler: counterpartyCheck,
+  },
+  {
+    id: "base-block",
+    name: "Base Block",
+    tagline: "Any Base block, by number, hash or tag",
+    description:
+      "🆕 One block on Base — height, hash, parent, timestamp and age in seconds, transaction count, gas used against the limit, and the base fee in gwei. Takes a block number, a 0x… block hash, or latest / finalized / safe / earliest. A block that isn't mined yet answers found:false with the reason rather than an error. Raw chain data, no interpretation.",
+    price: "$0.002",
+    icon: "🧱",
+    category: "Onchain",
+    params: [{ name: "block", label: "Block number, hash, or tag (default latest)", placeholder: "latest" }],
+    handler: baseBlock,
+  },
+  {
+    id: "base-tx",
+    name: "Base Transaction",
+    tagline: "A transaction exactly as the chain has it",
+    description:
+      "🆕 A Base transaction by hash, unedited: from, to, value in wei and ETH, nonce, gas, fee caps, type, and the 4-byte method selector with the calldata size. Flags a contract creation (null to) and a still-pending transaction (null block) rather than leaving you to infer either. Unknown hashes answer found:false, not an error.",
+    price: "$0.002",
+    icon: "📄",
+    category: "Onchain",
+    params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… 32-byte tx hash", required: true }],
+    handler: baseTx,
+  },
+  {
+    id: "base-receipt",
+    name: "Base Receipt",
+    tagline: "Did it succeed, what did it cost, what did it touch",
+    description:
+      "🆕 The receipt for a Base transaction: success or reverted, block, gas used, effective gas price, the fee in wei and ETH, how many logs it emitted and which contracts emitted them. A contract deployment reports the new address. No receipt yet means pending, dropped, or never here — and it says which is possible instead of failing.",
+    price: "$0.002",
+    icon: "🧾",
+    category: "Onchain",
+    params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… 32-byte tx hash", required: true }],
+    handler: baseReceipt,
+  },
+  {
+    id: "base-nonce",
+    name: "Address Nonce",
+    tagline: "How many transactions has this address sent?",
+    description:
+      "🆕 The next nonce for any Base address, plus its ETH balance and whether it is a contract. The count means different things either side of that line — transactions sent for a wallet, contracts deployed for a contract — so both are reported under their own name instead of one ambiguous number. What you need before building a transaction, or to tell a fresh address from a used one.",
+    price: "$0.002",
+    icon: "🔢",
+    category: "Onchain",
+    params: [{ name: "address", label: "Address", placeholder: "0x… wallet or contract", required: true }],
+    handler: baseNonce,
+  },
+  {
+    id: "token-balance",
+    name: "Token Balance",
+    tagline: "One wallet's balance of one token",
+    description:
+      "🆕 An ERC-20 balance on Base, in raw units and in decimals, with the token's symbol and decimals resolved in the same call. Zero is flagged explicitly, since it is the commonest answer and the one most easily confused with a failed read. An address that doesn't implement balanceOf answers found:false and says so.",
+    price: "$0.002",
+    icon: "🪙",
+    category: "Onchain",
+    params: [
+      { name: "token", label: "Token contract", placeholder: "0x… token", required: true },
+      { name: "wallet", label: "Wallet address", placeholder: "0x… holder", required: true },
+    ],
+    handler: tokenBalance,
+  },
+  {
+    id: "token-supply",
+    name: "Token Supply",
+    tagline: "Total supply, in units you can actually use",
+    description:
+      "🆕 totalSupply for any Base token, returned raw and scaled by its decimals, alongside the name and symbol. When a contract doesn't declare decimals the answer assumes 18 and marks that it assumed — a silent guess here quietly moves every downstream number by orders of magnitude. Non-token addresses answer found:false.",
+    price: "$0.002",
+    icon: "📦",
+    category: "Onchain",
+    params: [{ name: "token", label: "Token contract", placeholder: "0x… token", required: true }],
+    handler: tokenSupply,
+  },
+  {
+    id: "contract-info",
+    name: "Contract Identity",
+    tagline: "Is it a contract, and what standard does it follow?",
+    description:
+      "🆕 What sits at a Base address: contract or plain wallet, and if a contract, whether it declares ERC-721 or ERC-1155 via ERC-165 or carries the ERC-20 shape, plus name, symbol, decimals and code size. Interface support is read from the contract's own declaration first and only inferred when there is none — the ordering matters, because NFTs answer totalSupply() too.",
+    price: "$0.002",
+    icon: "🔖",
+    category: "Onchain",
+    params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
+    handler: contractInfo,
   },
   {
     id: "onramp-quote",
