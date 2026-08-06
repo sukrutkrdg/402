@@ -58,7 +58,14 @@ const LIMIT = 500;
  * becomes a permanent hole. So each one names the issue it serves and the state
  * it must be returned to, and the list is expected to be empty.
  */
-const EXPERIMENTS: Record<string, string> = {};
+const EXPERIMENTS: Record<string, string> = {
+  // x402-foundation/x402#2993 step 6: 498 code points / 518 UTF-16 units / 558
+  // bytes, to find which of the three the facilitator actually counts. Nobody
+  // else in the index can run this — of the 70 settling resources at 517+
+  // characters, not one contains a surrogate pair, so for all of them the units
+  // coincide. Revert to the 494-character description once the result is read.
+  "paymaster-check": "restore to the 494-char description once #2993 step 6 is read",
+};
 
 interface Declared {
   id: string;
