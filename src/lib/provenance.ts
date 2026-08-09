@@ -17,6 +17,7 @@ import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 import { walletFirstTx } from "./wallet-history";
 import { finish } from "./envelope";
+import { classifyCode } from "./primitives";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
@@ -98,7 +99,10 @@ export async function firstFunder(params: Record<string, string>) {
   if (realFunder) {
     try {
       const code = await client.getCode({ address: realFunder as `0x${string}` });
-      funderIsContract = Boolean(code && code !== "0x");
+      // Not `code !== "0x"`: a 7702-delegated wallet carries code and is still a
+      // wallet. Calling every Base App smart wallet a contract funder changes
+      // the provenance verdict for exactly the users most likely to have one.
+      funderIsContract = classifyCode(code).isContract;
     } catch {
       /* cosmetic — leave null */
     }

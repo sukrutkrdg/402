@@ -15,6 +15,7 @@ import { createPublicClient, http, getAddress, type Address } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
 import { baseTransport } from "./base-transport";
+import { classifyCode } from "./primitives";
 
 // EIP-1967 storage slots.
 const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc" as const;
@@ -60,7 +61,9 @@ export async function proxyCheck(params: Record<string, string>) {
     throw new Error(`Proxy check unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  if (!code || code === "0x") throw new Error("Address is not a contract (no bytecode)");
+  // A 7702-delegated wallet has bytecode but is not a contract, and reading proxy
+  // slots on one produces an answer about an account that cannot be upgraded.
+  if (!classifyCode(code).isContract) throw new Error("Address is not a contract (no bytecode)");
 
   let implementation = slotToAddress(implWord);
   const admin = slotToAddress(adminWord);
@@ -86,11 +89,16 @@ export async function proxyCheck(params: Record<string, string>) {
   const isProxy = Boolean(implementation || beacon);
 
   // Who can upgrade, and is that dangerous?
-  let adminType: "none" | "eoa" | "contract" = "none";
+  // "eoa_delegated" is its own answer and it matters here: an upgrade admin that
+  // is a delegated wallet is still a single signing key, not a multisig or a
+  // timelock, which is the distinction a caller reads adminType to make. The old
+  // code called it a contract and made a one-key admin look governed.
+  let adminType: "none" | "eoa" | "eoa_delegated" | "contract" = "none";
   if (admin) {
     try {
       const adminCode = await c.getBytecode({ address: admin as Address });
-      adminType = adminCode && adminCode !== "0x" ? "contract" : "eoa";
+      const k = classifyCode(adminCode);
+      adminType = k.isContract ? "contract" : k.delegatedTo ? "eoa_delegated" : "eoa";
     } catch {
       adminType = "eoa";
     }
@@ -99,14 +107,16 @@ export async function proxyCheck(params: Record<string, string>) {
   const flags: string[] = [];
   if (isProxy) flags.push("upgradeable_proxy");
   if (beacon) flags.push("beacon_proxy");
-  if (admin && adminType === "eoa") flags.push("eoa_admin_can_upgrade_at_will");
+  // A delegated wallet is still one signing key: same risk as a plain EOA admin.
+  const adminIsOneKey = adminType === "eoa" || adminType === "eoa_delegated";
+  if (admin && adminIsOneKey) flags.push("eoa_admin_can_upgrade_at_will");
   if (admin && adminType === "contract") flags.push("admin_is_contract_review_timelock_multisig");
   if (isProxy && !admin) flags.push("uups_or_hidden_admin");
 
   // Risk: upgradeable + a single EOA admin = highest (logic can be swapped any block).
   const level = !isProxy
     ? "low"
-    : admin && adminType === "eoa"
+    : admin && adminIsOneKey
       ? "high"
       : "medium";
 

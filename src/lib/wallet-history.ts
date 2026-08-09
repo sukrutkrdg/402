@@ -32,6 +32,7 @@ import "server-only";
 import { createPublicClient, fallback, http, getAddress, type Address, type PublicClient } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "./config";
+import { classifyCode } from "./primitives";
 
 /** Probes per round. Each round is one HTTP request thanks to the batching
  *  transport, so this trades request size for round-trips. 7 lands the whole
@@ -217,6 +218,12 @@ export async function walletSummary(params: Record<string, string>) {
 
   const head = await client.getBlockNumber();
   const nonceNow = await client.getTransactionCount({ address, blockNumber: head });
+  // The nonce means two different things depending on what this account IS:
+  // transactions SENT on an account that signs, contracts CREATED on a contract.
+  // Publishing it as outgoingTxCount without knowing which turns "this contract
+  // deployed 1,326 contracts" into "this wallet sent 1,326 transactions" — an
+  // answer that looks entirely ordinary and is about the wrong thing.
+  const kind = classifyCode(await client.getCode({ address }).catch(() => undefined));
 
   // Both searches share the batching client and the head we already read, so
   // their probes ride the same round-trips instead of doubling the wall time.
@@ -246,14 +253,30 @@ export async function walletSummary(params: Record<string, string>) {
 
   return {
     address,
-    outgoingTxCount: nonceNow,
+    accountType: kind.isContract ? "contract" : kind.delegatedTo ? "eoa_delegated" : "eoa",
+    delegatedTo: kind.delegatedTo,
+    outgoingTxCount: kind.isContract ? null : nonceNow,
+    contractsDeployed: kind.isContract ? nonceNow : null,
     firstActivity: first.at,
     firstBlock: Number(first.block),
     lastActivity: lastAt,
     ageDays,
-    activity: nonceNow === 0 ? "receive_only" : nonceNow < 10 ? "low" : nonceNow < 1000 ? "active" : "very_active",
+    activity: kind.isContract
+      ? "contract"
+      : nonceNow === 0
+        ? "receive_only"
+        : nonceNow < 10
+          ? "low"
+          : nonceNow < 1000
+            ? "active"
+            : "very_active",
     firstActivityVerified: first.verified,
     coverage:
+      (kind.isContract
+        ? "This address is a CONTRACT, so its nonce counts contracts it created, not transactions sent — reported as contractsDeployed. "
+        : kind.delegatedTo
+          ? "This address is a wallet that has delegated its code (EIP-7702); it still signs its own transactions, so the nonce is a send count. "
+          : "") +
       "First activity is the earliest block at which this account existed in state (balance or nonce), verified against " +
       "its predecessor block. Counts and last-activity cover transactions the wallet SENT; inbound transfers and token " +
       "movements do not raise the nonce and are not counted here.",

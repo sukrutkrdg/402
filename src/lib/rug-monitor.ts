@@ -31,11 +31,22 @@ export interface RugWatch {
   firedLiquidityUsd?: number;
 }
 
-async function fetchLiquidity(token: string): Promise<number> {
+/**
+ * Deepest pool in USD, or null when the price feed could not be read.
+ *
+ * The distinction is the whole product. This used to throw for BOTH "the feed is
+ * down" and "the token has no pool", and every caller swallowed the throw the
+ * same way — so a token whose LP had been pulled entirely (no pool left to
+ * index) read as a transient blip, and the monitor answered "liquidity still
+ * above the drop threshold" for the one event it exists to catch.
+ *
+ * No pool is not a missing reading. It is a reading of zero.
+ */
+async function fetchLiquidity(token: string): Promise<number | null> {
   const raw = await dexTokenPairs<{ baseToken?: { address?: string }; liquidity?: { usd?: number } }>(token);
-  if (raw === null) throw new Error("DexScreener unavailable");
+  if (raw === null) return null; // provider unavailable — we know nothing
   const pairs = raw.filter((p) => p.baseToken?.address?.toLowerCase() === token.toLowerCase());
-  if (pairs.length === 0) throw new Error("No liquidity pool for token");
+  if (pairs.length === 0) return 0; // provider answered: this token has no pool
   return pairs.reduce((m, p) => Math.max(m, p.liquidity?.usd ?? 0), 0);
 }
 
@@ -58,16 +69,31 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
       /* transient */
     }
     const dropNow = current !== null && w.baselineLiquidityUsd > 0 ? +(100 * (1 - current / w.baselineLiquidityUsd)).toFixed(1) : null;
+    // A reading we could not take must never be answered as "nothing happened":
+    // "ok" is the field an agent branches on, and asserting it while blind is
+    // how a drained pool got reported as healthy.
+    const verdict = w.fired
+      ? "RUG_WARNING_FIRED"
+      : dropNow === null
+        ? "unknown"
+        : dropNow >= w.dropPct
+          ? "THRESHOLD_MET"
+          : "ok";
     return {
       found: true, id: w.id, token: w.token, fired: w.fired,
       baselineLiquidityUsd: w.baselineLiquidityUsd,
       currentLiquidityUsd: current !== null ? +current.toFixed(0) : null,
       dropPct: dropNow, firesAtDropPct: w.dropPct,
       firedAt: w.firedAt ?? null, firedLiquidityUsd: w.firedLiquidityUsd ?? null,
-      verdict: w.fired ? "RUG_WARNING_FIRED" : dropNow !== null && dropNow >= w.dropPct ? "THRESHOLD_MET" : "ok",
+      verdict,
+      ...(dropNow === null ? { degraded: true } : {}),
       note: w.fired
         ? `⚠️ Liquidity collapsed — this monitor fired${w.firedAt ? ` at ${w.firedAt}` : ""}.`
-        : "Monitor active; liquidity still above the drop threshold. Re-check anytime with check=<id>.",
+        : dropNow === null
+          ? "Liquidity could not be read on this check (price feed unavailable) — this is NOT a reading of 'no change'. Re-check shortly."
+          : dropNow >= w.dropPct
+            ? `⚠️ Liquidity is ${dropNow}% below the baseline — at or past your ${w.dropPct}% threshold.`
+            : "Monitor active; liquidity still above the drop threshold. Re-check anytime with check=<id>.",
       checkedAt: new Date().toISOString(),
     };
   }
@@ -81,6 +107,7 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
   const url = wh ? await assertSafeWebhook(wh) : null;
 
   const baseline = await fetchLiquidity(token);
+  if (baseline === null) throw new Error("Liquidity feed unavailable — cannot establish a baseline right now, retry shortly");
   if (baseline <= 0) throw new Error("Token has no measurable liquidity to monitor");
 
   const id = `${token.slice(2, 10)}-${Date.now().toString(36)}`;
@@ -133,12 +160,16 @@ export async function checkRugMonitors(): Promise<{ checked: number; fired: numb
       await kvSRem("rugwatch:active", id);
       continue;
     }
-    let current: number;
+    let current: number | null;
     try {
       current = await fetchLiquidity(w.token);
     } catch {
       continue; // transient — retry next run
     }
+    // null is "we could not look", which is not evidence of anything. Zero is a
+    // pool that is gone — the case the webhook exists for, and the one that used
+    // to be indistinguishable from an outage and so never fired.
+    if (current === null) continue;
     const dropPct = w.baselineLiquidityUsd > 0 ? 100 * (1 - current / w.baselineLiquidityUsd) : 0;
     if (dropPct >= w.dropPct) {
       // Deliver only if a webhook was set (poll-mode monitors just record state).

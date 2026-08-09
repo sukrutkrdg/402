@@ -17,6 +17,7 @@ import { createPublicClient, http, getAddress, formatEther, formatUnits, type Ad
 import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
 import { baseTransport } from "./base-transport";
+import { classifyCode } from "./primitives";
 
 const DEAD = new Set([
   "0x0000000000000000000000000000000000000000",
@@ -38,8 +39,10 @@ const ownerAbis = [
   [{ type: "function", name: "getOwner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }],
 ] as const;
 
+// Batching on: several handlers here fire 3–5 independent reads at once, and
+// unbatched that is exactly the parallel-eth_call pattern the public RPC 502s.
 function client() {
-  return createPublicClient({ chain: base, transport: baseTransport(8000) });
+  return createPublicClient({ chain: base, transport: baseTransport(8000, true) });
 }
 
 function requireAddress(raw: string): Address {
@@ -78,22 +81,31 @@ export async function tokenRisk(params: Record<string, string>) {
   } catch {
     atBlock = null;
   }
-  if (!code || code === "0x") {
+  // A 7702-delegated account has code but is still an account, not a token —
+  // the old `code !== "0x"` test sent one down the ERC-20 path, where every read
+  // reverts and the answer came back as a mysterious non-standard token.
+  const codeKind = classifyCode(code);
+  if (!codeKind.isContract) {
     return {
       address,
       isContract: false,
+      ...(codeKind.delegatedTo ? { delegatedTo: codeKind.delegatedTo } : {}),
       riskScore: 100,
       riskLevel: "high" as const,
       flags: ["not_a_contract"],
-      note: "Address has no code — it's an EOA, not a token contract.",
+      note: codeKind.delegatedTo
+        ? `Address is a wallet that has delegated its code (EIP-7702) to ${codeKind.delegatedTo} — it is an account, not a token contract.`
+        : "Address has no code — it's an EOA, not a token contract.",
       checkedAt: new Date().toISOString(),
     };
   }
 
+  let readFailures = 0;
   const read = async (fn: string, args: unknown[] = []) => {
     try {
       return await c.readContract({ address, abi: erc20Abi, functionName: fn as never, args: args as never });
     } catch {
+      readFailures++;
       return undefined;
     }
   };
@@ -109,7 +121,13 @@ export async function tokenRisk(params: Record<string, string>) {
 
   const flags: string[] = [];
   const isErc20 = symbol !== undefined && decimals !== undefined && totalSupply !== undefined;
-  if (!isErc20) flags.push("not_standard_erc20");
+  // Every single read failing is the transport, not the token: a contract that
+  // genuinely is not an ERC-20 still ANSWERS — it reverts one call while the
+  // others succeed. All four silent at once means we never reached the chain,
+  // and saying "not_standard_erc20" there is a claim about the token made from
+  // no evidence at all. It said exactly that about USDC.
+  const rpcBlind = readFailures >= 4;
+  if (!isErc20 && !rpcBlind) flags.push("not_standard_erc20");
 
   // Ownership (RPC)
   let owner: string | undefined;
@@ -254,7 +272,9 @@ export async function tokenRisk(params: Record<string, string>) {
   // token high-risk, but a clean RPC read with no security data is UNKNOWN, not
   // safe — consumers gate on `securityChecked`/`degraded` below.
   const securityChecked = !!gp;
-  const riskLevel = score >= 70 ? "high" : score >= 35 ? "medium" : securityChecked ? "low" : "unknown";
+  // rpcBlind means the chain reads themselves failed, so even the RPC half of
+  // the score is built on nothing — no band below "high" can be asserted.
+  const riskLevel = rpcBlind ? "unknown" : score >= 70 ? "high" : score >= 35 ? "medium" : securityChecked ? "low" : "unknown";
 
   return {
     address,
@@ -273,12 +293,15 @@ export async function tokenRisk(params: Record<string, string>) {
     riskScore: score,
     riskLevel, // high | medium | low | unknown (unknown = security feed unavailable)
     securityChecked, // false → honeypot/tax/holder data NOT consulted this call
-    degraded: !securityChecked,
+    chainRead: !rpcBlind, // false → the token's own ERC-20 fields were unreadable
+    degraded: !securityChecked || rpcBlind,
     flags,
     sources: gp ? ["base-rpc", "goplus"] : ["base-rpc"],
-    coverage: gp
-      ? "RPC base + GoPlus security (honeypot, taxes, holders, holder concentration, LP lock, creator holdings, source, ownership controls)."
-      : "RPC-only (security provider unavailable): contract, ERC-20, ownership, proxy.",
+    coverage: rpcBlind
+      ? "Neither source answered: the token's own ERC-20 reads failed and no risk band can be asserted from this call. Retry."
+      : gp
+        ? "RPC base + GoPlus security (honeypot, taxes, holders, holder concentration, LP lock, creator holdings, source, ownership controls)."
+        : "RPC-only (security provider unavailable): contract, ERC-20, ownership, proxy.",
     // Pre-spend receipt — an auditable record of this check, so an agent's
     // decision is reviewable after the payment (community-requested).
     receipt: {
@@ -337,7 +360,7 @@ export async function addressIntel(params: Record<string, string>) {
   } catch (err) {
     throw new Error(`Address data unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
-  const isContract = Boolean(code && code !== "0x");
+  const { isContract, delegatedTo } = classifyCode(code);
 
   let usdc: bigint | undefined;
   try {
@@ -353,10 +376,19 @@ export async function addressIntel(params: Record<string, string>) {
 
   return {
     address,
-    type: isContract ? "contract" : "eoa",
+    // Since EIP-7702, "has code" no longer means "is a contract": a delegating
+    // account carries a 23-byte 0xef0100+address pointer and still signs its own
+    // transactions. Calling one a contract mislabels every Base App smart wallet
+    // — and flips what the nonce MEANS, because eth_getTransactionCount counts
+    // transactions SENT on an account that signs and contracts CREATED on a
+    // contract. Reporting one as the other reads perfectly normal and is wrong.
+    type: isContract ? "contract" : delegatedTo ? "eoa_delegated" : "eoa",
+    delegatedTo,
     ethBalance: formatEther(balance),
     usdcBalance: usdc !== undefined ? formatUnits(usdc, 6) : null,
     txCount: nonce,
+    sentTransactions: isContract ? null : nonce,
+    contractsDeployed: isContract ? nonce : null,
     activity: nonce === 0 ? "dormant/fresh" : nonce < 10 ? "low" : nonce < 1000 ? "active" : "very-active",
     checkedAt: new Date().toISOString(),
   };
