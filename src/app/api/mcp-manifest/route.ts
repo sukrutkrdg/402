@@ -17,7 +17,7 @@ export function GET() {
     name: "x402-bazaar-mcp",
     description:
       `MCP server exposing x402 Bazaar's ${toolCount} onchain safety, wallet-intel, web, business and AI tools on Base. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.`,
-    version: "0.2.2",
+    version: "0.2.3",
     registry: "io.github.sukrutkrdg/x402-bazaar-mcp",
     npm: "https://www.npmjs.com/package/x402-bazaar-mcp",
     transport: "stdio",

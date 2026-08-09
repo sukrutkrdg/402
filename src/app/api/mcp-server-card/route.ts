@@ -14,7 +14,7 @@ import { getSiteUrl } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 // Keep in step with the published npm package + registry entry.
-const MCP_VERSION = "0.2.2";
+const MCP_VERSION = "0.2.3";
 
 export function GET() {
   const SITE = getSiteUrl();

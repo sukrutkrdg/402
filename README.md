@@ -1,7 +1,7 @@
 # x402 Bazaar — Pay-per-call API marketplace with Base Builder Codes
 
 A **live pay-per-call API marketplace** on **Base mainnet** — [402.com.tr](https://402.com.tr).
-118 public services (token safety, the only B20 protection suite on Base incl. real-time seizure alerts,
+131 public services (token safety, the only B20 protection suite on Base incl. real-time seizure alerts,
 wallet intelligence, OFAC screening, AI-written reports) sold to AI agents and humans over
 [**x402**](https://docs.cdp.coinbase.com/x402), settled in USDC via the Coinbase CDP facilitator,
 with onchain attribution via [**Builder Codes**](https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes)
@@ -18,7 +18,7 @@ One Next.js app plays all three roles in the x402 flow:
 
 ## What it does
 
-- **Marketplace** (`/`): 118 real x402-protected, pay-per-call endpoints — pay from your own
+- **Marketplace** (`/`): 131 real x402-protected, pay-per-call endpoints — pay from your own
   browser wallet (or the server buyer), a USDC micro-payment settles on Base, you get the data +
   the settlement tx. Safety responses include an auditable pre-spend `receipt` (GO/HOLD/STOP).
 - **B20 protection suite**: 29 tools reading Base's native-token precompiles — freeze/seize risk,

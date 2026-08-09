@@ -40,9 +40,16 @@ console.log(`LIVE FACTS: ${facts.visible} visible services | ${facts.b20} B20 to
   const skill = await fileText("sukrutkrdg/skills", "master", "skills/base-mcp/SKILL.md");
   if (!plugin || !skill) check(pr, "fetch", false, "PR branch files unreachable");
   else {
-    const m = plugin.match(/(\d+)\+ read-only/);
-    const claimed = m ? Number(m[1]) : 0;
-    check(pr, "service count", facts.visible - claimed < 10, `claims "${claimed}+", live ${facts.visible} (refresh at +10 drift)`);
+    // The `+` is optional: the doc moved from "48+ read-only" to "124 read-only"
+    // and this stopped matching, so `claimed` fell back to 0 and the check
+    // reported STALE forever against a number it had never read — the same
+    // silent-staleness failure it exists to catch. A miss must be loud.
+    const m = plugin.match(/(\d+)\+? read-only/);
+    if (!m) check(pr, "service count", false, "could not find a service count in the plugin doc — check the wording");
+    else {
+      const claimed = Number(m[1]);
+      check(pr, "service count", facts.visible - claimed < 10, `claims "${claimed}", live ${facts.visible} (refresh at +10 drift)`);
+    }
     const b = plugin.match(/~(\d+) tools\)/);
     const b20Claimed = b ? Number(b[1]) : 0;
     check(pr, "B20 suite size", facts.b20 - b20Claimed < 5, `claims "~${b20Claimed}", live ${facts.b20}`);

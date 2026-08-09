@@ -1,6 +1,6 @@
 # x402 Bazaar — onchain data & intelligence skill for Base agents
 
-Give your assistant **118 pay-per-call APIs on Base** for token safety, wallet
+Give your assistant **131 pay-per-call APIs on Base** for token safety, wallet
 intelligence, compliance, prices, NFTs, and AI-written reports. Every call is a
 tiny **USDC micro-payment over x402** — no API keys, no subscriptions. Works
 alongside **Base MCP / Base Account** (x402 is a first-class Base agent payment
@@ -19,11 +19,10 @@ rail).
 | "Screen address X for OFAC sanctions" | `sanctions`, `sanctions-batch`, `compliance-check` |
 | "What's in wallet X? Net worth?" | `wallet-networth` |
 | "How old / active is wallet X?" (sybil check) | `wallet-summary` |
-| "Profile wallet X" | `ai-wallet-report` (Claude-written) |
-| "What contracts can drain wallet X?" | `token-approvals` |
+| "Profile wallet X" | `wallet-summary` + `address-trust` |
+| "What contracts can drain wallet X?" | `approval-advisor` |
 | "Recent activity / transfers of X" | `wallet-activity`, `token-transfers` |
 | "Price / 24h momentum / pools of token X" | `token-price`, `token-momentum`, `token-pools` |
-| "Price of token X on a past date" | `historical-price` |
 | "Holder distribution of token X" | `holders` |
 | "Is this contract verified? Its ABI?" | `contract-abi` |
 | "Resolve jesse.base.eth / vitalik.eth" | `basename`, `ens-resolve` |

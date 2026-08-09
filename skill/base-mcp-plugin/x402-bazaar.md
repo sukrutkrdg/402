@@ -1,6 +1,6 @@
 ---
 title: "x402 Bazaar Plugin"
-description: "The onchain intelligence layer for Base agents: 48+ read-only APIs — token safety & rug detection, wallet net worth/age/risk, OFAC sanctions screening, prices & momentum, NFTs — plus six Claude-written AI reports (token, wallet, market, security, contract, tx). Reached via the x402-bazaar-mcp server; paid per call in USDC over x402. Returns data only — no transactions (Submission: none)."
+description: "The onchain intelligence layer for Base agents: 131 read-only APIs — token safety & rug detection, wallet net worth/age/risk, OFAC sanctions screening, prices & momentum, NFTs — plus six Claude-written AI reports (token, wallet, market, security, contract, tx). Reached via the x402-bazaar-mcp server; paid per call in USDC over x402. Returns data only — no transactions (Submission: none)."
 tags: [data, token-risk, wallet-intel, compliance, x402]
 name: x402-bazaar
 version: 0.1.0
@@ -24,18 +24,18 @@ risk: []
 ## Overview
 
 **x402 Bazaar is the onchain intelligence layer for Base agents** — the data an
-agent should consult *before* it acts. It exposes **48+ read-only services** on
+agent should consult *before* it acts. It exposes **131 read-only services** on
 Base across five areas:
 
 - **Token safety** — risk score, honeypot/tax checks, holder concentration,
   **rug-probability score**, contract verification/ABI.
 - **Wallet intelligence** — net worth (accurate USD), age & activity (sybil/rug
-  screening), token approvals (allowance risk), transfers, NFT holdings.
+  screening), risky approvals and one-click revoke, transfers, funding trace.
 - **Compliance** — OFAC sanctions screening (single & batch), combined verdict.
-- **Markets** — price, 1h/6h/24h momentum, pools, historical price, trending &
-  newly-listed tokens, gas & chain status.
-- **AI flagships (Claude-written)** — **AI Token Report** and **AI Wallet
-  Report**: aggregate the raw signals into a single structured verdict with
+- **Markets** — price, 1h/6h/24h momentum, pools, trending & newly-listed
+  tokens, gas & chain status.
+- **AI flagships (Claude-written)** — **AI Token Report** and **Deep Due
+  Diligence**: aggregate the raw signals into a single structured verdict with
   reasons (the kind of synthesis you can't get from a raw data feed).
 
 Reached through the **`x402-bazaar-mcp`** server (also on the official MCP
@@ -98,7 +98,7 @@ MCP submission tool (`send_calls`/`swap`/`sign`).
 
 1. "Is `0x…` a safe token to buy on Base?" → call `ai_token_report` (or `token_risk` + `rug_score` + `token_price`), summarize the verdict and risks.
 2. "Before I swap into `0x…`, check it's safe and not sanctioned." → run `ai_token_report` + `sanctions`; only if it's clear, hand the swap off to Base MCP.
-3. "Profile wallet `0x…` — net worth, age, what can drain it." → call `wallet_networth`, `wallet_summary`, `token_approvals`; summarize risk.
+3. "Profile wallet `0x…` — net worth, age, what can drain it." → call `wallet_networth`, `wallet_summary`, `approval_advisor`; summarize risk.
 4. "Is this counterparty `0x…` OK to send funds to?" → call `compliance_check`; report blocked / review / clear.
 5. "What's the 24h price & momentum of `0x…`?" → call `token_momentum`; report price and 1h/6h/24h change.
-6. "Give me a verdict on wallet `0x…` — sybil or established?" → call `ai_wallet_report`.
+6. "Give me a verdict on wallet `0x…` — sybil or established?" → call `wallet_summary` (age, activity) and `first_funder` (who funded it).
