@@ -114,7 +114,9 @@ describe("static output examples", () => {
     const stale: string[] = [];
     for (const id of staticOutputExampleIds()) {
       for (const k of Object.keys(staticOutputExample(id) ?? {})) {
-        if (/^(checkedAt|generatedAt|at)$/.test(k)) stale.push(`${id}.${k}`);
+        // guardSince counts: for a caller it is when their own guard went up,
+        // but in a captured example it is only when the capture ran.
+        if (/^(checkedAt|generatedAt|at|guardSince)$/.test(k)) stale.push(`${id}.${k}`);
       }
     }
     expect(stale, `drop these frozen stamps: ${stale.join(", ")}`).toEqual([]);
