@@ -24,6 +24,7 @@ import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvSetNx, kvDel } from "@/lib/kv";
 import { saveSample } from "@/lib/sample-cache";
+import { priceCents } from "@/lib/price";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,10 +32,7 @@ export const maxDuration = 60;
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const USDC = USDC_BASE.toLowerCase();
 
-/** Service price string ("$0.03") → integer cents (3). */
-function priceCents(price: string): number {
-  return Math.round((parseFloat(price.replace(/[^0-9.]/g, "")) || 0) * 100);
-}
+// priceCents is shared with the x402 rail on purpose — see src/lib/price.ts.
 
 function paramsFrom(req: NextRequest, service: NonNullable<ReturnType<typeof getService>>): Record<string, string> {
   const url = new URL(req.url);
@@ -127,6 +125,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ service: s
       }
     } catch {
       /* if the block read fails, fall through — replay is still bounded by the used-key */
+    }
+
+    // Refuse an x402 settlement. This rail authorises a report by txHash alone,
+    // and an x402 settlement is a USDC Transfer to payTo like any other — but its
+    // hash is PUBLIC the moment it lands, and payTo is published in every 402
+    // challenge. So without this, watching the seller wallet and replaying a
+    // customer's fresh settlement hash bought a stranger a free report, at
+    // exactly the rate our real customers pay. The recency window below was
+    // meant to stop replays, but a settlement is only reusable while it is
+    // fresh, so age was the wrong thing to check.
+    //
+    // A settlement is EIP-3009 `transferWithAuthorization`, which USDC always
+    // accompanies with AuthorizationUsed(authorizer, nonce) in the same receipt.
+    // A wallet's own `transfer` — the only thing this rail is for — never emits
+    // it. Read from the receipt we already have, so this costs no extra call.
+    const AUTHORIZATION_USED = "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5";
+    if (receipt.logs.some((l) => l.address.toLowerCase() === USDC && l.topics[0]?.toLowerCase() === AUTHORIZATION_USED)) {
+      await kvDel(usedKey);
+      return NextResponse.json(
+        { error: "That transaction is an x402 settlement, not a wallet transfer — it cannot be redeemed here. Send a normal USDC transfer to the seller and redeem that hash." },
+        { status: 400 },
+      );
     }
 
     // Sum USDC transfers to the seller in this tx; also capture the payer (from).

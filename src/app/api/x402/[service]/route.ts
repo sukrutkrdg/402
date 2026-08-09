@@ -27,24 +27,9 @@ import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
+import { priceCents } from "@/lib/price";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
-/**
- * Service price string ("$0.03") → integer cents (3), for the credit ledger.
- *
- * Rounds UP with a floor of one cent, because the ledger's unit is a whole cent
- * and a sub-cent price would otherwise round to zero — making the service free
- * for every credit holder, permanently and silently. Prices below $0.01 (set to
- * compete on per-call rails where they're paid in USDC micro-units) therefore
- * cost 1¢ on the credit path; the response reports what was actually charged so
- * the difference is never hidden. Batch endpoints are the way to get true
- * sub-cent economics on this rail.
- */
-function priceCents(price: string): number {
-  const usd = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
-  if (usd <= 0) return 0;
-  return Math.max(1, Math.ceil(usd * 100));
-}
 
 /** Best-effort payer wallet from the x-payment header (base64 JSON) — used only
  * for anonymized repeat-buyer analytics; never throws. */
