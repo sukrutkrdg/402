@@ -82,6 +82,10 @@ interface PayerWallet {
   firstAt: string | null;
   lastAt: string | null;
   firstService?: string | null;
+  /** Every service this wallet has bought, most-bought first. */
+  services?: { id: string; name: string; calls: number }[];
+  serviceCalls?: number;
+  ours?: boolean;
   txs: { txHash: string | null; usdc: number; at: string | null }[];
 }
 interface Payers {
@@ -91,7 +95,11 @@ interface Payers {
   walletCount?: number;
   txCount?: number;
   totalUsdc?: number;
+  /** Paid calls attributed to a service. */
+  paidCallCount?: number;
   wallets?: PayerWallet[];
+  /** Our own wallets, counted apart so testing never reads as demand. */
+  ownWallets?: { configured: number; walletCount: number; txCount: number; totalUsdc: number; wallets?: PayerWallet[] };
   note?: string;
 }
 
@@ -349,7 +357,7 @@ export default function Stats() {
 
         {payers && payers.available && (payers.walletCount ?? 0) > 0 && (
           <>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="card p-4">
                 <div className="label">Wallets</div>
                 <div className="mt-1 font-mono text-2xl font-bold text-sky-300">{payers.walletCount}</div>
@@ -359,10 +367,30 @@ export default function Stats() {
                 <div className="mt-1 font-mono text-2xl font-bold">{payers.txCount}</div>
               </div>
               <div className="card p-4">
+                <div className="label">Paid calls</div>
+                <div className="mt-1 font-mono text-2xl font-bold">{payers.paidCallCount ?? 0}</div>
+              </div>
+              <div className="card p-4">
                 <div className="label">USDC in</div>
                 <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">${(payers.totalUsdc ?? 0).toFixed(2)}</div>
               </div>
             </div>
+            {/* Ours settle on chain like anyone's, so they are shown, not hidden —
+                just kept out of the four figures above. */}
+            {(payers.ownWallets?.walletCount ?? 0) > 0 && (
+              <p className="text-[11px] text-gray-500">
+                Excluded as ours: {payers.ownWallets!.walletCount} wallet
+                {payers.ownWallets!.walletCount === 1 ? "" : "s"}, {payers.ownWallets!.txCount} payment
+                {payers.ownWallets!.txCount === 1 ? "" : "s"}, ${payers.ownWallets!.totalUsdc.toFixed(2)} —{" "}
+                {payers.ownWallets!.wallets?.map((w) => short(w.wallet)).join(", ")}
+              </p>
+            )}
+            {payers.ownWallets?.configured === 1 && (
+              <p className="text-[11px] text-amber-400/80">
+                Only the seller wallet is registered as ours. Set OWN_WALLETS (comma-separated) so test and self-buy
+                wallets stop counting as demand.
+              </p>
+            )}
             <div className="card divide-y divide-base-line/60">
               {payers.wallets!.map((w) => {
                 const open = openWallet === w.wallet;
@@ -388,6 +416,23 @@ export default function Stats() {
                     </button>
                     {open && (
                       <div className="bg-black/20 px-4 py-2">
+                        {/* What this wallet actually buys. The payment alone says
+                            someone paid; this says what for, which is the part
+                            that tells us whether to build more of it. */}
+                        {w.services && w.services.length > 0 ? (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {w.services.map((s) => (
+                              <span key={s.id} className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300/90">
+                                {s.name} ×{s.calls}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mb-2 text-[10px] text-gray-500">
+                            No service attributed — the settlement predates per-wallet tracking, or it was a direct
+                            transfer rather than a paid call.
+                          </p>
+                        )}
                         <div className="mb-1 flex items-center justify-between text-[10px] text-gray-500">
                           <span>{w.txCount} payment{w.txCount === 1 ? "" : "s"} this day</span>
                           <a className="text-sky-400 hover:underline" href={BASESCAN_TOKENTX(w.wallet)} target="_blank" rel="noreferrer">

@@ -64,6 +64,13 @@ export interface AppConfig {
   internalSecret: string | undefined;
   /** Owner's own source hashes (your devices) so /stats can exclude them from "external visitors". */
   ownerSources: string[];
+  /**
+   * Wallets we control, lowercased. Their payments are real settlements on chain
+   * and indistinguishable from a customer's there, so /stats counts them
+   * separately rather than as demand — a test call that reads back as revenue is
+   * how a quiet week gets mistaken for a good one.
+   */
+  ownWallets: string[];
 }
 
 export function getConfig(): AppConfig {
@@ -84,6 +91,10 @@ export function getConfig(): AppConfig {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    // payTo is always ours; the rest come from OWN_WALLETS (comma-separated).
+    ownWallets: [...(process.env.OWN_WALLETS || "").split(","), process.env.PAY_TO_ADDRESS || ""]
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => /^0x[0-9a-f]{40}$/.test(s)),
   };
 }
 

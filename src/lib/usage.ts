@@ -9,7 +9,7 @@
 
 import "server-only";
 import { createHash } from "node:crypto";
-import { kvIncr, kvGetNumber, kvGetNumberStable, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured } from "./kv";
+import { kvIncr, kvGetNumber, kvGetNumberStable, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured, kvHIncrBy, kvHGetAll } from "./kv";
 
 const day = () => new Date().toISOString().slice(0, 10);
 
@@ -114,7 +114,17 @@ export async function logUsage(
       if (preview) cmds.push(["INCR", `usage:preview:${serviceId}`]);
       if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source]);
       if (challenge) cmds.push(["INCR", `usage:challenge:${serviceId}`]);
-      if (payer) cmds.push(["SADD", `usage:payers:${d}`, payer], ["SETNX", `usage:firstsvc:${payer}`, serviceId], ["EXPIRE", `usage:firstsvc:${payer}`, 60 * 60 * 24 * 60]);
+      // firstsvc answers "what pulled this wallet in"; payersvc answers "what does
+      // it actually buy" — a one-off taster and a returning customer look
+      // identical until you can see the second question's answer.
+      if (payer)
+        cmds.push(
+          ["SADD", `usage:payers:${d}`, payer],
+          ["SETNX", `usage:firstsvc:${payer}`, serviceId],
+          ["EXPIRE", `usage:firstsvc:${payer}`, 60 * 60 * 24 * 60],
+          ["HINCRBY", `usage:payersvc:${payer}`, serviceId, 1],
+          ["EXPIRE", `usage:payersvc:${payer}`, PAYER_SERVICE_TTL],
+        );
       await kvPipeline(cmds);
       return;
     }
@@ -132,8 +142,24 @@ export async function logUsage(
     if (internal) await kvSAdd(`usage:intsrc:${d}`, source);
     if (kind === "bot") await kvSAdd(`usage:botsrc:${d}`, source); // bot/crawler sources today
     await kvLPush("usage:recent", entry, 100);
+    if (payer) await kvHIncrBy(`usage:payersvc:${payer}`, serviceId, 1, PAYER_SERVICE_TTL);
   } catch {
     /* never let analytics break a request */
+  }
+}
+
+/** How long a payer's per-service tally is kept. Long enough to recognise a
+ *  wallet that comes back after a quiet month, short enough that a wallet gone
+ *  for good stops occupying the dashboard. */
+const PAYER_SERVICE_TTL = 60 * 60 * 24 * 120;
+
+/** Which services one payer wallet has bought, and how many times each. Keyed by
+ *  the same hash of the lowercased address that the paid path records. */
+export async function getPayerServices(payerHash: string): Promise<Record<string, number>> {
+  try {
+    return await kvHGetAll(`usage:payersvc:${payerHash}`);
+  } catch {
+    return {};
   }
 }
 

@@ -24,6 +24,7 @@ export function kvConfigured(): boolean {
 type Entry = { value: string; expireAt?: number };
 const mem = new Map<string, Entry>();
 const memList = new Map<string, string[]>();
+const memHash = new Map<string, Map<string, number>>();
 
 function memValid(k: string): Entry | undefined {
   const e = mem.get(k);
@@ -247,6 +248,33 @@ export async function kvSRem(key: string, member: string): Promise<void> {
 export async function kvSMembers(key: string): Promise<string[]> {
   if (kvConfigured()) return (await cmd<string[]>(["SMEMBERS", key])) ?? [];
   return memList.get(`set:${key}`) ?? [];
+}
+
+/** Bump one field of a hash. Used to tally a payer's purchases per service. */
+export async function kvHIncrBy(key: string, field: string, by = 1, ttlSeconds?: number): Promise<void> {
+  if (kvConfigured()) {
+    await cmd(["HINCRBY", key, field, by]);
+    if (ttlSeconds) await cmd(["EXPIRE", key, ttlSeconds]);
+    return;
+  }
+  const h = memHash.get(key) ?? new Map<string, number>();
+  h.set(field, (h.get(field) ?? 0) + by);
+  memHash.set(key, h);
+}
+
+/**
+ * Read a whole hash as field → count. Upstash returns it as a flat
+ * [field, value, field, value, …] array, not an object.
+ */
+export async function kvHGetAll(key: string): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  if (kvConfigured()) {
+    const flat = (await cmd<string[]>(["HGETALL", key])) ?? [];
+    for (let i = 0; i + 1 < flat.length; i += 2) out[String(flat[i])] = Number(flat[i + 1]) || 0;
+    return out;
+  }
+  for (const [f, v] of memHash.get(key) ?? []) out[f] = v;
+  return out;
 }
 
 /**

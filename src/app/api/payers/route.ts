@@ -15,7 +15,7 @@ import { getConfig, USDC_BASE } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
 import { cdpSql } from "@/lib/covalent";
 import { kvGet } from "@/lib/kv";
-import { srcHash } from "@/lib/usage";
+import { srcHash, getPayerServices } from "@/lib/usage";
 import { SERVICES } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
@@ -114,32 +114,64 @@ export async function GET(req: NextRequest) {
     byWallet.set(from, w);
   }
 
-  // Enrich each wallet with the first service it ever bought (from our usage log,
-  // keyed by the same hash we store on paid calls). Best-effort — never blocks.
+  // Enrich each wallet with what it bought: the service that pulled it in, and
+  // the full tally per service. Both come from our usage log, keyed by the same
+  // hash of the lowercased address the paid path records. Best-effort — a
+  // missing tally must never cost us the on-chain row it belongs to.
   const wallets = await Promise.all(
     [...byWallet.values()]
       .sort((a, b) => b.totalUsdc - a.totalUsdc)
       .map(async (w) => {
+        const hash = srcHash(w.wallet.toLowerCase());
         let firstService: string | null = null;
         try {
-          // Lowercase to match the write side (route.ts lowercases before hashing).
-          const svc = await kvGet(`usage:firstsvc:${srcHash(w.wallet.toLowerCase())}`);
+          const svc = await kvGet(`usage:firstsvc:${hash}`);
           if (svc) firstService = nameById[svc] ?? svc;
         } catch {
           /* ignore */
         }
-        return { ...w, firstService };
+        const tally = await getPayerServices(hash);
+        const services = Object.entries(tally)
+          .map(([id, calls]) => ({ id, name: nameById[id] ?? id, calls }))
+          .sort((a, b) => b.calls - a.calls);
+        return {
+          ...w,
+          firstService,
+          services,
+          serviceCalls: services.reduce((n, s) => n + s.calls, 0),
+          ours: cfg.ownWallets.includes(w.wallet),
+        };
       }),
   );
+
+  // Our own wallets settle on chain exactly like a customer's, so leaving them in
+  // the headline makes our own testing read as demand. They are still returned,
+  // just counted apart — hiding them entirely would be its own way of lying.
+  const ours = wallets.filter((w) => w.ours);
+  const external = wallets.filter((w) => !w.ours);
+  const sum = (list: typeof wallets, pick: (w: (typeof wallets)[number]) => number) =>
+    +list.reduce((n, w) => n + pick(w), 0).toFixed(2);
 
   return NextResponse.json({
     date,
     available: true,
     payTo: cfg.payTo,
-    walletCount: wallets.length,
-    txCount: rows.length,
-    totalUsdc: +totalUsdc.toFixed(2),
-    wallets,
-    note: "Authoritative on-chain USDC receipts into the seller wallet for this UTC day (CDP-indexed). Includes any direct transfers, not only x402 settlements.",
+    // Headline figures are EXTERNAL only — what someone else chose to pay for.
+    walletCount: external.length,
+    txCount: external.reduce((n, w) => n + w.txCount, 0),
+    totalUsdc: sum(external, (w) => w.totalUsdc),
+    /** Paid calls we can attribute to a service, from the usage log. Lower than
+     *  txCount whenever a settlement predates this tally or was a direct transfer. */
+    paidCallCount: external.reduce((n, w) => n + w.serviceCalls, 0),
+    wallets: external,
+    ownWallets: {
+      configured: cfg.ownWallets.length,
+      walletCount: ours.length,
+      txCount: ours.reduce((n, w) => n + w.txCount, 0),
+      totalUsdc: sum(ours, (w) => w.totalUsdc),
+      wallets: ours,
+    },
+    grossUsdc: +totalUsdc.toFixed(2),
+    note: "Authoritative on-chain USDC receipts into the seller wallet for this UTC day (CDP-indexed). Includes any direct transfers, not only x402 settlements. Headline totals exclude wallets listed in OWN_WALLETS; those are reported under ownWallets.",
   });
 }
