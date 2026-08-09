@@ -61,14 +61,67 @@ describe("declared examples are callable", () => {
     expect(missing, `no example value: ${missing.join(", ")}`).toEqual([]);
   });
 
-  it("never declares a placeholder hint as a value", () => {
-    const hints: string[] = [];
+  it("declares a value of the right SHAPE for every parameter", () => {
+    // Deliberately not the generator's own hint regex — checking a regex with the
+    // same regex is how `e.g. 20480` and `csv | tsv | json | md` shipped as
+    // declared values, both on required parameters, both throwing on first call.
+    // These assertions describe what the handler will accept instead.
+    const bad: string[] = [];
+    const isAddr = (v: string) => /^0x[0-9a-fA-F]{40}$/.test(v);
     for (const s of parseServices()) {
       for (const [name, v] of Object.entries(exampleInputFor(s) ?? {})) {
-        if (/…|\.\.\./.test(v) || v.trim() === "") hints.push(`${s.id}.${name}="${v}"`);
+        if (v.trim() === "") { bad.push(`${s.id}.${name} is blank`); continue; }
+        // `from`/`to` are addresses only when they look like one — on fx-convert
+        // they are currency codes, on file-convert file formats.
+        if (/^(address|addresses|token|tokens|contract|wallet|owner|spender|pair|vault|paymaster|from|to|operator|payer|receiver|executor|caller)$/i.test(name) && /^0x/.test(v)) {
+          if (!v.split(",").every((part) => isAddr(part.trim()))) bad.push(`${s.id}.${name}="${v}" is not an address list`);
+        } else if (/^(hash|tx)$/i.test(name)) {
+          if (!/^0x[0-9a-fA-F]{64}$/.test(v)) bad.push(`${s.id}.${name}="${v}" is not a 32-byte hash`);
+        } else if (name === "block" && /^(latest|pending|finalized|safe|earliest)$/.test(v)) {
+          /* a block tag is as valid as a number */
+        } else if (/^(days|size|amount|amountUsd|count|bytes|ttlDays|threshold|limit|maxHealth|dropPct|block|policy|tier|maxChars)$/i.test(name)) {
+          if (!Number.isFinite(Number(v))) bad.push(`${s.id}.${name}="${v}" is not a number`);
+        } else if (/^(url|webhook)$/i.test(name)) {
+          if (!/^https?:\/\/[^\s]+$/.test(v)) bad.push(`${s.id}.${name}="${v}" is not a URL`);
+        } else if (/…|\.\.\.|\be\.g\.|\s\|\s/.test(v)) {
+          bad.push(`${s.id}.${name}="${v}" reads as a form hint`);
+        }
       }
     }
-    expect(hints, `these are form hints, not values: ${hints.join(", ")}`).toEqual([]);
+    expect(bad, `unusable declared values: ${bad.join("; ")}`).toEqual([]);
+  });
+
+  it("declares the values we specifically got wrong before", () => {
+    // A golden list, so the classification cannot silently regress behind a rule
+    // change. Each entry is an endpoint that was published with a value its own
+    // handler rejects.
+    const byId = new Map(parseServices().map((s) => [s.id, exampleInputFor(s) ?? {}]));
+    const usdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".toLowerCase();
+    // Its whole subject is whether an EOA has delegated; a token contract is not one.
+    expect(byId.get("wallet-delegation")?.wallet?.toLowerCase()).not.toBe(usdc);
+    for (const id of ["safe-check", "address-trust", "address-intel", "sanctions", "compliance-check", "base-nonce"]) {
+      expect(byId.get(id)?.address?.toLowerCase(), `${id} screens an account, not a token`).not.toBe(usdc);
+    }
+    // Required, and previously declared as the list of accepted formats.
+    expect(byId.get("file-convert")?.from).toBe("csv");
+    expect(byId.get("file-convert")?.to).toBe("json");
+    expect(Number(byId.get("file-slot")?.bytes)).toBeGreaterThan(0);
+    // A spender is a contract to revoke, never the caller's own wallet.
+    expect(byId.get("revoke-builder")?.spender?.toLowerCase()).not.toBe(byId.get("revoke-builder")?.wallet?.toLowerCase());
+  });
+
+  it("declares the same subject in both halves of an example", () => {
+    // An input naming USDC beside an output captured from DEGEN tells an agent
+    // the example is not reproducible.
+    const mismatched: string[] = [];
+    for (const s of parseServices()) {
+      const inAddr = (exampleInputFor(s) ?? {}).address?.toLowerCase();
+      const outAddr = (staticOutputExample(s.id) ?? {}).address;
+      if (inAddr && typeof outAddr === "string" && /^0x/.test(outAddr) && inAddr !== outAddr.toLowerCase()) {
+        mismatched.push(`${s.id}: in ${inAddr.slice(0, 10)}… out ${outAddr.slice(0, 10)}…`);
+      }
+    }
+    expect(mismatched, `example input and output disagree: ${mismatched.join("; ")}`).toEqual([]);
   });
 
   it("never offers a token contract where a wallet belongs", () => {

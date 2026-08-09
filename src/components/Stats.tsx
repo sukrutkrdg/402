@@ -96,7 +96,8 @@ interface Payers {
   txCount?: number;
   totalUsdc?: number;
   /** Paid calls attributed to a service. */
-  paidCallCount?: number;
+  /** All-time, for the wallets that paid on this date — not calls on this date. */
+  paidCallCountAllTime?: number;
   wallets?: PayerWallet[];
   /** Our own wallets, counted apart so testing never reads as demand. */
   ownWallets?: { configured: number; walletCount: number; txCount: number; totalUsdc: number; wallets?: PayerWallet[] };
@@ -355,7 +356,11 @@ export default function Stats() {
           <div className="card animate-pulse px-4 py-6 text-center text-sm text-gray-500">Reading chain…</div>
         )}
 
-        {payers && payers.available && (payers.walletCount ?? 0) > 0 && (
+        {/* Gate on whether the chain had ANY payment that day, not on the external
+            count — otherwise a day when only our own wallets paid renders nothing
+            at all, including the "excluded as ours" line, under a headline saying
+            no payments were received. */}
+        {payers && payers.available && ((payers.walletCount ?? 0) > 0 || (payers.ownWallets?.walletCount ?? 0) > 0) && (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="card p-4">
@@ -366,9 +371,12 @@ export default function Stats() {
                 <div className="label">Payments</div>
                 <div className="mt-1 font-mono text-2xl font-bold">{payers.txCount}</div>
               </div>
+              {/* Lifetime, NOT this date: the tally behind it is keyed by wallet
+                  with a 120-day window, never by day. Labelled so it cannot be
+                  read as "calls on the selected date" beside Payments. */}
               <div className="card p-4">
-                <div className="label">Paid calls</div>
-                <div className="mt-1 font-mono text-2xl font-bold">{payers.paidCallCount ?? 0}</div>
+                <div className="label">Paid calls · all time</div>
+                <div className="mt-1 font-mono text-2xl font-bold">{payers.paidCallCountAllTime ?? 0}</div>
               </div>
               <div className="card p-4">
                 <div className="label">USDC in</div>
@@ -420,12 +428,15 @@ export default function Stats() {
                             someone paid; this says what for, which is the part
                             that tells us whether to build more of it. */}
                         {w.services && w.services.length > 0 ? (
-                          <div className="mb-2 flex flex-wrap gap-1.5">
-                            {w.services.map((s) => (
-                              <span key={s.id} className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300/90">
-                                {s.name} ×{s.calls}
-                              </span>
-                            ))}
+                          <div className="mb-2">
+                            <div className="mb-1 text-[10px] text-gray-500">Everything this wallet has bought (all time, not just this day)</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {w.services.map((s) => (
+                                <span key={s.id} className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300/90">
+                                  {s.name} ×{s.calls}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         ) : (
                           <p className="mb-2 text-[10px] text-gray-500">

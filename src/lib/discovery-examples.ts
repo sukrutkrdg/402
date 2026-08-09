@@ -165,7 +165,11 @@ const PAYMASTER = "0x2cc0c7981D846b9F2a16276556f6e8cb52BfB633";
 const NFT_COLLECTION = "0xEa2a41c02fA86A4901826615F9796e603C6a4491";
 
 /** What a label cannot tell us: an Asset-only B20 endpoint, a spender that must
- *  be a contract rather than a wallet, a hash, a document. */
+ *  be a contract rather than a wallet, a hash, a document.
+ *
+ *  An empty string means "declare nothing for this parameter" — used where the
+ *  only honest example would be a value that cannot work for a stranger, such as
+ *  a webhook URL pointing at a host we do not own. */
 const OVERRIDES: Record<string, Record<string, string>> = {
   // B20 endpoints that only answer for an Asset (variant 0).
   "b20-seizure-history": { address: B20_ASSET },
@@ -216,17 +220,55 @@ const OVERRIDES: Record<string, Record<string, string>> = {
     fields: "invoice_no,company,due_date,total",
   },
   "ai-translate": { text: "Your withdrawal is being processed and should arrive within one business day.", to: "Turkish" },
-  "file-publish": { text: "# Weekly risk report\n\nTwo of nine watched tokens lost more than 20% of their liquidity.", title: "Weekly risk report", format: "md" },
+  "file-publish": { text: "# Weekly risk report\n\nTwo of nine watched tokens lost more than 20% of their liquidity.", title: "Weekly risk report", format: "md", ttlDays: "7" },
+  // The file endpoints declare their formats as option lists ("csv | tsv | json"),
+  // which are required parameters — an agent sending the list gets a 400.
+  "file-convert": { text: "name,qty\nWidget,3\nGadget,7", from: "csv", to: "json", typed: "true" },
+  "file-slot": { bytes: "20480", name: "report.csv", contentType: "text/csv", ttlDays: "7" },
+  // A webhook example can only be a host we do not control, and both endpoints
+  // resolve it before accepting — so declare none rather than one that throws.
+  "rug-monitor": { token: DEGEN, dropPct: "50", webhook: "" },
+  "price-alert": { token: DEGEN, threshold: "0.01", direction: "above", webhook: "" },
+  // The captured output for each of these was read from DEGEN, not USDC. An
+  // example whose two halves name different tokens is not reproducible.
+  "token-risk": { address: DEGEN },
+  sellability: { address: DEGEN, size: "5000" },
+  "contract-danger": { address: DEGEN },
+  "deep-dd": { address: DEGEN, size: "5000" },
+  "ai-token-report": { address: DEGEN },
+  "ai-contract-risk": { address: DEGEN },
+  // Labelled only "Address", so nothing tells the rules these screen an account.
+  "address-intel": { address: WALLET },
+  "base-nonce": { address: WALLET },
+  // Captured from the Asset, which is the variant with something to report.
+  "b20-safety": { address: B20_ASSET },
+  "b20-gate": { address: B20_ASSET, wallet: WALLET },
+  "b20-dossier": { address: B20_ASSET },
+  // Captured from the second wallet, which has the longer history.
+  "wallet-summary": { address: WALLET2 },
 };
 
-/** Labels that mean "an account holds this", as opposed to a token or contract. */
-const WALLET_LABEL = /wallet|holder|payer|merchant|borrower|victim|account|recipient|sender|safe|operator|owner|deployer/i;
+/** Labels that mean "an account holds this", as opposed to a token or contract.
+ *  `eoa` and the bare screening labels are here because they were missed once:
+ *  wallet-delegation says "EOA address" and exists only to inspect delegation,
+ *  yet it was handed the USDC contract, which it correctly called a contract. */
+const WALLET_LABEL = /wallet|holder|payer|merchant|borrower|victim|account|recipient|sender|safe|operator|owner|deployer|\beoa\b|address to (check|screen)|counterparty/i;
 /** Parameters that carry an address. `from`/`to` are deliberately absent: they
  *  are currencies on fx-convert, dates on business-days and formats on
  *  file-convert, and each of those already has a usable placeholder. */
 const ADDRESS_PARAM = /^(address|addresses|token|tokens|contract|wallet|owner|spender)$/i;
-/** A placeholder written for a human to read past, not for a machine to send. */
-const IS_HINT = /…|\.\.\./;
+/**
+ * A placeholder written for a human to read past, not for a machine to send.
+ *
+ * An ellipsis was the first version and it was not enough: `e.g. 20480`,
+ * `csv | tsv | json | md` and `30 (max 90)` all sailed through as declared
+ * values, and the first two are on REQUIRED parameters, so those examples threw
+ * on the first call. Each pattern here is a form of "here is the shape, not the
+ * value" — an option list, a for-instance, or a value trailed by a parenthetical
+ * aside. The space before `(` matters: `transfer(address,uint256)` is a real
+ * value that must survive.
+ */
+const IS_HINT = /…|\.\.\.|\be\.g\.|\s\|\s|\s\(/;
 
 function inferred(service: ExampleService, p: ExampleService["params"][number]): string | undefined {
   if (ADDRESS_PARAM.test(p.name)) {

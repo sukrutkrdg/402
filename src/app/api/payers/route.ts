@@ -160,9 +160,15 @@ export async function GET(req: NextRequest) {
     walletCount: external.length,
     txCount: external.reduce((n, w) => n + w.txCount, 0),
     totalUsdc: sum(external, (w) => w.totalUsdc),
-    /** Paid calls we can attribute to a service, from the usage log. Lower than
-     *  txCount whenever a settlement predates this tally or was a direct transfer. */
-    paidCallCount: external.reduce((n, w) => n + w.serviceCalls, 0),
+    /**
+     * ALL-TIME paid calls attributed to a service for the wallets that paid on
+     * this date — not calls made on this date. The tally behind it is keyed by
+     * wallet with a 120-day window and has no day dimension, so it can exceed
+     * this date's txCount (a wallet's earlier purchases) and can keep growing
+     * after a past date is loaded. It also under-counts credit-token callers,
+     * whose payer key is the token rather than a wallet.
+     */
+    paidCallCountAllTime: external.reduce((n, w) => n + w.serviceCalls, 0),
     wallets: external,
     ownWallets: {
       configured: cfg.ownWallets.length,
