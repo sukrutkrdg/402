@@ -26,6 +26,7 @@ import { sinceLastCheck } from "@/lib/since-last";
 import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
+import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
 /**
@@ -461,20 +462,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // Rich discovery metadata feeds CDP Bazaar's hybrid (text + semantic) ranking:
   // a concrete example input and a real example output ("metadata quality") lift
   // us in search results and help the facilitator index the endpoint at all.
-  // - input: realistic example values (a well-known token for address-like params)
-  // - output.example: a recent real response preview (cached, already redacted)
-  const exampleInput =
-    service.params.length > 0
-      ? Object.fromEntries(
-          service.params.map((p) => [
-            p.name,
-            /address|token|wallet|contract|owner|spender/i.test(p.name)
-              ? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-              : p.placeholder || "",
-          ]),
-        )
-      : undefined;
-  const outputExample = await loadSample(service.id);
+  // - input: a call an agent can actually run (see discovery-examples)
+  // - output.example: the last real response preview from KV, and when there is
+  //   none — which is the case for every endpoint too quiet to have served one
+  //   recently, i.e. exactly those needing a shop window — a real response
+  //   captured into source instead of nothing at all.
+  const exampleInput = exampleInputFor(service);
+  const outputExample = (await loadSample(service.id)) ?? staticOutputExample(service.id);
 
   // Coupon-discounted price: a caller who just paid the entry check on this token
   // gets the AI report for less. Checked at challenge time by src+token; falls
@@ -542,10 +536,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // top-level fields are spec-safe; x402 clients only read `accepts`.
       try {
         const body = (await res.clone().json()) as Record<string, unknown>;
-        const sample = await loadSample(service.id);
+        const sample = (await loadSample(service.id)) ?? staticOutputExample(service.id);
         if (sample) {
           body.sample = {
-            note: "Preview of a recent real response — a paid call returns the full report (all signals, details & recommendation).",
+            note: "Preview of a real response — a paid call returns the full report (all signals, details & recommendation).",
             data: sample,
           };
         }
