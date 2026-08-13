@@ -28,29 +28,10 @@ import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
+import { payerFromHeaders } from "@/lib/payer";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
 
-/** Best-effort payer wallet from the x-payment header (base64 JSON) — used only
- * for anonymized repeat-buyer analytics; never throws. */
-function payerFrom(request: NextRequest): string {
-  try {
-    const h = request.headers.get("x-payment");
-    if (!h) return "";
-    const j = JSON.parse(Buffer.from(h, "base64").toString("utf8")) as Record<string, unknown>;
-    const dig = (o: unknown): string => {
-      if (!o || typeof o !== "object") return "";
-      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-        if (/^(from|payer|sender)$/i.test(k) && typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v)) return v;
-        if (v && typeof v === "object") { const r = dig(v); if (r) return r; }
-      }
-      return "";
-    };
-    return dig(j);
-  } catch {
-    return "";
-  }
-}
 
 /** Static input→output pairs served inside the 402 challenge for the
  * text-transform AI services (the biggest probe magnets). Never computed —
@@ -389,7 +370,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     await saveSample(service.id, data);
     // Lowercase before hashing: the payers dashboard hashes the lowercased
     // address from CDP SQL — a checksummed hash here would never match it.
-    const payer = payerFrom(request).toLowerCase();
+    const payer = payerFromHeaders(request.headers);
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "", false, false, false, payer ? srcHash(payer) : "");
     // buy-credits settles at the CHOSEN tier, not the listed price — record the
     // real cents so the revenue dashboard doesn't count every pack as $5.
