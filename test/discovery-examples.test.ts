@@ -83,6 +83,10 @@ describe("declared examples are callable", () => {
           if (!Number.isFinite(Number(v))) bad.push(`${s.id}.${name}="${v}" is not a number`);
         } else if (/^(url|webhook)$/i.test(name)) {
           if (!/^https?:\/\/[^\s]+$/.test(v)) bad.push(`${s.id}.${name}="${v}" is not a URL`);
+          // example.com serves exactly one page. Any path under it is a 404, and
+          // url-extract declared example.com/article — shaped like a URL, and an
+          // error for every agent that followed it.
+          if (/^https?:\/\/(www\.)?example\.(com|org|net)\/./.test(v)) bad.push(`${s.id}.${name}="${v}" is a 404`);
         } else if (/…|\.\.\.|\be\.g\.|\s\|\s/.test(v)) {
           bad.push(`${s.id}.${name}="${v}" reads as a form hint`);
         }

@@ -246,6 +246,15 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "b20-dossier": { address: B20_ASSET },
   // Captured from the second wallet, which has the longer history.
   "wallet-summary": { address: WALLET2 },
+  // These read LP-holder data, and USDC has no DEX pool of its own to hold — the
+  // declared example answered "No LP holders found", i.e. an error, for anyone
+  // who followed it. DEGEN has real pools.
+  "lp-lock": { address: DEGEN },
+  "token-unlock": { address: DEGEN },
+  // example.com/article is a 404. A declared URL has to be a page that is
+  // actually there, and has enough text to show what the endpoint returns.
+  "url-extract": { url: "https://402.com.tr/agents", maxChars: "40000" },
+  "url-to-json": { url: "https://402.com.tr/agents", fields: "title,summary" },
 };
 
 /** Labels that mean "an account holds this", as opposed to a token or contract.
