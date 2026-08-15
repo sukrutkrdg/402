@@ -108,6 +108,45 @@ async function attachRetention(serviceId: string, data: unknown, src: string): P
   }
 }
 
+/**
+ * Strip the generated `routeTemplate` from the payment-required header.
+ *
+ * `withX402` hardcodes a `"*"` route pattern, and the bazaar extension turns a
+ * wildcard segment into `:var1`. Every one of our services therefore declared
+ * `routeTemplate: ":var1"`, which cannot match a concrete resource URL — so the
+ * Bazaar's `matches_resource` check fails and the resource is not indexed. It is
+ * a known upstream bug (x402-foundation/x402#3019), and we are the largest
+ * single contributor to it in the public index: 103 of the 248 malformed records
+ * are ours.
+ *
+ * Removing the field is the right repair rather than substituting a real
+ * template. With no `routeTemplate` the indexer falls back to the request's own
+ * pathname, which is exactly the per-service URL we want indexed. Declaring
+ * `/api/x402/:service` instead would be worse than the bug: it is a single
+ * template, so all 131 services would collapse into one canonical resource.
+ *
+ * Only the header carries it — the 402 body does not — and nothing is signed
+ * over it, so rewriting is safe for verification and settlement.
+ */
+function fixRouteTemplate(headers: Headers): void {
+  for (const name of ["payment-required", "x-payment-required"]) {
+    const raw = headers.get(name);
+    if (!raw) continue;
+    try {
+      const decl = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as {
+        extensions?: Record<string, { routeTemplate?: unknown }>;
+      };
+      const bazaar = decl.extensions?.bazaar;
+      if (!bazaar || typeof bazaar.routeTemplate !== "string") continue;
+      if (!/^:var\d+$|(^|\/):var\d+(\/|$)/.test(bazaar.routeTemplate)) continue; // a real template — leave it
+      delete bazaar.routeTemplate;
+      headers.set(name, Buffer.from(JSON.stringify(decl), "utf8").toString("base64"));
+    } catch {
+      /* an unreadable header is the library's to own — never break the challenge */
+    }
+  }
+}
+
 /** Constant-time secret compare (avoids leaking length/match via timing). */
 function secretMatches(provided: string, expected: string): boolean {
   const a = Buffer.from(provided);
@@ -550,6 +589,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         body.alternatives = alternatives;
         const headers = new Headers(res.headers);
         headers.delete("content-length");
+        fixRouteTemplate(headers);
         return NextResponse.json(body, { status: 402, headers });
       } catch {
         return res; // enrichment is best-effort — never break the challenge itself
