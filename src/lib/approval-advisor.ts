@@ -7,11 +7,11 @@
  * unlabelled/unverified spender), and returns a prioritised revoke list an agent
  * can act on. Built on our token-approvals data with the analysis on top.
  *
- * Metered upstream (Covalent) → registered paid-only.
+ * Upstream: GoPlus approvals (free) → see ./approvals.
  */
 
 import "server-only";
-import { tokenApprovals } from "./covalent";
+import { tokenApprovals } from "./approvals";
 
 interface Spender {
   spender?: string | null;

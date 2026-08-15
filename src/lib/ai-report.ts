@@ -14,7 +14,8 @@ import { holderDistribution } from "./holders";
 import { tokenPrice, txDecode } from "./onchain-extra";
 import { contractAbi } from "./onchain-extra3";
 import { sanctionsCheck } from "./compliance";
-import { walletNetworth, walletActivity, tokenApprovals } from "./covalent";
+import { walletNetworth, walletActivity } from "./covalent";
+import { tokenApprovals } from "./approvals";
 import { walletSummary } from "./wallet-history";
 import { trendingTokens } from "./onchain-extra2";
 import { newTokens } from "./onchain-extra4";
@@ -524,7 +525,25 @@ export async function aiWalletSecurity(params: Record<string, string>) {
     throw new Error(e instanceof Error ? e.message : "Approval data unavailable");
   }
 
-  const facts = JSON.stringify(approvals).slice(0, 6000);
+  // Bound the facts by SELECTING rows, never by slicing the JSON string. A byte
+  // slice cuts mid-token and hands the model malformed JSON — which is how this
+  // endpoint started failing outright ("Model did not return valid JSON") the
+  // moment its upstream began returning richer data. Worst exposure first, so
+  // the cap drops the least important rows rather than an arbitrary tail.
+  const rows = (approvals as { approvals?: Array<{ token?: string | null; tokenAddress?: string | null; spenders?: Array<Record<string, unknown>> }> }).approvals ?? [];
+  const usd = (r: Record<string, unknown>) => Number(r.usdAtRisk ?? 0);
+  const flat: Array<Record<string, unknown>> = rows
+    .flatMap((a) => (a.spenders ?? []).map((s) => ({ token: a.token, tokenAddress: a.tokenAddress, ...s }) as Record<string, unknown>))
+    .sort((x, y) => usd(y) - usd(x))
+    .slice(0, 25);
+  const facts = JSON.stringify({
+    approvalCount: (approvals as { approvalCount?: number }).approvalCount ?? 0,
+    totalUsdAtRisk: (approvals as { totalUsdAtRisk?: number }).totalUsdAtRisk ?? 0,
+    unpricedTokens: (approvals as { unpricedTokens?: number }).unpricedTokens ?? 0,
+    shown: flat.length,
+    approvals: flat,
+  });
+
   const schema = {
     type: "object",
     properties: {
@@ -551,7 +570,9 @@ export async function aiWalletSecurity(params: Record<string, string>) {
 
   const msg = await new Anthropic().messages.create({
     model: MODEL,
-    max_tokens: 900,
+    // A wallet with dozens of approvals needs room for one recommendation per
+    // risky spender; at 900 the answer was cut mid-JSON and every call failed.
+    max_tokens: 2500,
     system:
       INJECTION_GUARD +
       "You are a wallet-security auditor for an autonomous agent. Given JSON facts about a wallet's active " +
@@ -572,7 +593,14 @@ export async function aiWalletSecurity(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    // Say WHICH failure it was. "Model did not return valid JSON" sent us
+    // hunting through the prompt when the answer was simply cut off at
+    // max_tokens — an unparseable tail is what truncation looks like from here.
+    throw new Error(
+      msg.stop_reason === "max_tokens"
+        ? "Report unavailable: the model's answer was cut short (too many approvals to summarise in one pass). Try approval-advisor for the full list."
+        : "Model did not return valid JSON",
+    );
   }
 
   return {
