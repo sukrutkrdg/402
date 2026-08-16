@@ -29,6 +29,7 @@ import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
 import { payerFromHeaders } from "@/lib/payer";
+import { tagsFor } from "@/lib/tags";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
 
@@ -506,7 +507,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     description: service.description,
     mimeType: "application/json",
     serviceName: service.name,
-    tags: [service.category.toLowerCase(), "x402", "base"],
+    tags: tagsFor(service),
     extensions: {
       // Builder Code → lands in settlement calldata as `a`.
       [BUILDER_CODE]: declareBuilderCodeExtension(cfg.appBuilderCode),
