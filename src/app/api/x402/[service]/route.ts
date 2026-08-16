@@ -29,6 +29,7 @@ import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
 import { payerFromHeaders } from "@/lib/payer";
+import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
@@ -408,6 +409,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       return handlerErrorResponse(err);
     }
     await saveSample(service.id, data);
+    // A settled call is what keeps this resource inside the discovery index's
+    // rolling window, so a real customer payment does the job the index-refresh
+    // cron would otherwise pay for. Marking it here is what makes that cron's
+    // bill fall as demand rises instead of staying flat.
+    await kvSet(indexFreshKey(service.id), "1", INDEX_FRESH_SECONDS);
     // Lowercase before hashing: the payers dashboard hashes the lowercased
     // address from CDP SQL — a checksummed hash here would never match it.
     const payer = payerFromHeaders(request.headers);

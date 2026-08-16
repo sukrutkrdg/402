@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/token-scout",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/index-all",
+      "schedule": "0 3 * * *"
     }
   ]
 }

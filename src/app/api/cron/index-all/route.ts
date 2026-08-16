@@ -1,10 +1,27 @@
 /**
- * Index-All — one-time discovery seeding. Makes a single settled x402 payment to
- * each service so the CDP facilitator's Bazaar discovery layer indexes the whole
- * catalog (→ discoverable on Agentic.Market / x402scan). Run once; cheap.
+ * Index refresh — keeps the catalog discoverable.
  *
- * Auth: Authorization: Bearer ${CRON_SECRET}
- * Needs: BUYER_PRIVATE_KEY (a little USDC on Base).
+ * A resource enters the CDP Bazaar index only after a settled payment, and it
+ * LEAVES again when it stops seeing them: four of our listings dropped out
+ * inside a single day in August 2026 while we watched. Discovery is a rolling
+ * window, not a registration, so a listing nobody buys becomes a listing nobody
+ * can find — which is the exact loop that keeps it unbought.
+ *
+ * This settles one payment against the endpoints that have not seen one lately,
+ * so each stays inside the window. Two things keep it from being a money pit:
+ *
+ *   - A real paid call marks the service fresh too (the x402 route sets the same
+ *     key). So every organic purchase removes an endpoint from this run, and the
+ *     bill shrinks as demand grows. That is the right direction for it to move.
+ *   - Hard caps per invocation on both count and spend, so a bug here cannot
+ *     drain the buyer wallet — and ENABLE_BUYER=false still disables everything.
+ *
+ * Inputs come from each service's own published example, the same declaration an
+ * agent would follow. The parameter map this used to carry handed USDC to every
+ * address-shaped field, which meant every B20 endpoint answered "not a B20
+ * token" — an error settles nothing, so those calls bought exactly nothing.
+ *
+ * Auth: Authorization: Bearer ${CRON_SECRET}. Needs BUYER_PRIVATE_KEY funded.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,40 +30,21 @@ import { safeEqual } from "@/lib/secure";
 import { SERVICES } from "@/lib/services";
 import { kvGet, kvSet } from "@/lib/kv";
 import { getConfig } from "@/lib/config";
+import { exampleInputFor } from "@/lib/discovery-examples";
+import { priceCents } from "@/lib/price";
+import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "");
-const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const WETH = "0x4200000000000000000000000000000000000006";
-const recentDate = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
 
-// Resolve a valid sample value per known param name. Unknown → null (skip service).
-function sample(name: string): string | null {
-  switch (name) {
-    case "address":
-    case "token":
-    case "contract":
-      return USDC;
-    case "addresses":
-      return `${USDC},${WETH}`;
-    case "date":
-      return recentDate;
-    case "text":
-      return "x402 Bazaar is a pay-per-call API marketplace on Base for AI agents.";
-    case "lang":
-    case "language":
-    case "target":
-      return "Spanish";
-    case "selector":
-      return "0xa9059cbb";
-    case "name":
-      return "jesse.base.eth";
-    default:
-      return null; // e.g. tx "hash" — can't reliably sample; skip
-  }
-}
+/** Settlements per invocation. Each takes a few seconds; this leaves headroom
+ *  under maxDuration and spreads the spend across days rather than one burst. */
+const MAX_PER_RUN = 12;
+/** Hard ceiling per invocation, in cents. A cap that cannot be exceeded matters
+ *  more than the exact number: this route is the only scheduled thing that spends. */
+const MAX_SPEND_CENTS = 60;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -56,7 +54,7 @@ export async function GET(req: NextRequest) {
 
   // Master spend kill-switch: ENABLE_BUYER=false disables ALL buyer spending.
   if (!getConfig().enableBuyer) {
-    return NextResponse.json({ skipped: "spending disabled (ENABLE_BUYER=false)", indexed: 0 });
+    return NextResponse.json({ skipped: "spending disabled (ENABLE_BUYER=false)", refreshed: 0 });
   }
 
   let pay: ReturnType<typeof getPayingFetch>;
@@ -66,62 +64,77 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skipped: "BUYER_PRIVATE_KEY not configured" });
   }
 
-  // Cap paid settlements per invocation so the function returns under the
-  // serverless timeout (each x402 settlement takes a few seconds). Re-run until
-  // remaining = 0; the KV skip makes it idempotent.
-  const MAX_PER_RUN = 2;
-  // Optional ?only=id1,id2 → index just those services (skips earlier erroring ones).
-  const only = (new URL(req.url).searchParams.get("only") || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  // Default: skip metered-upstream services (Covalent/Alchemy) so our own
-  // indexing round-trip never burns paid API credits. They get discovered
-  // organically on the first real external payment, or force via ?only=<id>.
-  const pool = only.length
-    ? SERVICES.filter((s) => only.includes(s.id))
-    : SERVICES.filter((s) => !s.noFreeTier);
-  const results: Array<{ service: string; status: number | string }> = [];
-  let indexed = 0;
+  const url = new URL(req.url);
+  const only = (url.searchParams.get("only") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const dryRun = url.searchParams.get("dry") === "1";
+
+  const pool = only.length ? SERVICES.filter((s) => only.includes(s.id)) : SERVICES.filter((s) => !s.hidden);
+
+  const results: Array<{ service: string; status: number | string; cents?: number }> = [];
+  let refreshed = 0;
   let attempts = 0;
+  let spent = 0;
+  let stale = 0;
+
   for (const s of pool) {
-    if (attempts >= MAX_PER_RUN) {
+    // Fresh already — either this cron settled it recently, or, better, a real
+    // customer did.
+    if (!only.length && (await kvGet(indexFreshKey(s.id)))) {
+      results.push({ service: s.id, status: "fresh" });
+      continue;
+    }
+    stale++;
+    const cents = priceCents(s.price);
+    if (attempts >= MAX_PER_RUN || spent + cents > MAX_SPEND_CENTS) {
       results.push({ service: s.id, status: "deferred-next-run" });
       continue;
     }
-    // Build sample params; skip the service if a required param can't be sampled.
-    const params: Record<string, string> = {};
-    let skip = false;
-    for (const p of s.params) {
-      const v = sample(p.name);
-      if (v === null) {
-        if (p.required) skip = true;
-      } else {
-        params[p.name] = v;
-      }
-    }
-    if (skip) {
-      results.push({ service: s.id, status: "skipped-no-sample" });
+    // buy-credits mints spendable balance; refreshing it would be buying our own
+    // credit with our own money for nothing.
+    if (s.id === "buy-credits") {
+      results.push({ service: s.id, status: "skipped-mints-credit" });
       continue;
     }
-    // Idempotent: don't re-pay a service already indexed (lets you re-run to finish).
-    if (await kvGet(`idx:${s.id}`)) {
-      results.push({ service: s.id, status: "already-indexed" });
+
+    const params = exampleInputFor(s) ?? {};
+    const missingRequired = s.params.filter((p) => p.required && !params[p.name]).map((p) => p.name);
+    if (missingRequired.length) {
+      // The declaration cannot produce a runnable call, so neither can an agent.
+      // Worth surfacing rather than silently skipping.
+      results.push({ service: s.id, status: `no-example:${missingRequired.join(",")}` });
       continue;
     }
+
+    if (dryRun) {
+      results.push({ service: s.id, status: "would-pay", cents });
+      attempts++;
+      spent += cents;
+      continue;
+    }
+
     const qs = new URLSearchParams(params).toString();
     attempts++;
     try {
       const res = await pay(`${ORIGIN}/api/x402/${s.id}${qs ? `?${qs}` : ""}`);
-      results.push({ service: s.id, status: res.status });
+      results.push({ service: s.id, status: res.status, cents });
       if (res.ok) {
-        indexed++;
-        await kvSet(`idx:${s.id}`, "1", 60 * 60 * 24 * 30); // 30-day memory
+        refreshed++;
+        spent += cents;
+        await kvSet(indexFreshKey(s.id), "1", INDEX_FRESH_SECONDS);
       }
     } catch (e) {
       results.push({ service: s.id, status: e instanceof Error ? e.message.slice(0, 60) : "error" });
     }
   }
 
-  return NextResponse.json({ indexed, total: SERVICES.length, results });
+  return NextResponse.json({
+    refreshed,
+    staleFound: stale,
+    spentCents: spent,
+    capCents: MAX_SPEND_CENTS,
+    total: pool.length,
+    dryRun,
+    note: "Each settled call keeps a listing inside the discovery window for 21 days. Real customer payments mark a service fresh too, so this bill falls as demand rises.",
+    results,
+  });
 }
