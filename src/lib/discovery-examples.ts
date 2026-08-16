@@ -52,6 +52,11 @@ export interface ExampleService {
  */
 const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   "address-trust": {"address":"0x973A31858f4D2125f48C880542DA11a2796f12D6","coinbaseVerified":true,"basename":null,"verdict":"verified","trustScore":70,"signalsCount":1},
+  // Hand-shaped rather than preview-generated: `factors` is a nested object, and
+  // the preview drops nested detail — which would leave this endpoint advertising
+  // a bare verdict. The factor map IS the product, including the entry that did
+  // not run and says why, so it is what the shop window has to show.
+  "safe-to-send": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","verdict":"GO","checkedFactors":4,"skippedFactors":1,"degraded":false,"factors":{"sanctions":{"level":"clear","reason":"Not on the OFAC SDN list"},"identity":{"level":"clear","reason":"Coinbase-verified: an onchain attestation ties this address to a KYC'd account"},"accountType":{"level":"clear","reason":"Wallet with an EIP-7702 delegation — a smart-wallet setup, still an account that signs for itself","type":"eoa_delegated"},"age":{"level":"clear","reason":"Established: first seen on Base 480 days ago","ageDays":480},"upgradeable":{"level":"skipped","reason":"not applicable — the recipient is a wallet, not a contract"}}},
   "ai-contract-risk": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","dangerLevel":"caution","verified":true,"dangerousCapabilitiesCount":4,"observationsCount":8,"model":"claude-haiku-4-5"},
   "ai-extract": {"model":"claude-haiku-4-5","mode":"single","fieldsCount":5,"truncated":false},
   "ai-extract-batch": {"model":"claude-haiku-4-5","fieldsCount":4,"documentCount":2,"documentsCount":2,"truncated":false},
@@ -237,6 +242,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "deep-dd": { address: DEGEN, size: "5000" },
   "ai-token-report": { address: DEGEN },
   "ai-contract-risk": { address: DEGEN },
+  // The example output was read from this address; the halves must agree.
+  "safe-to-send": { address: WALLET },
   // Labelled only "Address", so nothing tells the rules these screen an account.
   "address-intel": { address: WALLET },
   "base-nonce": { address: WALLET },

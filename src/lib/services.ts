@@ -51,6 +51,7 @@ import { preSignPreflight } from "./pre-sign";
 import { signGuard } from "./sign-guard";
 import { spendAudit } from "./spend-audit";
 import { addressTrust } from "./address-trust";
+import { safeToSend } from "./safe-to-send";
 import { swapRoute } from "./swap-route";
 import { tokenUnlock } from "./token-unlock";
 import { volumeCheck } from "./volume-check";
@@ -341,6 +342,18 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: freshBridge,
     noFreeTier: true,
+  },
+  {
+    id: "safe-to-send",
+    name: "Safe to Send",
+    tagline: "Is this address safe to send, approve or sign to?",
+    description:
+      "🆕 Before your agent sends, approves or signs to an address: one GO/REVIEW/STOP verdict. Screens OFAC sanctions, Coinbase/Basename identity, wallet vs contract, how long the address has existed, and whether contract logic can be swapped AFTER you send. Every factor returns what it found and what it could not read — a check that did not run never reads as clean, so GO means everything material was actually screened. Not financial advice.",
+    price: "$0.01",
+    icon: "🛡️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Address you are about to send to", placeholder: "0x… recipient", required: true }],
+    handler: safeToSend,
   },
   {
     id: "address-trust",

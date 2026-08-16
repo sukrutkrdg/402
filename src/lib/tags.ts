@@ -53,6 +53,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "revoke-builder": ["revoke", "approval", "allowance", "wallet-security"],
   "deep-dd": ["due-diligence", "token-safety", "honeypot", "rug-check", "exit-liquidity", "research"],
   // Counterparty / address screening — the question with the most abandoned buyers.
+  "safe-to-send": ["send-safety", "counterparty", "address-screening", "sanctions", "ofac", "scam-address", "before-you-send", "recipient-check"],
   sanctions: ["sanctions", "ofac", "screening", "compliance", "aml", "counterparty"],
   "sanctions-batch": ["sanctions", "ofac", "screening", "compliance", "aml", "bulk"],
   "sanctions-name": ["sanctions", "ofac", "name-screening", "compliance", "aml"],
