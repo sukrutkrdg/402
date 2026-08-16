@@ -21,7 +21,7 @@ const { kvMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/kv", () => kvMock);
 
-import { recoverCredits, linkCreditOwner } from "@/lib/credits";
+import { recoverCredits, linkCreditOwner, CreditRecoveryStuck } from "@/lib/credits";
 
 const OWNER = "0x973a31858f4d2125f48c880542da11a2796f12d6";
 
@@ -182,5 +182,67 @@ describe("recovery message + signature round-trip", () => {
     // A signature over a different timestamp must not authorise this request.
     const otherMessage = recoveryMessage(owner.address, "2020-01-01T00:00:00.000Z");
     expect(await verifyMessage({ address: owner.address, message: otherMessage, signature })).toBe(false);
+  });
+});
+
+/**
+ * The failure that mattered and was not covered: the drain runs to completion
+ * and THEN the mint fails. `mintCredits` throws by design when the ledger write
+ * fails, so this is not hypothetical — and before the fix every drained cent
+ * simply ceased to exist while the response said "nothing was changed" and the
+ * one-shot signature that authorised it was already spent.
+ */
+describe("recoverCredits when the mint fails after draining", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    kvMock.kvConfigured.mockReturnValue(true);
+  });
+
+  it("puts every drained cent back on the original tokens", async () => {
+    const balances: Record<string, number> = { "credit:a": 400, "credit:b": 150 };
+    kvMock.kvSMembers.mockResolvedValue(["credit:a", "credit:b"]);
+    kvMock.kvGetNumber.mockImplementation(async (k: string) => balances[k] ?? 0);
+    kvMock.kvDecrBy.mockImplementation(async (k: string, n: number) => (balances[k] -= n));
+    kvMock.kvIncrBy.mockImplementation(async (k: string, n: number) => {
+      // The mint writes to a key derived from a fresh token, so it is the only
+      // one not in `balances`. That write is the failure being simulated.
+      if (!(k in balances)) return null;
+      balances[k] = balances[k] + n;
+      return balances[k];
+    });
+    kvMock.kvDel.mockResolvedValue(undefined);
+    kvMock.kvSRem.mockResolvedValue(undefined);
+    kvMock.kvSAdd.mockResolvedValue(undefined);
+    kvMock.kvSet.mockResolvedValue(undefined);
+    kvMock.kvExpire.mockResolvedValue(undefined);
+
+    await expect(recoverCredits(OWNER)).rejects.toThrow(/put back|retry/i);
+
+    // Conservation: the customer still has exactly what they had.
+    expect(balances["credit:a"]).toBe(400);
+    expect(balances["credit:b"]).toBe(150);
+    // And both keys are back in the owner index, or recovery could never find
+    // them again even though the balance is there.
+    expect(kvMock.kvSAdd).toHaveBeenCalledWith(expect.stringContaining("credit:owner:"), "credit:a");
+    expect(kvMock.kvSAdd).toHaveBeenCalledWith(expect.stringContaining("credit:owner:"), "credit:b");
+  });
+
+  it("says so loudly when the money could NOT be put back", async () => {
+    // Restoration itself failing is the one case where "nothing was changed" is
+    // a lie, and where a retry would drain the balance a second time.
+    kvMock.kvSMembers.mockResolvedValue(["credit:a"]);
+    kvMock.kvGetNumber.mockResolvedValue(250);
+    kvMock.kvDecrBy.mockResolvedValue(0);
+    kvMock.kvIncrBy.mockResolvedValue(null); // mint fails, and so does the restore
+    kvMock.kvDel.mockResolvedValue(undefined);
+    kvMock.kvSRem.mockResolvedValue(undefined);
+    kvMock.kvSAdd.mockResolvedValue(undefined);
+    kvMock.kvSet.mockResolvedValue(undefined);
+    kvMock.kvExpire.mockResolvedValue(undefined);
+
+    const err = await recoverCredits(OWNER).catch((e) => e);
+    expect(err).toBeInstanceOf(CreditRecoveryStuck);
+    expect((err as CreditRecoveryStuck).strandedCents).toBe(250);
+    expect(String(err.message)).not.toMatch(/nothing was changed/i);
   });
 });

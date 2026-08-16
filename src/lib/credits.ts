@@ -134,41 +134,97 @@ export interface RecoverResult {
  * Callers MUST have verified that the requester controls `owner` (a signature)
  * before calling — this function does not authenticate.
  */
+/**
+ * Thrown when recovery failed AND the money could not be put back where it was.
+ * The caller must not tell the customer "nothing was changed", because something
+ * was: their balance is drained and not yet re-issued.
+ */
+export class CreditRecoveryStuck extends Error {
+  constructor(public readonly strandedCents: number, public readonly owner: string) {
+    super(
+      `Credit recovery failed after draining ${strandedCents} cent(s), and the ledger could not be restored. ` +
+        `The balance is neither on the old tokens nor on a new one. Do not retry — this needs to be resolved manually.`,
+    );
+    this.name = "CreditRecoveryStuck";
+  }
+}
+
 export async function recoverCredits(owner: string): Promise<RecoverResult> {
   if (!kvConfigured()) throw new Error("Credits unavailable: durable storage not configured");
   const keys = await kvSMembers(ownerKey(owner));
   let total = 0;
   let merged = 0;
 
-  for (const key of keys) {
-    const balance = await kvGetNumber(key);
-    if (balance <= 0) {
-      await kvSRem(ownerKey(owner), key); // spent or expired — stop tracking it
-      continue;
+  // KV gives us no transaction, so recovery is a drain followed by a mint and
+  // the window between them is real money. It used to be unguarded: every cent
+  // was taken off the old tokens BEFORE `mintCredits` ran, and `mintCredits`
+  // throws by design when the ledger write fails. One unlucky call and the
+  // customer's balance existed nowhere — while the response told them nothing
+  // had changed, and the one-shot signature that authorised it was already
+  // spent, so they could not even try again.
+  //
+  // Everything taken is now recorded so it can be put back. Compensation is the
+  // only correctness tool available here; what it cannot do is fail silently,
+  // which is why an unrestorable failure gets its own error type.
+  const drained: Array<{ key: string; cents: number }> = [];
+
+  const restore = async (): Promise<number> => {
+    let stranded = 0;
+    for (const d of drained) {
+      try {
+        const back = await kvIncrBy(d.key, d.cents);
+        if (back === null) { stranded += d.cents; continue; }
+        await kvSet(d.key, String(back), BALANCE_TTL);
+        await kvSAdd(ownerKey(owner), d.key);
+      } catch {
+        stranded += d.cents;
+      }
     }
-    // Drain the old key so the previous token can't keep spending what we're
-    // about to re-issue. A concurrent call may have taken some of it between the
-    // read and the decrement, which shows up as a negative remainder — put that
-    // part back and only move what was actually ours to move.
-    const after = await kvDecrBy(key, balance);
-    if (after === null) throw new Error("Credits unavailable: ledger read failed — nothing was changed");
-    let moved = balance;
-    if (after < 0) {
-      await kvIncrBy(key, -after);
-      moved = balance + after;
+    if (drained.length) await kvExpire(ownerKey(owner), BALANCE_TTL);
+    return stranded;
+  };
+
+  try {
+    for (const key of keys) {
+      const balance = await kvGetNumber(key);
+      if (balance <= 0) {
+        await kvSRem(ownerKey(owner), key); // spent or expired — stop tracking it
+        continue;
+      }
+      // Drain the old key so the previous token can't keep spending what we're
+      // about to re-issue. A concurrent call may have taken some of it between the
+      // read and the decrement, which shows up as a negative remainder — put that
+      // part back and only move what was actually ours to move.
+      const after = await kvDecrBy(key, balance);
+      if (after === null) throw new Error("Credits unavailable: ledger write failed mid-recovery");
+      let moved = balance;
+      if (after < 0) {
+        await kvIncrBy(key, -after);
+        moved = balance + after;
+      }
+      if (moved <= 0) continue;
+      drained.push({ key, cents: moved });
+      total += moved;
+      merged++;
+      if ((await kvGetNumber(key)) <= 0) await kvDel(key);
+      await kvSRem(ownerKey(owner), key);
     }
-    if (moved <= 0) continue;
-    total += moved;
-    merged++;
-    if ((await kvGetNumber(key)) <= 0) await kvDel(key);
-    await kvSRem(ownerKey(owner), key);
+
+    if (total <= 0) return { recoveredCents: 0, tokensMerged: 0 };
+
+    const minted = await mintCredits(total, total / 100);
+    await linkCreditOwner(owner, minted.creditToken);
+    return { recoveredCents: total, tokensMerged: merged, minted };
+  } catch (err) {
+    const stranded = await restore();
+    if (stranded > 0) throw new CreditRecoveryStuck(stranded, owner);
+    // Everything went back. Now "nothing was changed" is a true statement, and a
+    // retry is worth offering.
+    throw new Error(
+      `Credit recovery could not complete: ${err instanceof Error ? err.message : "ledger unavailable"}. ` +
+        `Your balance was put back on the original tokens — nothing was lost, retry shortly.`,
+    );
   }
-
-  if (total <= 0) return { recoveredCents: 0, tokensMerged: 0 };
-
-  const minted = await mintCredits(total, total / 100);
-  await linkCreditOwner(owner, minted.creditToken);
-  return { recoveredCents: total, tokensMerged: merged, minted };
 }
 
 export interface DebitResult {

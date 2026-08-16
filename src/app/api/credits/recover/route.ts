@@ -17,8 +17,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMessage } from "viem";
-import { recoverCredits } from "@/lib/credits";
-import { kvConfigured, kvSetNx } from "@/lib/kv";
+import { recoverCredits, CreditRecoveryStuck } from "@/lib/credits";
+import { kvConfigured, kvSetNx, kvDel } from "@/lib/kv";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { createHash } from "node:crypto";
 
@@ -117,8 +117,29 @@ export async function POST(req: NextRequest) {
       note: "Any token issued for this wallet before now has stopped working. Save this one.",
     });
   } catch (e) {
+    // A failed recovery must leave the signature usable, or the customer is
+    // locked out of a balance they still own: the one-shot guard above is spent
+    // the moment it is taken, and a second signature over the same message
+    // hashes to the same id. Released only when the ledger was actually restored
+    // — if the balance is stranded, a retry would drain it a second time.
+    if (e instanceof CreditRecoveryStuck) {
+      return NextResponse.json(
+        {
+          error: e.message,
+          strandedUsd: +(e.strandedCents / 100).toFixed(2),
+          wallet: address.toLowerCase(),
+          whatToDo:
+            "Do NOT sign again — a retry cannot find the balance and could take it twice. Send this response to sukrutkrdg@gmail.com with your wallet address; the amount above is recorded and will be re-issued manually.",
+        },
+        { status: 500 },
+      );
+    }
+    await kvDel(`credit:recover:sig:${sigId}`);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Recovery failed — nothing was changed." },
+      {
+        error: e instanceof Error ? e.message : "Recovery failed — your balance is unchanged.",
+        retryable: true,
+      },
       { status: 503 },
     );
   }
