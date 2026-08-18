@@ -75,6 +75,51 @@ function parseFields(raw: string | undefined): string[] {
 
 /** Extract structured fields from unstructured text. list=true extracts EVERY
  * repeated record (invoice lines, listings, table rows) as an array. */
+/**
+ * ONE schema for every extraction, whatever fields the caller asks for.
+ *
+ * The schema used to be built from the caller's `fields`, which made it novel on
+ * almost every call — and a novel schema is expensive. Measured on the same
+ * input: a schema the model had just seen answered in 2.15 s, while fresh ones
+ * took 3.46 s, 5.35 s and 5.45 s for two, three and four fields. Since callers
+ * rarely ask for the same field set twice, we were paying that penalty every
+ * time, and a trust-leaderboard probe clocked this endpoint at 10.9 s.
+ *
+ * So the fields move out of the schema and into the prompt, and the schema
+ * becomes a fixed list of name/value pairs. The response the caller receives is
+ * unchanged — `toRecord` maps the pairs back onto their field names, in the
+ * order they asked for them, filling anything the model omitted.
+ */
+interface Pair { field?: string; value?: string }
+
+const PAIRS = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: { field: { type: "string" }, value: { type: "string" } },
+    required: ["field", "value"],
+    additionalProperties: false,
+  },
+} as const;
+
+const EXTRACT_SCHEMA = {
+  type: "object",
+  properties: {
+    pairs: PAIRS,
+    items: { type: "array", items: { type: "object", properties: { pairs: PAIRS }, required: ["pairs"], additionalProperties: false } },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+/** Pairs -> the object shape callers have always received. */
+function toRecord(pairs: Pair[] | undefined, fields: string[]): Record<string, string> {
+  const byName = new Map((pairs ?? []).map((p) => [String(p.field ?? "").trim().toLowerCase(), String(p.value ?? "")]));
+  // Keyed by the caller's own field names and order — a model that renames or
+  // reorders a field must not change the shape of what we return.
+  return Object.fromEntries(fields.map((f) => [f, byName.get(f.toLowerCase()) ?? ""]));
+}
+
 export async function aiExtract(params: Record<string, string>) {
   const input = (params.text || "").trim();
   if (!input) throw new Error("Missing 'text'");
@@ -82,32 +127,30 @@ export async function aiExtract(params: Record<string, string>) {
   const listMode = /^(true|1|yes)$/i.test((params.list || "").trim());
 
   const { text, truncated } = clamp(input, 16000);
-  const record = {
-    type: "object",
-    properties: Object.fromEntries(fields.map((f) => [f, { type: "string" }])),
-    required: fields,
-    additionalProperties: false,
-  };
-  const schema = listMode
-    ? { type: "object", properties: { items: { type: "array", items: record } }, required: ["items"], additionalProperties: false }
-    : record;
 
   const msg = await client().messages.create({
     model: MODEL,
     max_tokens: listMode ? 1500 : 600,
-    system: listMode
-      ? "Extract EVERY occurrence of the requested record from the user's text as an array of objects (one object per item/row/entry). If a field is missing on an item, use an empty string. Respond with JSON only."
-      : "Extract the requested fields from the user's text. If a field is not present, use an empty string. Respond with JSON only.",
-    output_config: { format: { type: "json_schema", schema } },
+    system:
+      (listMode
+        ? "Extract EVERY occurrence of the requested record from the user's text — one entry per item/row/entry found. "
+        : "Extract the requested fields from the user's text. ") +
+      `The fields to extract, in this exact order, are: ${fields.join(", ")}. ` +
+      "For each one emit an object with `field` set to the field name exactly as given and `value` set to what you found, or an empty string if it is not present. Emit every requested field, never skip one. Respond with JSON only.",
+    output_config: { format: { type: "json_schema", schema: EXTRACT_SCHEMA } },
     messages: [{ role: "user", content: text }],
   });
 
-  let data: unknown;
+  let raw: { items?: Array<{ pairs?: Pair[] }>; pairs?: Pair[] };
   try {
-    data = JSON.parse(textOf(msg));
+    raw = JSON.parse(textOf(msg)) as typeof raw;
   } catch {
     throw new Error("Model did not return valid JSON");
   }
+  const data = listMode
+    ? { items: (raw.items ?? []).map((r) => toRecord(r.pairs, fields)) }
+    : toRecord(raw.pairs, fields);
+
   return finish({ model: MODEL, mode: listMode ? "list" : "single", fields, data, truncated, generatedAt: new Date().toISOString() });
 }
 
@@ -134,31 +177,29 @@ export async function aiExtractBatch(params: Record<string, string>) {
     return `--- DOCUMENT ${i + 1} ---\n${text}`;
   });
 
-  const record = {
-    type: "object",
-    properties: Object.fromEntries(fields.map((f) => [f, { type: "string" }])),
-    required: fields,
-    additionalProperties: false,
-  };
+  // Same fixed shape as aiExtract, and for the same reason: a schema built from
+  // the caller's fields is novel on nearly every call, and novelty is seconds.
   const schema = {
     type: "object",
-    properties: { documents: { type: "array", items: record } },
+    properties: { documents: { type: "array", items: { type: "object", properties: { pairs: PAIRS }, required: ["pairs"], additionalProperties: false } } },
     required: ["documents"],
     additionalProperties: false,
-  };
+  } as const;
 
   const msg = await client().messages.create({
     model: MODEL,
     max_tokens: 2000,
     system:
-      "You will receive numbered documents. Extract the requested fields from EACH document, returning one object per document in order (documents[0] = DOCUMENT 1). If a field is not present in a document, use an empty string. Respond with JSON only.",
+      "You will receive numbered documents. Extract the requested fields from EACH document, returning one entry per document in order (documents[0] = DOCUMENT 1). " +
+      `The fields to extract, in this exact order, are: ${fields.join(", ")}. ` +
+      "For each one emit an object with `field` set to the field name exactly as given and `value` set to what you found, or an empty string if it is not present in that document. Emit every requested field for every document. Respond with JSON only.",
     output_config: { format: { type: "json_schema", schema } },
     messages: [{ role: "user", content: docs.join("\n\n") }],
   });
 
-  let data: { documents?: unknown[] };
+  let data: { documents?: Array<{ pairs?: Pair[] }> };
   try {
-    data = JSON.parse(textOf(msg)) as { documents?: unknown[] };
+    data = JSON.parse(textOf(msg)) as typeof data;
   } catch {
     throw new Error("Model did not return valid JSON");
   }
@@ -166,7 +207,7 @@ export async function aiExtractBatch(params: Record<string, string>) {
     model: MODEL,
     fields,
     documentCount: texts.length,
-    documents: data.documents ?? [],
+    documents: (data.documents ?? []).map((d) => toRecord(d.pairs, fields)),
     truncated: anyTruncated,
     generatedAt: new Date().toISOString(),
   });
