@@ -31,6 +31,7 @@ import { priceCents } from "@/lib/price";
 import { payerFromHeaders } from "@/lib/payer";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
+import { returningCallerNote } from "@/lib/repeat-caller";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
 
 
@@ -446,6 +447,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
                 "The paying wallet could not be read from this request, so this balance is NOT recoverable. Save the token now — it cannot be reissued.",
             };
       }
+    }
+    // A wallet that keeps coming back is the closest thing we have to a
+    // customer we can talk to, and the response body is the only channel that
+    // reaches whoever runs it. Once, after several paid calls, and only with
+    // things that cost them less per unit.
+    if (payer && data && typeof data === "object") {
+      const back = await returningCallerNote(service.id, srcHash(payer), getSiteUrl());
+      if (back) (data as Record<string, unknown>).returningCaller = back;
     }
     await attachRetention(service.id, data, srcHash(clientIp(request)));
     return NextResponse.json(
