@@ -42,6 +42,25 @@ function clamp(s: string, max: number): { text: string; truncated: boolean } {
   return { text: s.slice(0, max), truncated: true };
 }
 
+/**
+ * Did the model stop because it ran out of output budget?
+ *
+ * This is the failure with no symptom. Hitting `max_tokens` is not an error —
+ * the API returns 200 and a body that simply ends, mid-word if it likes. A
+ * measured case: 6K chars of English into Hindi returned 26 of 48 items, the
+ * last one cut at `कार्`, and every field in our envelope said the call went
+ * fine. `truncated` did not catch it: that flag has only ever described the
+ * INPUT clamp, and the two are independent — a 5K-char input is never clamped
+ * and can still overflow the output cap.
+ *
+ * So the caps below are set to cover what each endpoint advertises, and this
+ * asks the question anyway, because a cap can always be beaten by a script that
+ * spends more tokens per character than the ones we tested.
+ */
+function hitOutputCap(msg: Anthropic.Message): boolean {
+  return msg.stop_reason === "max_tokens";
+}
+
 /** Summarize text into a few crisp bullet points. */
 export async function aiSummarize(params: Record<string, string>) {
   const input = (params.text || "").trim();
@@ -50,7 +69,9 @@ export async function aiSummarize(params: Record<string, string>) {
 
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: 500,
+    // 3-5 bullets is small, but a summary written in Devanagari or Thai costs
+    // several times the tokens the same summary costs in English.
+    max_tokens: 1200,
     system:
       "You are a precise summarizer. Return 3-5 short bullet points capturing the key facts. No preamble, no closing remarks — only the bullets, each starting with '- '.",
     messages: [{ role: "user", content: text }],
@@ -61,7 +82,10 @@ export async function aiSummarize(params: Record<string, string>) {
     .split("\n")
     .map((l) => l.replace(/^[-*•]\s*/, "").trim())
     .filter(Boolean);
-  return finish({ model: MODEL, bullets, truncated, generatedAt: new Date().toISOString() });
+  // A cut-off final bullet is a half-fact, which is worse than one bullet fewer.
+  const outputTruncated = hitOutputCap(msg);
+  if (outputTruncated && bullets.length > 1) bullets.pop();
+  return finish({ model: MODEL, bullets, truncated, outputTruncated, generatedAt: new Date().toISOString() });
 }
 
 function parseFields(raw: string | undefined): string[] {
@@ -130,7 +154,10 @@ export async function aiExtract(params: Record<string, string>) {
 
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: listMode ? 1500 : 600,
+    // List mode pulls every row out of up to 16K chars; 1500 tokens was well
+    // short of what a long table needs, and the overflow surfaced as a JSON
+    // parse error rather than as itself.
+    max_tokens: listMode ? 8000 : 1200,
     system:
       (listMode
         ? "Extract EVERY occurrence of the requested record from the user's text — one entry per item/row/entry found. "
@@ -145,13 +172,20 @@ export async function aiExtract(params: Record<string, string>) {
   try {
     raw = JSON.parse(textOf(msg)) as typeof raw;
   } catch {
-    throw new Error("Model did not return valid JSON");
+    // Structured output that runs out of budget arrives as unclosed JSON. Both
+    // paths throw — so withX402 never settles and the caller is not charged —
+    // but only one of them is the caller's to act on.
+    throw new Error(
+      hitOutputCap(msg)
+        ? "Result exceeded the output limit for this call. Send less text, or fewer fields, or split it across calls."
+        : "Model did not return valid JSON",
+    );
   }
   const data = listMode
     ? { items: (raw.items ?? []).map((r) => toRecord(r.pairs, fields)) }
     : toRecord(raw.pairs, fields);
 
-  return finish({ model: MODEL, mode: listMode ? "list" : "single", fields, data, truncated, generatedAt: new Date().toISOString() });
+  return finish({ model: MODEL, mode: listMode ? "list" : "single", fields, data, truncated, outputTruncated: hitOutputCap(msg), generatedAt: new Date().toISOString() });
 }
 
 /** Batch extract: the same fields across up to 10 texts in ONE call. */
@@ -188,7 +222,9 @@ export async function aiExtractBatch(params: Record<string, string>) {
 
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: 2000,
+    // Ten documents' worth of fields; the old 2000 could truncate the tail
+    // documents into an unparseable body on a full batch.
+    max_tokens: 8000,
     system:
       "You will receive numbered documents. Extract the requested fields from EACH document, returning one entry per document in order (documents[0] = DOCUMENT 1). " +
       `The fields to extract, in this exact order, are: ${fields.join(", ")}. ` +
@@ -201,14 +237,24 @@ export async function aiExtractBatch(params: Record<string, string>) {
   try {
     data = JSON.parse(textOf(msg)) as typeof data;
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw new Error(
+      hitOutputCap(msg)
+        ? "Result exceeded the output limit for this call. Send fewer documents, or fewer fields, or split it across calls."
+        : "Model did not return valid JSON",
+    );
   }
+  const documents = (data.documents ?? []).map((d) => toRecord(d.pairs, fields));
   return finish({
     model: MODEL,
     fields,
     documentCount: texts.length,
-    documents: (data.documents ?? []).map((d) => toRecord(d.pairs, fields)),
+    // The contract is one entry per document, in order. If the budget ran out
+    // after document 6 of 10, saying so beats letting the caller line up
+    // document 7's answer against document 7's input and find nothing there.
+    documentsReturned: documents.length,
+    documents,
     truncated: anyTruncated,
+    outputTruncated: hitOutputCap(msg),
     generatedAt: new Date().toISOString(),
   });
 }
@@ -223,10 +269,21 @@ export async function aiTranslate(params: Record<string, string>) {
 
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: 2500,
+    // We advertise 6K chars into ANY language, so the budget has to cover the
+    // expensive end of "any". 2500 was enough for Latin scripts and cut Hindi
+    // roughly in half. Raising a cap costs nothing on calls that don't reach it
+    // — we pay for tokens produced, not tokens allowed.
+    max_tokens: 6000,
     system: `Translate the user's text into ${to}. Output only the translation — no notes, no quotes, no preamble.`,
     messages: [{ role: "user", content: text }],
   });
 
-  return finish({ model: MODEL, to, translation: textOf(msg), truncated, generatedAt: new Date().toISOString() });
+  return finish({
+    model: MODEL,
+    to,
+    translation: textOf(msg),
+    truncated,
+    outputTruncated: hitOutputCap(msg),
+    generatedAt: new Date().toISOString(),
+  });
 }

@@ -41,6 +41,26 @@ function textOf(message: Anthropic.Message): string {
     .trim();
 }
 
+/**
+ * Why the structured answer wouldn't parse.
+ *
+ * Every report here asks for JSON against a schema, so running out of output
+ * budget arrives as an unclosed brace — indistinguishable, at the catch site,
+ * from a model that ignored the schema. They call for opposite responses: one
+ * is ours to fix in the prompt, the other is the caller's to fix by asking for
+ * less. Saying "invalid JSON" for both once cost real time chasing a prompt bug
+ * that was a truncated answer.
+ *
+ * Either way the throw means withX402 never settles, so nobody is charged.
+ */
+function parseFailure(msg: Anthropic.Message): Error {
+  return new Error(
+    msg.stop_reason === "max_tokens"
+      ? "Report unavailable: the model's answer was cut short before it was complete. Narrow the request and try again."
+      : "Model did not return valid JSON",
+  );
+}
+
 export async function aiTokenReport(params: Record<string, string>) {
   const address = (params.address || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Provide a valid 0x… token address");
@@ -128,7 +148,7 @@ export async function aiTokenReport(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
@@ -248,7 +268,7 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
@@ -356,7 +376,7 @@ export async function b20Dossier(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
@@ -419,7 +439,7 @@ export async function aiWalletReport(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
@@ -490,7 +510,7 @@ export async function aiMarketBrief(_params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
@@ -664,7 +684,7 @@ export async function aiTxExplain(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
@@ -754,7 +774,7 @@ export async function aiContractRisk(params: Record<string, string>) {
   try {
     parsed = JSON.parse(textOf(msg));
   } catch {
-    throw new Error("Model did not return valid JSON");
+    throw parseFailure(msg);
   }
 
   return {
