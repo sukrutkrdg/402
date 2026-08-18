@@ -51,11 +51,40 @@ function sanitize(preview: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/**
+ * How many fields a shop-window sample may carry.
+ *
+ * Two reasons, and the second is the one that forced a number. A window with
+ * sixteen fields sells worse than one with six: the signal an agent needs
+ * (verdict, score, level) sits among a dozen `somethingCount` entries and has to
+ * be found. And 14 of our listings settle payments while staying out of the
+ * discovery index, skewing systematically large — 2,816 against 2,592 bytes of
+ * declaration, 9.3 against 6.0 sample keys — with the widest samples the ones
+ * absent. That is a correlation and not yet a cause; capping the width is the
+ * cheapest way to find out, and it is worth doing on the first reason alone.
+ */
+const MAX_SAMPLE_KEYS = 8;
+
+/** Keys that answer the question, ranked above the ones that merely count. */
+const HEADLINE = /^(verdict|decision|risk|riskLevel|riskScore|score|level|safe|status|found|isB20|is[A-Z]|can[A-Z]|symbol|address|token|degraded)/;
+
+/** Narrow a preview to the fields worth showing first. */
+function headline(preview: Record<string, unknown>): Record<string, unknown> {
+  const entries = Object.entries(preview);
+  if (entries.length <= MAX_SAMPLE_KEYS) return preview;
+  const ranked = [
+    ...entries.filter(([k]) => HEADLINE.test(k)),
+    ...entries.filter(([k]) => !HEADLINE.test(k) && !/Count$/.test(k)),
+    ...entries.filter(([k]) => !HEADLINE.test(k) && /Count$/.test(k)),
+  ];
+  return Object.fromEntries(ranked.slice(0, MAX_SAMPLE_KEYS));
+}
+
 /** Cache a preview of a successful response as this service's shop-window sample. Best-effort. */
 export async function saveSample(serviceId: string, data: unknown): Promise<void> {
   if (NO_SAMPLE.has(serviceId)) return;
   try {
-    const preview = sanitize(toPreview(data));
+    const preview = headline(sanitize(toPreview(data)));
     if (Object.keys(preview).length === 0) return;
     await kvSet(`sample:${serviceId}`, JSON.stringify(preview), SAMPLE_TTL);
   } catch {
