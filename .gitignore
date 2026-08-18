@@ -37,3 +37,4 @@ _*.txt
 .vercel
 .env*
 !.env.example
+awe.md
