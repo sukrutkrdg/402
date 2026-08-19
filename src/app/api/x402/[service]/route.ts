@@ -334,6 +334,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       } catch (err) {
         return handlerErrorResponse(err);
       }
+    } else if (free.degraded) {
+      // We could not count the free call, which means nothing below can be
+      // metered either: the preview cache lives in the same KV, and the preview
+      // limiter degrades to a per-instance counter that a cold start resets. The
+      // preview path runs the FULL handler, so serving it here would answer an
+      // outage by giving the upstream cost away without limit. Fall through to
+      // the paid path instead — the caller gets a normal 402 and can still buy.
     } else {
       // Daily free full report already used → return a PREVIEW (headline scalars +
       // "N signals found") instead of a hard 402 wall. The teaser creates the
