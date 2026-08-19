@@ -179,19 +179,32 @@ export async function registerAlert(
   if (checkId) {
     const a = await getAlert(checkId);
     if (!a) return { found: false, note: "No alert with that id (expired or never registered)." };
+    // A price we could not read is not a price below the threshold. Swallowing
+    // the throw left `current` null, which made `crossed` false, which answered
+    // "ok" — the same word this endpoint uses for "checked, threshold not met".
+    // An agent polling to decide whether to act cannot tell those apart, and the
+    // one it gets wrong is the one where the feed is down during a move.
     let current: number | null = null;
+    let priceError: string | null = null;
     try {
       current = await fetchTokenPrice(a.token);
-    } catch {
-      /* transient */
+    } catch (err) {
+      priceError = err instanceof Error ? err.message : String(err);
     }
     const crossed = current !== null && (a.direction === "above" ? current >= a.threshold : current <= a.threshold);
+    // `fired` is our own durable record, so it stands even while the feed is out.
+    const verdict = a.fired ? "FIRED" : current === null ? "unknown" : crossed ? "THRESHOLD_MET" : "ok";
     return {
       found: true, alertId: a.id, token: a.token, direction: a.direction, threshold: a.threshold,
       currentPrice: current, priceAtCreate: a.priceAtCreate, fired: a.fired,
       firedAt: a.firedAt ?? null, firedPrice: a.firedPrice ?? null,
-      verdict: a.fired ? "FIRED" : crossed ? "THRESHOLD_MET" : "ok",
-      note: a.fired ? `Alert fired${a.firedAt ? ` at ${a.firedAt}` : ""}.` : "Alert active. Re-check anytime with check=<id>.",
+      verdict,
+      degraded: verdict === "unknown",
+      note: a.fired
+        ? `Alert fired${a.firedAt ? ` at ${a.firedAt}` : ""}.`
+        : current === null
+          ? `Alert is still active, but the current price could not be read (${priceError}) — this is NOT a reading that the threshold was missed. The cron keeps watching; re-check with check=${a.id}.`
+          : "Alert active. Re-check anytime with check=<id>.",
       checkedAt: new Date().toISOString(),
     };
   }

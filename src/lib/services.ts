@@ -1181,7 +1181,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Token Price Alert",
     tagline: "Webhook when a Base token crosses your target",
     description:
-      "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A polling cron (daily by default; configurable to ~minutes) checks DexScreener and POSTs your webhook when it crosses. Expires after 30 days.",
+      "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A polling cron (daily by default; configurable to ~minutes) checks DexScreener and POSTs your webhook when it crosses. Expires after 30 days. Or omit the webhook and poll with check=<id>: the verdict is THRESHOLD_MET, ok, FIRED, or unknown when the price feed could not be read.",
     price: "$0.05",
     icon: "🔔",
     category: "Onchain",
