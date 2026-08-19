@@ -391,10 +391,22 @@ export async function walletNetworth(params: Record<string, string>) {
     ...(ethBalance > 1e-9
       ? [{ symbol: "ETH", name: "Ether", address: null, native: true, balance: String(ethBalance), usdValue: ethUsd }]
       : []),
-    ...p.holdings.map((h) => ({ symbol: h.symbol, name: null, address: h.address, native: false, balance: h.balance, usdValue: h.usdValue })),
+    // Carry the unreadable-scale marker through. Re-mapping without it would
+    // hand the caller a null balance with nothing to explain it — the shape of
+    // an answer that looks broken rather than one that is being careful.
+    ...p.holdings.map((h) => ({
+      symbol: h.symbol,
+      name: null,
+      address: h.address,
+      native: false,
+      balance: h.balance,
+      ...("decimalsUnknown" in h ? { balanceRaw: h.balanceRaw, decimalsUnknown: true } : {}),
+      usdValue: h.usdValue,
+    })),
   ];
   const totalUsd = +holdings.reduce((s, h) => s + (h.usdValue ?? 0), 0).toFixed(2);
   const unpriced = holdings.filter((h) => h.usdValue === null).length;
+  const unscaled = holdings.filter((h) => h.balance === null).length;
 
   return {
     address: p.address,
@@ -404,12 +416,16 @@ export async function walletNetworth(params: Record<string, string>) {
     // Named honestly: a total that excludes tokens nobody quotes is not the same
     // number as "everything this wallet owns".
     unpricedHoldings: unpriced,
+    ...(unscaled > 0 ? { holdingsWithUnknownDecimals: unscaled } : {}),
     source: `${p.source}+dexscreener`,
     checkedAt: new Date().toISOString(),
     note:
-      unpriced > 0
+      (unpriced > 0
         ? `${unpriced} holding(s) have no quoted market price and contribute 0 to the total. Unpriced tokens in a Base wallet are usually airdropped spam — they are listed rather than dropped, because deciding what is spam is the caller's call, not ours.`
-        : "Every holding found had a quoted price.",
+        : "Every holding found had a quoted price.") +
+      (unscaled > 0
+        ? ` ${unscaled} holding(s) have a balance of null because the token's decimals() call failed — the raw integer is in balanceRaw, and neither a balance nor a value is guessed from it.`
+        : ""),
   };
 }
 

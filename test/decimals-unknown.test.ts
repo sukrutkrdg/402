@@ -48,6 +48,17 @@ describe("a balance we cannot scale is not reported as a number", () => {
     expect(s).toMatch(/holdingsWithUnknownDecimals/);
   });
 
+  it("wallet-networth carries the marker instead of re-mapping it away", () => {
+    // It rebuilds its holdings from walletPortfolio's. A plain re-map would ship
+    // a null balance with nothing explaining it — an answer that reads as broken
+    // rather than as careful.
+    const s = code("alchemy.ts");
+    const fn = s.slice(s.indexOf("export async function walletNetworth"));
+    expect(fn).toMatch(/"decimalsUnknown" in h \? \{ balanceRaw: h\.balanceRaw, decimalsUnknown: true \}/);
+    expect(fn).toMatch(/holdingsWithUnknownDecimals: unscaled/);
+    expect(fn, "and the note has to say it in words too").toMatch(/balanceRaw/);
+  });
+
   it("covalent's two mapping sites go through one honest formatter", () => {
     const s = code("covalent.ts");
     expect(s, "no contract_decimals fallback survives").not.toMatch(/contract_decimals \?\? 18/);
