@@ -196,6 +196,59 @@ export async function kvDel(key: string): Promise<void> {
  * (e.g. one settlement tx redeeming many reports). Fails CLOSED (returns false)
  * when KV is unavailable, so a reservation is never falsely granted.
  */
+/**
+ * Run a Lua script server-side (Upstash EVAL). Redis executes it atomically, so
+ * a guard and the write it guards land together or not at all — which is the
+ * only way to make a write safe to retry over a transport that can lose the
+ * reply to a command that already ran. See `kvIncrByOnce`.
+ *
+ * Null means the request itself failed; a script that ran returns its value.
+ */
+export async function kvEval<T = unknown>(script: string, keys: string[], args: (string | number)[]): Promise<T | null> {
+  if (!kvConfigured()) return null;
+  return await cmd<T>(["EVAL", script, keys.length, ...keys, ...args]);
+}
+
+/**
+ * Add `by` to `key`, at most once per `guardKey`, however many times it is called.
+ *
+ * A plain INCRBY cannot be retried: a timeout returns no answer, and "no answer"
+ * is not "no write" — the command may well have executed and only the reply got
+ * lost. Retrying it blind applies it twice. Doing it under a SET-NX guard inside
+ * one script removes the ambiguity, because the guard is proof: if it is already
+ * there, this increment has run, so a retry is free to give up rather than
+ * double-apply.
+ *
+ * Returns the new value, `null` when the request failed (safe to retry with the
+ * SAME guard key), or `ALREADY` when the guard shows it had already been applied.
+ */
+export const ALREADY = Symbol.for("kv.already");
+const INCR_ONCE = `
+if redis.call('SET', KEYS[1], '1', 'NX', 'EX', ARGV[3]) then
+  return redis.call('INCRBY', KEYS[2], ARGV[1])
+end
+return ARGV[2]
+`;
+export async function kvIncrByOnce(
+  key: string,
+  by: number,
+  guardKey: string,
+  guardTtlSeconds = 60 * 60 * 24,
+): Promise<number | typeof ALREADY | null> {
+  const SENTINEL = "__already__";
+  if (!kvConfigured()) {
+    if (memValid(guardKey)) return ALREADY;
+    mem.set(guardKey, { value: "1", expireAt: Date.now() + guardTtlSeconds * 1000 });
+    const e = memValid(key);
+    const n = (e ? parseInt(e.value, 10) || 0 : 0) + by;
+    mem.set(key, { value: String(n), expireAt: e?.expireAt });
+    return n;
+  }
+  const r = await kvEval<number | string>(INCR_ONCE, [guardKey, key], [by, SENTINEL, guardTtlSeconds]);
+  if (r === null) return null;
+  return r === SENTINEL ? ALREADY : Number(r);
+}
+
 export async function kvSetNx(key: string, ttlSeconds: number): Promise<boolean> {
   if (kvConfigured()) {
     const r = await cmd<string>(["SET", key, "1", "NX", "EX", ttlSeconds]);

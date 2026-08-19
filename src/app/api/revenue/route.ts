@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRevenue } from "@/lib/revenue";
+import { stuckRefunds } from "@/lib/credits";
 import { getConfig } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
 
@@ -28,5 +29,8 @@ export async function GET(req: NextRequest) {
   const blocks = blocksParam ? parseInt(blocksParam, 10) : 5000;
   const safeBlocks = Number.isFinite(blocks) ? Math.min(Math.max(blocks, 1), 50000) : 5000;
   const data = await getRevenue(safeBlocks);
-  return NextResponse.json(data);
+  // Money we took sits next to money we owe back and could not pay: a refund
+  // that failed because KV was down is revenue we are not entitled to.
+  const owed = await stuckRefunds();
+  return NextResponse.json({ ...data, ...(owed.count > 0 ? { unpaidRefunds: owed } : {}) });
 }

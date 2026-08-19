@@ -12,6 +12,8 @@ const { kvMock } = vi.hoisted(() => ({
     kvSet: vi.fn(),
     kvDecrBy: vi.fn(),
     kvIncrBy: vi.fn(),
+    kvIncrByOnce: vi.fn(),
+    kvLPush: vi.fn(),
     kvDel: vi.fn(),
   },
 }));
@@ -107,21 +109,73 @@ describe("debitCredit — atomic debit-first with symmetric compensation", () =>
   });
 });
 
+/**
+ * A refund can be wrong in two directions and both cost real money. Losing it
+ * leaves a customer paying for a call that failed; applying it twice pays them
+ * for it. The old code retried a bare INCRBY on a null answer, which chose the
+ * second — a null is "no reply", not "no write", and a timed-out INCRBY may
+ * already have run.
+ */
 describe("refundCredit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     kvMock.kvConfigured.mockReturnValue(true);
-    kvMock.kvIncrBy.mockResolvedValue(3);
+    kvMock.kvIncrByOnce.mockResolvedValue(3);
   });
 
   it("returns the cents to a valid token", async () => {
     await refundCredit(GOOD_TOKEN, 3);
-    expect(kvMock.kvIncrBy).toHaveBeenCalledTimes(1);
-    expect(kvMock.kvIncrBy.mock.calls[0][1]).toBe(3);
+    expect(kvMock.kvIncrByOnce).toHaveBeenCalledTimes(1);
+    expect(kvMock.kvIncrByOnce.mock.calls[0][1]).toBe(3);
   });
 
   it("ignores malformed tokens silently", async () => {
     await refundCredit("not-a-token", 3);
+    expect(kvMock.kvIncrByOnce).not.toHaveBeenCalled();
     expect(kvMock.kvIncrBy).not.toHaveBeenCalled();
+  });
+
+  it("never uses a bare increment, which cannot be retried safely", async () => {
+    await refundCredit(GOOD_TOKEN, 3);
+    expect(kvMock.kvIncrBy).not.toHaveBeenCalled();
+  });
+
+  it("retries a lost reply under the SAME guard, so it can only apply once", async () => {
+    // First call answers null (timeout). Whether the write landed is unknowable
+    // from here — the guard is what makes asking again safe.
+    kvMock.kvIncrByOnce.mockResolvedValueOnce(null).mockResolvedValueOnce(3);
+    await refundCredit(GOOD_TOKEN, 3);
+    expect(kvMock.kvIncrByOnce).toHaveBeenCalledTimes(2);
+    const [first, second] = kvMock.kvIncrByOnce.mock.calls;
+    expect(second[2], "a fresh guard per attempt would double-credit").toBe(first[2]);
+    expect(String(first[2])).toMatch(/^refund:/);
+  });
+
+  it("gives a different guard to a different refund", async () => {
+    await refundCredit(GOOD_TOKEN, 3);
+    await refundCredit(GOOD_TOKEN, 3);
+    expect(kvMock.kvIncrByOnce.mock.calls[0][2]).not.toBe(kvMock.kvIncrByOnce.mock.calls[1][2]);
+  });
+
+  it("stops as soon as the guard proves it already applied", async () => {
+    kvMock.kvIncrByOnce.mockResolvedValueOnce(null).mockResolvedValueOnce(Symbol.for("kv.already"));
+    await refundCredit(GOOD_TOKEN, 3);
+    expect(kvMock.kvIncrByOnce).toHaveBeenCalledTimes(2);
+  });
+
+  it("records the debt instead of dropping it when KV never comes back", async () => {
+    // The customer has been charged for a call they did not get, and this is the
+    // last moment anyone knows it.
+    kvMock.kvIncrByOnce.mockResolvedValue(null);
+    await refundCredit(GOOD_TOKEN, 7);
+    expect(kvMock.kvLPush).toHaveBeenCalledTimes(1);
+    const [key, payload] = kvMock.kvLPush.mock.calls[0];
+    expect(key).toBe("credits:refunds:stuck");
+    expect(JSON.parse(payload as string).cents).toBe(7);
+  });
+
+  it("does not report a debt it managed to pay", async () => {
+    await refundCredit(GOOD_TOKEN, 7);
+    expect(kvMock.kvLPush).not.toHaveBeenCalled();
   });
 });

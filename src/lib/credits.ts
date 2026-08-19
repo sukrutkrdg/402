@@ -26,6 +26,9 @@ import {
   kvSet,
   kvDecrBy,
   kvIncrBy,
+  kvIncrByOnce,
+  kvLPush,
+  kvLRange,
   kvDel,
   kvSAdd,
   kvSRem,
@@ -272,13 +275,52 @@ export async function debitCredit(token: string, priceCents: number): Promise<De
 export async function refundCredit(token: string, cents: number): Promise<void> {
   const t = (token || "").trim();
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return;
-  // The refund undoes a charge for a call that FAILED, so silently losing it (a
-  // transient KV blip returning null) would leave the customer paying for nothing.
-  // Best-effort retry once after a short delay before giving up.
-  if ((await kvIncrBy(keyFor(t), cents)) === null) {
-    await new Promise((r) => setTimeout(r, 400));
-    await kvIncrBy(keyFor(t), cents);
+
+  // Both ways of getting this wrong cost someone real money, in opposite
+  // directions. Dropping the refund leaves a customer paying for a call that
+  // failed. Applying it twice pays them for it. The old code retried a bare
+  // INCRBY, which chose the second: a null answer is not a null write — a
+  // timeout can lose the reply to a command that already executed.
+  //
+  // One guard key per refund makes the retry safe. Retrying with the SAME guard
+  // either applies the increment (if the first attempt truly never ran) or comes
+  // back ALREADY (if it did), and never both.
+  const guard = `refund:${crypto.randomUUID()}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await kvIncrByOnce(keyFor(t), cents, guard);
+    if (r !== null) return; // applied now, or proven already applied
+    await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
   }
+
+  // KV stayed unreachable. The customer has been charged for a call they did not
+  // get, and this is the last moment we know it — so write it where a person can
+  // find it rather than letting it end here. Best-effort by definition: if this
+  // fails too, KV is down and there is nowhere left to put it.
+  try {
+    await kvLPush("credits:refunds:stuck", JSON.stringify({ token: keyFor(t), cents, at: new Date().toISOString() }), 500);
+  } catch {
+    /* nothing left to try */
+  }
+}
+
+/**
+ * Refunds we owed and could not pay because KV was unreachable at the moment
+ * the call failed. Written by `refundCredit` as a last act; read here so the
+ * money has somewhere to be seen rather than ending in a log line nobody opens.
+ */
+export async function stuckRefunds(): Promise<{ count: number; cents: number; items: unknown[] }> {
+  if (!kvConfigured()) return { count: 0, cents: 0, items: [] };
+  const raw = await kvLRange("credits:refunds:stuck", 0, 49);
+  const items = raw
+    .map((r) => {
+      try {
+        return JSON.parse(r) as { cents?: number };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as Array<{ cents?: number }>;
+  return { count: items.length, cents: items.reduce((n, i) => n + (i.cents ?? 0), 0), items };
 }
 
 /** Read-only balance for a token (cents). 0 when unknown/expired/no-KV. */
