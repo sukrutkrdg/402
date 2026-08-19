@@ -242,7 +242,14 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
     throw new Error("No on-chain data available for this token");
   }
 
-  const facts = factsWithin(data, 8000);
+  // Same trap as the B20 dossier: `liquidityAssessment` and `holderAssessment`
+  // are required outputs mapped 1:1 onto single inputs, so a failed read leaves
+  // the model obliged to write a sentence it has nothing to base on.
+  const unavailable = Object.entries(data)
+    .filter(([, v]) => v === null)
+    .map(([k]) => k);
+
+  const facts = factsWithin({ ...data, unavailable }, 8000);
 
   const schema = {
     type: "object",
@@ -300,7 +307,8 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
       "- confidence: low if key signals are missing.\n" +
       "- factors: one per dimension (Contract safety, Holder concentration, Liquidity & exit, Sanctions, Price/Momentum) with status + note.\n" +
       "- verdict, summary (2-3 sentences), risks, positives, and a one-line recommendation for the fund.\n" +
-      "Any honeypot / cannot-sell / OFAC hit / unlimited-mint => low score + 'avoid' + canSell:false. Factual, not financial advice. JSON only.",
+      "Any honeypot / cannot-sell / OFAC hit / unlimited-mint => low score + 'avoid' + canSell:false. Factual, not financial advice. JSON only.\n" +
+      "MISSING DATA: the facts carry an `unavailable` array naming the reads that failed. For a dimension whose source is listed there, write exactly 'Not available — the <source> read failed for this token.' Do not infer it from the other sources and do not describe it as clean or absent; set that factor's status to 'neutral', keep it out of positives, and lower confidence accordingly. An unread check is not a passed check.",
     output_config: { format: { type: "json_schema", schema } },
     messages: [{ role: "user", content: `Token ${address} full facts:\n${facts}` }],
   });
@@ -316,6 +324,8 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
     address,
     ...parsed,
     data,
+    degraded: unavailable.length > 0,
+    ...(unavailable.length > 0 ? { unavailableSources: unavailable } : {}),
     model: MODEL,
     generatedAt: new Date().toISOString(),
     checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
@@ -358,7 +368,18 @@ export async function b20Dossier(params: Record<string, string>) {
     return { address, isB20: false, note: "Not a B20 (Base-native) token — use deep-dd / ai-token-report for standard ERC-20 diligence.", checkedAt: new Date().toISOString() };
   }
 
-  const facts = factsWithin(data, 9000);
+  // Which of the six reads came back empty. `settle()` turns any failure into
+  // null, and the schema below makes every dimension REQUIRED — so a model told
+  // to write "one crisp factual sentence each from the data" will write one for
+  // a dimension whose data never arrived. It cannot refuse; the schema forbids
+  // it. What comes out is a plausible sentence about, say, dilution, on a token
+  // whose supply read failed. That is fabrication with our name on it, at $0.75
+  // a report, and nothing in the response marked it.
+  const unavailable = Object.entries(data)
+    .filter(([, v]) => v === null)
+    .map(([k]) => k);
+
+  const facts = factsWithin({ ...data, unavailable }, 9000);
   const schema = {
     type: "object",
     properties: {
@@ -408,7 +429,8 @@ export async function b20Dossier(params: Record<string, string>) {
       "- powers, whoControls, enforcementHistory, dilutionRisk, metadataRisk: one crisp factual sentence each from the data.\n" +
       "- factors: one per dimension (Seize/freeze power, Control & renouncement, Access model, Dilution, Metadata integrity, Enforcement history) with status + note.\n" +
       "- verdict, summary (2-3 sentences distinguishing what the issuer CAN do from what they HAVE done), redFlags, positives, and a one-line recommendation for the fund.\n" +
-      "A token with recorded seizures ('enforced') or a non-renounced admin holding the seize role => low score + at least 'high_caution'. A permissioned (allowlist) token an uninvited holder can't hold/receive => flag prominently. Factual, not financial advice. JSON only.",
+      "A token with recorded seizures ('enforced') or a non-renounced admin holding the seize role => low score + at least 'high_caution'. A permissioned (allowlist) token an uninvited holder can't hold/receive => flag prominently. Factual, not financial advice. JSON only.\n" +
+      "MISSING DATA: the facts carry an `unavailable` array naming the reads that failed. Every field is required by the schema, so for a dimension whose source is listed there you MUST write exactly 'Not available — the <source> read failed for this token.' and nothing more. Do not infer it from the other sources, do not describe it as absent, low or clean, and give its factor status 'neutral' rather than 'good'. An unread check is never a positive: it must not appear in positives, and it must lower confidence in the verdict rather than raise it.",
     output_config: { format: { type: "json_schema", schema } },
     messages: [{ role: "user", content: `B20 token ${address} full facts:\n${facts}` }],
   });
@@ -425,8 +447,16 @@ export async function b20Dossier(params: Record<string, string>) {
     isB20: true,
     ...parsed,
     data,
+    // The buyer decides what a partial report is worth; that is not ours to
+    // decide silently on their behalf.
+    degraded: unavailable.length > 0,
+    ...(unavailable.length > 0 ? { unavailableSources: unavailable } : {}),
     model: MODEL,
-    note: "Institutional B20 due-diligence: powers + who holds them + access model + dilution + metadata + ACTUAL seizure history, synthesized. B20 is Base-native; these powers have no ERC-20 equivalent. Not financial advice.",
+    note:
+      "Institutional B20 due-diligence: powers + who holds them + access model + dilution + metadata + ACTUAL seizure history, synthesized. B20 is Base-native; these powers have no ERC-20 equivalent. Not financial advice." +
+      (unavailable.length > 0
+        ? ` INCOMPLETE: ${unavailable.join(", ")} could not be read for this token, so the matching sections say so rather than estimating. Treat the verdict as provisional and re-run.`
+        : ""),
     generatedAt: new Date().toISOString(),
     checkedAt: new Date().toISOString(),
   };
