@@ -285,24 +285,44 @@ export async function walletPortfolio(params: Record<string, string>) {
       const bRes = meta[i * 3];
       const dRes = meta[i * 3 + 1];
       const sRes = meta[i * 3 + 2];
-      const decimals = dRes?.status === "success" ? Number(dRes.result) : 18;
+      // Defaulting a failed decimals() read to 18 does not degrade the answer,
+      // it invents one: on a 6-decimal token the balance comes out a million
+      // times small, and because usdValue is balance x price, the dollar figure
+      // is invented with it. Decimals are a property of the contract — when the
+      // read fails there is no number here that is merely approximate.
+      const decimals = dRes?.status === "success" ? Number(dRes.result) : null;
       const symbol = sRes?.status === "success" ? (sRes.result as string) : null;
-      let bal = 0;
+      let bal: number | null = null;
       try {
-        if (bRes?.status === "success") bal = parseFloat(formatUnits(bRes.result as bigint, decimals));
+        if (bRes?.status === "success" && decimals !== null) {
+          bal = parseFloat(formatUnits(bRes.result as bigint, decimals));
+        } else if (bRes?.status === "success" && decimals === null) {
+          bal = null; // have the integer, not the scale
+        } else {
+          bal = 0; // the balance read itself failed — nothing held that we saw
+        }
       } catch {
-        bal = 0;
+        bal = null;
       }
       const price = priceMap.get(addr.toLowerCase()) ?? KNOWN_USD[addr.toLowerCase()];
-      const usdValue = price !== undefined ? +(bal * price).toFixed(2) : null;
+      const usdValue = bal !== null && price !== undefined ? +(bal * price).toFixed(2) : null;
       return {
         symbol,
         address: addr,
-        balance: bal > 0 ? String(bal) : "0",
+        balance: bal === null ? null : bal > 0 ? String(bal) : "0",
+        ...(bal === null
+          ? {
+              balanceRaw: bRes?.status === "success" ? String(bRes.result) : null,
+              decimalsUnknown: true,
+              note: "Token decimals could not be read, so this balance cannot be scaled. balanceRaw is the unscaled integer.",
+            }
+          : {}),
         usdValue,
       };
     })
-    .filter((h) => parseFloat(h.balance) > 1e-9) // drop dust
+    // Dust is dropped; a holding we could not scale is not dust, and hiding it
+    // would understate the wallet as quietly as mis-scaling it would.
+    .filter((h) => h.balance === null || parseFloat(h.balance) > 1e-9)
     .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0));
 
   let ethBalance = 0;
@@ -313,12 +333,21 @@ export async function walletPortfolio(params: Record<string, string>) {
   }
 
   const totalUsd = +holdings.reduce((s, h) => s + (h.usdValue ?? 0), 0).toFixed(2);
+  // A holding with no usdValue contributes zero to the total, so the total is a
+  // floor rather than a figure whenever any exist — whether the gap is a missing
+  // price or a scale we could not read. Saying which lets a caller decide
+  // whether the number is good enough to act on.
+  const unvalued = holdings.filter((h) => h.usdValue === null).length;
+  const unscaled = holdings.filter((h) => h.balance === null).length;
 
   return {
     address,
     eth: { balance: String(ethBalance) },
     tokenCount: holdings.length,
     totalUsd,
+    totalUsdComplete: unvalued === 0,
+    ...(unvalued > 0 ? { holdingsWithoutUsd: unvalued } : {}),
+    ...(unscaled > 0 ? { holdingsWithUnknownDecimals: unscaled } : {}),
     holdings: holdings.slice(0, 50),
     source, // "alchemy" (full) or "curated" (fallback when Alchemy rate-limited)
     checkedAt: new Date().toISOString(),

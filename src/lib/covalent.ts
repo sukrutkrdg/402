@@ -89,6 +89,30 @@ interface CovBalItem {
   is_native_token?: boolean;
 }
 
+/**
+ * Format a raw token amount, or admit that we cannot.
+ *
+ * `contract_decimals ?? 18` is a guess wearing a number's clothes. Covalent
+ * leaves the field out often enough to matter, and 18 applied to a 6-decimal
+ * token understates the holding by a factor of a million — indistinguishable,
+ * to whoever is reading, from a balance we got right. Decimals are a property
+ * of the contract; there is no default that is merely "less accurate".
+ *
+ * So an unknown scale returns a null amount and hands back the raw integer,
+ * which a caller who knows the token can still use.
+ */
+function amountOf(raw: string | undefined | null, decimals: number | undefined | null): { amount: string | null; raw: string | null } {
+  if (!raw) return { amount: "0", raw: null };
+  if (typeof decimals !== "number" || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) {
+    return { amount: null, raw };
+  }
+  try {
+    return { amount: formatUnits(BigInt(raw), decimals), raw };
+  } catch {
+    return { amount: null, raw };
+  }
+}
+
 export async function walletNetworth(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
   const data = await cov<{ items?: CovBalItem[] }>(
@@ -99,22 +123,22 @@ export async function walletNetworth(params: Record<string, string>) {
   const holdings = (data.items ?? [])
     .filter((i) => !i.is_spam && i.balance && i.balance !== "0")
     .map((i) => {
-      let bal = 0;
-      try {
-        bal = parseFloat(formatUnits(BigInt(i.balance as string), i.contract_decimals ?? 18));
-      } catch {
-        bal = 0;
-      }
+      const { amount, raw } = amountOf(i.balance, i.contract_decimals);
+      const bal = amount === null ? null : parseFloat(amount);
       return {
         symbol: i.contract_ticker_symbol ?? null,
         name: i.contract_name ?? null,
         address: i.contract_address ?? null,
         native: Boolean(i.is_native_token),
-        balance: bal > 0 ? String(bal) : "0",
+        balance: bal === null ? null : bal > 0 ? String(bal) : "0",
+        // Only present when the scale is unknown, so the common case is unchanged.
+        ...(bal === null ? { balanceRaw: raw, decimalsUnknown: true } : {}),
         usdValue: typeof i.quote === "number" ? +i.quote.toFixed(2) : null,
       };
     })
-    .filter((h) => parseFloat(h.balance) > 1e-9)
+    // Dust is filtered out; a holding we could not scale is NOT dust, and
+    // dropping it would understate the wallet just as quietly as mis-scaling it.
+    .filter((h) => h.balance === null || parseFloat(h.balance) > 1e-9)
     .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
     .slice(0, 50);
 
@@ -440,15 +464,11 @@ export async function tokenTransfers(params: Record<string, string>) {
   );
   const all = (data.items ?? []).flatMap((it) => it.transfers ?? []);
   const transfers = all.slice(0, 20).map((t) => {
-    let amount = "0";
-    try {
-      amount = t.delta ? formatUnits(BigInt(t.delta), t.contract_decimals ?? 18) : "0";
-    } catch {
-      amount = "0";
-    }
+    const { amount, raw } = amountOf(t.delta, t.contract_decimals);
     return {
       type: t.transfer_type ?? null, // IN | OUT
       amount,
+      ...(amount === null ? { amountRaw: raw, decimalsUnknown: true } : {}),
       usd: typeof t.delta_quote === "number" ? +t.delta_quote.toFixed(2) : null,
       from: t.from_address ?? null,
       to: t.to_address ?? null,
