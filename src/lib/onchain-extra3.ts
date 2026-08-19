@@ -72,7 +72,7 @@ export async function contractAbi(params: Record<string, string>) {
   // 200 + match → verified (parse ABI). 404 → confirmed not verified.
   // 5xx/network → throw (so the buyer isn't charged for an answer we couldn't
   // actually compute).
-  let abi: Array<{ type: string; name?: string }> = [];
+  let abi: Array<{ type: string; name?: string; stateMutability?: string; constant?: boolean }> = [];
   let matchType: "full" | "partial" | null = null;
   let serverError: string | null = null;
 
@@ -87,7 +87,7 @@ export async function contractAbi(params: Record<string, string>) {
       } else {
         const j = (await res.json()) as SourcifyV2Contract;
         if (j.match && Array.isArray(j.abi)) {
-          abi = j.abi as Array<{ type: string; name?: string }>;
+          abi = j.abi as Array<{ type: string; name?: string; stateMutability?: string; constant?: boolean }>;
           matchType = j.match === "exact_match" ? "full" : "partial";
         } else if (j.match) {
           // 200 but no ABI → treat as "couldn't compute", don't claim unverified.
@@ -110,6 +110,7 @@ export async function contractAbi(params: Record<string, string>) {
       verified: false,
       matchType: null,
       functions: [] as string[],
+      writeFunctions: [] as string[],
       events: [] as string[],
       abiItemCount: 0,
       checkedAt: new Date().toISOString(),
@@ -118,9 +119,24 @@ export async function contractAbi(params: Record<string, string>) {
 
   const verified = true;
 
-  const functions = abi
-    .filter((item) => item.type === "function" && item.name)
-    .map((item) => item.name as string);
+  const fnItems = abi.filter((item) => item.type === "function" && item.name) as Array<{
+    name: string;
+    stateMutability?: string;
+    constant?: boolean;
+  }>;
+  const functions = fnItems.map((item) => item.name);
+
+  // Which of them can actually change anything. `view`/`pure` cannot, so no
+  // amount of alarming naming makes one a power over you — `paused()`,
+  // `maxWallet()`, `MINTER_ROLE()` and `isBot(address)` are all reads. Older
+  // ABIs predate stateMutability and carry `constant: true` instead.
+  const writeFunctions = fnItems
+    .filter((item) => {
+      const m = item.stateMutability;
+      if (m) return m !== "view" && m !== "pure";
+      return item.constant !== true;
+    })
+    .map((item) => item.name);
 
   const events = abi
     .filter((item) => item.type === "event" && item.name)
@@ -131,6 +147,7 @@ export async function contractAbi(params: Record<string, string>) {
     verified,
     matchType,
     functions,
+    writeFunctions,
     events,
     abiItemCount: abi.length,
     checkedAt: new Date().toISOString(),

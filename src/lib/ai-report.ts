@@ -713,17 +713,37 @@ export async function aiContractRisk(params: Record<string, string>) {
   const [risk, abi] = await Promise.allSettled([tokenRisk({ address }), contractAbi({ address })]);
   const val = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
   const riskData = val(risk);
-  const abiData = val(abi) as { verified?: boolean; matchType?: string | null; functions?: string[] } | null;
+  const abiData = val(abi) as { verified?: boolean; matchType?: string | null; functions?: string[]; writeFunctions?: string[] } | null;
   if (!riskData && !abiData) throw new Error("No contract data available for this address");
 
   // contractAbi() returns a ready `functions: string[]` (not a raw `abi` array).
   // Reading `.abi` yielded [] → Claude got no function names to analyse.
-  const functions = (abiData?.functions ?? []).slice(0, 60);
-  const facts = JSON.stringify({
-    securityFlags: riskData,
-    verified: abiData?.verified ?? null,
-    functions,
-  }).slice(0, 6000);
+  //
+  // Order matters because the list gets capped: state-changing functions are
+  // the only ones that can do anything to a holder, so they go first. Taking
+  // the ABI's own order instead meant a 200-function contract could spend the
+  // whole budget on getters and hide the one `upgradeTo` this endpoint exists
+  // to find.
+  const writes = abiData?.writeFunctions ?? [];
+  const writeSet = new Set(writes);
+  const ordered = [...writes, ...(abiData?.functions ?? []).filter((f) => !writeSet.has(f))];
+
+  // Trim the LIST until the payload fits. Slicing the serialized JSON instead
+  // cut it mid-structure and handed the model a broken object to reason from.
+  const factsFor = (n: number) =>
+    JSON.stringify({
+      securityFlags: riskData,
+      verified: abiData?.verified ?? null,
+      stateChangingFunctionCount: writes.length,
+      functions: ordered.slice(0, n),
+    });
+  let count = Math.min(ordered.length, 60);
+  let facts = factsFor(count);
+  while (facts.length > 6000 && count > 0) {
+    count = Math.floor(count / 2);
+    facts = factsFor(count);
+  }
+  const functions = ordered.slice(0, count);
 
   const schema = {
     type: "object",
