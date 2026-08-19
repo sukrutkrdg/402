@@ -42,6 +42,47 @@ function textOf(message: Anthropic.Message): string {
 }
 
 /**
+ * Recursively shorten arrays, leaving a note where items were dropped.
+ * Everything else is preserved, because the scalars are the facts.
+ */
+function capArrays(value: unknown, cap: number): unknown {
+  if (Array.isArray(value)) {
+    const kept = value.slice(0, cap).map((v) => capArrays(v, cap));
+    return value.length > cap ? [...kept, `…${value.length - cap} more omitted`] : kept;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, capArrays(v, cap)]));
+  }
+  return value;
+}
+
+/**
+ * Serialize `data` to at most `limit` characters, and always to VALID JSON.
+ *
+ * Every report here used `JSON.stringify(data).slice(0, N)`, which cuts the
+ * string wherever N lands — mid-key, mid-number, mid-escape — and hands the
+ * model a broken object to reason from. Nothing downstream notices: the model
+ * dutifully produces a confident verdict out of whatever survived the cut, and
+ * the buyer cannot tell that half the evidence was malformed.
+ *
+ * The length comes from lists (holders, transactions, trending tokens), so the
+ * lists are what gets shortened, progressively, until it fits. Dropped items
+ * leave a note behind, which beats silent truncation twice over: the JSON stays
+ * parseable, and the model is told that a list was cut rather than being left
+ * to assume it saw all of it.
+ */
+export function factsWithin(data: unknown, limit: number): string {
+  let json = JSON.stringify(data) ?? "null";
+  if (json.length <= limit) return json;
+  for (const cap of [32, 16, 8, 4, 2, 1, 0]) {
+    json = JSON.stringify(capArrays(data, cap)) ?? "null";
+    if (json.length <= limit) return json;
+  }
+  // The scalars alone are over budget — say that, in valid JSON.
+  return JSON.stringify({ note: "Facts omitted: the source data exceeded the size this report can carry." });
+}
+
+/**
  * Why the structured answer wouldn't parse.
  *
  * Every report here asks for JSON against a schema, so running out of output
@@ -87,7 +128,7 @@ export async function aiTokenReport(params: Record<string, string>) {
     throw new Error("No on-chain data available for this token");
   }
 
-  const facts = JSON.stringify(data).slice(0, 6000);
+  const facts = factsWithin(data, 6000);
 
   const schema = {
     type: "object",
@@ -201,7 +242,7 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
     throw new Error("No on-chain data available for this token");
   }
 
-  const facts = JSON.stringify(data).slice(0, 8000);
+  const facts = factsWithin(data, 8000);
 
   const schema = {
     type: "object",
@@ -317,7 +358,7 @@ export async function b20Dossier(params: Record<string, string>) {
     return { address, isB20: false, note: "Not a B20 (Base-native) token — use deep-dd / ai-token-report for standard ERC-20 diligence.", checkedAt: new Date().toISOString() };
   }
 
-  const facts = JSON.stringify(data).slice(0, 9000);
+  const facts = factsWithin(data, 9000);
   const schema = {
     type: "object",
     properties: {
@@ -411,7 +452,7 @@ export async function aiWalletReport(params: Record<string, string>) {
   const data = { networth: val(networth), summary: val(summary), activity: val(activity) };
   if (!data.networth && !data.summary) throw new Error("No wallet data available for this address");
 
-  const facts = JSON.stringify(data).slice(0, 6000);
+  const facts = factsWithin(data, 6000);
   const schema = {
     type: "object",
     properties: {
@@ -472,7 +513,7 @@ export async function aiMarketBrief(_params: Record<string, string>) {
     throw new Error("No market data available right now");
   }
 
-  const facts = JSON.stringify(data).slice(0, 6500);
+  const facts = factsWithin(data, 6500);
   const schema = {
     type: "object",
     properties: {
@@ -653,7 +694,7 @@ export async function aiTxExplain(params: Record<string, string>) {
     throw new Error(e instanceof Error ? e.message : "Transaction not found");
   }
 
-  const facts = JSON.stringify(decoded).slice(0, 6000);
+  const facts = factsWithin(decoded, 6000);
   const schema = {
     type: "object",
     properties: {
@@ -728,22 +769,16 @@ export async function aiContractRisk(params: Record<string, string>) {
   const writeSet = new Set(writes);
   const ordered = [...writes, ...(abiData?.functions ?? []).filter((f) => !writeSet.has(f))];
 
-  // Trim the LIST until the payload fits. Slicing the serialized JSON instead
-  // cut it mid-structure and handed the model a broken object to reason from.
-  const factsFor = (n: number) =>
-    JSON.stringify({
+  const functions = ordered.slice(0, 60);
+  const facts = factsWithin(
+    {
       securityFlags: riskData,
       verified: abiData?.verified ?? null,
       stateChangingFunctionCount: writes.length,
-      functions: ordered.slice(0, n),
-    });
-  let count = Math.min(ordered.length, 60);
-  let facts = factsFor(count);
-  while (facts.length > 6000 && count > 0) {
-    count = Math.floor(count / 2);
-    facts = factsFor(count);
-  }
-  const functions = ordered.slice(0, count);
+      functions,
+    },
+    6000,
+  );
 
   const schema = {
     type: "object",
