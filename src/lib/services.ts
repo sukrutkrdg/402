@@ -1650,8 +1650,12 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Extract",
     tagline: "Unstructured text → structured JSON, one call",
     description:
-      "Turn ANY text into clean, schema-enforced JSON: pass text= plus the fields you want (fields=name,email,price,date — up to 10) and get exactly those keys back, guaranteed-valid JSON via Claude structured outputs. Add list=true to extract EVERY repeated record (invoice lines, listings, table rows) as an array. Up to 16K chars per call. Not crypto-specific — the universal parse step for agent pipelines: pages, emails, receipts, logs.",
-    price: "$0.03",
+      "Turn ANY text into clean, schema-enforced JSON: pass text= plus the fields you want (fields=name,email,price,date — up to 10) and get exactly those keys back, guaranteed-valid JSON via Claude structured outputs. Add list=true to extract EVERY repeated record (invoice lines, listings, table rows) as an array. Up to 16K chars per call. Not crypto-specific — the universal parse step for agent pipelines: pages, emails, receipts, logs. Many documents? ai-extract-batch: 10 in one call for $0.10.",
+    // Raised from $0.03 on 2026-08-20. list=true can return every row of a 16K
+    // document, and at the output budget that needs, the model cost alone ran to
+    // ~$0.044 — selling it below cost. The batch endpoint is now the cheap path
+    // for volume, which is where it should have pointed all along.
+    price: "$0.05",
     icon: "🗂️",
     category: "AI",
     params: [
