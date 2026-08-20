@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRevenue } from "@/lib/revenue";
 import { stuckRefunds } from "@/lib/credits";
+import { openIncident } from "@/lib/alert-owner";
 import { getConfig } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
 
@@ -32,5 +33,13 @@ export async function GET(req: NextRequest) {
   // Money we took sits next to money we owe back and could not pay: a refund
   // that failed because KV was down is revenue we are not entitled to.
   const owed = await stuckRefunds();
-  return NextResponse.json({ ...data, ...(owed.count > 0 ? { unpaidRefunds: owed } : {}) });
+  // An outage that stops the AI endpoints selling is a revenue event, so it
+  // belongs on the revenue page — and it survives here even when the messenger
+  // is unconfigured, which is the failure mode that produced it in the first place.
+  const aiDown = await openIncident("ai-credits");
+  return NextResponse.json({
+    ...data,
+    ...(owed.count > 0 ? { unpaidRefunds: owed } : {}),
+    ...(aiDown ? { openIncident: { kind: "ai-credits", since: aiDown.since, text: aiDown.text } } : {}),
+  });
 }

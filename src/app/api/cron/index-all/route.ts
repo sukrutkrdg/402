@@ -33,6 +33,8 @@ import { getConfig } from "@/lib/config";
 import { exampleInputFor } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
+import { probeAi } from "@/lib/ai-probe";
+import { alertOwner, clearAlert } from "@/lib/alert-owner";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -70,11 +72,28 @@ export async function GET(req: NextRequest) {
 
   const pool = only.length ? SERVICES.filter((s) => only.includes(s.id)) : SERVICES.filter((s) => !s.hidden);
 
+  // One token, before spending anything. An AI endpoint with no credits behind
+  // it cannot settle, so every attempt against one is a call that costs us a
+  // slot in this run's cap and buys nothing — and it is the run that would have
+  // kept it in the index. This is also the only scheduled thing that runs daily,
+  // which makes it the right place to notice the account has gone dry.
+  const ai = await probeAi();
+  let aiAlert: Awaited<ReturnType<typeof alertOwner>> | undefined;
+  if (!ai.ok) {
+    aiAlert = await alertOwner(
+      "ai-credits",
+      `${ai.reason}\n\nThe daily index refresh is skipping every AI endpoint this run, so they will fall out of the discovery index if this is not fixed before their keepalive is due.`,
+    );
+  } else {
+    await clearAlert("ai-credits", "Anthropic is answering again — the AI endpoints are back and the index refresh will resume covering them.");
+  }
+
   const results: Array<{ service: string; status: number | string; cents?: number }> = [];
   let refreshed = 0;
   let attempts = 0;
   let spent = 0;
   let stale = 0;
+  let aiSkipped = 0;
 
   for (const s of pool) {
     // Fresh already — either this cron settled it recently, or, better, a real
@@ -84,6 +103,13 @@ export async function GET(req: NextRequest) {
       continue;
     }
     stale++;
+    // Not counted as an attempt: it never reached the wire, and it should be
+    // first in line the moment the account is topped up.
+    if (!ai.ok && s.category === "AI") {
+      aiSkipped++;
+      results.push({ service: s.id, status: "skipped-ai-unavailable" });
+      continue;
+    }
     const cents = priceCents(s.price);
     if (attempts >= MAX_PER_RUN || spent + cents > MAX_SPEND_CENTS) {
       results.push({ service: s.id, status: "deferred-next-run" });
@@ -134,7 +160,10 @@ export async function GET(req: NextRequest) {
     capCents: MAX_SPEND_CENTS,
     total: pool.length,
     dryRun,
-    note: "Each settled call keeps a listing inside the discovery window for 21 days. Real customer payments mark a service fresh too, so this bill falls as demand rises.",
+    ai: ai.ok ? { ok: true } : { ok: false, reason: ai.reason, creditsExhausted: ai.creditsExhausted, skipped: aiSkipped, alert: aiAlert },
+    note:
+      "Each settled call keeps a listing inside the discovery window for 21 days. Real customer payments mark a service fresh too, so this bill falls as demand rises." +
+      (ai.ok ? "" : ` ${aiSkipped} AI endpoint(s) were skipped this run because the Anthropic account cannot answer — paying for them would settle nothing.`),
     results,
   });
 }
