@@ -48,7 +48,12 @@ describe("index refresh spends inside a ceiling", () => {
     expect(capCents).toBeGreaterThan(0);
     expect(capCents, "a daily cap this large is a wallet drain, not a refresh").toBeLessThanOrEqual(100);
     // The spend check must run BEFORE the payment, not be a report afterwards.
-    expect(cron).toMatch(/if \(attempts >= MAX_PER_RUN \|\| spent \+ cents > MAX_SPEND_CENTS\)/);
+    expect(cron).toMatch(/const overCap = spent \+ cents > MAX_SPEND_CENTS && spent > 0;/);
+    expect(cron).toMatch(/if \(attempts >= MAX_PER_RUN \|\| overCap\)/);
+    // `&& spent > 0` is deliberate, not a slip: a price above the whole per-run
+    // budget used to be deferred at spent = 0 on every run, forever, which
+    // quietly excluded both $0.75 reports from keepalive entirely. See
+    // test/cron-spend-cap.test.ts. Worst case is still cap + one price.
   });
 
   it("still obeys the global spend kill-switch", () => {

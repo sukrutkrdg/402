@@ -111,7 +111,14 @@ export async function GET(req: NextRequest) {
       continue;
     }
     const cents = priceCents(s.price);
-    if (attempts >= MAX_PER_RUN || spent + cents > MAX_SPEND_CENTS) {
+    // The cap bounds a run; it must not make an endpoint unbuyable. Our two
+    // $0.75 reports cost more than the whole per-run budget, so `spent + cents >
+    // cap` was true for them at spent = 0 — they were deferred every single run,
+    // forever, and would have evicted from the index with keepalive never once
+    // having tried. Letting the FIRST purchase of a run exceed the cap fixes
+    // that and still bounds the worst case at cap + one price.
+    const overCap = spent + cents > MAX_SPEND_CENTS && spent > 0;
+    if (attempts >= MAX_PER_RUN || overCap) {
       results.push({ service: s.id, status: "deferred-next-run" });
       continue;
     }
