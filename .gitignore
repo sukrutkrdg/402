@@ -38,3 +38,4 @@ _*.txt
 .env*
 !.env.example
 awe.md
+_*.md
