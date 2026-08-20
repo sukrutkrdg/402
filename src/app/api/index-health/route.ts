@@ -2,8 +2,8 @@
  * Index health — OWNER ONLY (STATS_TOKEN gated).
  *
  * Compares what the CDP x402 Bazaar discovery index says about us against what we
- * actually serve today. Two failure modes have both bitten us in production and
- * neither is visible from our own catalog:
+ * actually serve today. Three failure modes have all bitten us in production and
+ * none is visible from our own catalog:
  *
  *  1. `missing` — a service is in our catalog but absent from discovery, so no
  *     agent browsing the Bazaar can find it. A single settled payment re-seeds it.
@@ -11,8 +11,29 @@
  *     was last settled. Raise a price and the index keeps quoting the old one, so an
  *     agent that reads the catalog signs for too little and its payment is rejected.
  *     Discovery records only refresh on a *new* settlement, never on redeploy.
+ *  3. `expiringSoon` — the catalog evicts a resource 30 days after its stored
+ *     `lastCalledAt`, on a daily conveyor. A row nobody has paid for in 30 days
+ *     leaves on its own, whatever we serve. See the eviction note below.
  *
- * Fix for both is the same: one paid call per affected service (see cron/index-all).
+ * Fix for all three is the same: one paid call per affected service (cron/index-all).
+ *
+ * WHY THIS READS `search?payTo=` AND NOT THE FULL SWEEP
+ * -----------------------------------------------------
+ * It used to page `/discovery/resources` and look for our host among ~15k rows.
+ * That instrument has a documented way of lying (x402-foundation/x402#3045):
+ * `limit` is silently rounded to the nearest ten and capped at 1000, and paging
+ * keys on `offset // effective_limit` rather than the raw offset — so a scan
+ * whose stride does not match its effective page size never requests whole
+ * pages, and every healthy row on them reads as absent. Our stride happened to
+ * be aligned (limit=1000, offsets at exact multiples), so we were not being
+ * bitten. "Happened to be" is not a property worth relying on for the check that
+ * tells us whether anyone can find us.
+ *
+ * `search?payTo=` answers about our own rows directly, with no offset stepping
+ * and no way to skip a page. What it cannot do is enumerate: `limit` maxes at 20
+ * (21 is a 400), `offset` is ignored, and the `meta.searchToken` is regenerated
+ * per request rather than being a cursor — all measured, not assumed. So we ask
+ * one narrow question per service instead of one broad one for all of them.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,10 +44,17 @@ import { SERVICES } from "@/lib/services";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
-const PAGE = 1000; // API caps page size at 1000
-const MAX_PAGES = 40; // 40k resources — well clear of the ~14k live index
-const BATCH = 3; // pages fetched in parallel
+const SEARCH = "https://api.cdp.coinbase.com/platform/v2/x402/discovery/search";
+/** Concurrent queries. One per service, so this is the whole runtime knob. */
+const BATCH = 8;
+/**
+ * Days from stored `lastCalledAt` to eviction. Established on the thread from
+ * one night of natural tape (42 of 42 unexplained-free) and then from a
+ * pre-registered prediction of 23 routes scored 22 hit / 1 censored / 0 miss,
+ * with origin-side probes confirming the sellers were still serving. Our
+ * keepalive cron re-settles at 21 days, comfortably inside it.
+ */
+const EVICTION_DAYS = 30;
 
 interface DiscoveryAccept {
   amount?: string;
@@ -34,11 +62,18 @@ interface DiscoveryAccept {
   payTo?: string;
   asset?: string;
 }
-interface DiscoveryItem {
+interface DiscoveryResource {
   resource?: string;
   url?: string;
   lastUpdated?: string;
   accepts?: DiscoveryAccept[];
+  quality?: { lastCalledAt?: string; l30DaysTotalCalls?: number; l30DaysUniquePayers?: number };
+}
+interface Row {
+  lastUpdated: string;
+  accept: DiscoveryAccept;
+  lastCalledAt: string | null;
+  calls30d: number | null;
 }
 
 /** "$0.03" → 30000 (USDC has 6 decimals). Null when unparseable. */
@@ -50,14 +85,25 @@ function priceToMicro(price: string): number | null {
 
 const microToUsd = (micro: number) => Number((micro / 1e6).toFixed(6));
 
-async function fetchPage(offset: number): Promise<DiscoveryItem[] | null> {
-  const r = await fetch(`${DISCOVERY}?limit=${PAGE}&offset=${offset}`, {
-    headers: { accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!r.ok) return null;
-  const j = (await r.json()) as { items?: DiscoveryItem[] };
-  return j.items ?? [];
+/**
+ * Every row the index holds for `payTo` that matches this query text.
+ * Null means we could not ask — which is never the same as an empty answer.
+ */
+async function search(payTo: string, query: string): Promise<DiscoveryResource[] | null> {
+  const url = `${SEARCH}?payTo=${encodeURIComponent(payTo)}&query=${encodeURIComponent(query)}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(8000) });
+      if (r.ok) {
+        const j = (await r.json()) as { resources?: DiscoveryResource[] };
+        return j.resources ?? [];
+      }
+    } catch {
+      /* transport — retry once */
+    }
+    if (attempt === 0) await new Promise((res) => setTimeout(res, 250));
+  }
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -69,67 +115,73 @@ export async function GET(req: NextRequest) {
   if (!safeEqual(provided, cfg.statsToken)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!cfg.payTo) {
+    return NextResponse.json({ error: "PAY_TO_ADDRESS is not set — nothing to look up." }, { status: 503 });
+  }
 
   const host = new URL(getSiteUrl()).host; // e.g. 402.com.tr
   const prefix = `${getSiteUrl()}/api/x402/`;
+  const idOf = (resource: string): string =>
+    resource.startsWith(prefix)
+      ? resource.slice(prefix.length).split("?")[0]
+      : (resource.match(/\/api\/x402\/([\w-]+)/)?.[1] ?? "");
 
-  // Newest record per service id (a service can appear more than once, e.g. with
-  // different query strings — the freshest one is what agents see quoted).
-  const seen = new Map<string, { lastUpdated: string; accept: DiscoveryAccept; resource: string }>();
-  let scanned = 0;
-  let truncated = true;
+  // Newest record per service id. A fuzzy query returns neighbours too, and they
+  // are all ours (payTo filter), so everything gets folded in — one query's
+  // by-catch is another service's answer, and the union doubles as our best view
+  // of what the index holds for us.
+  const seen = new Map<string, Row>();
+  const unchecked: string[] = [];
+  let queries = 0;
 
-  for (let page = 0; page < MAX_PAGES; page += BATCH) {
-    const pages = await Promise.all(
-      Array.from({ length: BATCH }, (_, i) => fetchPage((page + i) * PAGE)),
-    );
-    let empty = false;
-    for (const items of pages) {
-      if (items === null) {
-        return NextResponse.json(
-          { error: "CDP discovery API unavailable", scanned },
-          { status: 502 },
-        );
-      }
-      if (items.length === 0) {
-        empty = true;
-        continue;
-      }
-      scanned += items.length;
-      for (const it of items) {
-        const resource = it.resource ?? it.url ?? "";
-        if (typeof resource !== "string" || !resource.includes(host)) continue;
-        const id = resource.startsWith(prefix)
-          ? resource.slice(prefix.length).split("?")[0]
-          : (resource.match(/\/api\/x402\/([\w-]+)/)?.[1] ?? "");
-        if (!id) continue;
-        const lastUpdated = it.lastUpdated ?? "";
-        const prev = seen.get(id);
-        if (!prev || lastUpdated > prev.lastUpdated) {
-          seen.set(id, { lastUpdated, accept: (it.accepts ?? [])[0] ?? {}, resource });
-        }
+  const absorb = (rows: DiscoveryResource[]) => {
+    for (const it of rows) {
+      const resource = it.resource ?? it.url ?? "";
+      if (typeof resource !== "string" || !resource.includes(host)) continue;
+      const id = idOf(resource);
+      if (!id) continue;
+      const lastUpdated = it.lastUpdated ?? "";
+      const prev = seen.get(id);
+      if (!prev || lastUpdated > prev.lastUpdated) {
+        seen.set(id, {
+          lastUpdated,
+          accept: (it.accepts ?? [])[0] ?? {},
+          lastCalledAt: it.quality?.lastCalledAt ?? null,
+          calls30d: it.quality?.l30DaysTotalCalls ?? null,
+        });
       }
     }
-    if (empty) {
-      truncated = false;
-      break;
-    }
+  };
+
+  for (let i = 0; i < SERVICES.length; i += BATCH) {
+    const slice = SERVICES.slice(i, i + BATCH);
+    const results = await Promise.all(slice.map((s) => search(cfg.payTo, s.id)));
+    results.forEach((rows, k) => {
+      queries++;
+      // A query that failed tells us nothing about that service. Letting it fall
+      // through to `missing` would report an outage as a delisting and send the
+      // cron out to pay for a re-seed nothing needed.
+      if (rows === null) unchecked.push(slice[k].id);
+      else absorb(rows);
+    });
   }
 
+  const uncheckedSet = new Set(unchecked);
+  const now = Date.now();
+
   const missing: Array<{ id: string; price: string; hidden?: boolean }> = [];
-  const stalePrice: Array<{
-    id: string;
-    indexedUsd: number | null;
-    liveUsd: number | null;
-    lastUpdated: string;
-    underQuoted: boolean;
-  }> = [];
+  const stalePrice: Array<{ id: string; indexedUsd: number | null; liveUsd: number | null; lastUpdated: string; underQuoted: boolean }> = [];
   const wrongPayTo: Array<{ id: string; indexedPayTo: string }> = [];
+  const expiringSoon: Array<{ id: string; lastCalledAt: string; evictsAt: string; daysLeft: number }> = [];
 
   for (const s of SERVICES) {
     const rec = seen.get(s.id);
     if (!rec) {
-      missing.push({ id: s.id, price: s.price, ...(s.hidden ? { hidden: true } : {}) });
+      // Only call it missing if we actually got an answer about it. A service
+      // whose own query failed can still be present in the index.
+      if (!uncheckedSet.has(s.id)) {
+        missing.push({ id: s.id, price: s.price, ...(s.hidden ? { hidden: true } : {}) });
+      }
       continue;
     }
     const liveMicro = priceToMicro(s.price);
@@ -146,19 +198,27 @@ export async function GET(req: NextRequest) {
       });
     }
     const payTo = rec.accept.payTo?.toLowerCase();
-    if (payTo && cfg.payTo && payTo !== cfg.payTo.toLowerCase()) {
+    if (payTo && payTo !== cfg.payTo.toLowerCase()) {
       wrongPayTo.push({ id: s.id, indexedPayTo: payTo });
+    }
+    if (rec.lastCalledAt) {
+      const evicts = Date.parse(rec.lastCalledAt) + EVICTION_DAYS * 86400_000;
+      const daysLeft = Math.floor((evicts - now) / 86400_000);
+      if (Number.isFinite(daysLeft) && daysLeft <= 10) {
+        expiringSoon.push({ id: s.id, lastCalledAt: rec.lastCalledAt, evictsAt: new Date(evicts).toISOString(), daysLeft });
+      }
     }
   }
 
-  // Indexed under our host but no longer in the catalog (renamed / retired ids).
-  const orphans = [...seen.keys()].filter((id) => !SERVICES.some((s) => s.id === id));
+  // Indexed under our host but not in the catalog (renamed / retired ids). The
+  // search path cannot enumerate, so this is what 132 narrow queries happened to
+  // surface — a floor, not an inventory, and named so it cannot be read as one.
+  const orphansSeen = [...seen.keys()].filter((id) => !SERVICES.some((s) => s.id === id));
 
   const reseedCostUsd = Number(
     [...missing, ...stalePrice]
       .reduce((sum, row) => {
-        const id = row.id;
-        const svc = SERVICES.find((s) => s.id === id);
+        const svc = SERVICES.find((s) => s.id === row.id);
         return sum + (svc ? (priceToMicro(svc.price) ?? 0) / 1e6 : 0);
       }, 0)
       .toFixed(4),
@@ -166,20 +226,29 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     checkedAt: new Date().toISOString(),
-    scanned,
-    truncated, // true → hit MAX_PAGES before the index ended; counts are a floor
+    method: "discovery/search?payTo — one targeted query per service",
+    queries,
     catalog: SERVICES.length,
-    indexed: seen.size,
+    indexedSeen: seen.size,
+    // Non-empty means the counts below are a floor: these services were not
+    // answered for, and none of them is being called missing on that basis.
+    uncheckedCount: unchecked.length,
+    ...(unchecked.length > 0 ? { unchecked } : {}),
+    degraded: unchecked.length > 0,
     missingCount: missing.length,
     stalePriceCount: stalePrice.length,
     underQuotedCount: stalePrice.filter((r) => r.underQuoted).length,
-    reseedCostUsd, // one paid call per affected service fixes both classes
+    expiringSoonCount: expiringSoon.length,
+    reseedCostUsd, // one paid call per affected service fixes missing + stalePrice
     missing,
     stalePrice: stalePrice.sort((a, b) => (a.id < b.id ? -1 : 1)),
+    expiringSoon: expiringSoon.sort((a, b) => a.daysLeft - b.daysLeft),
     wrongPayTo,
-    orphans,
+    orphansSeen,
     note:
       "Discovery records refresh only on a new successful settlement. After a price change, " +
-      "re-settle the service once or the index keeps quoting the old amount.",
+      `re-settle the service once or the index keeps quoting the old amount. Eviction runs at ` +
+      `lastCalledAt + ${EVICTION_DAYS}d on a daily conveyor, so anything in expiringSoon needs a ` +
+      "settlement before its evictsAt or it leaves the index on its own.",
   });
 }
