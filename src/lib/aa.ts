@@ -58,11 +58,20 @@ export async function gasSponsor(params: Record<string, string>) {
   // row cap). Filtering by the decoded sender keeps each query to a few rows.
   const perPm = new Map<string, { ops: number; ok: number; gas: bigint }>();
   let dataAvailable = false;
+  // An EntryPoint we could not read is not an EntryPoint with no activity.
+  // Continuing past a failed query and reporting the rest as the whole picture
+  // understates every number below it — and when the wallet operates ONLY on
+  // the version that failed, it turns into the flat assertion that this is not
+  // a smart account at all.
+  const unreadEntryPoints: string[] = [];
   for (const ep of ENTRYPOINTS) {
     const rows = await cdpSql<AggRow>(
       `SELECT parameters['paymaster'] AS pm, count() AS n, countIf(toString(parameters['success'])='true') AS ok, sum(toUInt256OrZero(toString(parameters['actualGasCost']))) AS gas FROM base.events WHERE address='${ep.addr}' AND event_name='UserOperationEvent' AND parameters['sender']='${wl}' AND block_timestamp > now() - INTERVAL ${days} DAY GROUP BY pm ORDER BY n DESC`,
     );
-    if (rows === null) continue; // one provider hiccup shouldn't sink the other EntryPoint
+    if (rows === null) {
+      unreadEntryPoints.push(`v${ep.v}`); // one provider hiccup shouldn't sink the other EntryPoint
+      continue;
+    }
     dataAvailable = true;
     for (const r of rows) {
       const pm = String(r.pm ?? "").toLowerCase();
@@ -78,13 +87,20 @@ export async function gasSponsor(params: Record<string, string>) {
 
   const totalOps = [...perPm.values()].reduce((a, e) => a + e.ops, 0);
   if (totalOps === 0) {
+    // "Nothing found" only means "not a smart account" if we looked everywhere.
+    // With an EntryPoint unread, the honest answer is that we do not know.
+    const blind = unreadEntryPoints.length > 0;
     return finish({
       wallet: w,
       windowDays: days,
-      verdict: "not_smart_account",
-      smartAccount: false,
+      verdict: blind ? "unknown" : "not_smart_account",
+      smartAccount: blind ? null : false,
       userOps: 0,
-      recommendation: `No ERC-4337 UserOperations from this address on Base in ${days}d — it isn't operating as a smart account (likely a plain EOA, or inactive). Gas-sponsorship only applies to smart accounts; widen days= if you expected activity.`,
+      degraded: blind,
+      ...(blind ? { unreadEntryPoints } : {}),
+      recommendation: blind
+        ? `No UserOperations found, but EntryPoint ${unreadEntryPoints.join(" + ")} could not be read — an account that operates only there would look exactly like this. Not a finding that the address is a plain EOA; re-run before concluding anything.`
+        : `No ERC-4337 UserOperations from this address on Base in ${days}d — it isn't operating as a smart account (likely a plain EOA, or inactive). Gas-sponsorship only applies to smart accounts; widen days= if you expected activity.`,
       note: "Reads a Base wallet's ERC-4337 account-abstraction profile from EntryPoint v0.6+v0.7 UserOperationEvents. wallet= required; days= optional (default 30, max 90). Not financial advice.",
     });
   }
@@ -124,12 +140,19 @@ export async function gasSponsor(params: Record<string, string>) {
     distinctSponsors: sponsored.length,
     sponsoredGasEth: fmtEth(sponsoredGas),
     sponsors, // paymasters funding this account's gas, most-used first
+    // Every count, percentage and gas total above is a floor when this is set:
+    // the missing EntryPoint's ops are simply not in them.
+    degraded: unreadEntryPoints.length > 0,
+    ...(unreadEntryPoints.length > 0 ? { unreadEntryPoints } : {}),
     recommendation:
-      verdict === "self_paid"
+      (verdict === "self_paid"
         ? `ERC-4337 smart account paying its OWN gas across ${totalOps} op(s) in ${days}d (${fmtEth(totalGas)} ETH). No third party sponsors it.`
         : verdict === "fully_sponsored"
           ? `ERC-4337 smart account whose gas is 100% SPONSORED (${totalOps} op(s), ${fmtEth(totalGas)} ETH) by ${sponsored.length} paymaster(s), led by ${sponsors[0]?.paymaster}. It spends no ETH on gas — a pattern typical of app- or agent-operated accounts; don't infer funding or solvency from gas spend.`
-          : `ERC-4337 smart account: ${sponsoredPct}% of ${totalOps} op(s) gas-sponsored by ${sponsored.length} paymaster(s), the rest self-paid.`,
+          : `ERC-4337 smart account: ${sponsoredPct}% of ${totalOps} op(s) gas-sponsored by ${sponsored.length} paymaster(s), the rest self-paid.`) +
+      (unreadEntryPoints.length > 0
+        ? ` PARTIAL: EntryPoint ${unreadEntryPoints.join(" + ")} could not be read, so these counts and the self-paid/sponsored split cover only the EntryPoint(s) that answered.`
+        : ""),
     note: "Reads a Base wallet's ERC-4337 account-abstraction profile from EntryPoint v0.6+v0.7 UserOperationEvents: whether it's a smart account, op count and success rate, and WHO pays its gas (itself vs which paymaster). The agent-native 'who funds this account's gas' check no other Base tool serves. wallet= required; days= optional (default 30, max 90). Not financial advice.",
   });
 }
@@ -178,10 +201,15 @@ export async function paymasterAudit(params: Record<string, string>) {
   const top = await cdpSql<{ sender?: string; n?: string }>(
     `SELECT parameters['sender'] AS sender, count() AS n FROM base.events WHERE address IN (${eps}) AND event_name='UserOperationEvent' AND parameters['paymaster']='${pl}' AND block_timestamp > now() - INTERVAL ${days} DAY GROUP BY sender ORDER BY n DESC LIMIT 10`,
   );
+  // A failed concentration query used to fall through to 0, which reads as
+  // "perfectly diversified" — the reassuring end of the scale, produced by not
+  // having looked. Concentration is the one number here that can turn a
+  // healthy-looking paymaster into a single-app dependency, so it says null.
+  const topUnread = top === null;
   const topAccounts = (top ?? [])
     .filter((r) => /^0x[0-9a-f]{40}$/.test(String(r.sender ?? "").toLowerCase()))
     .map((r) => ({ account: getAddress(String(r.sender)), ops: Number(r.n ?? 0) }));
-  const concentrationPct = topAccounts[0] ? +((100 * topAccounts[0].ops) / ops).toFixed(1) : 0;
+  const concentrationPct = topUnread ? null : topAccounts[0] ? +((100 * topAccounts[0].ops) / ops).toFixed(1) : 0;
 
   const verdict =
     successPct < 85 ? "degraded" : ops >= 1000 && senders >= 50 ? "healthy_active" : "low_activity";
@@ -196,14 +224,18 @@ export async function paymasterAudit(params: Record<string, string>) {
     distinctAccounts: senders,
     successPct,
     totalGasSponsoredEth: fmtEth(gas),
-    topConcentrationPct: concentrationPct, // share of ops from its single busiest account
+    topConcentrationPct: concentrationPct, // share of ops from its single busiest account; null = not read
     topAccounts,
+    ...(topUnread ? { degraded: true, unreadSignals: ["topConcentrationPct", "topAccounts"] } : {}),
     recommendation:
-      verdict === "degraded"
+      (verdict === "degraded"
         ? `⚠️ Only ${successPct}% of ${ops} sponsored op(s) succeeded — this paymaster reverts/fails often. Integrating it risks your users' ops failing. Investigate before relying on it.`
         : verdict === "healthy_active"
-          ? `Healthy, active paymaster: ${ops} op(s) sponsored for ${senders} distinct account(s) at ${successPct}% success (${fmtEth(gas)} ETH) in ${days}d.${concentrationPct >= 80 ? ` Note: ${concentrationPct}% of volume is one account — it mostly serves a single app.` : ""}`
-          : `Low activity: ${ops} sponsored op(s) for ${senders} account(s) at ${successPct}% success in ${days}d. Functional but not heavily used — fine for a small/new app, thin for a critical dependency.`,
+          ? `Healthy, active paymaster: ${ops} op(s) sponsored for ${senders} distinct account(s) at ${successPct}% success (${fmtEth(gas)} ETH) in ${days}d.${concentrationPct !== null && concentrationPct >= 80 ? ` Note: ${concentrationPct}% of volume is one account — it mostly serves a single app.` : ""}`
+          : `Low activity: ${ops} sponsored op(s) for ${senders} account(s) at ${successPct}% success in ${days}d. Functional but not heavily used — fine for a small/new app, thin for a critical dependency.`) +
+      (topUnread
+        ? " Concentration could not be read on this run, so nothing here rules out that a single app accounts for most of the volume."
+        : ""),
     note: "Trust audit of a Base gas PAYMASTER from EntryPoint v0.6+v0.7 UserOperationEvents: sponsored op volume, distinct accounts served, success rate, total gas sponsored and concentration (share from its busiest account). The read a builder pulls before integrating a paymaster, or an agent pulls to judge who funds a counterparty. paymaster= required; days= optional (default 30, max 90). Not financial advice.",
   });
 }

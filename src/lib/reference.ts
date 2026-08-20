@@ -176,13 +176,9 @@ interface Holiday {
   counties: string[] | null;
 }
 
-async function holidaysFor(country: string, years: number[]): Promise<Holiday[]> {
-  const all: Holiday[] = [];
-  for (const y of years) {
-    const list = (await getJson(`https://date.nager.at/api/v3/PublicHolidays/${y}/${country}`)) as Holiday[];
-    if (Array.isArray(list)) all.push(...list);
-  }
-  return all;
+async function holidaysForYear(country: string, year: number): Promise<Holiday[]> {
+  const list = (await getJson(`https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`)) as Holiday[];
+  return Array.isArray(list) ? list : [];
 }
 
 const addDays = (iso: string, n: number) => {
@@ -208,30 +204,54 @@ export async function businessDays(params: Record<string, string>) {
   const add = addRaw ? Number(addRaw) : 0;
   if (addRaw && (!Number.isInteger(add) || Math.abs(add) > 3650)) throw new Error("'add' must be a whole number of days, at most 3650");
 
-  const endGuess = to || addDays(from, Math.sign(add || 1) * (Math.abs(add) * 2 + 30));
-  const years = Array.from(
-    new Set([Number(from.slice(0, 4)), Number(endGuess.slice(0, 4))].flatMap((y) => [y - 1, y, y + 1])),
-  ).filter((y) => y >= 1975 && y <= 2100);
+  // Calendars are fetched for the years we actually walk into, not for years
+  // guessed up front. The old version took the start year and a guessed end
+  // year and expanded each by ±1 — so a 2020→2026 query loaded 2019-2021 and
+  // 2025-2027 and simply had no data for 2022, 2023 and 2024. Every holiday in
+  // that hole was counted as a working day, and the answer came back with the
+  // same confident shape as a correct one. Any span over about two years was
+  // wrong, which is most of what "net 30 business days" contracts get used for.
+  const MAX_YEARS = 20; // one upstream call each, so the span has to be bounded
+  const loaded = new Set<number>();
+  const national = new Map<string, Holiday>();
+  const regional: Array<{ date: string; name: string; counties: string[] | null }> = [];
 
-  let holidays: Holiday[];
-  try {
-    holidays = await holidaysFor(country, years);
-  } catch (e) {
-    const err = new Error(`Holiday calendar unavailable for ${country}: ${(e as Error).message}`);
-    (err as Error & { status?: number }).status = 502;
-    throw err;
-  }
-  if (!holidays.length) {
+  const loadYear = async (y: number): Promise<number> => {
+    if (loaded.has(y)) return -1;
+    if (y < 1975 || y > 2100) {
+      throw new Error(`Dates outside 1975-2100 are not supported (this range reaches ${y})`);
+    }
+    if (loaded.size >= MAX_YEARS) {
+      throw new Error(`This range spans more than ${MAX_YEARS} years of holiday calendars — narrow 'from'/'to', or use a smaller 'add'`);
+    }
+    loaded.add(y);
+    let list: Holiday[];
+    try {
+      list = await holidaysForYear(country, y);
+    } catch (e) {
+      const err = new Error(`Holiday calendar unavailable for ${country}: ${(e as Error).message}`);
+      (err as Error & { status?: number }).status = 502;
+      throw err;
+    }
+    for (const h of list) {
+      // A holiday observed in one province is not a national closure. Counting
+      // it would move a national due date for the whole country, so regional
+      // entries are excluded and listed separately instead of silently applied.
+      if (h.global) national.set(h.date, h);
+      else regional.push({ date: h.date, name: h.name, counties: h.counties });
+    }
+    return list.length;
+  };
+
+  // Fail fast on an unsupported country rather than after twenty empty fetches.
+  if ((await loadYear(Number(from.slice(0, 4)))) === 0) {
     throw new Error(`No holiday calendar published for '${country}' — the source covers ~110 countries by ISO code`);
   }
 
-  // A holiday observed in one province is not a national closure. Counting it
-  // would move a national due date for the whole country, so regional entries
-  // are excluded and listed separately instead of silently applied.
-  const national = new Map(holidays.filter((h) => h.global).map((h) => [h.date, h]));
-  const regional = holidays.filter((h) => !h.global).map((h) => ({ date: h.date, name: h.name, counties: h.counties }));
-
-  const isBusiness = (iso: string) => !isWeekend(iso, country) && !national.has(iso);
+  const isBusiness = async (iso: string) => {
+    await loadYear(Number(iso.slice(0, 4)));
+    return !isWeekend(iso, country) && !national.has(iso);
+  };
   const skipped: Array<{ date: string; reason: string; name?: string }> = [];
 
   let result: string = from;
@@ -242,7 +262,7 @@ export async function businessDays(params: Record<string, string>) {
     let cur = from;
     while (remaining > 0) {
       cur = addDays(cur, step);
-      if (isBusiness(cur)) remaining--;
+      if (await isBusiness(cur)) remaining--;
       else if (skipped.length < 60) {
         skipped.push({ date: cur, reason: national.has(cur) ? "public_holiday" : "weekend", name: national.get(cur)?.name });
       }
@@ -254,7 +274,7 @@ export async function businessDays(params: Record<string, string>) {
     let cur = from;
     while (cur !== to) {
       cur = addDays(cur, forward ? 1 : -1);
-      if (isBusiness(cur)) count++;
+      if (await isBusiness(cur)) count++;
       else if (skipped.length < 60) {
         skipped.push({ date: cur, reason: national.has(cur) ? "public_holiday" : "weekend", name: national.get(cur)?.name });
       }
@@ -265,10 +285,13 @@ export async function businessDays(params: Record<string, string>) {
   return {
     country,
     from,
-    ...(addRaw ? { add, resultDate: result, resultIsBusinessDay: isBusiness(result) } : { to, businessDays: count }),
+    ...(addRaw ? { add, resultDate: result, resultIsBusinessDay: await isBusiness(result) } : { to, businessDays: count }),
     skipped,
     weekend: (WEEKENDS[country] ?? [6, 0]).map((d) => ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d]),
     nationalHolidaysConsidered: national.size,
+    // Every year the range touches, so coverage is checkable rather than
+    // assumed — the previous version's gap was invisible from the response.
+    holidayYearsCovered: [...loaded].sort((a, b) => a - b),
     regionalHolidaysIgnored: regional,
     checkedAt: new Date().toISOString(),
     method:
