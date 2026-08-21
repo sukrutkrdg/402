@@ -72,6 +72,7 @@ import { fileSlot, s3Config } from "./file-store";
 import { fileConvert } from "./file-convert";
 import { counterpartyCheck, companyLei } from "./counterparty";
 import { fxConvert, businessDays, inflationAdjust } from "./reference";
+import { ibanCheck } from "./iban";
 import { onrampQuote, onrampCoverage } from "./onramp";
 import { baseBlock, baseReceipt, baseNonce, tokenSupply, tokenBalance, contractInfo, baseTx } from "./primitives";
 import { filePublish } from "./file-publish";
@@ -1888,6 +1889,20 @@ export const SERVICES: ServiceDef[] = [
       { name: "date", label: "Date (optional, YYYY-MM-DD)", placeholder: "2026-07-24" },
     ],
     handler: fxConvert,
+  },
+  {
+    id: "iban-check",
+    name: "IBAN Check",
+    tagline: "Is this bank account number even structurally possible?",
+    description:
+      "Validate an IBAN offline: country registry length, structure, and the ISO 7064 mod-97 checksum that catches what humans and spreadsheets actually get wrong — a transposed pair, a dropped character, an O typed for a zero. Returns the normalised and print-formatted forms, country, SEPA membership, and the bank identifier where the layout is known. Every rejection names WHICH check failed, so you know whether to fix the row or drop it. Structure only: a valid IBAN is not proof the account exists.",
+    price: "$0.002",
+    icon: "🏦",
+    category: "Business",
+    params: [
+      { name: "iban", label: "IBAN", placeholder: "GB82 WEST 1234 5698 7654 32", required: true },
+    ],
+    handler: async (p: Record<string, string>) => ibanCheck(p),
   },
   {
     id: "business-days",
