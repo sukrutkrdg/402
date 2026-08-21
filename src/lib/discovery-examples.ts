@@ -115,6 +115,11 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   // the endpoint is bought for, and nobody pays to be told an IBAN is fine —
   // they pay to be told which row to fix, and that `reason` is the product.
   "iban-check": {"input":"GB82 WEST 1234 5698 7654 32","valid":true,"reason":null,"iban":"GB82WEST12345698765432","formatted":"GB82 WEST 1234 5698 7654 32","country":"GB","countryName":"United Kingdom","sepa":true,"checkDigits":"82","bankIdentifier":"WEST","length":22,"expectedLength":22},
+  // Both shop windows lead with the field that marks the LIMIT of the answer —
+  // lineType/lineTypeReason and checksumChecked. An agent choosing between
+  // offline validators needs to know which one tells it when it does not know.
+  "phone-check": {"input":"+90 532 123 45 67","valid":true,"e164":"+905321234567","countryCode":"+90","country":"Türkiye","nationalNumber":"5321234567","lengthChecked":true,"lineType":"mobile","lineTypeReason":"mobile — the national number falls in an unambiguous mobile range"},
+  "vat-check": {"input":"BE0417497106","valid":true,"reason":null,"vat":"BE0417497106","country":"BE","countryName":"Belgium","number":"0417497106","checksumChecked":true,"registered":null},
   "first-funder": {"wallet":"0xFe21a68f21d556A3C4274a44c2Fb5410c50cDa1C","verdict":"funded_by_wallet","firstFunder":"0xf70da97812CB96acDF810712Aa562db8dfA3dbEF","funderLabel":null,"funderType":"eoa","firstActivity":"2025-05-12T11:14:31.000Z","walletAgeDays":454,"txCount":42,"initialValueEth":"0.002079","firstTx":"0x78be771f7c3bc7657edc72972c7d5a558adea6ed7d6fd11a7f4666622dc6846c"},
   "fresh-bridge": {"wallet":"0xFe21a68f21d556A3C4274a44c2Fb5410c50cDa1C","windowDays":30,"verdict":"received_no_bridge","incomingUsdc":7,"incomingUsdcTotal":"$18.61","cctpBridgedCount":0,"cctpBridgedTotal":"$0.00","sourceChainsCount":0,"mostRecentBridgeAt":null,"bridgesCount":0},
   "morpho-health": {"wallet":"0x973A31858f4D2125f48C880542DA11a2796f12D6","market":"0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836","pair":"cbBTC/USDC","verdict":"no_borrow","collateral":"0","collateralToken":"0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf","borrowed":"0"},

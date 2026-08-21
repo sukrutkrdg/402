@@ -73,6 +73,8 @@ import { fileConvert } from "./file-convert";
 import { counterpartyCheck, companyLei } from "./counterparty";
 import { fxConvert, businessDays, inflationAdjust } from "./reference";
 import { ibanCheck } from "./iban";
+import { phoneCheck } from "./phone";
+import { vatCheck } from "./vat";
 import { onrampQuote, onrampCoverage } from "./onramp";
 import { baseBlock, baseReceipt, baseNonce, tokenSupply, tokenBalance, contractInfo, baseTx } from "./primitives";
 import { filePublish } from "./file-publish";
@@ -1903,6 +1905,35 @@ export const SERVICES: ServiceDef[] = [
       { name: "iban", label: "IBAN", placeholder: "GB82 WEST 1234 5698 7654 32", required: true },
     ],
     handler: async (p: Record<string, string>) => ibanCheck(p),
+  },
+  {
+    id: "phone-check",
+    name: "Phone Check",
+    tagline: "Normalise any phone number to E.164, and say what is knowable",
+    description:
+      "Turn the many ways a phone number gets typed into one E.164 string: strips spacing, brackets, the 00 international prefix and the national trunk zero people include out of habit. Returns country, calling code, national number, and whether the length matches that country's numbering plan. Line type (mobile / fixed) is reported ONLY for countries whose ranges are unambiguous and is null elsewhere with a reason — never guessed. Offline: it does not check that the number is assigned or reachable.",
+    price: "$0.002",
+    icon: "📞",
+    category: "Business",
+    params: [
+      { name: "phone", label: "Phone number", placeholder: "+90 532 123 45 67", required: true },
+      { name: "country", label: "Calling code, if the number has no +", placeholder: "44" },
+    ],
+    handler: async (p: Record<string, string>) => phoneCheck(p),
+  },
+  {
+    id: "vat-check",
+    name: "EU VAT Check",
+    tagline: "Is this VAT number well-formed — and was the checksum actually run?",
+    description:
+      "Validate an EU VAT number offline: country prefix, national format, and the published check-digit algorithm for the 8 countries that have one (BE, DE, FR, IT, LU, NL, PL, PT). The response says which of the two you got — checksumChecked distinguishes a verified number from a format-only pass, because they are not the same strength of answer. Registration is deliberately NOT claimed: only VIES can say whether a number is registered, and this endpoint does not call it.",
+    price: "$0.002",
+    icon: "🧾",
+    category: "Business",
+    params: [
+      { name: "vat", label: "VAT number", placeholder: "BE0417497106", required: true },
+    ],
+    handler: async (p: Record<string, string>) => vatCheck(p),
   },
   {
     id: "business-days",
