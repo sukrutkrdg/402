@@ -65,6 +65,7 @@ import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
+import { webSearch } from "./web-search";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
@@ -1702,6 +1703,27 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: urlToJson,
     noFreeTier: true, // one LLM call per request — a free tier would be a real cost
+  },
+  {
+    id: "web-search",
+    name: "Web Search",
+    tagline: "Ask the live web, get ranked sources plus a direct answer",
+    description:
+      "Search the live web from an agent that has no browser: pass query= and get back ranked results (title, URL, snippet, relevance score) plus a synthesized one-paragraph answer over them. maxResults=1..20 (default 5); includeAnswer=false to skip the summary and take sources only. The step before reasoning about anything that happened after the model's training cutoff — prices, releases, incidents, docs. Nothing crypto about it.",
+    // Upstream is 1 credit per basic search at $0.008 pay-as-you-go (first 1,000
+    // credits each month free), so $0.01 clears cost and sits on the market's
+    // proven-demand median — the price both Tavily and the Exa resellers charge
+    // for the same call.
+    price: "$0.01",
+    icon: "🔎",
+    category: "Web",
+    params: [
+      { name: "query", label: "Search query", placeholder: "who won the 2026 Turkish Super Cup", required: true },
+      { name: "maxResults", label: "Results (1-20)", placeholder: "5" },
+      { name: "includeAnswer", label: "Include answer (true/false)", placeholder: "true" },
+    ],
+    handler: webSearch,
+    noFreeTier: true, // every call spends an upstream credit — a free tier is a real cost
   },
   {
     id: "sanctions-name",
