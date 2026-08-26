@@ -1,6 +1,6 @@
 {
   "name": "x402-bazaar-mcp",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "mcpName": "io.github.sukrutkrdg/x402-bazaar-mcp",
   "description": "The Base token-safety toolkit for agents: the only B20 (Base-native token) freeze/seize/rug suite, pre-trade GO/HOLD/STOP gates, honeypot & sellability checks, wallet + approval audits, prices and AI reports — pay per call in USDC over x402, no API keys.",
   "type": "module",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@x402/evm": "^2.16.0",
+    "@x402/extensions": "^2.16.0",
     "@x402/fetch": "^2.16.0",
     "viem": "^2.21.0",
     "zod": "^3.23.0"

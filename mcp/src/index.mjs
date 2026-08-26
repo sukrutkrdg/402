@@ -30,7 +30,7 @@ import { z } from "zod";
 
 // Keep in step with package.json and server.json — all three are published and
 // a stale one here is what the MCP registry reports.
-const VERSION = "0.2.3";
+const VERSION = "0.2.4";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
@@ -38,6 +38,9 @@ const VERSION = "0.2.3";
 
 const CATALOG_URL =
   process.env.X402_BAZAAR_CATALOG ?? "https://402.com.tr/api/catalog";
+// Base Builder Code (ERC-8021) attached to every wallet-mode payment as the
+// client code `s`. Public by design — it is written into settlement calldata.
+const BUILDER_CODE = "bc_pa0gqlv1";
 const CREDIT_TOKEN = (process.env.X402_CREDIT_TOKEN ?? "").trim();
 const HAS_WALLET = Boolean(process.env.AGENT_PRIVATE_KEY);
 const MODE = CREDIT_TOKEN ? "credits" : HAS_WALLET ? "wallet" : "free";
@@ -48,17 +51,29 @@ const MODE = CREDIT_TOKEN ? "credits" : HAS_WALLET ? "wallet" : "free";
 let _payingFetch = null;
 async function getPayingFetch() {
   if (_payingFetch) return _payingFetch;
-  const [{ x402Client, wrapFetchWithPayment }, { ExactEvmScheme }, { privateKeyToAccount }] =
-    await Promise.all([
-      import("@x402/fetch"),
-      import("@x402/evm/exact/client"),
-      import("viem/accounts"),
-    ]);
+  const [
+    { x402Client, wrapFetchWithPayment },
+    { ExactEvmScheme },
+    { BuilderCodeClientExtension },
+    { privateKeyToAccount },
+  ] = await Promise.all([
+    import("@x402/fetch"),
+    import("@x402/evm/exact/client"),
+    import("@x402/extensions/builder-code"),
+    import("viem/accounts"),
+  ]);
   const rawKey = process.env.AGENT_PRIVATE_KEY;
   const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
   const account = privateKeyToAccount(privateKey);
   const client = new x402Client();
   client.register("eip155:8453", new ExactEvmScheme(account));
+  // The seller's Builder Code only reaches settlement calldata when the BUYER
+  // echoes the extension: the resource server sends `paymentRequirements` to
+  // /settle and route-level extensions never land there, so `paymentPayload`
+  // is the sole carrier. Measured on-chain — every settlement from a client
+  // without this line carries the facilitator's code and nothing else, so a
+  // wallet-mode call through this package used to erase its own attribution.
+  client.registerExtension(new BuilderCodeClientExtension(BUILDER_CODE));
   _payingFetch = wrapFetchWithPayment(fetch, client);
   return _payingFetch;
 }
