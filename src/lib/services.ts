@@ -1688,8 +1688,11 @@ export const SERVICES: ServiceDef[] = [
     name: "URL to JSON",
     tagline: "Point at a page, name the fields, get JSON",
     description:
-      "One call replaces two: fetches the page, strips it to readable text, then returns exactly the fields you asked for as schema-enforced JSON (fields=price,author,published — up to 10). Add list=true to pull EVERY repeated record on the page (listings, table rows, search results) as an array. Built for agents that need a fact off a page, not a pile of HTML — no browser, no parser, no scraping code.",
-    price: "$0.04",
+      "One call replaces two: fetches the page, strips it to readable text, then returns exactly the fields you asked for as schema-enforced JSON (fields=price,author,published — up to 10). Add list=true to pull EVERY repeated record on the page (listings, table rows, search results) as an array — that mode costs $0.06, since it needs a much larger output budget. Built for agents that need a fact off a page, not a pile of HTML — no browser, no parser, no scraping code.",
+    // Priced per mode at challenge time (see the url-to-json branch in the x402
+    // route): $0.01 for a normal extraction, $0.06 when list=true. This figure is
+    // the default path — the one the catalog advertises and most callers hit.
+    price: "$0.01",
     icon: "🧩",
     category: "Web",
     params: [

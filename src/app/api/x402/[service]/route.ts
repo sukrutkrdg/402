@@ -505,6 +505,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   if (service.id === "buy-credits") {
     // The challenge amount is the chosen pack's price (tier=0.25|1|5|20).
     effectivePrice = tierPrice(paramsFrom(req, service).tier || "");
+  } else if (service.id === "url-to-json") {
+    // One flat price could not be right for both modes. A default extraction is
+    // one 16K-char fetch plus a 1200-token completion — a fraction of a cent on
+    // Haiku — while list=true opens an 8000-token output budget whose model cost
+    // alone reaches ~$0.044. The old flat $0.04 charged 8x cost for the common
+    // call and sold the list call below cost. Price the two paths separately.
+    if (/^(true|1|yes)$/i.test(String(paramsFrom(req, service).list ?? "").trim())) {
+      effectivePrice = "$0.06";
+    }
   } else if (service.id === "ai-token-report") {
     try {
       const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
