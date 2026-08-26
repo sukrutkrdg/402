@@ -12,8 +12,14 @@ Coinbase AgentKit, custom agents).
 **Bind these first:** `pre_trade_gate` (any token), `b20_gate` (Base-native B20
 tokens), `sign_guard` (before signing a tx).
 
-Each tool call is backed by an **x402 micro-payment in USDC on Base** — no API
-keys, no subscriptions, no sign-up.  The agent pays only for what it uses,
+**No wallet needed to start.** Run it with no key, no token and no config at all
+and it uses the **free tier** — one free call/day per service. When you outgrow
+that, a prepaid credit token keeps it walletless: one purchase, then every call
+is just an HTTP header. A wallet is only needed for the third mode, per-call
+payment.
+
+Each tool call is otherwise backed by an **x402 micro-payment in USDC on Base** —
+no API keys, no subscriptions, no sign-up.  The agent pays only for what it uses,
 typically fractions of a cent per call.
 
 **Works with zero config.** Run it with no wallet and no token and it uses the

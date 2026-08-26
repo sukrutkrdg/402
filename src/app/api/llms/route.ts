@@ -12,7 +12,18 @@ export function GET() {
   const lines = [
     "# x402 Bazaar",
     "",
-    "> Pay-per-call API marketplace on Base. Call any endpoint over HTTP and pay a tiny USDC micro-payment via the x402 protocol — no API keys, no accounts, no subscriptions. Built for AI agents and bots.",
+    // Lead with the zero-friction path, not the payment rail. The market sweep
+    // was blunt about this: agents look for a capability they already want, and
+    // an opening line about USDC reads as "wallet required" to every agent that
+    // doesn't have one — which is most of them. The free call and the credit
+    // token both work with no wallet at all; that fact was buried three
+    // paragraphs down while the crypto framing did the filtering.
+    "> Web search, page-to-JSON, token safety and wallet intelligence as plain HTTP APIs for agents. No API key, no account, no signup. Try any endpoint free right now — add ?free=1 for one free call per service per day, no wallet needed.",
+    "",
+    "## No wallet? Two of the three ways in need none",
+    `1. FREE — add ?free=1 (or header x-402-free: 1) for ${freeLimit()} free call/day per service. Nothing to install, nothing to sign.`,
+    "2. PREPAID CREDITS — one purchase mints an x-credit-token; send it as a header and every later call just works. No wallet, no signature, no per-call settlement.",
+    "3. PER-CALL x402 — pay a USDC micro-payment per request. This is the one that needs a wallet.",
     "",
     "## How payment works",
     `Every endpoint returns HTTP 402 Payment Required with x402 payment details (USDC on Base, network eip155:8453, pay to ${cfg.payTo || "<seller>"}). Use an x402 client such as @x402/fetch to pay automatically and retry. Free trial: ${freeLimit()} free call/day per service per IP, ON REQUEST — add ?free=1 (or the header x-402-free: 1); without it every endpoint answers with its payment challenge. AI and metered services are always paid. Prepaid credits: one settlement on /api/x402/buy-credits (tier=0.25|1|5|20) mints an x-credit-token that later calls debit — no per-call signature.`,

@@ -21,10 +21,11 @@ export default function AgentsPage() {
         <span className="pill w-fit">🤖 For agents & developers</span>
         <h1 className="text-3xl font-bold tracking-tight">Call these APIs from your agent</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
-          Every service here is a standard HTTP endpoint protected by{" "}
-          <strong className="text-gray-200">x402</strong>. No API keys, no sign-up, no subscription —
-          your agent pays a tiny USDC micro-payment per call on Base and gets the result. Built for
-          autonomous agents and bots.
+          Every service here is a standard HTTP endpoint. No API keys, no sign-up, no subscription —
+          and <strong className="text-gray-200">no wallet needed to start</strong>: every service
+          serves one free call a day, and a prepaid credit token covers the rest with nothing but an
+          HTTP header. Pay per call in USDC over <strong className="text-gray-200">x402</strong> only
+          if you want to.
         </p>
         <div className="card mt-1 flex flex-col gap-1 border-base-blue/30 bg-base-blue/10 p-4">
           <div className="text-sm font-semibold text-sky-200">🟦 Works with Base MCP & the Base agent economy</div>
@@ -41,10 +42,16 @@ export default function AgentsPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">⚡ Quickstart — 30 seconds</h2>
         <p className="text-sm text-gray-400">
-          Fastest path: add the MCP server to Claude Code (or any MCP client) — one command, then
-          just ask it to check a token:
+          Fastest path: add the MCP server to Claude Code (or any MCP client). No key, no wallet, no
+          config — it runs on the free tier as-is:
         </p>
-        <Code>{`claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0xYOUR_KEY -- npx -y x402-bazaar-mcp`}</Code>
+        <Code>{`claude mcp add x402-bazaar -- npx -y x402-bazaar-mcp`}</Code>
+        <p className="text-sm text-gray-400">
+          When you want more than the daily free call, add either a credit token (no wallet) or a
+          wallet key — same command, one extra flag:
+        </p>
+        <Code>{`claude mcp add x402-bazaar -e X402_CREDIT_TOKEN=ck_… -- npx -y x402-bazaar-mcp
+claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0x… -- npx -y x402-bazaar-mcp`}</Code>
         <p className="text-sm text-gray-400">
           Or call any endpoint directly over HTTP — 1 free call per service per day (no wallet), so
           you can try before wiring payments:
