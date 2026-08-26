@@ -21,9 +21,18 @@ import "server-only";
 import { finish } from "./envelope";
 
 const ENDPOINT = "https://api.tavily.com/search";
+const EXTRACT_ENDPOINT = "https://api.tavily.com/extract";
 const TIMEOUT_MS = 15_000;
+const EXTRACT_TIMEOUT_MS = 30_000;
 /** Tavily's own cap; asking for more is a 400 rather than a clamp. */
 const MAX_RESULTS_CAP = 20;
+/**
+ * Basic extract bills 1 credit per 5 successful URLs, so a batch of 5 is exactly
+ * one credit ($0.008) and a batch of 6 is two. Capping at 5 keeps a single flat
+ * price honest for every input — a per-call price with an uncapped batch loses
+ * money on the first caller who passes six.
+ */
+const EXTRACT_URL_CAP = 5;
 
 interface TavilyResult {
   title?: string;
@@ -100,6 +109,94 @@ export async function webSearch(params: Record<string, string>) {
     answer: data.answer ?? null,
     results,
     resultCount: results.length,
+    upstreamMs: typeof data.response_time === "number" ? Math.round(data.response_time * 1000) : null,
+  });
+}
+
+interface TavilyExtractResult {
+  url?: string;
+  title?: string;
+  raw_content?: string;
+}
+
+interface TavilyExtractResponse {
+  results?: TavilyExtractResult[];
+  failed_results?: Array<{ url?: string; error?: string }>;
+  response_time?: number;
+}
+
+/**
+ * Read up to five pages in one call, including the ones our own fetcher refuses.
+ *
+ * This does NOT replace url-extract. That endpoint costs us bandwidth and
+ * nothing else, so it stays the cheap path for a single static page. What it
+ * cannot do is a page that renders its content in the browser — `assertReadable`
+ * deliberately refuses those rather than return nav furniture as if it were the
+ * article. This one renders, and takes a batch. Those two differences are the
+ * whole reason it exists; pick url-extract when neither applies.
+ */
+export async function webExtract(params: Record<string, string>) {
+  const key = process.env.TAVILY_API_KEY?.trim();
+  if (!key) throw new Error("Extract not configured: set TAVILY_API_KEY");
+
+  const urls = (params.urls || params.url || "")
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
+  if (!urls.length) throw new Error("Missing 'urls' — pass one URL or a comma-separated list");
+  if (urls.length > EXTRACT_URL_CAP) {
+    // Refuse rather than silently truncate: a caller who passed eight URLs and
+    // got five back has no way to tell which three we dropped, and paid anyway.
+    throw new Error(
+      `Too many URLs: ${urls.length}. This endpoint reads up to ${EXTRACT_URL_CAP} per call — split the list and call again. You were not charged.`,
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(EXTRACT_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      // Basic depth only — advanced doubles the credit cost and would not clear
+      // the market's price band for this call.
+      body: JSON.stringify({ urls, extract_depth: "basic" }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(EXTRACT_TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error("Extract upstream unreachable — you were not charged.");
+  }
+
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    throw new Error(`Extract upstream failed (${res.status})${detail ? `: ${detail}` : ""}`);
+  }
+
+  const data = (await res.json()) as TavilyExtractResponse;
+  const pages = (data.results ?? []).map((r) => ({
+    url: r.url ?? null,
+    title: r.title ?? null,
+    text: r.raw_content ?? null,
+    chars: (r.raw_content ?? "").length,
+  }));
+  const failed = (data.failed_results ?? []).map((f) => ({
+    url: f.url ?? null,
+    error: f.error ?? "unknown",
+  }));
+
+  // Every URL failing means the caller got nothing readable. Throwing here means
+  // x402 never settles, so a batch of five dead links is free rather than billed.
+  if (!pages.length) {
+    throw new Error(
+      `None of the ${urls.length} URL(s) could be read${failed[0]?.error ? `: ${failed[0].error}` : ""}. You were not charged.`,
+    );
+  }
+
+  return finish({
+    pages,
+    pageCount: pages.length,
+    failed,
+    requested: urls.length,
     upstreamMs: typeof data.response_time === "number" ? Math.round(data.response_time * 1000) : null,
   });
 }

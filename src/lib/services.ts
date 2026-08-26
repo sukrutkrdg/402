@@ -65,7 +65,7 @@ import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
-import { webSearch } from "./web-search";
+import { webSearch, webExtract } from "./web-search";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
@@ -1723,6 +1723,23 @@ export const SERVICES: ServiceDef[] = [
       { name: "includeAnswer", label: "Include answer (true/false)", placeholder: "true" },
     ],
     handler: webSearch,
+    noFreeTier: true, // every call spends an upstream credit — a free tier is a real cost
+  },
+  {
+    id: "web-extract",
+    name: "Batch Page Reader",
+    tagline: "Up to 5 pages in one call — including the JavaScript ones",
+    description:
+      "Pass up to 5 URLs (comma-separated) and get each page back as clean text with its title. Renders pages that build their content in the browser, which a plain server-side fetch cannot read at all — so it covers the SPAs, dashboards and app pages that url-extract deliberately refuses. Returns partial success: pages that fail come back in a `failed` list with the reason, and a call where every URL fails is not charged. For a single static page, url-extract is cheaper.",
+    // Upstream bills 1 credit ($0.008) per 5 successful URLs at basic depth, and
+    // the handler caps the batch at 5 — so this price holds for every input.
+    price: "$0.01",
+    icon: "📚",
+    category: "Web",
+    params: [
+      { name: "urls", label: "URLs (comma-separated, max 5)", placeholder: "https://a.com/post, https://b.com/docs", required: true },
+    ],
+    handler: webExtract,
     noFreeTier: true, // every call spends an upstream credit — a free tier is a real cost
   },
   {

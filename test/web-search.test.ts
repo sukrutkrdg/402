@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { webSearch, searchConfigured } from "@/lib/web-search";
+import { webSearch, webExtract, searchConfigured } from "@/lib/web-search";
 
 /**
  * The refusals matter more than the happy path here: withX402 settles only on a
@@ -142,6 +142,117 @@ describe("webSearch response", () => {
     };
     expect(out.results[0]).toEqual({ title: null, url: null, snippet: null, score: null });
     expect(out.answer).toBeNull();
+    expect(out.upstreamMs).toBeNull();
+  });
+});
+
+/**
+ * webExtract bills a flat price against an upstream that charges per 5 URLs, so
+ * the cap and the refusals are the margin. A silently-truncated batch or a
+ * charged all-failed call is money lost or trust lost.
+ */
+const extractOk = (results: unknown[], failed: unknown[] = []) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ results, failed_results: failed, response_time: 0.42 }),
+});
+const onePage = { url: "https://a.com", title: "A", raw_content: "hello" };
+
+describe("webExtract refusals (buyer is not charged)", () => {
+  it("throws when the key is missing, before any fetch", async () => {
+    delete process.env[KEY];
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(webExtract({ urls: "https://a.com" })).rejects.toThrow(/TAVILY_API_KEY/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws on an empty list, before any fetch", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(webExtract({ urls: "  ,  , " })).rejects.toThrow(/Missing 'urls'/);
+    await expect(webExtract({})).rejects.toThrow(/Missing 'urls'/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses an over-cap batch instead of truncating it", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const six = Array.from({ length: 6 }, (_, i) => `https://s${i}.com`).join(",");
+    await expect(webExtract({ urls: six })).rejects.toThrow(/Too many URLs: 6.*up to 5/s);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not charge when every URL failed", async () => {
+    vi.stubGlobal("fetch", async () => extractOk([], [{ url: "https://a.com", error: "timeout" }]));
+    await expect(webExtract({ urls: "https://a.com" })).rejects.toThrow(/None of the 1 URL\(s\) could be read: timeout\. You were not charged\./);
+  });
+
+  it("surfaces the upstream status", async () => {
+    vi.stubGlobal("fetch", async () => ({ ok: false, status: 432, text: async () => "out of credits" }));
+    await expect(webExtract({ urls: "https://a.com" })).rejects.toThrow(/432.*out of credits/);
+  });
+});
+
+describe("webExtract request and response", () => {
+  it("sends exactly the URLs given, at the 1-credit depth", async () => {
+    let sent: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", async (_u: string, init: { body: string }) => {
+      sent = JSON.parse(init.body);
+      return extractOk([onePage]);
+    });
+    await webExtract({ urls: " https://a.com , https://b.com " });
+    expect(sent.urls).toEqual(["https://a.com", "https://b.com"]);
+    expect(sent.extract_depth).toBe("basic");
+  });
+
+  it("accepts the singular url= alias", async () => {
+    let sent: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", async (_u: string, init: { body: string }) => {
+      sent = JSON.parse(init.body);
+      return extractOk([onePage]);
+    });
+    await webExtract({ url: "https://a.com" });
+    expect(sent.urls).toEqual(["https://a.com"]);
+  });
+
+  it("accepts exactly the cap", async () => {
+    vi.stubGlobal("fetch", async () => extractOk([onePage]));
+    const five = Array.from({ length: 5 }, (_, i) => `https://s${i}.com`).join(",");
+    await expect(webExtract({ urls: five })).resolves.toBeTruthy();
+  });
+
+  it("reports partial success rather than hiding the failures", async () => {
+    vi.stubGlobal("fetch", async () =>
+      extractOk([onePage], [{ url: "https://dead.com", error: "404" }]),
+    );
+    const out = (await webExtract({ urls: "https://a.com,https://dead.com" })) as {
+      pages: Array<{ url: string; title: string; text: string; chars: number }>;
+      pageCount: number;
+      failed: Array<{ url: string; error: string }>;
+      requested: number;
+      upstreamMs: number;
+    };
+    expect(out.pages[0]).toEqual({ url: "https://a.com", title: "A", text: "hello", chars: 5 });
+    expect(out.pageCount).toBe(1);
+    expect(out.failed).toEqual([{ url: "https://dead.com", error: "404" }]);
+    expect(out.requested).toBe(2);
+    expect(out.upstreamMs).toBe(420);
+  });
+
+  it("survives an upstream that omits every optional field", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [{}] }),
+    }));
+    const out = (await webExtract({ urls: "https://a.com" })) as {
+      pages: Array<{ url: null; title: null; text: null; chars: number }>;
+      failed: unknown[];
+      upstreamMs: null;
+    };
+    expect(out.pages[0]).toEqual({ url: null, title: null, text: null, chars: 0 });
+    expect(out.failed).toEqual([]);
     expect(out.upstreamMs).toBeNull();
   });
 });
