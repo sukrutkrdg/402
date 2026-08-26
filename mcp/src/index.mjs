@@ -30,7 +30,7 @@ import { z } from "zod";
 
 // Keep in step with package.json and server.json — all three are published and
 // a stale one here is what the MCP registry reports.
-const VERSION = "0.2.4";
+const VERSION = "0.2.5";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
