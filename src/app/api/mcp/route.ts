@@ -169,7 +169,20 @@ export async function POST(req: NextRequest) {
   if (!rl.ok) {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Too many requests — retry shortly" } }, { status: 429, headers: CORS });
   }
-  const creditToken = (req.headers.get("x-credit-token") || "").trim();
+  // Header first — that is the honest place for a credential and what our own
+  // docs tell people to use. The query fallback exists because Smithery's
+  // gateway passes connector config as a query parameter (`?creditToken=`) and
+  // ignores the `x-from: header` hint, so without it a paying customer who
+  // installed us from a directory would silently stay on the free tier: they
+  // supply a token, nothing reads it, nothing errors.
+  //
+  // A token in a URL ends up in access logs, which is why it is the fallback
+  // and not the interface. Never log or echo this value.
+  const creditToken = (
+    req.headers.get("x-credit-token") ||
+    new URL(req.url).searchParams.get("creditToken") ||
+    ""
+  ).trim();
   let payload: unknown;
   try {
     payload = await req.json();
