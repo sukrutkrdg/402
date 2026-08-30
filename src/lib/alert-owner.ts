@@ -24,7 +24,7 @@ import { kvGet, kvSet, kvDel } from "./kv";
 /** Long enough that a daily cron never re-announces a standing incident. */
 const REPEAT_AFTER_SECONDS = 60 * 60 * 20;
 
-export type AlertKind = "ai-credits" | "buyer-funds";
+export type AlertKind = "ai-credits" | "buyer-funds" | "surfaces";
 
 export interface AlertOutcome {
   fired: boolean;

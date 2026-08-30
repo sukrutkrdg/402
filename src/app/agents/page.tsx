@@ -47,6 +47,20 @@ export default function AgentsPage() {
         </p>
         <Code>{`claude mcp add x402-bazaar -- npx -y x402-bazaar-mcp`}</Code>
         <p className="text-sm text-gray-400">
+          Nothing to install at all? The same server is hosted at{" "}
+          <code className="codechip">https://402.com.tr/mcp</code> (Streamable HTTP, 137 tools) — paste
+          that URL into any connector field. It is also listed on{" "}
+          <a
+            href="https://smithery.ai/servers/sukrutkrdg/x402-bazaar-mcp"
+            className="underline hover:text-gray-200"
+            target="_blank"
+            rel="noopener"
+          >
+            Smithery
+          </a>
+          .
+        </p>
+        <p className="text-sm text-gray-400">
           When you want more than the daily free call, add either a credit token (no wallet) or a
           wallet key — same command, one extra flag:
         </p>

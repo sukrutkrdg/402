@@ -120,7 +120,13 @@ describe("index-health via search?payTo", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ok([row("token-risk", "20000", ago(25))])));
     const body = await (await GET(req())).json();
     const soon = body.expiringSoon.find((e: { id: string }) => e.id === "token-risk");
-    expect(soon.daysLeft).toBe(5);
+    // A range, not an exact value: the route floors the remainder, so a stamp
+    // written 25 days ago is 5.0 days out at time zero and 4.999 a millisecond
+    // later. Asserting 5 exactly made this pass alone and fail under suite load.
+    // Flooring is the right direction for the operator — it never tells you that
+    // you have more time than you do — so the test bends, not the route.
+    expect(soon.daysLeft).toBeGreaterThanOrEqual(4);
+    expect(soon.daysLeft).toBeLessThanOrEqual(5);
     expect(Date.parse(soon.evictsAt)).toBeGreaterThan(Date.now());
   });
 

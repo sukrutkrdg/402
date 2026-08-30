@@ -1,5 +1,11 @@
 # x402-bazaar-mcp
 
+[![smithery badge](https://smithery.ai/badge/sukrutkrdg/x402-bazaar-mcp)](https://smithery.ai/servers/sukrutkrdg/x402-bazaar-mcp)
+
+**Hosted, no install:** point any MCP client at `https://402.com.tr/mcp` —
+Streamable HTTP, 137 tools, no wallet held server-side. Or run it locally with
+`npx` as described below; both talk to the same catalog.
+
 **The Base token-safety toolkit for AI agents.** An **MCP (Model Context
 Protocol) server** that gives your agent the checks it needs before it touches a
 Base token — including the **only [B20](https://402.com.tr) (Base-native token

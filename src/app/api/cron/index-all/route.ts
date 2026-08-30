@@ -35,6 +35,7 @@ import { priceCents } from "@/lib/price";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { probeAi } from "@/lib/ai-probe";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
+import { checkSurfaces } from "@/lib/surface-check";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -86,6 +87,27 @@ export async function GET(req: NextRequest) {
     );
   } else {
     await clearAlert("ai-credits", "Anthropic is answering again — the AI endpoints are back and the index refresh will resume covering them.");
+  }
+
+  // Once a week, check that the places we are published still show us. Folded
+  // in here rather than given its own schedule because this is the job that
+  // already runs daily and already knows how to raise an incident — and because
+  // a listing that quietly goes invisible is the same class of failure as an
+  // endpoint that quietly falls out of the index, which is what this cron exists
+  // to prevent.
+  let surfaces: Awaited<ReturnType<typeof checkSurfaces>> | undefined;
+  if (!dryRun && !(await kvGet("surfaces:checked"))) {
+    await kvSet("surfaces:checked", "1", 60 * 60 * 24 * 7);
+    surfaces = await checkSurfaces(getConfig().payTo);
+    const broken = surfaces.filter((s) => !s.ok);
+    if (broken.length) {
+      await alertOwner(
+        "surfaces",
+        `Published surfaces that would not find us today:\n\n${broken.map((s) => `• ${s.name}: ${s.detail}`).join("\n")}`,
+      );
+    } else {
+      await clearAlert("surfaces", "All published surfaces are showing us again.");
+    }
   }
 
   const results: Array<{ service: string; status: number | string; cents?: number }> = [];
@@ -167,6 +189,7 @@ export async function GET(req: NextRequest) {
     capCents: MAX_SPEND_CENTS,
     total: pool.length,
     dryRun,
+    ...(surfaces ? { surfaces } : {}),
     ai: ai.ok ? { ok: true } : { ok: false, reason: ai.reason, creditsExhausted: ai.creditsExhausted, skipped: aiSkipped, alert: aiAlert },
     note:
       "Each settled call keeps a listing inside the discovery window for 21 days. Real customer payments mark a service fresh too, so this bill falls as demand rises." +
