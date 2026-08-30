@@ -48,6 +48,24 @@ export function GET() {
       // a prepaid credit token (x-credit-token) or a wallet key, handled by the
       // client, not an MCP auth handshake.
       authentication: { required: false },
+      // Optional, not required — the free tier works with nothing set. But it has
+      // to be DECLARED, because a hosted connector only prompts for values it
+      // knows about. Smithery warned on this exactly: "users will not be prompted
+      // for these values". Without it, an agent installed from a directory can
+      // only ever use the free call and can never become a paying customer,
+      // which quietly caps that whole channel at zero revenue.
+      configSchema: {
+        type: "object",
+        required: [],
+        properties: {
+          creditToken: {
+            type: "string",
+            title: "Prepaid credit token (recommended)",
+            description:
+              "A ck_… token minted by one x402 settlement on buy-credits. Sent as the x-credit-token header; each call debits the prepaid balance with no wallet and no signature per call. Leave blank to stay on the free tier: 1 call/day/service, then a preview.",
+          },
+        },
+      },
       instructions:
         "Pay-per-call Base onchain-safety, wallet-intel & AI tools. Free tier: 1 call/day/service then a preview. For unlimited paid calls set X402_CREDIT_TOKEN (prepaid, no wallet) or AGENT_PRIVATE_KEY. Install: npx -y x402-bazaar-mcp.",
       tools,
@@ -57,6 +75,9 @@ export function GET() {
         homepage: SITE,
         catalog: `${SITE}/.well-known/x402`,
         install: { command: "npx", args: ["-y", "x402-bazaar-mcp"] },
+        // Preferred by every zero-install surface (Smithery, Claude and ChatGPT
+        // connectors); none of them can take a stdio server.
+        remote: { type: "streamable-http", url: `${SITE}/mcp` },
         toolCount: tools.length,
       },
     },
