@@ -3,7 +3,19 @@
 #
 # If Smithery scans the repo root (sukrutkrdg/402) rather than this subfolder,
 # copy this file to the repo root or point Smithery at the `mcp` directory.
-
+#
+# PREFER THE HOSTED SERVER. We are listed on Smithery as a stdio server, which
+# means an agent has to `npx`-install it and hand it a key in env. Every x402
+# server on Smithery with real usage is `remote: true`, and a stdio entry cannot
+# be added as a Claude custom connector or a ChatGPT connector at all — both
+# require an internet-reachable HTTPS endpoint. Ours has existed since 0.3.0:
+#
+#     https://402.com.tr/mcp        (Streamable HTTP, 137 tools, no install)
+#
+# The stdio block below is kept because it still works and some clients want it,
+# but the listing should point at the URL above. Update it in the Smithery
+# dashboard (Add/Edit server -> URL) rather than here — Smithery takes the remote
+# URL through the UI/CLI, not through this file.
 startCommand:
   type: stdio
   # Nothing is required — with no config the server runs on the FREE tier (one
