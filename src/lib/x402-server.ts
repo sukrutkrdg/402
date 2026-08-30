@@ -14,12 +14,43 @@ import { createFacilitatorConfig } from "@coinbase/x402";
 import { NETWORK, getConfig, sellerReady } from "./config";
 
 let cached: x402ResourceServer | undefined;
+let initOnce: Promise<void> | undefined;
 
 /**
- * Returns the shared resource server, or throws a clear error if the seller
- * credentials aren't configured yet.
+ * Returns the shared resource server, initialised exactly once per instance.
+ *
+ * The initialisation is the whole point, and getting it wrong was costing us
+ * 503s. `withX402` builds a fresh HTTP wrapper per call and its `isInitialized`
+ * flag lives in that wrapper's closure, so with the default
+ * `syncFacilitatorOnStart = true` every request re-ran `initialize()`. That does:
+ *
+ *     this.supportedResponsesMap.clear();          // on the SHARED server
+ *     await facilitatorClient.getSupported();      // network call to CDP
+ *
+ * — it empties the shared map and then goes to the network. Any concurrent
+ * request that reached `getSupportedKind()` inside that window found nothing and
+ * threw "Facilitator does not support exact on eip155:8453", which surfaced as a
+ * 503. It also meant one authenticated CDP round trip per request, on all 141
+ * endpoints, including unpaid 402 probes — by far our largest traffic class.
+ *
+ * So we initialise once here and pass `syncFacilitatorOnStart = false` at the
+ * call site. A failed init is not cached: the promise is cleared so the next
+ * request retries instead of the instance being permanently poisoned.
  */
-export function getResourceServer(): x402ResourceServer {
+export async function getResourceServer(): Promise<x402ResourceServer> {
+  const server = buildResourceServer();
+  if (!initOnce) {
+    initOnce = server.initialize().catch((err: unknown) => {
+      initOnce = undefined; // let the next request try again
+      throw err;
+    });
+  }
+  await initOnce;
+  return server;
+}
+
+/** Construct (or reuse) the server itself, without initialising it. */
+function buildResourceServer(): x402ResourceServer {
   if (cached) return cached;
 
   const cfg = getConfig();

@@ -82,6 +82,50 @@ function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>
 }
 
 /**
+ * What this call actually costs, for BOTH rails.
+ *
+ * This exists because the two rails computed it separately and drifted. When
+ * `url-to-json` was split by mode — $0.01 for a default extraction, $0.06 for
+ * `list=true`, whose 8000-token budget costs us ~$0.044 in model spend — the
+ * uplift was added to the x402 challenge only. The credit rail kept debiting the
+ * declared $0.01, so a prepaid caller bought the expensive mode for a sixth of
+ * its price and the response cheerfully reported `chargedUsd: 0.01`. A $0.25
+ * credit pack was worth about $1.10 of Anthropic spend to anyone who noticed.
+ *
+ * One function, both callers. A future price rule added here cannot reach one
+ * rail and miss the other.
+ */
+async function effectivePriceFor(
+  service: NonNullable<ReturnType<typeof getService>>,
+  req: NextRequest,
+): Promise<string> {
+  if (service.id === "buy-credits") {
+    // The challenge amount is the chosen pack's price (tier=0.25|1|5|20).
+    return tierPrice(paramsFrom(req, service).tier || "");
+  }
+  if (service.id === "url-to-json") {
+    const list = String(paramsFrom(req, service).list ?? "").trim();
+    // Must stay identical to the listMode test in src/lib/ai.ts.
+    if (/^(true|1|yes)$/i.test(list)) return "$0.06";
+    return service.price;
+  }
+  if (service.id === "ai-token-report") {
+    // Coupon-discounted: a caller who just paid the entry check on this token
+    // gets the report for less. Falls back to full price if absent — never
+    // cheaper without a real prior purchase.
+    try {
+      const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
+      if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) {
+        return "$0.05";
+      }
+    } catch {
+      /* fall back to full price */
+    }
+  }
+  return service.price;
+}
+
+/**
  * Post-payment funnel bookkeeping, shared by the x402 and credit pay paths so
  * both kinds of payer get the same product: paying the entry check mints a 1h
  * coupon for the AI report on the same token; a paid re-check attaches the
@@ -231,15 +275,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // Credit payers get the same funnel prices as x402 payers: an unexpired
     // coupon (earned by paying the entry check on this token) discounts the AI
     // report here exactly as it discounts the x402 challenge.
-    let cents = priceCents(service.price);
-    if (service.id === "ai-token-report") {
-      try {
-        const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
-        if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) cents = 5;
-      } catch {
-        /* full price */
-      }
-    }
+    const cents = priceCents(await effectivePriceFor(service, req));
     // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
     // one step, so two concurrent calls can't each pass a cheap pre-check and get a
     // free call on the race. An underfunded/unknown token is refunded inside
@@ -498,32 +534,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const exampleInput = exampleInputFor(service);
   const outputExample = (await loadSample(service.id)) ?? staticOutputExample(service.id);
 
-  // Coupon-discounted price: a caller who just paid the entry check on this token
-  // gets the AI report for less. Checked at challenge time by src+token; falls
-  // back to full price if absent — never cheaper without a real prior purchase.
-  let effectivePrice = service.price;
-  if (service.id === "buy-credits") {
-    // The challenge amount is the chosen pack's price (tier=0.25|1|5|20).
-    effectivePrice = tierPrice(paramsFrom(req, service).tier || "");
-  } else if (service.id === "url-to-json") {
-    // One flat price could not be right for both modes. A default extraction is
-    // one 16K-char fetch plus a 1200-token completion — a fraction of a cent on
-    // Haiku — while list=true opens an 8000-token output budget whose model cost
-    // alone reaches ~$0.044. The old flat $0.04 charged 8x cost for the common
-    // call and sold the list call below cost. Price the two paths separately.
-    if (/^(true|1|yes)$/i.test(String(paramsFrom(req, service).list ?? "").trim())) {
-      effectivePrice = "$0.06";
-    }
-  } else if (service.id === "ai-token-report") {
-    try {
-      const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
-      if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) {
-        effectivePrice = "$0.05";
-      }
-    } catch {
-      /* fall back to full price */
-    }
-  }
+  // Tier packs, mode pricing and coupon discounts all live in one place now, so
+  // the challenge and the credit debit cannot disagree. See effectivePriceFor.
+  const effectivePrice = await effectivePriceFor(service, req);
 
   const routeConfig: RouteConfig = {
     accepts: {
@@ -552,8 +565,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   };
 
   try {
-    const server = getResourceServer();
-    const guarded = withX402(handler, routeConfig, server);
+    const server = await getResourceServer();
+    // `false` = do not re-handshake the facilitator. getResourceServer() has
+    // already done it once for this instance; letting the wrapper do it per
+    // request clears the shared supported-kinds map mid-flight and 503s any
+    // concurrent call. See src/lib/x402-server.ts.
+    const guarded = withX402(handler, routeConfig, server, undefined, undefined, false);
     const res = await guarded(req);
     // Telemetry: a 402 means the caller was shown the price and (usually) walked
     // away — log it so we can measure challenge→paid conversion per service.
