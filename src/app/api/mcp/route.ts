@@ -54,9 +54,39 @@ function toolList() {
     const blurb = s.description.replace(/^\s*🆕\s*/u, "").trim();
     const reqNote = required.length ? ` Required input${required.length > 1 ? "s" : ""}: ${required.join(", ")}.` : "";
     return {
-      name: s.id,
+      // snake_case. MCP allows [A-Za-z0-9_-], but the convention every scorer
+      // and most model prompts assume is underscores, and our own server card
+      // has always published `token_risk`. Serving `token-risk` here made the
+      // two disagree — callTool still accepts both spellings, so nothing that
+      // bound the old name breaks.
+      name: s.id.replace(/-/g, "_"),
       description: `${s.tagline} — ${blurb}${reqNote} Priced ${s.price} per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.`,
       inputSchema: { type: "object", properties, ...(required.length ? { required } : {}) },
+      // What comes back. Every handler returns the same envelope, so an agent can
+      // find the payload and the timestamp without calling once to learn the
+      // shape. Declared loosely on purpose: the inner `data` differs per service
+      // and claiming a precise shape we do not enforce would be worse than
+      // saying "an object".
+      outputSchema: {
+        type: "object",
+        properties: {
+          service: { type: "string", description: "The service id that answered." },
+          data: { type: "object", description: "The result payload. Shape is service-specific; every field is documented in the service description above." },
+          checkedAt: { type: "string", description: "ISO-8601 timestamp of when the underlying reads were taken." },
+        },
+        required: ["data"],
+      },
+      // MCP annotations. All of these are reads — nothing here mutates state on
+      // the caller's behalf, and that is worth declaring rather than leaving an
+      // agent to infer it. `openWorldHint` is true because almost every answer
+      // comes from live chain or third-party data, not from a closed table.
+      annotations: {
+        title: s.name,
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     };
   });
 }
