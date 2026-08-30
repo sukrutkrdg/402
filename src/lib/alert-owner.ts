@@ -12,6 +12,10 @@
  *   - It must not be able to break the thing it watches. Every failure here is
  *     swallowed; an alert that throws inside a cron would take down the run it
  *     was supposed to report on.
+ *   - Delivery is optional. The incident is recorded in KV whichever way, and
+ *     /api/revenue renders it at the top of the stats panel — that is the
+ *     channel the operator actually reads. Telegram is a convenience for
+ *     anyone who sets OWNER_TELEGRAM_CHAT_ID and is off by default.
  *   - It must not repeat itself daily. An outage that pages once is a signal; one
  *     that pages every morning becomes a filter rule, and then the next real
  *     alert is invisible too. So an incident is announced once, and again only

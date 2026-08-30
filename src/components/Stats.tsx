@@ -16,6 +16,11 @@ interface Revenue {
   payments: Payment[];
   rpcLimited?: boolean;
   note?: string;
+  /** Something is broken that only the operator can fix. Raised by the crons
+   *  (Anthropic credits exhausted, a published surface gone missing) and kept
+   *  in KV until it clears. Surfaced here because there is no other channel. */
+  openIncident?: { kind: string; since: string; text: string };
+  unpaidRefunds?: { count: number; cents: number };
 }
 
 const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
@@ -231,8 +236,34 @@ export default function Stats() {
     load(token);
   }
 
+  const incident = data?.openIncident;
+  const owed = data?.unpaidRefunds;
+
   return (
     <div className="flex flex-col gap-8">
+      {/* Anything here needs a human. It is deliberately the first thing on the
+          page and deliberately loud — the last outage took eleven AI endpoints
+          down for hours and was found by a call that happened to fail. */}
+      {incident && (
+        <section className="rounded-xl border border-red-500/40 bg-red-500/10 p-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-semibold text-red-300">⚠ Needs your attention — {incident.kind}</span>
+            <span className="text-xs text-red-300/70">
+              since {new Date(incident.since).toLocaleString()}
+            </span>
+          </div>
+          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-red-100/90">{incident.text}</p>
+        </section>
+      )}
+      {owed && owed.count > 0 && (
+        <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <span className="font-semibold text-amber-300">⚠ {owed.count} refund(s) we owe and could not pay</span>
+          <p className="mt-1 text-sm text-amber-100/90">
+            ${(owed.cents / 100).toFixed(2)} total. KV was unreachable when a failed call needed
+            refunding, so the credit was never returned.
+          </p>
+        </section>
+      )}
       <section className="flex flex-col gap-2">
         <span className="pill w-fit">💰 Revenue</span>
         <h1 className="text-3xl font-bold tracking-tight">Your earnings, onchain</h1>
