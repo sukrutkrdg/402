@@ -15,7 +15,7 @@ import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/buil
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { getResourceServer } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
-import { NETWORK, getConfig, getSiteUrl } from "@/lib/config";
+import { NETWORK, ALL_NETWORKS, getConfig, getSiteUrl } from "@/lib/config";
 import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
@@ -539,12 +539,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const effectivePrice = await effectivePriceFor(service, req);
 
   const routeConfig: RouteConfig = {
-    accepts: {
-      scheme: "exact",
+    // One entry per network we accept. x402 v2 lets the payer choose, so an
+    // agent funded on Polygon can buy without us moving off Base — Base stays
+    // first because it is what every existing client already signs for.
+    accepts: ALL_NETWORKS.map((network) => ({
+      scheme: "exact" as const,
       price: effectivePrice,
-      network: NETWORK,
+      network,
       payTo: cfg.payTo,
-    },
+    })),
     // Canonical resource URL: keeps discovery/Bazaar indexing on the real domain
     // even when the route is reached via the vercel.app host (Cloudflare bypass).
     resource: `${(process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replace(/\/$/, "")}/api/x402/${service.id}`,

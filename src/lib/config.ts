@@ -11,6 +11,31 @@ import type { Network } from "@x402/core/types";
 export const NETWORK: Network = "eip155:8453";
 export const CHAIN_ID = 8453;
 
+/**
+ * Additional networks we will also accept payment on.
+ *
+ * x402 v2's `accepts` is a list, so a resource can quote several networks and
+ * let the payer pick. We asked the CDP facilitator what it actually supports
+ * before adding anything — it answers `exact` on eip155:8453, 137, 42161, 480
+ * and on Solana — so this is a declaration of something already true rather
+ * than a hopeful one.
+ *
+ * Polygon first, and only Polygon, because it is the cheapest possible test of
+ * whether multi-chain acceptance changes anything: same `ExactEvmScheme`, same
+ * payTo (EVM addresses are chain-agnostic, so the money lands in the wallet we
+ * already control), no new dependency, nothing to ask the operator for. If
+ * agents do pay on it, that earns the harder work — Solana needs its own
+ * package, its own wallet and an SPL token account.
+ *
+ * The thing to keep in mind operationally: USDC received here is USDC *on
+ * Polygon*. Same address, different chain, and it does not show up in the Base
+ * revenue figures until it is bridged.
+ */
+export const EXTRA_NETWORKS: Network[] = ["eip155:137"];
+
+/** Every network a payer may settle on, primary first. */
+export const ALL_NETWORKS: Network[] = [NETWORK, ...EXTRA_NETWORKS];
+
 /** USDC on Base mainnet — the asset x402 "exact" settles in by default. */
 export const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 

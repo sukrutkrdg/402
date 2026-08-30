@@ -11,7 +11,7 @@ import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { createFacilitatorConfig } from "@coinbase/x402";
-import { NETWORK, getConfig, sellerReady } from "./config";
+import { ALL_NETWORKS, getConfig, sellerReady } from "./config";
 
 let cached: x402ResourceServer | undefined;
 let initOnce: Promise<void> | undefined;
@@ -65,8 +65,11 @@ function buildResourceServer(): x402ResourceServer {
 
   // Register the Bazaar extension so routes that declare a discovery extension
   // get auto-indexed in the x402 Bazaar (CDP's discovery layer) after settlement.
-  cached = new x402ResourceServer(facilitator)
-    .register(NETWORK, new ExactEvmScheme())
-    .registerExtension(bazaarResourceServerExtension);
+  // One scheme instance per network we advertise. `ExactEvmScheme` is
+  // chain-agnostic, so the extra EVM chains cost a registration and nothing
+  // else — same code path, same payTo, same settlement shape.
+  let server = new x402ResourceServer(facilitator);
+  for (const net of ALL_NETWORKS) server = server.register(net, new ExactEvmScheme());
+  cached = server.registerExtension(bazaarResourceServerExtension);
   return cached;
 }
