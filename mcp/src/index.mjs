@@ -30,7 +30,7 @@ import { z } from "zod";
 
 // Keep in step with package.json and server.json — all three are published and
 // a stale one here is what the MCP registry reports.
-const VERSION = "0.2.6";
+const VERSION = "0.2.7";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
@@ -118,6 +118,22 @@ const server = new McpServer({ name: "x402-bazaar", version: VERSION });
 
 const registeredNames = new Set();
 
+// What every tool returns. Declared loosely and with nothing required, because
+// the inner `data` differs per service and claiming a field we do not always
+// return would be worse than saying "an object" — an error path genuinely has
+// no `data`, and promising one would make the schema a lie rather than a
+// contract. Declaring this at all is what lets a client (and a registry's
+// quality scorer) know the shape without spending a call to learn it.
+const OUTPUT_SHAPE = {
+  service: z.string().optional().describe("The service id that answered."),
+  data: z
+    .object({})
+    .passthrough()
+    .optional()
+    .describe("The result payload. Shape is service-specific; every field is documented in the tool description."),
+  checkedAt: z.string().optional().describe("ISO-8601 timestamp of when the underlying reads were taken."),
+};
+
 function registerService(service) {
   // MCP tool names must use underscores (not dashes).
   const toolName = (service.id ?? service.name ?? "unknown").replace(/-/g, "_");
@@ -145,7 +161,34 @@ function registerService(service) {
     `Call the ${service.name ?? service.id} endpoint (paid via x402 on Base).`;
   const method = (service.method ?? "GET").toUpperCase();
 
-  server.tool(toolName, description, inputShape, async (args) => {
+  // Nearly every endpoint is a read: it answers from live chain or third-party
+  // data and changes nothing on the caller's behalf. `buy-credits` is the one
+  // exception — its whole purpose is to take a USDC payment and mint a token.
+  // Telling an agent that call is read-only and idempotent would invite it to
+  // retry a failed-looking request and pay twice, so it is annotated honestly.
+  const mutates = (service.id ?? "") === "buy-credits";
+
+  // registerTool (not the deprecated 4-arg `server.tool`) is the only form that
+  // carries outputSchema and annotations — the two things a registry scanner
+  // reads and, until now, found missing on this server.
+  server.registerTool(
+    toolName,
+    {
+      title: service.name ?? toolName,
+      description,
+      inputSchema: inputShape,
+      outputSchema: OUTPUT_SHAPE,
+      annotations: {
+        title: service.name ?? toolName,
+        readOnlyHint: !mutates,
+        destructiveHint: false,
+        idempotentHint: !mutates,
+        // Almost every answer comes from live chain or third-party data, not
+        // from a closed table.
+        openWorldHint: true,
+      },
+    },
+    async (args) => {
     let response;
     try {
       let target = service.endpoint;
@@ -176,12 +219,19 @@ function registerService(service) {
       };
     }
 
-    // Pretty-print JSON so the LLM gets a readable, structured result.
+    // Pretty-print JSON so the LLM gets a readable, structured result, and keep
+    // the parsed object — declaring an outputSchema obliges every non-error
+    // result to carry structuredContent, and the SDK throws without it.
     const ct = response.headers.get("content-type") ?? "";
     let text = await response.text();
+    let structured = null;
     if (ct.includes("application/json")) {
       try {
-        text = JSON.stringify(JSON.parse(text), null, 2);
+        const parsed = JSON.parse(text);
+        text = JSON.stringify(parsed, null, 2);
+        // structuredContent must be an object; an array or scalar body would
+        // fail the schema, so it travels as text only.
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) structured = parsed;
       } catch {
         /* leave as-is */
       }
@@ -200,8 +250,28 @@ function registerService(service) {
       text = `${text}\n\n[x402-bazaar-mcp] 402 Payment Required — ${hint}`;
     }
 
-    return { content: [{ type: "text", text }], isError: !response.ok };
-  });
+      // A 200 that did not parse as a JSON object cannot satisfy the declared
+      // output schema. Say so rather than inventing a wrapper around it: the
+      // gateway always answers JSON, so this means something upstream is wrong.
+      if (response.ok && !structured) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${text}\n\n[x402-bazaar-mcp] Upstream returned ${response.status} with a non-JSON body, so no structured result is available.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text", text }],
+        ...(structured ? { structuredContent: structured } : {}),
+        isError: !response.ok,
+      };
+    },
+  );
 
   return true;
 }

@@ -74,17 +74,22 @@ function toolList() {
           data: { type: "object", description: "The result payload. Shape is service-specific; every field is documented in the service description above." },
           checkedAt: { type: "string", description: "ISO-8601 timestamp of when the underlying reads were taken." },
         },
-        required: ["data"],
+        // Nothing is required. An error path genuinely has no `data`, and a
+        // schema that promises a field we do not always return is a lie rather
+        // than a contract.
       },
-      // MCP annotations. All of these are reads — nothing here mutates state on
-      // the caller's behalf, and that is worth declaring rather than leaving an
-      // agent to infer it. `openWorldHint` is true because almost every answer
-      // comes from live chain or third-party data, not from a closed table.
+      // MCP annotations. Nearly all of these are reads — nothing mutates state
+      // on the caller's behalf — and that is worth declaring rather than
+      // leaving an agent to infer it. `buy-credits` is the exception: its whole
+      // purpose is to take a USDC payment and mint a token, so calling it
+      // read-only and idempotent would invite an agent to retry and pay twice.
+      // `openWorldHint` is true because almost every answer comes from live
+      // chain or third-party data, not from a closed table.
       annotations: {
         title: s.name,
-        readOnlyHint: true,
+        readOnlyHint: s.id !== "buy-credits",
         destructiveHint: false,
-        idempotentHint: true,
+        idempotentHint: s.id !== "buy-credits",
         openWorldHint: true,
       },
     };

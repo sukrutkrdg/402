@@ -1,6 +1,6 @@
 {
   "name": "x402-bazaar-mcp",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "mcpName": "io.github.sukrutkrdg/x402-bazaar-mcp",
   "description": "HTTP APIs for agents with no API key and no wallet to start: live web search, batch page reading, any page to schema-enforced JSON, token-safety and pre-trade gates, wallet + approval audits, OFAC screening and AI reports. Free call per service per day; prepaid credit token or per-call USDC over x402 after that.",
   "type": "module",
