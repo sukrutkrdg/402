@@ -8,35 +8,25 @@
  * live from the same catalog the running server registers, so it never drifts.
  */
 
-import { SERVICES } from "@/lib/services";
+import { mcpToolList } from "@/lib/mcp-tools";
 import { getSiteUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
 // Keep in step with the published npm package + registry entry.
-const MCP_VERSION = "0.2.3";
+const MCP_VERSION = "0.2.7";
 
 export function GET() {
   const SITE = getSiteUrl();
 
-  // One MCP tool per non-hidden service — same underscore naming and input schema
-  // the stdio server builds at registration time. The hosted endpoint
-  // (/api/mcp) lists the dashed service ids instead, so it accepts BOTH
-  // spellings on tools/call: an agent that bound its names from this card used
-  // to miss on every call against the hosted server.
-  const tools = SERVICES.filter((s) => !s.hidden).map((s) => {
-    const properties: Record<string, { type: string; description: string }> = {};
-    const required: string[] = [];
-    for (const p of s.params) {
-      properties[p.name] = { type: "string", description: p.label };
-      if (p.required) required.push(p.name);
-    }
-    return {
-      name: s.id.replace(/-/g, "_"),
-      description: s.description,
-      inputSchema: { type: "object", properties, required },
-    };
-  });
+  // The tool list comes from the shared builder, not from a second copy of the
+  // mapping. This file used to build its own and claimed in its header that it
+  // therefore "never drifts" — it drifted twice. Most recently it was the only
+  // surface still missing outputSchema and annotations, which is precisely the
+  // surface Smithery scores: its publish log reads
+  // `Using .well-known/mcp/server-card.json: (137 tools)`. It never calls
+  // tools/list, so a correct hosted endpoint bought us nothing here.
+  const tools = mcpToolList();
 
   return Response.json(
     {

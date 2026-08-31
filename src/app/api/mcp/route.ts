@@ -13,7 +13,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { SERVICES } from "@/lib/services";
+import { mcpToolList, visibleServices } from "@/lib/mcp-tools";
 import { getSiteUrl } from "@/lib/config";
 import { MCP_CHANNEL_HOST } from "@/lib/usage";
 import { rateLimitKv, clientIp } from "@/lib/rate-limit";
@@ -34,67 +34,6 @@ const CORS: Record<string, string> = {
 };
 
 interface RpcReq { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> }
-
-const visibleServices = () => SERVICES.filter((s) => !s.hidden);
-
-/** Catalog → MCP tool list. Each service becomes one tool. The description uses
- * the full catalog description (what it does + inputs + verdict), not just the
- * tagline — richer, self-disambiguating tool defs that a model/agent (and Glama's
- * quality scorer) can actually reason about. */
-function toolList() {
-  return visibleServices().map((s) => {
-    const properties: Record<string, { type: "string"; description?: string }> = {};
-    const required: string[] = [];
-    for (const p of s.params) {
-      properties[p.name] = { type: "string", description: p.label };
-      if (p.required) required.push(p.name);
-    }
-    // Rich, self-contained description: purpose (tagline) + the full catalog blurb
-    // (stripped of the 🆕 marker) + explicit required inputs + how it's paid.
-    const blurb = s.description.replace(/^\s*🆕\s*/u, "").trim();
-    const reqNote = required.length ? ` Required input${required.length > 1 ? "s" : ""}: ${required.join(", ")}.` : "";
-    return {
-      // snake_case. MCP allows [A-Za-z0-9_-], but the convention every scorer
-      // and most model prompts assume is underscores, and our own server card
-      // has always published `token_risk`. Serving `token-risk` here made the
-      // two disagree — callTool still accepts both spellings, so nothing that
-      // bound the old name breaks.
-      name: s.id.replace(/-/g, "_"),
-      description: `${s.tagline} — ${blurb}${reqNote} Priced ${s.price} per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.`,
-      inputSchema: { type: "object", properties, ...(required.length ? { required } : {}) },
-      // What comes back. Every handler returns the same envelope, so an agent can
-      // find the payload and the timestamp without calling once to learn the
-      // shape. Declared loosely on purpose: the inner `data` differs per service
-      // and claiming a precise shape we do not enforce would be worse than
-      // saying "an object".
-      outputSchema: {
-        type: "object",
-        properties: {
-          service: { type: "string", description: "The service id that answered." },
-          data: { type: "object", description: "The result payload. Shape is service-specific; every field is documented in the service description above." },
-          checkedAt: { type: "string", description: "ISO-8601 timestamp of when the underlying reads were taken." },
-        },
-        // Nothing is required. An error path genuinely has no `data`, and a
-        // schema that promises a field we do not always return is a lie rather
-        // than a contract.
-      },
-      // MCP annotations. Nearly all of these are reads — nothing mutates state
-      // on the caller's behalf — and that is worth declaring rather than
-      // leaving an agent to infer it. `buy-credits` is the exception: its whole
-      // purpose is to take a USDC payment and mint a token, so calling it
-      // read-only and idempotent would invite an agent to retry and pay twice.
-      // `openWorldHint` is true because almost every answer comes from live
-      // chain or third-party data, not from a closed table.
-      annotations: {
-        title: s.name,
-        readOnlyHint: s.id !== "buy-credits",
-        destructiveHint: false,
-        idempotentHint: s.id !== "buy-credits",
-        openWorldHint: true,
-      },
-    };
-  });
-}
 
 /** Run a tool = proxy to the real x402 gateway, forwarding the caller's credit token. */
 async function callTool(name: string, args: Record<string, unknown>, creditToken: string) {
@@ -155,7 +94,7 @@ async function handle(rpc: RpcReq, creditToken: string): Promise<object | null> 
     case "ping":
       return reply({});
     case "tools/list":
-      return reply({ tools: toolList() });
+      return reply({ tools: mcpToolList() });
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
       const args = (rpc.params?.arguments as Record<string, unknown>) ?? {};
