@@ -2,6 +2,7 @@
 
 import { SERVICES } from "@/lib/services";
 import { getConfig, getSiteUrl } from "@/lib/config";
+import { openApi200For } from "@/lib/morpho-health-output-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +25,7 @@ export function GET() {
           schema: { type: "string" },
         })),
         responses: {
-          "200": {
-            description: "Success",
-            content: { "application/json": { schema: { type: "object" } } },
-          },
+          "200": openApi200For(s.id),
           "402": { description: "Payment Required — pay via x402 and retry" },
         },
         "x-x402": { price: s.price, network: "eip155:8453", asset: "USDC", payTo: cfg.payTo || null },
