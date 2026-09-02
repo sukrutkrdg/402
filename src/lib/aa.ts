@@ -28,6 +28,60 @@ const ENTRYPOINTS = [
 ] as const;
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+/**
+ * EIP-8130 — the account class this file cannot see.
+ *
+ * Cobalt puts account abstraction in the protocol. An 8130 account sends an
+ * ORDINARY transaction (type `0x79` = 121), validated against onchain config;
+ * there is no EntryPoint, no bundler, and no UserOperationEvent. Sponsorship is
+ * a FIELD on the transaction — `tx.payer` names the account covering gas, with
+ * `payerAuth` carrying its authorisation — and there is no paymaster contract
+ * at all. Measured on vibenet, where 8130 is live: a type-0x79 transaction
+ * carries { from, payerAuth, senderAuth, tx: { calls, payer, nonceKey, … } }.
+ *
+ * Everything below reads UserOperationEvents, so an 8130 account is invisible
+ * to it — not quiet, invisible. That matters because the honest answer to "no
+ * UserOperations found" changes completely once 8130 is live: before, it means
+ * this is not a smart account; after, it means this is not a *4337* smart
+ * account and may be an 8130 one we cannot observe here.
+ *
+ * ERC-4337 is not going away — 9.3M UserOperationEvents from 2.17M distinct
+ * senders on Base in the last 30 days — so this stays the primary read. 8130 is
+ * an additional surface, and the fix is to stop overclaiming, not to rewrite.
+ */
+const NATIVE_AA_TX_TYPE = 121; // 0x79
+
+/**
+ * Is EIP-8130 live on Base mainnet yet?
+ *
+ * Cached because it flips exactly once and never back, and because every call
+ * here would otherwise add a query to a paid endpoint's latency. `null` means
+ * the probe itself failed — callers must treat that as "don't know", never as
+ * "not live", or they reintroduce the confident-EOA answer this exists to stop.
+ */
+let nativeAaCache: { live: boolean; at: number } | null = null;
+const NATIVE_AA_TTL_MS = 6 * 60 * 60 * 1000;
+
+export async function nativeAaLive(): Promise<boolean | null> {
+  if (nativeAaCache && Date.now() - nativeAaCache.at < NATIVE_AA_TTL_MS) return nativeAaCache.live;
+  const rows = await cdpSql<{ n?: string }>(
+    `SELECT count() AS n FROM base.transactions WHERE type = ${NATIVE_AA_TX_TYPE} AND timestamp >= now() - INTERVAL 7 DAY`,
+  );
+  if (rows === null) return null;
+  const live = Number(rows[0]?.n ?? 0) > 0;
+  nativeAaCache = { live, at: Date.now() };
+  return live;
+}
+
+/** One sentence about 8130 coverage, or nothing while it is not live. */
+function nativeAaCaveat(live: boolean | null, subject: "wallet" | "paymaster"): string {
+  if (live === false) return "";
+  const hedge = live === null ? "may now be" : "is";
+  return subject === "wallet"
+    ? ` EIP-8130 native account abstraction ${hedge} live on Base: those accounts emit no UserOperationEvent and name their gas payer in a transaction field, so none of their activity is counted here.`
+    : ` EIP-8130 native account abstraction ${hedge} live on Base, and it has no paymaster contracts — a payer there is a plain account named in the transaction. Sponsorship done that way is not visible to this read.`;
+}
+
 // Best-effort labels for recognized paymasters. Deliberately conservative — only
 // entries we're confident about; every other sponsor is reported by address with
 // known:false rather than risk a wrong label. Extend as sponsors are identified.
@@ -85,23 +139,42 @@ export async function gasSponsor(params: Record<string, string>) {
   }
   if (!dataAvailable) throw new Error("Account-abstraction data unavailable (data provider) — try again shortly");
 
+  const nativeAa = await nativeAaLive();
+
   const totalOps = [...perPm.values()].reduce((a, e) => a + e.ops, 0);
   if (totalOps === 0) {
     // "Nothing found" only means "not a smart account" if we looked everywhere.
-    // With an EntryPoint unread, the honest answer is that we do not know.
+    // Two different ways of not having looked everywhere:
+    //   - an EntryPoint we could not read (transport), and
+    //   - EIP-8130, an entire account class that emits nothing we query.
+    // The second is not a degradation — the read worked perfectly and still
+    // cannot see those accounts — so it changes the verdict without setting
+    // `degraded`. Saying "likely a plain EOA" once 8130 is live would be a
+    // confident wrong answer about an account that is demonstrably not one.
     const blind = unreadEntryPoints.length > 0;
+    const cannotRuleOut8130 = nativeAa !== false;
     return finish({
       wallet: w,
       windowDays: days,
-      verdict: blind ? "unknown" : "not_smart_account",
-      smartAccount: blind ? null : false,
+      verdict: blind ? "unknown" : cannotRuleOut8130 ? "not_erc4337" : "not_smart_account",
+      // false is a claim about every account class. Only defensible while 8130
+      // is known not to be live.
+      smartAccount: blind || cannotRuleOut8130 ? null : false,
+      erc4337Account: blind ? null : false,
       userOps: 0,
+      coverage: "erc-4337 EntryPoint v0.6+v0.7 only",
+      nativeAaLive: nativeAa,
       degraded: blind,
       ...(blind ? { unreadEntryPoints } : {}),
       recommendation: blind
-        ? `No UserOperations found, but EntryPoint ${unreadEntryPoints.join(" + ")} could not be read — an account that operates only there would look exactly like this. Not a finding that the address is a plain EOA; re-run before concluding anything.`
-        : `No ERC-4337 UserOperations from this address on Base in ${days}d — it isn't operating as a smart account (likely a plain EOA, or inactive). Gas-sponsorship only applies to smart accounts; widen days= if you expected activity.`,
-      note: "Reads a Base wallet's ERC-4337 account-abstraction profile from EntryPoint v0.6+v0.7 UserOperationEvents. wallet= required; days= optional (default 30, max 90). Not financial advice.",
+        ? `No UserOperations found, but EntryPoint ${unreadEntryPoints.join(" + ")} could not be read — an account that operates only there would look exactly like this. Not a finding that the address is a plain EOA; re-run before concluding anything.` +
+          nativeAaCaveat(nativeAa, "wallet")
+        : cannotRuleOut8130
+          ? `No ERC-4337 UserOperations from this address on Base in ${days}d, so it is not operating as a 4337 smart account.` +
+            nativeAaCaveat(nativeAa, "wallet") +
+            ` This is therefore NOT a finding that the address is a plain EOA — widen days= if you expected 4337 activity.`
+          : `No ERC-4337 UserOperations from this address on Base in ${days}d — it isn't operating as a smart account (likely a plain EOA, or inactive). Gas-sponsorship only applies to smart accounts; widen days= if you expected activity.`,
+      note: "Reads a Base wallet's ERC-4337 account-abstraction profile from EntryPoint v0.6+v0.7 UserOperationEvents. Does NOT cover EIP-8130 native accounts, which emit no UserOperationEvent. wallet= required; days= optional (default 30, max 90). Not financial advice.",
     });
   }
 
@@ -130,8 +203,11 @@ export async function gasSponsor(params: Record<string, string>) {
   return finish({
     wallet: w,
     windowDays: days,
-    verdict, // self_paid | fully_sponsored | mixed | not_smart_account
+    verdict, // self_paid | fully_sponsored | mixed | not_smart_account | not_erc4337
     smartAccount: true,
+    erc4337Account: true,
+    coverage: "erc-4337 EntryPoint v0.6+v0.7 only",
+    nativeAaLive: nativeAa,
     userOps: totalOps,
     successPct: +((100 * okOps) / totalOps).toFixed(1),
     totalGasEth: fmtEth(totalGas),
@@ -150,6 +226,10 @@ export async function gasSponsor(params: Record<string, string>) {
         : verdict === "fully_sponsored"
           ? `ERC-4337 smart account whose gas is 100% SPONSORED (${totalOps} op(s), ${fmtEth(totalGas)} ETH) by ${sponsored.length} paymaster(s), led by ${sponsors[0]?.paymaster}. It spends no ETH on gas — a pattern typical of app- or agent-operated accounts; don't infer funding or solvency from gas spend.`
           : `ERC-4337 smart account: ${sponsoredPct}% of ${totalOps} op(s) gas-sponsored by ${sponsored.length} paymaster(s), the rest self-paid.`) +
+      // The split is a share of 4337 ops, not of everything this account does.
+      // An account that also transacts natively under 8130 has gas activity
+      // that is simply not in the denominator.
+      nativeAaCaveat(nativeAa, "wallet") +
       (unreadEntryPoints.length > 0
         ? ` PARTIAL: EntryPoint ${unreadEntryPoints.join(" + ")} could not be read, so these counts and the self-paid/sponsored split cover only the EntryPoint(s) that answered.`
         : ""),
@@ -180,16 +260,30 @@ export async function paymasterAudit(params: Record<string, string>) {
     `SELECT count() AS ops, uniqExact(toString(parameters['sender'])) AS senders, countIf(toString(parameters['success'])='true') AS ok, sum(toUInt256OrZero(toString(parameters['actualGasCost']))) AS gas FROM base.events WHERE address IN (${eps}) AND event_name='UserOperationEvent' AND parameters['paymaster']='${pl}' AND block_timestamp > now() - INTERVAL ${days} DAY`,
   );
   if (agg === null) throw new Error("Account-abstraction data unavailable (data provider) — try again shortly");
+  const nativeAa = await nativeAaLive();
   const a = agg[0] ?? {};
   const ops = Number(a.ops ?? 0);
   if (ops === 0) {
+    // Under 8130 there is no paymaster CONTRACT: a payer is an ordinary account
+    // named in the transaction. So "sponsors nothing" is only safe to say while
+    // 4337 is the whole of sponsorship on this chain. Once it isn't, an address
+    // can be sponsoring heavily and still be silent here, and treating that
+    // silence as a verdict would discredit a working sponsor.
+    const cannotRuleOut8130 = nativeAa !== false;
     return finish({
       paymaster: p,
       windowDays: days,
-      verdict: "no_activity",
+      verdict: cannotRuleOut8130 ? "no_erc4337_activity" : "no_activity",
       sponsoredOps: 0,
-      recommendation: `This address sponsored NO ERC-4337 UserOperations on Base in ${days}d — it isn't an active paymaster (or has stopped sponsoring). Treat any "we sponsor gas" claim accordingly before relying on it.`,
-      note: "Trust audit of a Base gas PAYMASTER from EntryPoint v0.6+v0.7 UserOperationEvents: sponsored op volume, distinct accounts served, success rate, total gas sponsored and concentration. paymaster= required; days= optional (default 30, max 90). Not financial advice.",
+      coverage: "erc-4337 EntryPoint v0.6+v0.7 only",
+      nativeAaLive: nativeAa,
+      recommendation:
+        `This address sponsored NO ERC-4337 UserOperations on Base in ${days}d.` +
+        (cannotRuleOut8130
+          ? nativeAaCaveat(nativeAa, "paymaster") +
+            ` So this is not a finding that it sponsors nothing — only that it is not an active 4337 paymaster.`
+          : ` It isn't an active paymaster (or has stopped sponsoring). Treat any "we sponsor gas" claim accordingly before relying on it.`),
+      note: "Trust audit of a Base gas PAYMASTER from EntryPoint v0.6+v0.7 UserOperationEvents: sponsored op volume, distinct accounts served, success rate, total gas sponsored and concentration. Does NOT cover EIP-8130 payers, which are accounts named in a transaction field rather than paymaster contracts. paymaster= required; days= optional (default 30, max 90). Not financial advice.",
     });
   }
   const senders = Number(a.senders ?? 0);
@@ -219,7 +313,9 @@ export async function paymasterAudit(params: Record<string, string>) {
     label: KNOWN_PAYMASTERS[pl] ?? null,
     known: pl in KNOWN_PAYMASTERS,
     windowDays: days,
-    verdict, // healthy_active | low_activity | degraded | no_activity
+    verdict, // healthy_active | low_activity | degraded | no_activity | no_erc4337_activity
+    coverage: "erc-4337 EntryPoint v0.6+v0.7 only",
+    nativeAaLive: nativeAa,
     sponsoredOps: ops,
     distinctAccounts: senders,
     successPct,
