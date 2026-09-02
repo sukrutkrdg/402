@@ -61,7 +61,43 @@ const TRANSFER_SENDER_POLICY = keccak256(toBytes("TRANSFER_SENDER_POLICY"));
 const TRANSFER_RECEIVER_POLICY = keccak256(toBytes("TRANSFER_RECEIVER_POLICY"));
 const TRANSFER_EXECUTOR_POLICY = keccak256(toBytes("TRANSFER_EXECUTOR_POLICY"));
 const MINT_RECEIVER_POLICY = keccak256(toBytes("MINT_RECEIVER_POLICY"));
-// PausableFeature enum: TRANSFER=0, MINT=1, BURN=2. B20Variant enum: Asset=0, Stablecoin=1.
+
+/**
+ * Cobalt adds a SECOND, independent seize surface, and its policy semantics are
+ * INVERTED relative to every other policy in this file. Read this before
+ * touching anything below that mentions seize.
+ *
+ * Beryl (still valid): `burnBlocked(from, amount)` burns the balance of a holder
+ * who is NOT authorized under TRANSFER_SENDER_POLICY. Blocked ⇒ seizable.
+ *
+ * Cobalt: `seizeWithMemo(from, to, amount, memo)` REASSIGNS the balance (a
+ * transfer, so supply is unchanged) and reads SEIZE_HOLDER_POLICY against
+ * `from`. The spec is explicit that `AccountNotSeizable(address)` is thrown
+ * "when `from` IS AUTHORIZED under SEIZE_HOLDER_POLICY (that is, not seizable)".
+ *
+ *   authorized under SEIZE_HOLDER_POLICY  ⇒  PROTECTED, cannot be seized
+ *   NOT authorized                        ⇒  SEIZABLE
+ *
+ * That is the opposite of TRANSFER_SENDER_POLICY, where authorized means
+ * allowed. An unset slot reads as always-allow, so with no policy configured
+ * every holder is authorized and therefore NOBODY is seizable.
+ *
+ * The consequence for this file: seize bypasses TRANSFER_SENDER/RECEIVER/
+ * EXECUTOR_POLICY entirely, so "this token has no sender policy" no longer
+ * implies "your balance is safe". A token can define a seizable set that is
+ * completely distinct from its transfer policy, and before this change we told
+ * the holder of exactly that token it could not be seized.
+ *
+ * Pre-Cobalt these slots are simply unset, so `policyId()` returns 0 and the
+ * reads below are correct on Beryl too — but a FAILED read must never collapse
+ * to 0, which is why they join the `degraded` set rather than defaulting.
+ */
+const SEIZE_HOLDER_POLICY = keccak256(toBytes("SEIZE_HOLDER_POLICY"));
+const SEIZE_RECEIVER_POLICY = keccak256(toBytes("SEIZE_RECEIVER_POLICY"));
+
+// PausableFeature enum: TRANSFER=0, MINT=1, BURN=2, and SEIZE=3 from Cobalt —
+// an independent pause vector, so seize can be live while transfers are paused.
+const PAUSE_SEIZE = 3;
 const MAX_SUPPLY_CAP = (1n << 128n) - 1n; // uint128.max == "no cap" sentinel
 const WAD = 10n ** 18n;
 
@@ -113,14 +149,25 @@ export interface B20Signals {
   variant: "asset" | "stablecoin" | null;
   symbol: string | null;
   supplyCap: bigint;
+  /** Beryl path: a sender blocklist is set, so a blocked holder can be burnBlocked()-seized. */
   canSeize: boolean;
+  /**
+   * Cobalt path: SEIZE_HOLDER_POLICY is configured, so the issuer has designated
+   * a seizable set and `seizeWithMemo` can reassign those balances. Independent
+   * of `canSeize` — a token can have this and no sender policy at all.
+   */
+  seizeArmed: boolean;
+  seizeHolderPolicyId: bigint;
+  seizeReceiverPolicyId: bigint;
+  /** False when the chain/token has no SEIZE_* policy scope yet (pre-Cobalt) — the seize surface does not exist, rather than being unknown. */
+  cobaltSeizeReadable: boolean;
   transferGated: boolean;
   senderPolicyId: bigint;
   /** Transfers can only be executed by allowlisted executors (a third-party gate). */
   executorGated: boolean;
   /** New supply can only be minted to allowlisted receivers (mint is restricted). */
   mintGated: boolean;
-  paused: { transfer: boolean; mint: boolean; burn: boolean };
+  paused: { transfer: boolean; mint: boolean; burn: boolean; seize: boolean };
   rebase: boolean;
   supplyCapped: boolean;
   /** True when a seize/freeze-critical read failed (RPC) — verdict must not be trusted as safe. */
@@ -130,8 +177,9 @@ export interface B20Signals {
 async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const empty: B20Signals = {
     isB20: false, variant: null, symbol: null, supplyCap: 0n, canSeize: false,
+    seizeArmed: false, seizeHolderPolicyId: 0n, seizeReceiverPolicyId: 0n, cobaltSeizeReadable: false,
     transferGated: false, senderPolicyId: 0n, executorGated: false, mintGated: false,
-    paused: { transfer: false, mint: false, burn: false },
+    paused: { transfer: false, mint: false, burn: false, seize: false },
     rebase: false, supplyCapped: false, degraded: false,
   };
 
@@ -150,6 +198,11 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_EXECUTOR_POLICY] },
     { address: addr, abi: B20_ABI, functionName: "policyId", args: [MINT_RECEIVER_POLICY] },
     { address: B20_FACTORY, abi: FACTORY_ABI, functionName: "isB20", args: [addr] },
+    // Cobalt seize surface. Unset on Beryl tokens (returns 0), so these are safe
+    // to read today and become load-bearing the moment Cobalt activates.
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [SEIZE_HOLDER_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "policyId", args: [SEIZE_RECEIVER_POLICY] },
+    { address: addr, abi: B20_ABI, functionName: "isPaused", args: [PAUSE_SEIZE] },
   ] as const;
 
   type MC = { status: "success"; result: unknown } | { status: "failure"; error: Error };
@@ -168,7 +221,7 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
     }
   }
 
-  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2, exRes, mrRes, facRes] = r;
+  const [scRes, symRes, multRes, spRes, rpRes, p0, p1, p2, exRes, mrRes, facRes, shRes, srRes, p3] = r;
   if (scRes.status !== "success") return empty; // supplyCap reverted / no data → not a B20
   // Factory is the authority: a contract that answers supplyCap() but that the
   // factory disowns is a FAKE B20 (vanity-address impersonation) — not a B20.
@@ -194,9 +247,30 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
   const execPol = exRes?.status === "success" ? (exRes.result as bigint) : 0n;
   const mintRecvPol = mrRes?.status === "success" ? (mrRes.result as bigint) : 0n;
 
+  // The Cobalt seize slots deliberately do NOT join `degraded`. A revert here is
+  // an ANSWER, not a failure: the policy scope does not exist, so this token is
+  // on the pre-Cobalt surface and has no seizeWithMemo path at all. Only a
+  // transport failure means "we don't know", and that throws out of the
+  // multicall above rather than landing in a per-call `failure`.
+  //
+  // This distinction is load-bearing and was measured, not assumed: against live
+  // Beryl tokens today `policyId(SEIZE_HOLDER_POLICY)` reverts `0xcdd98a4a` and
+  // `isPaused(3)` reverts. Folding those into `degraded` would have put every
+  // B20 answer we serve into "unknown" the day this shipped.
+  const cobaltSeizeReadable = shRes?.status === "success";
+  const seizeHolderPol = cobaltSeizeReadable ? (shRes.result as bigint) : 0n;
+  const seizeRecvPol = srRes?.status === "success" ? (srRes.result as bigint) : 0n;
+
   return {
     isB20: true, variant, symbol, supplyCap,
     canSeize: senderPol > 0n,
+    // Armed only when a holder policy is actually configured: an unset slot is
+    // always-allow, which under the inverted seize semantics means every holder
+    // is authorized and therefore nobody is seizable.
+    seizeArmed: seizeHolderPol > 0n,
+    seizeHolderPolicyId: seizeHolderPol,
+    seizeReceiverPolicyId: seizeRecvPol,
+    cobaltSeizeReadable,
     transferGated: senderPol > 0n || recvPol > 0n || execPol > 0n,
     executorGated: execPol > 0n,
     mintGated: mintRecvPol > 0n,
@@ -205,6 +279,10 @@ async function readB20Signals(addr: `0x${string}`): Promise<B20Signals> {
       transfer: p0.status === "success" ? (p0.result as boolean) : false,
       mint: p1.status === "success" ? (p1.result as boolean) : false,
       burn: p2.status === "success" ? (p2.result as boolean) : false,
+      // Unreadable (pre-Cobalt) resolves to "not paused", which is the
+      // conservative direction: it never lets an unread pause flag argue that a
+      // seize could not happen.
+      seize: p3?.status === "success" ? (p3.result as boolean) : false,
     },
     rebase: variant === "asset",
     supplyCapped: supplyCap !== MAX_SUPPLY_CAP,
@@ -249,7 +327,17 @@ export async function b20Safety(params: Record<string, string>) {
   let risk = 0;
   const add = (n: number, why: string) => { risk += n; flags.push(why); };
   if (s.paused.transfer) add(35, "Transfers are CURRENTLY paused — you can't move this token right now.");
-  if (s.canSeize) add(35, "Sender blocklist policy is set — the issuer can block you and burnBlocked() (SEIZE) your balance.");
+  if (s.canSeize) add(35, "Sender blocklist policy is set — the issuer can block you and burnBlocked() (BURN your balance).");
+  // Independent of canSeize: this path bypasses the transfer policies, so a
+  // token with no sender policy at all can still be fully seizable.
+  if (s.seizeArmed) {
+    add(
+      35,
+      s.paused.seize
+        ? "Seize policy is ARMED (seizeWithMemo can reassign a holder's balance) — currently paused, but the issuer controls the pause."
+        : "Seize policy is ARMED — the issuer has designated a seizable set and can call seizeWithMemo() to reassign those balances to itself. This is independent of the transfer policy.",
+    );
+  }
   if (s.transferGated) add(25, "Transfers are policy-gated — your address can be frozen/blocklisted.");
   if (s.rebase) add(15, "Asset variant with a mutable rebase multiplier — your balance can be scaled up/down.");
   if (!s.supplyCapped) add(10, "No supply cap — mintable without ceiling (dilution risk).");
@@ -309,6 +397,57 @@ export async function b20Info(params: Record<string, string>) {
 
 // ---- 3. B20 Freeze Check — is a specific wallet blocked/seizable on this token? ----
 
+/**
+ * Is `wallet` exposed to the Cobalt seize path on `token`?
+ *
+ * Mind the inversion documented at SEIZE_HOLDER_POLICY: being AUTHORIZED under
+ * the seize policy means PROTECTED, and NOT being authorized means seizable.
+ * This is the reverse of every other policy read in this file, so the mapping
+ * is written out explicitly rather than reusing the transfer-side helper.
+ *
+ *   "none"      – no seize policy configured (or pre-Cobalt): nobody seizable
+ *   "protected" – authorized under the policy, so exempt from seizeWithMemo
+ *   "seizable"  – NOT authorized, so the issuer can reassign this balance
+ *   "unknown"   – a policy is armed but the registry read failed; never "clear"
+ */
+export type SeizeStatus = "none" | "protected" | "seizable" | "unknown";
+
+/**
+ * The inversion itself, isolated so it can be tested without a chain — and so a
+ * future edit has one obvious place to get it wrong rather than three.
+ *
+ * `authorized` is the raw PolicyRegistry answer for SEIZE_HOLDER_POLICY, where
+ * true means the holder is EXEMPT from seizure, not permitted to do something.
+ */
+export function seizeStatusFrom(policyId: bigint | null, authorized: boolean | null): SeizeStatus {
+  // No scope (pre-Cobalt revert) or an unset slot: always-allow, so every holder
+  // is authorized and therefore nobody is seizable.
+  if (policyId === null || policyId === 0n) return "none";
+  if (authorized === null) return "unknown";
+  return authorized ? "protected" : "seizable";
+}
+
+async function seizeExposure(
+  token: `0x${string}`,
+  wallet: `0x${string}`,
+): Promise<{ status: SeizeStatus; policyId: string | null }> {
+  // A revert means the SEIZE_* scope does not exist on this chain/token yet,
+  // which is a real answer: there is no seizeWithMemo path to be exposed to.
+  const holderPol = await withRetry<bigint | null>(
+    () => client.readContract({ address: token, abi: B20_ABI, functionName: "policyId", args: [SEIZE_HOLDER_POLICY] }) as Promise<bigint | null>,
+    null,
+    true,
+  );
+  if (holderPol === null || holderPol === 0n) return { status: "none", policyId: null };
+
+  const authorized = await withRetry<boolean | null>(
+    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: POLICY_ABI, functionName: "isAuthorized", args: [holderPol, wallet] }) as Promise<boolean | null>,
+    null,
+    true,
+  );
+  return { status: seizeStatusFrom(holderPol, authorized), policyId: holderPol.toString() };
+}
+
 export async function b20FreezeCheck(params: Record<string, string>) {
   const token = (params.token || params.address || "").trim();
   const wallet = (params.wallet || "").trim();
@@ -323,10 +462,40 @@ export async function b20FreezeCheck(params: Record<string, string>) {
     () => client.readContract({ address: tokenAddr, abi: B20_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] }) as Promise<bigint | null>, null);
   if (senderPol === null) return notB20(token);
 
+  // The Cobalt seize surface is INDEPENDENT of the sender policy — seizeWithMemo
+  // bypasses TRANSFER_SENDER/RECEIVER/EXECUTOR_POLICY entirely and reads
+  // SEIZE_HOLDER_POLICY instead. So "no sender policy" cannot clear a wallet on
+  // its own: a token is free to define a seizable set that has nothing to do
+  // with who may transfer. This endpoint used to answer exactly that, and told
+  // the holder of such a token it could not be seized.
+  const seize = await seizeExposure(tokenAddr, getAddress(wallet));
+
   if (senderPol === 0n) {
+    // Not transfer-gated. Whether that also means "safe" now depends on the
+    // seize surface, which may be armed against this wallet regardless.
+    if (seize.status === "seizable") {
+      return {
+        token, wallet, isB20: true, gated: false, authorized: true,
+        verdict: "SEIZABLE", seizeHolderPolicyId: seize.policyId,
+        note: "⚠️ This token has no sender policy, so transfers are not gated — but it HAS an armed seize policy and your wallet is NOT protected under it. The issuer can call seizeWithMemo() and reassign your balance to an address of their choosing. Transfers being open is not safety here.",
+        checkedAt: new Date().toISOString(),
+      };
+    }
+    if (seize.status === "unknown") {
+      return {
+        token, wallet, isB20: true, gated: false, authorized: true,
+        verdict: "unknown", degraded: true, seizeHolderPolicyId: seize.policyId,
+        note: "⚠️ No sender policy applies, but this token has an armed seize policy and the Policy Registry could not be read (RPC) — whether your wallet is protected from seizeWithMemo() is UNKNOWN, not clear. Re-check before trusting it.",
+        checkedAt: new Date().toISOString(),
+      };
+    }
     return {
       token, wallet, isB20: true, gated: false, authorized: true, verdict: "clear",
-      note: "This B20 token has no sender policy — no blocklist/allowlist applies, so your address can't be frozen or burnBlocked-seized on the send side.",
+      ...(seize.status === "protected" ? { seizeHolderPolicyId: seize.policyId } : {}),
+      note:
+        seize.status === "protected"
+          ? "No sender policy applies, and you are authorized under this token's seize policy — which under B20's inverted seize semantics means PROTECTED from seizeWithMemo(). Both surfaces are clear. (The issuer can change either policy at any time.)"
+          : "This B20 token has no sender policy and no armed seize policy — neither the burnBlocked() nor the seizeWithMemo() path can take your balance today. (An issuer can arm either at any time; re-check before large positions.)",
       checkedAt: new Date().toISOString(),
     };
   }
@@ -349,10 +518,21 @@ export async function b20FreezeCheck(params: Record<string, string>) {
 
   return {
     token, wallet, isB20: true, gated: true, senderPolicyId: senderPol.toString(), authorized,
-    verdict: authorized ? "clear" : "BLOCKED",
-    note: authorized
-      ? "Your wallet is currently authorized to transfer under this token's sender policy. (Issuer can change the policy at any time — re-check before large positions.)"
-      : "⚠️ Your wallet is NOT authorized under this token's sender policy — you cannot transfer, and the issuer can burnBlocked() (SEIZE) your balance. Exit if you can.",
+    seizeExposure: seize.status,
+    ...(seize.policyId ? { seizeHolderPolicyId: seize.policyId } : {}),
+    // Transfer-blocked is the louder finding, but an authorized wallet is not
+    // clear while the seize surface is armed against it.
+    verdict: !authorized ? "BLOCKED" : seize.status === "seizable" ? "SEIZABLE" : seize.status === "unknown" ? "unknown" : "clear",
+    ...(authorized && seize.status === "unknown" ? { degraded: true } : {}),
+    note: !authorized
+      ? seize.status === "seizable"
+        ? "⚠️ Your wallet is NOT authorized under this token's sender policy — you cannot transfer, the issuer can burnBlocked() (BURN) your balance, and you are also unprotected under the seize policy, so seizeWithMemo() can reassign it instead. Exit if you can."
+        : "⚠️ Your wallet is NOT authorized under this token's sender policy — you cannot transfer, and the issuer can burnBlocked() (SEIZE) your balance. Exit if you can."
+      : seize.status === "seizable"
+        ? "⚠️ You are authorized to TRANSFER, but you are NOT protected under this token's seize policy — the issuer can call seizeWithMemo() and reassign your balance to an address of their choosing. Being able to transfer is not the same as being safe: seize bypasses the transfer policies entirely."
+        : seize.status === "unknown"
+          ? "⚠️ You are authorized to transfer, but this token has an armed seize policy and the Policy Registry read for it failed (RPC) — your exposure to seizeWithMemo() is UNKNOWN, not clear. Re-check before trusting it."
+          : "Your wallet is currently authorized to transfer under this token's sender policy, and is not exposed to the seize policy. (Issuer can change either policy at any time — re-check before large positions.)",
     checkedAt: new Date().toISOString(),
   };
 }
@@ -1083,25 +1263,32 @@ export async function b20SeizureHistory(params: Record<string, string>) {
 
   // Network-wide feed when no token is given: recent seizures across all B20s.
   if (!address) {
-    const rows = await cdpSql<{ address?: string; block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string }>(
-      `SELECT address, block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE event_signature LIKE 'BurnedBlocked%' AND block_timestamp > now() - INTERVAL 30 DAY ORDER BY block_timestamp DESC LIMIT 50`,
+    const rows = await cdpSql<{ address?: string; block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string; event_signature?: string }>(
+      // Both surfaces, same reason as the per-token query below.
+      `SELECT address, block_timestamp, topics, parameters, transaction_hash, event_signature FROM base.events WHERE (event_signature LIKE 'BurnedBlocked%' OR event_signature = 'Seized(address,address,address,uint256)') AND block_timestamp > now() - INTERVAL 30 DAY ORDER BY block_timestamp DESC LIMIT 50`,
     );
     if (rows === null) throw new Error("B20 seizure event data unavailable (data provider) — try again shortly");
-    const feed = rows.map((r) => ({
-      token: r.address ?? null,
-      caller: topicToAddr(r.topics?.[1]),
-      victim: topicToAddr(r.topics?.[2]),
-      amount: String(r.parameters?.amount ?? "0"),
-      time: r.block_timestamp ?? null,
-      txHash: r.transaction_hash ?? null,
-    }));
+    const feed = rows.map((r) => {
+      const viaSeize = (r.event_signature ?? "").startsWith("Seized(address,address,address,");
+      return {
+        token: r.address ?? null,
+        caller: topicToAddr(r.topics?.[1]),
+        victim: topicToAddr(r.topics?.[2]),
+        ...(viaSeize ? { recipient: topicToAddr(r.topics?.[3]) } : {}),
+        method: viaSeize ? "seizeWithMemo" : "burnBlocked",
+        effect: viaSeize ? "reassigned" : "burned",
+        amount: String(r.parameters?.amount ?? "0"),
+        time: r.block_timestamp ?? null,
+        txHash: r.transaction_hash ?? null,
+      };
+    });
     return {
       windowDays: 30,
       seizureCount: feed.length,
       distinctTokens: new Set(feed.map((f) => f.token).filter(Boolean)).size,
       seizures: feed,
       verdict: feed.length ? "active_enforcement" : "quiet",
-      note: "Network-wide feed of actual B20 seizures (burnBlocked → BurnedBlocked events) in the last 30 days — issuers that DID seize holders, not just could. Not financial advice.",
+      note: "Network-wide feed of actual B20 seizures across both surfaces (burnBlocked → BurnedBlocked, and Cobalt seizeWithMemo → Seized) in the last 30 days — issuers that DID seize holders, not just could. Not financial advice.",
       checkedAt: new Date().toISOString(),
     };
   }
@@ -1111,44 +1298,61 @@ export async function b20SeizureHistory(params: Record<string, string>) {
   const s = await readB20Signals(addr);
   if (!s.isB20) return notB20(address);
 
-  const rows = await cdpSql<{ block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string }>(
-    `SELECT block_timestamp, topics, parameters, transaction_hash FROM base.events WHERE address = '${addr.toLowerCase()}' AND event_signature LIKE 'BurnedBlocked%' AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp DESC LIMIT 500`,
+  const rows = await cdpSql<{ block_timestamp?: string; topics?: string[]; parameters?: { amount?: string }; transaction_hash?: string; event_signature?: string }>(
+    // Cobalt splits seizure across two events with different shapes.
+    // `burnBlocked` BURNS (supply falls) and emits
+    // BurnedBlocked(caller, from, amount); `seizeWithMemo` TRANSFERS (supply
+    // unchanged) and emits Seized(caller, from, to, amount). Reading only the
+    // first would report "no seizures" for a token whose issuer has taken every
+    // balance it wanted through the new path — a false all-clear on the single
+    // most dangerous B20 power, which is the whole reason this endpoint exists.
+    `SELECT block_timestamp, topics, parameters, transaction_hash, event_signature FROM base.events WHERE address = '${addr.toLowerCase()}' AND (event_signature LIKE 'BurnedBlocked%' OR event_signature = 'Seized(address,address,address,uint256)') AND block_timestamp > now() - INTERVAL 365 DAY ORDER BY block_timestamp DESC LIMIT 500`,
   );
   if (rows === null) throw new Error("B20 seizure event data unavailable (data provider) — try again shortly");
 
   const w = validAddr(wallet) ? getAddress(wallet).toLowerCase() : null;
-  const seizures = rows.map((r) => ({
-    caller: topicToAddr(r.topics?.[1]),
-    victim: topicToAddr(r.topics?.[2]),
-    amount: String(r.parameters?.amount ?? "0"),
-    time: r.block_timestamp ?? null,
-    txHash: r.transaction_hash ?? null,
-  }));
+  const seizures = rows.map((r) => {
+    const viaSeize = (r.event_signature ?? "").startsWith("Seized(address,address,address,");
+    return {
+      // Both events index caller then from; only Seized carries a recipient.
+      caller: topicToAddr(r.topics?.[1]),
+      victim: topicToAddr(r.topics?.[2]),
+      ...(viaSeize ? { recipient: topicToAddr(r.topics?.[3]) } : {}),
+      method: viaSeize ? "seizeWithMemo" : "burnBlocked",
+      /** Same loss to the holder, different chain footprint: a burn destroys the units, a seize hands them to someone else. */
+      effect: viaSeize ? "reassigned" : "burned",
+      amount: String(r.parameters?.amount ?? "0"),
+      time: r.block_timestamp ?? null,
+      txHash: r.transaction_hash ?? null,
+    };
+  });
   const victims = new Set(seizures.map((x) => x.victim?.toLowerCase()).filter(Boolean));
   const walletSeized = w ? seizures.filter((x) => x.victim?.toLowerCase() === w) : null;
 
-  // "Armed" = has the sender blocklist power. "Enforced" = has actually used it.
-  const verdict = seizures.length
-    ? "enforced"
-    : s.canSeize
-      ? "armed"
-      : "no_seize_power";
+  // "Armed" = holds the power on EITHER surface (Beryl sender blocklist, or a
+  // configured Cobalt seize policy). "Enforced" = has actually used one.
+  const armed = s.canSeize || s.seizeArmed;
+  const verdict = seizures.length ? "enforced" : armed ? "armed" : "no_seize_power";
+  const viaSeizeCount = seizures.filter((x) => x.method === "seizeWithMemo").length;
 
   return {
     address, isB20: true, symbol: s.symbol, variant: s.variant,
     canSeize: s.canSeize,
+    seizeArmed: s.seizeArmed,
+    seizeSurface: s.cobaltSeizeReadable ? "burnBlocked+seizeWithMemo" : "burnBlocked (pre-Cobalt: no seize policy scope on this token)",
     seizureCount: seizures.length,
+    ...(viaSeizeCount ? { viaSeizeWithMemo: viaSeizeCount, viaBurnBlocked: seizures.length - viaSeizeCount } : {}),
     distinctVictims: victims.size,
     verdict, // enforced | armed | no_seize_power
     ...(w ? { wallet, walletSeized: (walletSeized?.length ?? 0) > 0, walletSeizures: walletSeized } : {}),
     seizures: seizures.slice(0, 100),
     recommendation:
       verdict === "enforced"
-        ? `⚠️ This issuer HAS seized holders — ${seizures.length} burnBlocked seizure(s) across ${victims.size} wallet(s). The coercive power is not theoretical; treat holding risk as REAL.`
+        ? `⚠️ This issuer HAS seized holders — ${seizures.length} seizure(s) across ${victims.size} wallet(s)${viaSeizeCount ? `, ${viaSeizeCount} of them via seizeWithMemo (balance reassigned to the issuer, not burned)` : ""}. The coercive power is not theoretical; treat holding risk as REAL.`
         : verdict === "armed"
-          ? "The issuer CAN seize (sender blocklist set) but has no recorded burnBlocked seizures yet — armed but not fired. Watch policy changes (b20-policy-watch)."
-          : "No sender blocklist and no seizure history — this token has no active protocol-level seize surface.",
-    note: "Reads actual B20 seizures (burnBlocked → BurnedBlocked events, 365-day window) — whether the issuer has ever burned a blocked holder's balance, not just whether they could. Pass wallet= to check a specific address. The enforcement-history signal ERC-20 (and every other B20 tool) can't show. Not financial advice.",
+          ? `The issuer CAN seize (${[s.canSeize && "sender blocklist set", s.seizeArmed && "seize policy armed"].filter(Boolean).join(" + ")}) but has no recorded seizures yet — armed but not fired. Watch policy changes (b20-policy-watch).`
+          : "No sender blocklist, no armed seize policy and no seizure history — this token has no active protocol-level seize surface.",
+    note: "Reads actual B20 seizures across BOTH surfaces (burnBlocked → BurnedBlocked, which burns; and Cobalt's seizeWithMemo → Seized, which reassigns the balance to the issuer), 365-day window — whether the issuer has ever taken a holder's balance, not just whether they could. Pass wallet= to check a specific address. The enforcement-history signal ERC-20 (and every other B20 tool) can't show. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
