@@ -62,8 +62,8 @@ export interface DecisionReceiptMeta {
   confidence: { band: ConfidenceBand; basis: string };
   /** Structured non-decision: null on a real verdict; populated when we REFUSE. */
   refusal: { reason: string; missing: string[] } | null;
-  /** Whether THIS call qualifies for a refund (a refusal is never billed on the
-   * credit path — see refundRule). */
+  /** Whether THIS call qualifies for a refund (a refusal is never billed on
+   * either payment path — see refundRule). */
   refundable: boolean;
   /** The stated, enforced rule an agent can rely on. */
   refundRule: string;
@@ -139,7 +139,7 @@ export function decisionReceipt(opts: {
     refusal: opts.degraded ? { reason: opts.refusalReason ?? "upstream_data_unavailable", missing } : null,
     refundable: opts.degraded,
     refundRule:
-      "A refusal (confidence=low: our core data feed was unavailable) is not billed on the credit path — the debit is auto-refunded and x-refunded:true is returned. Full-confidence verdicts are final.",
+      "A refusal (confidence=low: our core data feed was unavailable) is never billed. On the credit path the debit is auto-refunded; on the x402 path the response is returned with status 502 so the payment is never settled. Both carry x-refunded:true. Full-confidence verdicts are final.",
   };
 }
 /** Risk severity. `unknown` = a required input could not be read this call. */

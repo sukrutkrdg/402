@@ -460,6 +460,37 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     } catch (err) {
       return handlerErrorResponse(err);
     }
+    // Refund rule, x402 side. The credit rail hands the debit back when the
+    // answer is a refusal; this rail had no debit to hand back and billed for it
+    // anyway, so the same outage cost an x402 buyer money and a credit buyer
+    // nothing. Settlement has not happened yet at this point — `withX402` settles
+    // on the response, and only for a status below 400 — so the way to not bill a
+    // refusal here is to refuse the status as well. The buyer still receives the
+    // body and its receipt, which is what says WHICH input could not be read.
+    //
+    // Nothing below this line may run for it: a refusal is not a sale. It must
+    // not become the sample in the shop window, must not mark the discovery index
+    // fresh (only a settlement does that, and there is none), and must not count
+    // as a paid call in the funnel.
+    if (isRefundable(data)) {
+      await logUsage(service.id, false, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "");
+      return NextResponse.json(
+        withRelated(
+          {
+            service: service.id,
+            builderCode: cfg.appBuilderCode,
+            data,
+            paidVia: "not-settled",
+            chargedUsd: 0,
+            refunded: true,
+            refundReason:
+              "Refusal (core data feed unavailable) — not billed per this check's refundRule. Your payment was NOT settled, so there is nothing to refund; retry when the feed is back.",
+          },
+          service.id,
+        ),
+        { status: 502, headers: { "x-refunded": "true", "x-paid-via": "not-settled" } },
+      );
+    }
     await saveSample(service.id, data);
     // A settled call is what keeps this resource inside the discovery index's
     // rolling window, so a real customer payment does the job the index-refresh
