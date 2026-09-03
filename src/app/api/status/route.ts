@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfig, sellerReady, buyerReady } from "@/lib/config";
 import { aiConfigured } from "@/lib/ai";
 import { searchConfigured } from "@/lib/web-search";
+import { exaConfigured } from "@/lib/exa";
 import { freeRemaining } from "@/lib/free-tier";
 import { clientIp } from "@/lib/rate-limit";
 import { kvConfigured } from "@/lib/kv";
@@ -31,6 +32,10 @@ export async function GET(req: NextRequest) {
     // deployed env" is a question we need answerable from outside — otherwise
     // the only way to find out is a buyer hitting a service that cannot serve.
     searchReady: searchConfigured(),
+    // Same reason as searchReady: exa-search is paid-only and spends an upstream
+    // credit, so "is the key in the deployed env" must be answerable without a
+    // buyer discovering the answer at their own expense.
+    exaReady: exaConfigured(),
     kv: kvConfigured(),
     freeTier: await freeRemaining(`free:${clientIp(req)}`),
   });

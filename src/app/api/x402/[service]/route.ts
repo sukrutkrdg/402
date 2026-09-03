@@ -29,6 +29,7 @@ import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
 import { translateIsLong } from "@/lib/ai";
+import { exaWantsText } from "@/lib/exa";
 import { payerFromHeaders } from "@/lib/payer";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
@@ -108,6 +109,13 @@ async function effectivePriceFor(
     const list = String(paramsFrom(req, service).list ?? "").trim();
     // Must stay identical to the listMode test in src/lib/ai.ts.
     if (/^(true|1|yes)$/i.test(list)) return "$0.06";
+    return service.price;
+  }
+  if (service.id === "exa-search") {
+    // Highlights bill $1/1k per page on top of the search, so the tier that asks
+    // for them pays for them. The test lives in exa.ts for the same reason the
+    // translate one does: one place decides, both rails read it.
+    if (exaWantsText(String(paramsFrom(req, service).text ?? ""))) return "$0.03";
     return service.price;
   }
   if (service.id === "ai-translate") {

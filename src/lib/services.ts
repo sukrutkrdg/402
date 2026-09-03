@@ -66,6 +66,7 @@ import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
 import { webSearch, webExtract } from "./web-search";
+import { exaSearch } from "./exa";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
@@ -1724,6 +1725,36 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: webSearch,
     noFreeTier: true, // every call spends an upstream credit — a free tier is a real cost
+  },
+  // Named for the engine, not the capability. Every Exa reseller that draws real
+  // traffic carries `exa` in its path and the one that carries it best outsells
+  // Exa itself ten to one; our own `web-search` above is the control group, with
+  // one payer in thirty days. See src/lib/exa.ts for the read.
+  //
+  // Keep this comment OUTSIDE the braces: the parsers in declaration-size and
+  // discovery-examples skip any entry whose body opens with a comment line, so a
+  // note tucked in below `{` silently drops the service from both guards.
+  {
+    id: "exa-search",
+    name: "Exa Search",
+    tagline: "Exa's neural web search, one call at a time",
+    description:
+      "Exa's neural web search, resold per call — no Exa account, no subscription, one USDC micro-payment. Pass query= and get ranked results: title, URL, publish date, author, relevance score. numResults=1..10 (default 5). type=auto|fast|instant. includeDomains= restricts the search. Add text=1 for matched highlights from each page (caps results at 5, priced $0.03; the 402 challenge quotes it). For agents that need what the web says today, not what a training cutoff remembers.",
+    // $7/1k for up to 10 results is $0.007 a call, and $0.01 is what all four
+    // Exa resellers in the index charge — including the one that beats Exa's own
+    // $0.007 endpoint on volume. Matching the proven price, not undercutting it.
+    price: "$0.01",
+    icon: "🧠",
+    category: "Web",
+    params: [
+      { name: "query", label: "Search query", placeholder: "best open-source vector databases 2026", required: true },
+      { name: "numResults", label: "Results (1-10)", placeholder: "5" },
+      { name: "type", label: "Search type (auto/fast/instant)", placeholder: "auto" },
+      { name: "text", label: "Include page highlights (true/false)", placeholder: "false" },
+      { name: "includeDomains", label: "Limit to domains (comma-separated)", placeholder: "arxiv.org, github.com" },
+    ],
+    handler: exaSearch,
+    noFreeTier: true, // every call spends Exa credit, and a 200 without a challenge is invisible to discovery
   },
   {
     id: "web-extract",

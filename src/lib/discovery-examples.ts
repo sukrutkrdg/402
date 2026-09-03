@@ -138,6 +138,17 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   "wallet-portfolio": {"address":"0x973A31858f4D2125f48C880542DA11a2796f12D6","tokenCount":18,"totalUsd":5.79,"holdingsCount":18,"source":"cdp"},
   "wallet-summary": {"address":"0xFe21a68f21d556A3C4274a44c2Fb5410c50cDa1C","outgoingTxCount":42,"firstActivity":"2025-05-12T11:14:31.000Z","firstBlock":30129562,"lastActivity":"2026-07-24T06:06:25.000Z","ageDays":454,"activity":"active","firstActivityVerified":true,"coverage":"First activity is the earliest block at which this account existed in state (balance or nonce), verified against its predecessor block. Counts and last-activity…","source":"base-archive"},
   "watchlist-diff": {"watchId":"wl_9f3c1a2b","created":true,"tokenCount":2,"expiresInDays":30},
+  // Hand-shaped and NOT captured — this endpoint has never run, because it needs
+  // an EXA_API_KEY the deployment does not have yet. Two reasons to carry it
+  // anyway. The shop window is what an agent reads to decide, and a brand-new
+  // row with `output_keys: ["query"]` reads as "returns nothing" to a discovery
+  // oracle — the exact failure this file was written to stop, and worst on the
+  // endpoint that most needs to be found. And the preview convention (arrays
+  // reduced to counts) would leave a SEARCH endpoint advertising a number where
+  // the results belong, so one representative result is kept whole, as with
+  // safe-to-send above. Field names and shapes are Exa's documented response,
+  // not invented: replace this with a captured preview on the first real call.
+  "exa-search": {"query":"best open-source vector databases 2026","type":"auto","resultCount":5,"highlightsIncluded":false,"upstream":"exa","results":[{"title":"Qdrant: Open-Source Vector Database","url":"https://github.com/qdrant/qdrant","publishedDate":"2026-04-18T00:00:00.000Z","author":null,"score":0.7412,"highlights":null}]},
 };
 
 /** The static example for a service, or undefined when we have none. */
