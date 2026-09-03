@@ -104,15 +104,16 @@ export async function logUsage(
         ["INCR", `usage:total:${serviceId}`],
         ["INCR", "usage:calls:total"],
         ["INCR", `usage:day:${d}`],
-        ["EXPIRE", `usage:day:${d}`, 60 * 60 * 24 * 8],
+        ["EXPIRE", `usage:day:${d}`, DAY_KEY_TTL],
         ["SADD", `usage:src:${d}`, source],
+        ["EXPIRE", `usage:src:${d}`, DAY_KEY_TTL],
         ["LPUSH", "usage:recent", entry],
         ["LTRIM", "usage:recent", 0, 499],
       ];
-      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ["EXPIRE", `usage:paidday:${d}`, 60 * 60 * 24 * 8]);
-      if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source]);
+      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ["EXPIRE", `usage:paidday:${d}`, DAY_KEY_TTL]);
+      if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source], ["EXPIRE", `usage:intsrc:${d}`, DAY_KEY_TTL]);
       if (preview) cmds.push(["INCR", `usage:preview:${serviceId}`]);
-      if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source]);
+      if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source], ["EXPIRE", `usage:botsrc:${d}`, DAY_KEY_TTL]);
       if (challenge) cmds.push(["INCR", `usage:challenge:${serviceId}`]);
       // firstsvc answers "what pulled this wallet in"; payersvc answers "what does
       // it actually buy" — a one-off taster and a returning customer look
@@ -120,6 +121,7 @@ export async function logUsage(
       if (payer)
         cmds.push(
           ["SADD", `usage:payers:${d}`, payer],
+          ["EXPIRE", `usage:payers:${d}`, DAY_KEY_TTL],
           ["SETNX", `usage:firstsvc:${payer}`, serviceId],
           ["EXPIRE", `usage:firstsvc:${payer}`, 60 * 60 * 24 * 60],
           ["HINCRBY", `usage:payersvc:${payer}`, serviceId, 1],
@@ -132,12 +134,12 @@ export async function logUsage(
     if (paid) {
       await kvIncr(`usage:paid:${serviceId}`);
       await kvIncr("usage:paid:total");
-      await kvIncr(`usage:paidday:${d}`, 60 * 60 * 24 * 8);
+      await kvIncr(`usage:paidday:${d}`, DAY_KEY_TTL);
     }
     if (internal) await kvIncr(`usage:internal:${serviceId}`);
     if (preview) await kvIncr(`usage:preview:${serviceId}`);
     await kvIncr("usage:calls:total");
-    await kvIncr(`usage:day:${d}`, 60 * 60 * 24 * 8); // today's calls (8d ttl)
+    await kvIncr(`usage:day:${d}`, DAY_KEY_TTL); // today's calls (8d ttl)
     await kvSAdd(`usage:src:${d}`, source); // distinct sources today (all)
     if (internal) await kvSAdd(`usage:intsrc:${d}`, source);
     if (kind === "bot") await kvSAdd(`usage:botsrc:${d}`, source); // bot/crawler sources today
@@ -147,6 +149,19 @@ export async function logUsage(
     /* never let analytics break a request */
   }
 }
+
+/**
+ * How long a date-stamped key lives. Every reader asks for TODAY only, so a day
+ * old enough to have fallen out of this window is a day nothing can read.
+ *
+ * The counters (`usage:day`, `usage:paidday`) always carried this; the SETs
+ * beside them (`usage:src`, `usage:intsrc`, `usage:botsrc`, `usage:payers`) did
+ * not, and a set is the half that grows. A new key per day, each holding one
+ * member per distinct source that touched us — with bot traffic that is the
+ * larger structure of the two, kept for nobody, forever. The date in the key is
+ * what resets the count; the TTL is what stops yesterday from being stored.
+ */
+const DAY_KEY_TTL = 60 * 60 * 24 * 8;
 
 /** How long a payer's per-service tally is kept. Long enough to recognise a
  *  wallet that comes back after a quiet month, short enough that a wallet gone
