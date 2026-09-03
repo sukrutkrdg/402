@@ -55,7 +55,9 @@ import "server-only";
 import { finish } from "./envelope";
 
 const ENDPOINT = "https://api.exa.ai/search";
+const CONTENTS_ENDPOINT = "https://api.exa.ai/contents";
 const TIMEOUT_MS = 20_000;
+const CONTENTS_TIMEOUT_MS = 30_000;
 
 /**
  * Exa's price step. The first ten results are inside the flat $7/1k; the
@@ -189,5 +191,152 @@ export async function exaSearch(params: Record<string, string>) {
     ...(domains.length ? { includeDomains: domains } : {}),
     upstream: "exa",
     upstreamMs: typeof data.searchTime === "number" ? Math.round(data.searchTime) : null,
+  });
+}
+
+/* ────────────────────────── contents ────────────────────────── */
+
+/**
+ * The other half of the pair, and the market sells it as a separate product for
+ * the same reason Exa bills it as one: `api.exa.ai/contents` ($0.001) draws 25
+ * payers and `stableenrich.dev/api/exa/contents` ($0.002) draws 91. Contents is
+ * priced per PAGE, so folding it into search would make one flat price cover a
+ * cost the caller chooses — which is exactly the shape that has to be a tier.
+ */
+
+/** Exa's per-page content billing means the batch has to have a ceiling. Five
+ *  matches what `web-extract` sells, so the two batch endpoints agree. */
+const MAX_CONTENT_URLS = 5;
+/** Text is billed per page, not per character, so this cap is about response
+ *  size and the caller's context window — not about cost. */
+const DEFAULT_MAX_CHARS = 8_000;
+const MAX_MAX_CHARS = 40_000;
+
+interface ExaContentResult {
+  id?: string;
+  url?: string;
+  title?: string;
+  author?: string | null;
+  publishedDate?: string;
+  text?: string;
+}
+
+interface ExaStatus {
+  id?: string;
+  status?: string;
+  source?: string;
+  error?: { tag?: string; httpStatusCode?: number };
+}
+
+interface ExaContentsResponse {
+  requestId?: string;
+  results?: ExaContentResult[];
+  statuses?: ExaStatus[];
+}
+
+/** Split a comma-separated URL list the way both content tiers must see it. */
+export function exaContentUrls(raw: string): string[] {
+  return (raw || "")
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
+/**
+ * True when this contents call is in the batch price tier.
+ *
+ * One URL costs us $0.001 and sells at the market's $0.002. Five cost $0.005,
+ * which the single-page price cannot carry, so more than one page is a
+ * different product with a different price. Exported for `effectivePriceFor`
+ * for the same reason `exaWantsText` is.
+ */
+export function exaContentsIsBatch(rawUrls: string): boolean {
+  return exaContentUrls(rawUrls).length > 1;
+}
+
+/**
+ * Fetch the readable text of up to five pages through Exa.
+ *
+ * Prefer this over `url-extract` when the page is one Exa has already indexed —
+ * it answers from Exa's crawl rather than our own fetch, which is what makes it
+ * work on pages our fetcher is blocked from or cannot render.
+ */
+export async function exaContents(params: Record<string, string>) {
+  const key = process.env.EXA_API_KEY?.trim();
+  if (!key) throw new Error("Exa contents not configured: set EXA_API_KEY");
+
+  const urls = exaContentUrls(params.urls || params.url || "");
+  if (!urls.length) throw new Error("Missing 'urls' — pass one URL or a comma-separated list");
+  if (urls.length > MAX_CONTENT_URLS) {
+    // Refuse rather than truncate. A caller who sent eight and got five back has
+    // no way to tell which three we dropped, and paid for the call regardless.
+    throw new Error(
+      `Too many URLs: ${urls.length}. This endpoint reads up to ${MAX_CONTENT_URLS} per call — split the list and call again. You were not charged.`,
+    );
+  }
+
+  const maxChars = Math.min(Math.max(Number(params.maxChars) || DEFAULT_MAX_CHARS, 500), MAX_MAX_CHARS);
+
+  let res: Response;
+  try {
+    res = await fetch(CONTENTS_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      // `text` only. Every additional content type bills the same $1/1k per page
+      // again, so highlights or a summary here would double or triple the cost
+      // of a call whose price is two tenths of a cent.
+      //
+      // `livecrawl` is deliberately left at Exa's default: forcing a live crawl
+      // is the knob most likely to change what a page costs, and this price has
+      // no room for a cost we have not measured.
+      body: JSON.stringify({ urls, text: { maxCharacters: maxChars } }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(CONTENTS_TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error("Exa upstream unreachable — you were not charged.");
+  }
+
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    throw new Error(`Exa upstream failed (${res.status})${detail ? `: ${detail}` : ""}`);
+  }
+
+  const data = (await res.json()) as ExaContentsResponse;
+  const pages = (data.results ?? [])
+    // Exa returns a row for a page it could not read, with no text on it. That
+    // is a status, not a page, and counting it as one would report five pages
+    // delivered for two that can be read.
+    .filter((r) => typeof r.text === "string" && r.text.length > 0)
+    .map((r) => ({
+      url: r.url ?? null,
+      title: r.title ?? null,
+      author: r.author ?? null,
+      publishedDate: r.publishedDate ?? null,
+      text: r.text ?? null,
+      chars: (r.text ?? "").length,
+      truncated: (r.text ?? "").length >= maxChars,
+    }));
+
+  const failed = (data.statuses ?? [])
+    .filter((s) => s.status && s.status !== "success")
+    .map((s) => ({ url: s.id ?? null, error: s.error?.tag ?? s.status ?? "unknown", httpStatus: s.error?.httpStatusCode ?? null }));
+
+  // Nothing readable means the caller got nothing. Throwing here means withX402
+  // never settles, so a batch of five dead links is free rather than billed —
+  // the same rule web-extract has enforced since it shipped.
+  if (!pages.length) {
+    throw new Error(
+      `None of the ${urls.length} URL(s) could be read${failed[0]?.error ? `: ${failed[0].error}` : ""}. You were not charged.`,
+    );
+  }
+
+  return finish({
+    pages,
+    pageCount: pages.length,
+    requested: urls.length,
+    failed,
+    maxChars,
+    upstream: "exa",
   });
 }

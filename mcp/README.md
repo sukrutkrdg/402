@@ -3,8 +3,11 @@
 [![smithery badge](https://smithery.ai/badge/sukrutkrdg/x402-bazaar-mcp)](https://smithery.ai/servers/sukrutkrdg/x402-bazaar-mcp)
 
 **Hosted, no install:** point any MCP client at `https://402.com.tr/mcp` —
-Streamable HTTP, 137 tools, no wallet held server-side. Or run it locally with
-`npx` as described below; both talk to the same catalog.
+Streamable HTTP, one tool per catalogued service, no wallet held server-side. Or
+run it locally with `npx` as described below; both talk to the same catalog. The
+current tool list is always
+[the server card](https://402.com.tr/.well-known/mcp/server-card.json); a number
+written here would be wrong the next time a service is added.
 
 **The Base token-safety toolkit for AI agents.** An **MCP (Model Context
 Protocol) server** that gives your agent the checks it needs before it touches a

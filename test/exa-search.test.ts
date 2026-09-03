@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
-import { exaSearch, exaWantsText, exaConfigured } from "@/lib/exa";
+import { exaSearch, exaWantsText, exaConfigured, exaContents, exaContentsIsBatch, exaContentUrls } from "@/lib/exa";
 import { SERVICES } from "@/lib/services";
 import { staticOutputExample } from "@/lib/discovery-examples";
 
@@ -205,5 +205,120 @@ describe("the response shape is stable across both tiers", () => {
     const seen = stubExa(ONE_RESULT);
     await exaSearch({ query: "x", includeDomains: " https://arxiv.org/abs , github.com ,, " });
     expect(seen.body!.includeDomains).toEqual(["arxiv.org", "github.com"]);
+  });
+});
+
+/* ────────────────────────── contents ────────────────────────── */
+
+const ONE_PAGE = {
+  requestId: "req_2",
+  results: [{ id: "u1", url: "https://a.example/post", title: "A", author: null, publishedDate: "2026-04-18T00:00:00.000Z", text: "hello world" }],
+  statuses: [{ id: "https://a.example/post", status: "success", source: "cached" }],
+};
+
+describe("exa-contents is priced per page, because Exa bills it that way", () => {
+  const svc = SERVICES.find((s) => s.id === "exa-contents");
+
+  it("is registered, paid-only, and named for the engine", () => {
+    expect(svc, "exa-contents is missing from the catalog").toBeTruthy();
+    expect(svc!.id).toContain("exa");
+    expect(svc!.noFreeTier).toBe(true);
+    // $1/1k per page is $0.001; the market's reseller price is $0.002.
+    expect(svc!.price).toBe("$0.002");
+  });
+
+  it("ships a hand-shaped shop window too", () => {
+    const ex = staticOutputExample("exa-contents");
+    expect(ex).toBeTruthy();
+    expect(Array.isArray(ex!.pages)).toBe(true);
+  });
+
+  it("counts a batch by URLs, so one page and five are different products", () => {
+    expect(exaContentsIsBatch("https://a.example")).toBe(false);
+    expect(exaContentsIsBatch(" https://a.example , ")).toBe(false); // a trailing comma is not a second page
+    expect(exaContentsIsBatch("https://a.example,https://b.example")).toBe(true);
+    expect(exaContentsIsBatch("")).toBe(false);
+    expect(exaContentUrls("a, ,b,")).toEqual(["a", "b"]);
+  });
+
+  it("prices the batch tier in the shared function, keyed on the declared param", () => {
+    const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8");
+    const code = route.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    const fn = code.slice(code.indexOf("async function effectivePriceFor("), code.indexOf("async function attachRetention"));
+    expect(fn).toMatch(/service\.id === "exa-contents"/);
+    expect(fn).toMatch(/exaContentsIsBatch\(/);
+    expect(fn).toMatch(/\$0\.008/);
+    expect(code.replace(fn, ""), "the tier must not be re-derived elsewhere").not.toMatch(/exaContentsIsBatch\(/);
+  });
+});
+
+describe("exa-contents refuses rather than short-changes", () => {
+  beforeEach(() => {
+    process.env.EXA_API_KEY = "k";
+  });
+
+  it("rejects a sixth URL instead of silently dropping it", async () => {
+    const seen = stubExa(ONE_PAGE);
+    const six = Array.from({ length: 6 }, (_, i) => `https://x${i}.example`).join(",");
+    await expect(exaContents({ urls: six })).rejects.toThrow(/Too many URLs: 6/);
+    expect(seen.body, "and never buys the call it refused").toBeNull();
+  });
+
+  it("throws when nothing was readable, so a batch of dead links is free", async () => {
+    stubExa({ results: [], statuses: [{ id: "https://a.example", status: "error", error: { tag: "NOT_FOUND", httpStatusCode: 404 } }] });
+    await expect(exaContents({ urls: "https://a.example" })).rejects.toThrow(/None of the 1 URL\(s\) could be read: NOT_FOUND/);
+  });
+
+  it("does not count a row Exa returned with no text as a delivered page", async () => {
+    stubExa({
+      results: [
+        { id: "u1", url: "https://a.example", title: "A", text: "real text" },
+        { id: "u2", url: "https://b.example", title: "B" },
+      ],
+      statuses: [
+        { id: "https://a.example", status: "success" },
+        { id: "https://b.example", status: "error", error: { tag: "CRAWL_FAILED", httpStatusCode: 403 } },
+      ],
+    });
+    const out = (await exaContents({ urls: "https://a.example,https://b.example" })) as {
+      pageCount: number;
+      requested: number;
+      failed: Array<{ error: string; httpStatus: number | null }>;
+    };
+    expect(out.pageCount, "two rows back, one page readable").toBe(1);
+    expect(out.requested).toBe(2);
+    expect(out.failed).toEqual([{ url: "https://b.example", error: "CRAWL_FAILED", httpStatus: 403 }]);
+  });
+
+  it("buys only text — a second content type would bill the same again per page", async () => {
+    const seen = stubExa(ONE_PAGE);
+    await exaContents({ urls: "https://a.example" });
+    expect(seen.body!.text).toEqual({ maxCharacters: 8000 });
+    expect(seen.body!.highlights).toBeUndefined();
+    expect(seen.body!.summary).toBeUndefined();
+    // Forcing a live crawl is the knob most likely to move the per-page cost.
+    expect(seen.body!.livecrawl).toBeUndefined();
+  });
+
+  it("clamps maxChars into a range instead of trusting the caller", async () => {
+    for (const [input, expected] of [["999999", 40000], ["10", 500], ["", 8000], ["12000", 12000]] as const) {
+      const seen = stubExa(ONE_PAGE);
+      await exaContents({ urls: "https://a.example", maxChars: input });
+      expect((seen.body!.text as { maxCharacters: number }).maxCharacters).toBe(expected);
+    }
+  });
+
+  it("reports truncation, so a caller knows the page did not end there", async () => {
+    stubExa({ results: [{ id: "u", url: "https://a.example", text: "x".repeat(500) }], statuses: [] });
+    const out = (await exaContents({ urls: "https://a.example", maxChars: "500" })) as { pages: Array<{ truncated: boolean; chars: number }> };
+    expect(out.pages[0].chars).toBe(500);
+    expect(out.pages[0].truncated).toBe(true);
+  });
+
+  it("throws before spending when the key is missing", async () => {
+    delete process.env.EXA_API_KEY;
+    const seen = stubExa(ONE_PAGE);
+    await expect(exaContents({ urls: "https://a.example" })).rejects.toThrow(/EXA_API_KEY/);
+    expect(seen.body).toBeNull();
   });
 });

@@ -29,7 +29,7 @@ import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
 import { translateIsLong } from "@/lib/ai";
-import { exaWantsText } from "@/lib/exa";
+import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
 import { payerFromHeaders } from "@/lib/payer";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
@@ -109,6 +109,15 @@ async function effectivePriceFor(
     const list = String(paramsFrom(req, service).list ?? "").trim();
     // Must stay identical to the listMode test in src/lib/ai.ts.
     if (/^(true|1|yes)$/i.test(list)) return "$0.06";
+    return service.price;
+  }
+  if (service.id === "exa-contents") {
+    // Exa bills contents per PAGE, so the caller picks the cost. One page is the
+    // declared price; a batch is its own product. Same rule, same place.
+    // `urls` is the only name declared on the service, so it is the only one
+    // paramsFrom can return — the handler's `url` alias is for the MCP and
+    // internal callers that pass params directly, and cannot arrive here.
+    if (exaContentsIsBatch(String(paramsFrom(req, service).urls ?? ""))) return "$0.008";
     return service.price;
   }
   if (service.id === "exa-search") {

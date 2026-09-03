@@ -10,7 +10,7 @@
 # be added as a Claude custom connector or a ChatGPT connector at all — both
 # require an internet-reachable HTTPS endpoint. Ours has existed since 0.3.0:
 #
-#     https://402.com.tr/mcp        (Streamable HTTP, 137 tools, no install)
+#     https://402.com.tr/mcp        (Streamable HTTP, one tool per service, no install)
 #
 # The stdio block below is kept because it still works and some clients want it,
 # but the listing should point at the URL above. Update it in the Smithery

@@ -66,7 +66,7 @@ import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
 import { webSearch, webExtract } from "./web-search";
-import { exaSearch } from "./exa";
+import { exaSearch, exaContents } from "./exa";
 import { sanctionsName } from "./sanctions-name";
 import { emailVerify } from "./email-verify";
 import { domainCheck } from "./domain-check";
@@ -1755,6 +1755,28 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: exaSearch,
     noFreeTier: true, // every call spends Exa credit, and a 200 without a challenge is invisible to discovery
+  },
+  // The pair, sold separately because Exa bills it separately — per page, not
+  // per call. `api.exa.ai/contents` draws 25 payers and the reseller charging
+  // twice as much draws 91, which is the same story as the search row above.
+  {
+    id: "exa-contents",
+    name: "Exa Contents",
+    tagline: "Read a page out of Exa's index, not off the open web",
+    description:
+      "Exa's own page index, read per call — no Exa account, no subscription. Pass urls= (one, or up to 5 comma-separated) and get each page as clean text with title, author and publish date. Answers from Exa's crawl rather than our fetcher, so it reads pages a plain server-side GET is blocked from. maxChars=500..40000 (default 8000). One URL is $0.002; a batch of 2-5 is $0.008, which the 402 challenge quotes. Pairs with exa-search: search, then read the winners.",
+    // $1/1k per page: one page costs $0.001 and sells at the $0.002 the market
+    // has proven. The batch tier is priced in effectivePriceFor, because the
+    // cost is per page and the caller chooses how many.
+    price: "$0.002",
+    icon: "📄",
+    category: "Web",
+    params: [
+      { name: "urls", label: "Page URLs (comma-separated, max 5)", placeholder: "https://github.com/qdrant/qdrant", required: true },
+      { name: "maxChars", label: "Max characters per page", placeholder: "8000" },
+    ],
+    handler: exaContents,
+    noFreeTier: true,
   },
   {
     id: "web-extract",

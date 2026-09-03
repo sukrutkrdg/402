@@ -149,6 +149,10 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   // safe-to-send above. Field names and shapes are Exa's documented response,
   // not invented: replace this with a captured preview on the first real call.
   "exa-search": {"query":"best open-source vector databases 2026","type":"auto","resultCount":5,"highlightsIncluded":false,"upstream":"exa","results":[{"title":"Qdrant: Open-Source Vector Database","url":"https://github.com/qdrant/qdrant","publishedDate":"2026-04-18T00:00:00.000Z","author":null,"score":0.7412,"highlights":null}]},
+  // Hand-shaped for the same reason as exa-search above, and unrun for the same
+  // reason. `text` is truncated here to a fragment on purpose: the shop window
+  // shows that pages come back with their text, not the text itself.
+  "exa-contents": {"pageCount":1,"requested":1,"maxChars":8000,"upstream":"exa","failedCount":0,"pages":[{"url":"https://github.com/qdrant/qdrant","title":"Qdrant: Open-Source Vector Database","author":null,"publishedDate":"2026-04-18T00:00:00.000Z","chars":7412,"truncated":false,"text":"Qdrant is an open-source vector database and similarity search engine…"}]},
 };
 
 /** The static example for a service, or undefined when we have none. */

@@ -48,7 +48,7 @@ export default function AgentsPage() {
         <Code>{`claude mcp add x402-bazaar -- npx -y x402-bazaar-mcp`}</Code>
         <p className="text-sm text-gray-400">
           Nothing to install at all? The same server is hosted at{" "}
-          <code className="codechip">https://402.com.tr/mcp</code> (Streamable HTTP, 137 tools) — paste
+          <code className="codechip">https://402.com.tr/mcp</code> (Streamable HTTP, one tool per service) — paste
           that URL into any connector field. It is also listed on{" "}
           <a
             href="https://smithery.ai/servers/sukrutkrdg/x402-bazaar-mcp"
