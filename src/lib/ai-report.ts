@@ -8,7 +8,8 @@
  */
 
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient } from "./anthropic-client";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { tokenPrice, txDecode } from "./onchain-extra";
@@ -157,7 +158,7 @@ export async function aiTokenReport(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 900,
     system:
@@ -294,7 +295,7 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 1400,
     system:
@@ -416,7 +417,7 @@ export async function b20Dossier(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 1600,
     system:
@@ -494,7 +495,7 @@ export async function aiWalletReport(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 600,
     system:
@@ -557,7 +558,7 @@ export async function aiMarketBrief(_params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 900,
     system:
@@ -659,7 +660,7 @@ export async function aiWalletSecurity(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     // A wallet with dozens of approvals needs room for one recommendation per
     // risky spender; at 900 the answer was cut mid-JSON and every call failed.
@@ -737,7 +738,7 @@ export async function aiTxExplain(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 700,
     system:
@@ -834,7 +835,7 @@ export async function aiContractRisk(params: Record<string, string>) {
     additionalProperties: false,
   };
 
-  const msg = await new Anthropic().messages.create({
+  const msg = await anthropicClient().messages.create({
     model: MODEL,
     max_tokens: 900,
     system:

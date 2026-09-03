@@ -12,7 +12,7 @@
  */
 
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient } from "./anthropic-client";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
@@ -29,7 +29,7 @@ export async function probeAi(): Promise<AiProbe> {
     return { ok: false, creditsExhausted: false, reason: "ANTHROPIC_API_KEY not set" };
   }
   try {
-    await new Anthropic().messages.create({
+    await anthropicClient().messages.create({
       model: MODEL,
       max_tokens: 1,
       messages: [{ role: "user", content: "ping" }],

@@ -14,20 +14,16 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { finish } from "./envelope";
+import { anthropicClient, aiConfigured } from "./anthropic-client";
 
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
 
-export function aiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-}
+// Re-exported because callers have imported it from here since before the
+// client moved out; the definition lives with the client it describes.
+export { aiConfigured };
 
-function client(): Anthropic {
-  if (!aiConfigured()) {
-    // Thrown before any work → withX402 won't settle → buyer isn't charged.
-    throw new Error("AI not configured: set ANTHROPIC_API_KEY");
-  }
-  return new Anthropic();
-}
+/** Thrown-before-any-work when unconfigured → withX402 won't settle → buyer isn't charged. */
+const client = (): Anthropic => anthropicClient();
 
 function textOf(message: Anthropic.Message): string {
   return message.content
