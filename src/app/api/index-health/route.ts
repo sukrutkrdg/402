@@ -2,7 +2,7 @@
  * Index health — OWNER ONLY (STATS_TOKEN gated).
  *
  * Compares what the CDP x402 Bazaar discovery index says about us against what we
- * actually serve today. Three failure modes have all bitten us in production and
+ * actually serve today. Four failure modes have all bitten us in production and
  * none is visible from our own catalog:
  *
  *  1. `missing` — a service is in our catalog but absent from discovery, so no
@@ -11,11 +11,19 @@
  *     was last settled. Raise a price and the index keeps quoting the old one, so an
  *     agent that reads the catalog signs for too little and its payment is rejected.
  *     Discovery records only refresh on a *new* settlement, never on redeploy.
- *  3. `expiringSoon` — the catalog evicts a resource 30 days after its stored
+ *  3. `staleNetworks` — the same freeze, applied to the chain list, and the one
+ *     this check was missing. Polygon was added to `accepts` on 2026-08-30; on
+ *     2026-09-03 only 7 of 67 indexed rows advertised it, and those 7 were exactly
+ *     the ones settled after the deploy. The other 60 still quoted Base alone. A
+ *     chain nobody can see is a chain nobody can choose, so the measurement asking
+ *     whether anyone paid on Polygon was reading a catalogue that had never offered
+ *     it to 90% of its callers. This check passed clean throughout, because it
+ *     compared the price and not the networks.
+ *  4. `expiringSoon` — the catalog evicts a resource 30 days after its stored
  *     `lastCalledAt`, on a daily conveyor. A row nobody has paid for in 30 days
  *     leaves on its own, whatever we serve. See the eviction note below.
  *
- * Fix for all three is the same: one paid call per affected service (cron/index-all).
+ * Fix for all four is the same: one paid call per affected service (cron/index-all).
  *
  * WHY THIS READS `search?payTo=` AND NOT THE FULL SWEEP
  * -----------------------------------------------------
@@ -37,7 +45,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getConfig, getSiteUrl } from "@/lib/config";
+import { getConfig, getSiteUrl, ALL_NETWORKS } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
 import { SERVICES } from "@/lib/services";
 
@@ -72,6 +80,12 @@ interface DiscoveryResource {
 interface Row {
   lastUpdated: string;
   accept: DiscoveryAccept;
+  /**
+   * EVERY network the index advertises for this resource, not just the first
+   * accept's. A row can quote the right price on the wrong set of chains, and
+   * only the whole list shows it.
+   */
+  networks: string[];
   lastCalledAt: string | null;
   calls30d: number | null;
 }
@@ -146,6 +160,7 @@ export async function GET(req: NextRequest) {
         seen.set(id, {
           lastUpdated,
           accept: (it.accepts ?? [])[0] ?? {},
+          networks: (it.accepts ?? []).map((a) => a.network).filter((n): n is string => Boolean(n)),
           lastCalledAt: it.quality?.lastCalledAt ?? null,
           calls30d: it.quality?.l30DaysTotalCalls ?? null,
         });
@@ -173,6 +188,22 @@ export async function GET(req: NextRequest) {
   const stalePrice: Array<{ id: string; indexedUsd: number | null; liveUsd: number | null; lastUpdated: string; underQuoted: boolean }> = [];
   const wrongPayTo: Array<{ id: string; indexedPayTo: string }> = [];
   const expiringSoon: Array<{ id: string; lastCalledAt: string; evictsAt: string; daysLeft: number }> = [];
+  /**
+   * The same freeze that produces `stalePrice`, applied to the chain list — and
+   * it hid a whole experiment.
+   *
+   * Polygon was added to `accepts` on 2026-08-30, and on 2026-09-03 only 7 of 67
+   * indexed rows advertised it. The 7 were exactly the ones settled after the
+   * deploy; the other 60 still quoted Base alone, because a discovery record
+   * keeps whatever `accepts` it saw at its last settlement. So the measurement
+   * asking "did anyone pay on Polygon in 14 days" was reading a catalogue that
+   * had never offered Polygon to 90% of its callers — a zero that says nothing
+   * about demand.
+   *
+   * This check existed for the price and not for the networks, which is why it
+   * passed clean while the catalogue was advertising the wrong chains.
+   */
+  const staleNetworks: Array<{ id: string; indexed: string[]; missingNetworks: string[]; lastUpdated: string }> = [];
 
   for (const s of SERVICES) {
     const rec = seen.get(s.id);
@@ -201,6 +232,13 @@ export async function GET(req: NextRequest) {
     if (payTo && payTo !== cfg.payTo.toLowerCase()) {
       wrongPayTo.push({ id: s.id, indexedPayTo: payTo });
     }
+    // Only flag chains we serve but the index does not advertise. An extra
+    // network in the index is not a fault we can act on here — dropping support
+    // is the deliberate case, and it clears itself on the next settlement.
+    const absent = ALL_NETWORKS.filter((n) => !rec.networks.includes(n));
+    if (rec.networks.length > 0 && absent.length > 0) {
+      staleNetworks.push({ id: s.id, indexed: rec.networks, missingNetworks: absent, lastUpdated: rec.lastUpdated });
+    }
     if (rec.lastCalledAt) {
       const evicts = Date.parse(rec.lastCalledAt) + EVICTION_DAYS * 86400_000;
       const daysLeft = Math.floor((evicts - now) / 86400_000);
@@ -215,10 +253,13 @@ export async function GET(req: NextRequest) {
   // surface — a floor, not an inventory, and named so it cannot be read as one.
   const orphansSeen = [...seen.keys()].filter((id) => !SERVICES.some((s) => s.id === id));
 
+  // One settlement fixes every one of these for a given service, so a service
+  // that is both mispriced and on the wrong chains must be counted once.
+  const needsReseed = [...new Set([...missing, ...stalePrice, ...staleNetworks].map((r) => r.id))];
   const reseedCostUsd = Number(
-    [...missing, ...stalePrice]
-      .reduce((sum, row) => {
-        const svc = SERVICES.find((s) => s.id === row.id);
+    needsReseed
+      .reduce((sum, id) => {
+        const svc = SERVICES.find((s) => s.id === id);
         return sum + (svc ? (priceToMicro(svc.price) ?? 0) / 1e6 : 0);
       }, 0)
       .toFixed(4),
@@ -238,16 +279,23 @@ export async function GET(req: NextRequest) {
     missingCount: missing.length,
     stalePriceCount: stalePrice.length,
     underQuotedCount: stalePrice.filter((r) => r.underQuoted).length,
+    staleNetworksCount: staleNetworks.length,
     expiringSoonCount: expiringSoon.length,
-    reseedCostUsd, // one paid call per affected service fixes missing + stalePrice
+    serve: ALL_NETWORKS,
+    reseedCount: needsReseed.length,
+    reseedCostUsd, // one paid call per affected service fixes all three
     missing,
     stalePrice: stalePrice.sort((a, b) => (a.id < b.id ? -1 : 1)),
+    staleNetworks: staleNetworks.sort((a, b) => (a.id < b.id ? -1 : 1)),
     expiringSoon: expiringSoon.sort((a, b) => a.daysLeft - b.daysLeft),
     wrongPayTo,
     orphansSeen,
     note:
       "Discovery records refresh only on a new successful settlement. After a price change, " +
-      `re-settle the service once or the index keeps quoting the old amount. Eviction runs at ` +
+      `re-settle the service once or the index keeps quoting the old amount. The same is true of ` +
+      "the chain list: a network added to `accepts` reaches the index one settlement at a time, so " +
+      "until then an agent reading the catalogue cannot choose it — which makes any 'nobody paid on " +
+      `chain X' measurement meaningless while staleNetworks is non-empty. Eviction runs at ` +
       `lastCalledAt + ${EVICTION_DAYS}d on a daily conveyor, so anything in expiringSoon needs a ` +
       "settlement before its evictsAt or it leaves the index on its own.",
   });

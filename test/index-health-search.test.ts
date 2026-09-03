@@ -20,6 +20,9 @@ const { cfgMock, servicesMock } = vi.hoisted(() => ({
   cfgMock: {
     getConfig: vi.fn(() => ({ statsToken: "tok", payTo: "0xAAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaA" })),
     getSiteUrl: vi.fn(() => "https://402.com.tr"),
+    // What we serve. The staleNetworks check is the gap between this and what
+    // the index advertises, so the mock has to carry it.
+    ALL_NETWORKS: ["eip155:8453", "eip155:137"],
   },
   servicesMock: {
     SERVICES: [
@@ -146,5 +149,85 @@ describe("index-health via search?payTo", () => {
   it("stays locked to the owner", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ok([])));
     expect((await GET(req("wrong"))).status).toBe(401);
+  });
+});
+
+/**
+ * The chain list freezes exactly like the price does, and for a month nothing
+ * said so.
+ *
+ * Polygon was added to `accepts` on 2026-08-30. On 2026-09-03, 7 of 67 indexed
+ * rows advertised it — precisely the ones settled after the deploy; the other 60
+ * still quoted Base alone, because a discovery record keeps whatever it saw at
+ * its last settlement. This check reported a clean bill throughout, because it
+ * compared amounts and ignored networks.
+ *
+ * What that cost was not a broken payment but a broken measurement: the
+ * pre-registered question "did anyone pay on Polygon in 14 days" was being asked
+ * of a catalogue that had never offered Polygon to 90% of the agents reading it.
+ * A zero there says nothing about demand, and without this check nothing would
+ * have distinguished the two.
+ */
+const netRow = (id: string, networks: string[]) => ({
+  resource: `https://402.com.tr/api/x402/${id}`,
+  lastUpdated: ago(1),
+  accepts: networks.map((network) => ({ amount: "20000", network, payTo: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })),
+  quality: { lastCalledAt: ago(1), l30DaysTotalCalls: 3 },
+});
+
+describe("staleNetworks — a chain nobody can see is a chain nobody can choose", () => {
+  it("flags a row that advertises only some of the chains we serve", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok([netRow("token-risk", ["eip155:8453"])])));
+    const body = await (await GET(req())).json();
+    expect(body.staleNetworksCount).toBe(1);
+    expect(body.staleNetworks[0]).toMatchObject({
+      id: "token-risk",
+      indexed: ["eip155:8453"],
+      missingNetworks: ["eip155:137"],
+    });
+  });
+
+  it("says nothing about a row that already carries every chain", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok([netRow("token-risk", ["eip155:8453", "eip155:137"])])));
+    const body = await (await GET(req())).json();
+    expect(body.staleNetworksCount).toBe(0);
+  });
+
+  it("does not invent a fault from a row that declared no network at all", async () => {
+    // An accepts entry without a `network` field tells us nothing about which
+    // chains are advertised — treating that silence as "Polygon is missing"
+    // would flag the whole catalogue on a field the index simply did not send.
+    vi.stubGlobal("fetch", vi.fn(async () => ok([row("token-risk", "20000", ago(1))])));
+    const body = await (await GET(req())).json();
+    expect(body.staleNetworksCount).toBe(0);
+  });
+
+  it("publishes what we serve, so the gap is readable without the source", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok([netRow("token-risk", ["eip155:8453"])])));
+    const body = await (await GET(req())).json();
+    expect(body.serve).toEqual(["eip155:8453", "eip155:137"]);
+  });
+
+  it("counts a service needing a re-settle once, however many ways it is stale", async () => {
+    // Wrong price AND wrong chains is still one settlement, so the estimate must
+    // not bill it twice.
+    vi.stubGlobal("fetch", vi.fn(async () => ok([{
+      resource: "https://402.com.tr/api/x402/token-risk",
+      lastUpdated: ago(1),
+      accepts: [{ amount: "10000", network: "eip155:8453", payTo: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      quality: { lastCalledAt: ago(1), l30DaysTotalCalls: 3 },
+    }])));
+    const body = await (await GET(req())).json();
+    expect(body.stalePriceCount).toBe(1);
+    expect(body.staleNetworksCount).toBe(1);
+    // token-risk is $0.02; the other two mocked services are missing entirely.
+    expect(body.reseedCount).toBe(3);
+    expect(body.reseedCostUsd).toBeCloseTo(0.02 + 0.01 + 0.03, 6);
+  });
+
+  it("warns that a chain measurement is meaningless while rows are stale", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok([netRow("token-risk", ["eip155:8453"])])));
+    const body = await (await GET(req())).json();
+    expect(body.note).toMatch(/chain list/i);
   });
 });
