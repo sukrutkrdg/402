@@ -2106,7 +2106,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Translate",
     tagline: "Translate up to 6K chars to any language",
     description:
-      "Claude-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. One USDC micro-payment per call, no API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users.",
+      "Claude-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. Priced by length: $0.03 to 2,000 characters, $0.08 above — the 402 challenge quotes the price for the text you sent. No API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users.",
     price: "$0.03",
     icon: "🌐",
     category: "AI",

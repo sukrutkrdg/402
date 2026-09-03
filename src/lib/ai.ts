@@ -259,6 +259,29 @@ export async function aiExtractBatch(params: Record<string, string>) {
   });
 }
 
+/**
+ * Where ai-translate stops being one price.
+ *
+ * The endpoint advertises 6K characters into ANY language, and "any" is what
+ * breaks a flat price. Output tokens scale with the input, and a script that
+ * spends several tokens per character can fill the whole 6000-token budget:
+ * $0.030 of Haiku output plus the input, against a $0.03 sale. The margin was
+ * never negative on the calls we actually saw — English-to-Turkish prose costs
+ * fractions of a cent — but the worst case an agent is entitled to ask for was
+ * priced below cost, and an agent that finds that will keep asking for it.
+ *
+ * So the long half pays for the budget it can reach. This threshold is exported
+ * rather than repeated in the route: the two payment rails read the price from
+ * one function, and that function has to read the split from one place too, or
+ * we charge for one tier and serve the other (see test/price-rails.test.ts).
+ */
+export const TRANSLATE_LONG_CHARS = 2000;
+
+/** True when a translate request falls in the long (higher) price tier. */
+export function translateIsLong(text: string): boolean {
+  return (text || "").trim().length > TRANSLATE_LONG_CHARS;
+}
+
 /** Translate text into a target language. */
 export async function aiTranslate(params: Record<string, string>) {
   const input = (params.text || "").trim();

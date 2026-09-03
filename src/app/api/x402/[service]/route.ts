@@ -28,6 +28,7 @@ import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
+import { translateIsLong } from "@/lib/ai";
 import { payerFromHeaders } from "@/lib/payer";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
@@ -107,6 +108,13 @@ async function effectivePriceFor(
     const list = String(paramsFrom(req, service).list ?? "").trim();
     // Must stay identical to the listMode test in src/lib/ai.ts.
     if (/^(true|1|yes)$/i.test(list)) return "$0.06";
+    return service.price;
+  }
+  if (service.id === "ai-translate") {
+    // Priced by how much output the request can demand, not by what a typical
+    // one uses. The split itself lives in ai.ts so the handler and the price
+    // cannot disagree about which tier a call is in.
+    if (translateIsLong(String(paramsFrom(req, service).text ?? ""))) return "$0.08";
     return service.price;
   }
   if (service.id === "ai-token-report") {
