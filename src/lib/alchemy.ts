@@ -535,6 +535,6 @@ export async function walletNfts(params: Record<string, string>) {
       : "Alchemy NFT API with NO spam or airdrop filtering — the provider gates that behind a paid plan and this account is not on one — folded into collections. Every held token is listed, including airdropped junk. Floor prices are OpenSea's where the collection has one; Base coverage is partial, so a null floor means unquoted, not worthless.",
     disclaimer: spamFiltered
       ? "Spam filtering is a provider heuristic, not a guarantee — an unwanted airdrop can still appear."
-      : "This list is UNFILTERED: spam and airdropped collections are included. Treat an unfamiliar collection as unvetted.",
+      : "This list is UNFILTERED: spam and airdropped collections are included. Treat an unfamiliar collection as unvetted, and read nftCount as a sum of what the contracts themselves report — a spam contract can claim any balance it likes, so the total is not a count of real holdings.",
   };
 }
