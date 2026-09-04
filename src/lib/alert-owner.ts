@@ -28,7 +28,30 @@ import { kvGet, kvSet, kvDel } from "./kv";
 /** Long enough that a daily cron never re-announces a standing incident. */
 const REPEAT_AFTER_SECONDS = 60 * 60 * 20;
 
-export type AlertKind = "ai-credits" | "buyer-funds" | "surfaces" | "index-gap";
+/**
+ * Every alert kind, most severe first.
+ *
+ * This is the ONLY list. /api/revenue used to keep its own copy, which is how
+ * `index-gap` came to be written to KV and rendered nowhere — the panel that
+ * exists to stop detectors going unread had a detector it could not see. A kind
+ * added to the type but not to this array fails to compile, so the next one
+ * cannot repeat it.
+ *
+ * Order is what a person should deal with first: an outage that stops the AI
+ * endpoints selling outranks a discovery gap, which outranks a wallet running
+ * low, which outranks a stale published surface. `stock-actions` sits at the
+ * end because it is not a fault — it fires once, when something happens that
+ * has never happened before.
+ */
+export const ALERT_KINDS = [
+  "ai-credits",
+  "index-gap",
+  "buyer-funds",
+  "surfaces",
+  "stock-actions",
+] as const;
+
+export type AlertKind = (typeof ALERT_KINDS)[number];
 
 export interface AlertOutcome {
   fired: boolean;

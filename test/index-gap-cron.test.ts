@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { indexHealthProblems, type IndexHealth } from "@/lib/index-health";
+import { ALERT_KINDS } from "@/lib/alert-owner";
 
 /**
  * The check existed and nothing read it.
@@ -144,8 +145,15 @@ describe("the incident actually reaches a surface", () => {
   it("renders every incident kind, not just ai-credits", () => {
     // `ai-credits` was hardcoded. A new kind written to KV and rendered nowhere
     // is a detector nobody reads, which is the bug this panel exists to prevent.
-    expect(rev).toMatch(/"index-gap"/);
+    //
+    // The panel no longer names the kinds itself — it iterates ALERT_KINDS,
+    // which is the same declaration the AlertKind type is derived from, so a
+    // kind cannot exist without appearing here. That is a stronger guarantee
+    // than the literal "index-gap" this used to look for, and it is why that
+    // string is now absent from the route.
+    expect(rev).toMatch(/const kinds = ALERT_KINDS/);
     expect(rev).toMatch(/openIncidents/);
+    expect(ALERT_KINDS).toContain("index-gap");
   });
 
   it("is registered on a schedule, because an unscheduled detector is not one", () => {

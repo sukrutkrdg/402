@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRevenue } from "@/lib/revenue";
 import { stuckRefunds } from "@/lib/credits";
-import { openIncident } from "@/lib/alert-owner";
+import { openIncident, ALERT_KINDS } from "@/lib/alert-owner";
 import { getConfig } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
 
@@ -40,10 +40,10 @@ export async function GET(req: NextRequest) {
   // Every kind, not just `ai-credits`. That one was hardcoded, so when
   // cron/index-gap started raising `index-gap` the incident would have been
   // written to KV and rendered nowhere — a detector nobody reads, which is the
-  // exact bug this panel exists to prevent. Order is severity: an outage that
-  // stops the AI endpoints outranks a discovery gap, which outranks a wallet
-  // running low.
-  const kinds = ["ai-credits", "index-gap", "buyer-funds", "surfaces"] as const;
+  // exact bug this panel exists to prevent. The list now lives with the type in
+  // alert-owner.ts (severity-ordered) so a new kind cannot be added there and
+  // forgotten here.
+  const kinds = ALERT_KINDS;
   const open = (await Promise.all(kinds.map(async (kind) => ({ kind, inc: await openIncident(kind) }))))
     .filter((r): r is { kind: (typeof kinds)[number]; inc: NonNullable<Awaited<ReturnType<typeof openIncident>>> } => r.inc !== null)
     .map((r) => ({ kind: r.kind, since: r.inc.since, text: r.inc.text }));
