@@ -22,7 +22,7 @@ import { aiTokenReport, aiMarketBrief } from "./ai-report";
 import { rugScore } from "./scores";
 import { tokenMomentum, tokenInfo, chainStatus } from "./market";
 import { nftFloor, walletPortfolio, walletNetworth, walletNfts } from "./alchemy";
-import { walletActivity, historicalPrice, tokenTransfers } from "./covalent";
+import { walletActivity, tokenTransfers } from "./covalent";
 import { tokenApprovals } from "./approvals";
 import { walletSummary } from "./wallet-history";
 import { aiWalletReport, aiWalletSecurity, aiTxExplain, aiContractRisk, aiDeepDueDiligence, b20Dossier } from "./ai-report";
@@ -1496,35 +1496,25 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: tokenApprovals,
     noFreeTier: true,
-    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
-    // cancelled — the API now answers "credit limit exceeded". The handler fails
-    // loudly so nobody is charged, but advertising an endpoint that cannot answer
-    // sends agents into a dead call. Unhide when the source is restored or the
-    // read is migrated to a feed we still have.
-    hidden: true,
+    // Unhidden 2026-09-04. It was hidden on 2026-08-01 with the rest of the
+    // GoldRush/Covalent casualties, but unlike them it survives the outage: it
+    // prices what it can and returns the rest as `unpricedTokens` with
+    // `degraded: true`, which is an answer rather than a failure. Verified paid
+    // against production on 2026-09-04 — 200, full schema. The hiding was
+    // collateral damage from a batch decision that never got re-checked.
   },
-  {
-    id: "historical-price",
-    name: "Historical Token Price",
-    tagline: "USD price of a Base token on a given date",
-    description:
-      "Returns the USD price of a Base token on a specific date (YYYY-MM-DD) via Covalent. For agents computing cost basis, backtests, or P&L.",
-    price: "$0.02",
-    icon: "📅",
-    category: "Markets",
-    params: [
-      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
-      { name: "date", label: "Date (YYYY-MM-DD)", placeholder: "2026-06-01", required: true },
-    ],
-    handler: historicalPrice,
-    noFreeTier: true,
-    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
-    // cancelled — the API now answers "credit limit exceeded". The handler fails
-    // loudly so nobody is charged, but advertising an endpoint that cannot answer
-    // sends agents into a dead call. Unhide when the source is restored or the
-    // read is migrated to a feed we still have.
-    hidden: true,
-  },
+  // RETIRED 2026-09-04: `historical-price`. It read GoldRush/Covalent's price
+  // history and nothing else, and that account answers "Credit limit exceeded"
+  // — a billing state, not an outage, so waiting does not fix it. It had been
+  // hidden since 2026-08-01 on the theory the source would come back; it did
+  // not, and a hidden endpoint earns nothing while still needing to be read,
+  // tested and reasoned about every time someone sweeps the catalogue.
+  //
+  // Its siblings survived because they had somewhere else to go: wallet-activity
+  // and token-transfers fall back to cdpSql, and token-approvals prices what it
+  // can and reports the rest as unpriced. This one had no second source, and
+  // building one for a check that drew a single call in thirty days is not where
+  // the next hour belongs. Restore it from git if a price feed ever arrives.
   {
     id: "token-transfers",
     name: "Token Transfer History",
@@ -1553,12 +1543,14 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: walletNfts,
     noFreeTier: true,
-    // Migrated off the cancelled Covalent plan onto Alchemy's NFT API, but the
-    // rebuilt handler answers 502 through the edge in ~1-3s (too fast for a
-    // timeout) while nft-floor on the SAME key works — so the key is fine and
-    // the fault is in this call. Not diagnosed yet; hidden rather than left live,
-    // because a listed endpoint that cannot answer sends agents into a dead call.
-    hidden: true,
+    // Diagnosed and unhidden 2026-09-04. The 502 was real and the note above was
+    // right that the key was fine — Alchemy gates `excludeFilters` behind its
+    // paid tier and refuses the whole call on the free one, which is why
+    // nft-floor worked on the same key and this did not. It took making the
+    // handler log its own errors to see: Cloudflare replaces the body of any 5xx
+    // with a gateway page, so the message never reached anyone. The handler now
+    // retries without the filter and says `spamFiltered: false`. Verified paid
+    // against production — 200, 30 collections.
   },
   {
     id: "ai-wallet-report",
@@ -1571,12 +1563,10 @@ export const SERVICES: ServiceDef[] = [
     category: "AI",
     params: [{ name: "address", label: "Wallet address", placeholder: "0x… wallet", required: true }],
     handler: aiWalletReport,
-    // Hidden 2026-08-01: its data comes from GoldRush/Covalent, whose plan was
-    // cancelled — the API now answers "credit limit exceeded". The handler fails
-    // loudly so nobody is charged, but advertising an endpoint that cannot answer
-    // sends agents into a dead call. Unhide when the source is restored or the
-    // read is migrated to a feed we still have.
-    hidden: true,
+    // Unhidden 2026-09-04, same batch decision as token-approvals and the same
+    // correction: it composes several reads and the Covalent-backed ones are not
+    // load-bearing, so the report still answers. Verified paid against
+    // production — 200, verdict + summary + observations present.
   },
   {
     id: "ai-token-report",

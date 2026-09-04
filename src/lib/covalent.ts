@@ -310,25 +310,6 @@ export async function tokenApprovals(params: Record<string, string>) {
 }
 
 // ---------------------------------------------------------------------------
-// Historical token price (USD at a date)
-// ---------------------------------------------------------------------------
-
-export async function historicalPrice(params: Record<string, string>) {
-  const token = reqAddr(params.address || params.token || "");
-  const date = (params.date || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Provide 'date' as YYYY-MM-DD");
-  const data = await cov<Array<{ prices?: Array<{ date?: string; price?: number }> }>>(
-    `/pricing/historical_by_addresses_v2/${CHAIN}/USD/${token}/?from=${date}&to=${date}`,
-    `hp:${token.toLowerCase()}:${date}`,
-    86400,
-  );
-  const prices = data?.[0]?.prices ?? [];
-  const match = prices.find((p) => p.date === date) ?? prices[0];
-  if (!match || typeof match.price !== "number") throw new Error("No price for that token/date");
-  return { token, date, priceUsd: match.price, checkedAt: new Date().toISOString() };
-}
-
-// ---------------------------------------------------------------------------
 // Wallet NFT holdings
 // ---------------------------------------------------------------------------
 
