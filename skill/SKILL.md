@@ -15,6 +15,7 @@ rail).
 | The user / agent asks… | Use |
 |---|---|
 | "Is token X safe? Is it a rug / honeypot?" | `token-risk`, `rug-score`, `ai-token-report` |
+| "Is this AAPL/TSLA token on Base the real one?" | `b20-safety` — separates a Coinbase issuance (holder-eligibility + gated mint) from a token wearing the ticker |
 | "Give me a verdict on token X" | `ai-token-report` (Claude-written) |
 | "Screen address X for OFAC sanctions" | `sanctions`, `sanctions-batch`, `compliance-check` |
 | "What's in wallet X? Net worth?" | `wallet-networth` |

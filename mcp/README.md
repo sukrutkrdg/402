@@ -12,7 +12,9 @@ written here would be wrong the next time a service is added.
 **The Base token-safety toolkit for AI agents.** An **MCP (Model Context
 Protocol) server** that gives your agent the checks it needs before it touches a
 Base token — including the **only [B20](https://402.com.tr) (Base-native token
-standard) freeze/seize/rug suite anywhere**, pre-trade GO/HOLD/STOP gates,
+standard) freeze/seize/rug suite anywhere** — which also reads Base's tokenized
+stocks, telling a real issuance apart from a token wearing an equity ticker —
+pre-trade GO/HOLD/STOP gates,
 honeypot & sellability checks, wallet + approval audits, sign-guard, prices and
 AI reports. Every paid API in the [x402 Bazaar](https://402.com.tr) catalog,
 exposed as a callable tool (Claude Desktop, Cursor, Cline, Windsurf, VS Code,
