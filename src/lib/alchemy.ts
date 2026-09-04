@@ -451,19 +451,50 @@ export async function walletNfts(params: Record<string, string>) {
   const k = key();
   // Built with URLSearchParams: the filter parameter is an array, and hand-rolling
   // `excludeFilters[]=` left unencoded brackets in the query string.
-  const q = new URLSearchParams({ owner: address, withMetadata: "true", pageSize: "50" });
-  q.append("excludeFilters[]", "SPAM");
-  q.append("excludeFilters[]", "AIRDROPS");
-  const url = `${NFT}/${k}/getNFTsForOwner?${q}`;
+  const base = new URLSearchParams({ owner: address, withMetadata: "true", pageSize: "50" });
+  const filtered = new URLSearchParams(base);
+  filtered.append("excludeFilters[]", "SPAM");
+  filtered.append("excludeFilters[]", "AIRDROPS");
 
   let data: { ownedNfts?: AlchemyOwnedNft[]; totalCount?: number };
-  try {
-    const res = await fetchRetry(url);
+  /**
+   * Whether the provider actually applied its filters. `excludeFilters` is gated
+   * behind Alchemy's pay-as-you-go tier, and on the free tier the whole request
+   * is refused with a 400 naming the parameter — so asking for filtering did not
+   * return unfiltered results, it returned nothing at all, and this endpoint was
+   * dead in production while `nft-floor` on the same key was fine. It took a
+   * runtime log to see that, because the message never survived Cloudflare.
+   *
+   * Dropping the parameter and saying so beats both alternatives: refusing to
+   * answer, or answering as though a filter ran. And it repairs itself — the day
+   * the plan is upgraded, the first attempt succeeds and this flag goes back to
+   * true with no code change.
+   */
+  let spamFiltered = true;
+  const fetchNfts = async (q: URLSearchParams) => {
+    const res = await fetchRetry(`${NFT}/${k}/getNFTsForOwner?${q}`);
     if (!res.ok) {
       const body = (await res.text().catch(() => "")).slice(0, 200);
-      throw new Error(`Alchemy ${res.status}${body ? ` — ${body}` : ""}`);
+      const err = new Error(`Alchemy ${res.status}${body ? ` — ${body}` : ""}`);
+      (err as Error & { status?: number; body?: string }).status = res.status;
+      (err as Error & { status?: number; body?: string }).body = body;
+      throw err;
     }
-    data = (await res.json()) as typeof data;
+    return (await res.json()) as typeof data;
+  };
+
+  try {
+    try {
+      data = await fetchNfts(filtered);
+    } catch (err) {
+      // Only the plan refusal is retried. Any other 400 is about the request we
+      // sent, and repeating it without a filter would just fail twice.
+      const e = err as Error & { status?: number; body?: string };
+      const planGated = e.status === 400 && /excludeFilters|payg|upgrade your account/i.test(e.body ?? "");
+      if (!planGated) throw err;
+      spamFiltered = false;
+      data = await fetchNfts(base);
+    }
   } catch (err) {
     throw new Error(`NFT holdings unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -495,9 +526,15 @@ export async function walletNfts(params: Record<string, string>) {
     nftCount: collections.reduce((s, c) => s + c.count, 0),
     collections,
     truncated: (data.ownedNfts?.length ?? 0) >= 100,
+    // Stated, not implied. A buyer deciding what a wallet holds needs to know
+    // whether anything was filtered out of the answer they are reading.
+    spamFiltered,
     checkedAt: new Date().toISOString(),
-    method:
-      "Alchemy NFT API with the provider's spam and airdrop filters applied, folded into collections. Floor prices are OpenSea's where the collection has one; Base coverage is partial, so a null floor means unquoted, not worthless.",
-    disclaimer: "Spam filtering is a provider heuristic, not a guarantee — an unwanted airdrop can still appear.",
+    method: spamFiltered
+      ? "Alchemy NFT API with the provider's spam and airdrop filters applied, folded into collections. Floor prices are OpenSea's where the collection has one; Base coverage is partial, so a null floor means unquoted, not worthless."
+      : "Alchemy NFT API with NO spam or airdrop filtering — the provider gates that behind a paid plan and this account is not on one — folded into collections. Every held token is listed, including airdropped junk. Floor prices are OpenSea's where the collection has one; Base coverage is partial, so a null floor means unquoted, not worthless.",
+    disclaimer: spamFiltered
+      ? "Spam filtering is a provider heuristic, not a guarantee — an unwanted airdrop can still appear."
+      : "This list is UNFILTERED: spam and airdropped collections are included. Treat an unfamiliar collection as unvetted.",
   };
 }
