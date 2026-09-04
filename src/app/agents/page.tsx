@@ -202,6 +202,14 @@ const res = await fetch(
           anywhere), <code className="codechip">sign_guard</code> (before signing a tx).
         </p>
         <p className="text-xs text-gray-500">
+          Holding tokenized equities? <code className="codechip">b20_safety</code> covers all 13 of
+          Coinbase&apos;s on Base and answers &ldquo;is this the real one&rdquo; from the
+          transfer-policy administrator on chain instead of a hardcoded address list — a lookalike
+          can copy the ticker, the name and a <code className="codechip">0xb200…</code> vanity
+          address, but not the policy admin. It reports holder-eligibility gating and gated mint as
+          the regulated shape they are, not as danger.
+        </p>
+        <p className="text-xs text-gray-500">
           Prefer to build your own? See the{" "}
           <a
             className="text-sky-400 hover:underline"

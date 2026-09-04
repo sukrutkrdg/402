@@ -12,9 +12,11 @@ written here would be wrong the next time a service is added.
 **The Base token-safety toolkit for AI agents.** An **MCP (Model Context
 Protocol) server** that gives your agent the checks it needs before it touches a
 Base token — including the **only [B20](https://402.com.tr) (Base-native token
-standard) freeze/seize/rug suite anywhere** — which also reads Base's tokenized
-stocks, telling a real issuance apart from a token wearing an equity ticker —
-pre-trade GO/HOLD/STOP gates,
+standard) freeze/seize/rug suite anywhere** — which also covers all 13 of
+Coinbase's tokenized equities, telling a real issuance apart from a token merely
+wearing an equity ticker by reading who administers the transfer policy on
+chain rather than by consulting a list of addresses, so a newly issued one is
+recognised the day it appears — pre-trade GO/HOLD/STOP gates,
 honeypot & sellability checks, wallet + approval audits, sign-guard, prices and
 AI reports. Every paid API in the [x402 Bazaar](https://402.com.tr) catalog,
 exposed as a callable tool (Claude Desktop, Cursor, Cline, Windsurf, VS Code,
@@ -299,6 +301,16 @@ Once installed, just ask your agent naturally — it picks the right tool and pa
 
 The agent calls `token_risk` and `token_price`, each settling a tiny USDC payment
 from your wallet, and answers with the on-chain data.
+
+> "Is this NVDA token on Base the real Coinbase one?"
+
+`b20_safety` answers from the chain rather than from a list: it reads who
+administers the token's transfer policy and reports whether that is the operator
+behind Coinbase's confirmed issuances. A lookalike can copy the ticker, the name
+and even a `0xb200…` vanity address; it cannot borrow the policy administrator.
+The same answer carries the issuer's powers — holder-eligibility gating, gated
+mint, and the rebase multiplier that redenominates every balance at once — as
+facts about a regulated instrument, not as a risk score to be alarmed by.
 
 ---
 

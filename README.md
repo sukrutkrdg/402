@@ -1,8 +1,9 @@
 # x402 Bazaar — Pay-per-call API marketplace with Base Builder Codes
 
 A **live pay-per-call API marketplace** on **Base mainnet** — [402.com.tr](https://402.com.tr).
-131 public services (token safety, the only B20 protection suite on Base incl. real-time seizure alerts,
-wallet intelligence, OFAC screening, AI-written reports) sold to AI agents and humans over
+142 public services as of 2026-09-04 ([live catalogue](https://402.com.tr/api/services)) — token safety,
+the only B20 protection suite on Base incl. real-time seizure alerts and cover for all 13 of Coinbase's
+tokenized equities, wallet intelligence, OFAC screening, AI-written reports — sold to AI agents and humans over
 [**x402**](https://docs.cdp.coinbase.com/x402), settled in USDC via the Coinbase CDP facilitator,
 with onchain attribution via [**Builder Codes**](https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes)
 (ERC-8021 Schema 2). Listed in the CDP x402 discovery index; consumable via MCP
@@ -18,11 +19,20 @@ One Next.js app plays all three roles in the x402 flow:
 
 ## What it does
 
-- **Marketplace** (`/`): 131 real x402-protected, pay-per-call endpoints — pay from your own
+- **Marketplace** (`/`): every service is a real x402-protected, pay-per-call endpoint — pay from your own
   browser wallet (or the server buyer), a USDC micro-payment settles on Base, you get the data +
   the settlement tx. Safety responses include an auditable pre-spend `receipt` (GO/HOLD/STOP).
 - **B20 protection suite**: 29 tools reading Base's native-token precompiles — freeze/seize risk,
   "when did it turn seizable", real-time PolicyUpdated alerts (CDP webhooks), launch radar.
+- **Tokenized equities**: Coinbase's tokenized stocks are B20 Asset tokens, so the same reads cover
+  them. `b20_safety` tells a real issuance apart from a token merely wearing an equity ticker, by
+  checking who administers the transfer policy on chain — not by consulting a list of addresses.
+  That recognises all 13 (AAPLc, AMZNc, COINc, CRCLc, GOOGLc, INTCc, METAc, MSFTc, MSTRc, NVDAc,
+  SNDKc, SPCXc, TSLAc) with no per-token configuration, and a 14th the day it is issued. It also
+  reports holder-eligibility gating and gated mint as the regulated shape they are, rather than
+  scoring a compliant issuer as dangerous. What it does **not** claim is a corporate-action feed:
+  across all thirteen the number of multiplier changes to date is zero, so there is nothing yet to
+  serve — a watcher records the first one when it happens.
 - **Protect wallet** (`/app?mode=wallet`): scan approvals, revoke the risky ones **gas-free**
   (sponsored via CDP Paymaster; one-signature Revoke All on smart wallets).
 - **Attribution dashboard** (`/dashboard`): paste any Base settlement tx hash; we read its calldata
