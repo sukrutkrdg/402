@@ -235,13 +235,6 @@ function secretMatches(provided: string, expected: string): boolean {
  */
 function handlerErrorResponse(err: unknown, serviceId = "?"): NextResponse {
   const message = err instanceof Error ? err.message : "Service error";
-  // Say it out loud. This response is the only record a failing service leaves,
-  // and it does not survive the trip: Cloudflare replaces the body of any 5xx
-  // with its own error page, so the operator sees "502 Bad gateway" and the
-  // reason we carefully assembled never reaches them — or the runtime log, which
-  // until now recorded the request and nothing about why it failed. Two endpoints
-  // sat broken behind exactly that on 2026-09-04 and the logs held no trace.
-  console.error(`[x402 handler-fail] ${serviceId}: ${message}`, err instanceof Error ? err.stack?.slice(0, 800) : "");
   const m = message.toLowerCase();
   const status =
     // "must be", "too large/long", "choose one of", "not a" and "unsupported"
@@ -253,6 +246,23 @@ function handlerErrorResponse(err: unknown, serviceId = "?"): NextResponse {
       : /unavailable|failed|responded \d|timeout|fetch/.test(m)
         ? 502
         : 500;
+  // Say it out loud, at the level it deserves.
+  //
+  // The response is the only record a failing service leaves and it does not
+  // survive the trip: Cloudflare replaces the body of any 5xx with its own error
+  // page, so the operator sees "502 Bad gateway" and the reason we assembled
+  // reaches nobody. Two endpoints sat broken behind exactly that on 2026-09-04
+  // and the runtime log held the request and nothing about why it failed.
+  //
+  // But logging all of it as `error` was its own mistake, made the same day: a
+  // 400 is the CALLER's input, not our fault, and `lp-lock` answering "no LP data
+  // for this token" to a probing bot twenty times a minute painted the Vercel
+  // dashboard red with correct behaviour. The level now follows the status, so
+  // `--level error` means something is wrong with US and stays worth reading.
+  const line = `[x402 handler-fail] ${serviceId}: ${message}`;
+  const stack = err instanceof Error ? err.stack?.slice(0, 800) : "";
+  if (status >= 500) console.error(line, stack);
+  else console.warn(line);
   return NextResponse.json({ error: message }, { status });
 }
 
