@@ -1290,15 +1290,30 @@ export async function b20Control(params: Record<string, string>) {
   if (admins.length === 1 && !adminRenounced) flags.push("a single admin address controls all role assignment");
   if (adminRenounced) flags.push("admin renounced — the role set is frozen as-is");
 
-  const controllers = new Set([...minters, ...seizers, ...admins]);
+  // Everyone who can move, freeze or rescale someone else's balance.
+  //
+  // This used to count minters, seizers and admins only, which made the number
+  // disagree with the `roles` map printed beside it: METAc lists five distinct
+  // addresses across admin, mint, burn, rebase and pause, and this reported two.
+  // A reader seeing both cannot tell which one is lying.
+  //
+  // Pausers and rebase operators belong here on our own terms — b20-safety
+  // already scores a live pause at 35 and a mutable multiplier at 15, so
+  // excluding the addresses that hold those powers from a field called
+  // "controllers" was inconsistent with the risk model next door. Metadata is
+  // left out: renaming a token is not control over a balance.
+  const rebasers = roles["operator (rebase)"] ?? [];
+  const controllers = new Set([...minters, ...seizers, ...admins, ...pausers, ...rebasers]);
   const verdict = seizers.length ? "seizable_controlled" : minters.length || pausers.length ? "issuer_controlled" : admins.length && !adminRenounced ? "admin_controlled" : "minimal";
 
   return {
     address: addr, isB20: true, symbol: s.symbol, variant: s.variant,
     adminRenounced,
     distinctControllers: controllers.size,
+    /** What that count includes, so it can be checked against `roles`. */
+    controllerRoles: ["admin", "mint", "seize (burnBlocked)", "pause", "operator (rebase)"],
     roles,
-    can: { mint: minters, seize: seizers, pause: pausers, admin: admins },
+    can: { mint: minters, seize: seizers, pause: pausers, admin: admins, rebase: rebasers },
     flags,
     verdict, // seizable_controlled | issuer_controlled | admin_controlled | minimal
     recommendation:
@@ -1588,8 +1603,15 @@ export async function b20Supply(params: Record<string, string>) {
     capChanges,
     historyAvailable: rows !== null,
     verdict, // uncapped | cap_raised | at_cap | capped
+    // "Dilute you at will" is a claim about who may mint, and it is false when
+    // minting is policy-gated. A tokenized stock is uncapped BY DESIGN — supply
+    // tracks the shares held in the wrapper, and only Authorized Participants
+    // may mint or redeem as shares flow in and out. METAc reads uncapped with a
+    // MINT_RECEIVER policy set, and the old line called that high dilution risk.
     recommendation: !capped
-      ? "⚠️ No supply cap — the issuer can mint unlimited new supply and dilute you at will. Treat as high dilution risk."
+      ? s.mintGated
+        ? "Uncapped, but minting is policy-gated: supply can only be created for addresses the issuer has authorised. On a tokenized asset that is the design — supply tracks what the issuer holds against it — not open-ended dilution. Check WHO holds the mint role with b20-control."
+        : "⚠️ No supply cap and no mint gating — the issuer can mint unlimited new supply and dilute you at will. Treat as high dilution risk."
       : raises > 0
         ? `⚠️ The supply cap has been RAISED ${raises} time(s) — the issuer has diluted (or set up to dilute) holders. Watch for further cap raises before sizing up.`
         : pctMinted !== null && pctMinted >= 99

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { wearsEquityTicker, issuerControlProfile } from "@/lib/b20-safety";
 
 /**
@@ -167,5 +168,41 @@ describe("the route wires it into the answer", () => {
       src.indexOf("issuerControlled\n        ? `Issuer-controlled"),
       "the profile branch must come before the verdict branch",
     ).toBeLessThan(src.indexOf('verdict === "avoid" ? "Avoid holding size'));
+  });
+});
+
+/**
+ * Two more places the same mistake was living, found by running the rest of the
+ * suite against METAc rather than stopping at the endpoint that was fixed first.
+ *
+ * `b20-supply` answered "No supply cap — the issuer can mint unlimited new
+ * supply and dilute you at will. Treat as high dilution risk." for a token whose
+ * MINT_RECEIVER policy is set. A tokenized stock is uncapped by design: supply
+ * tracks the shares held against it and only Authorized Participants may mint or
+ * redeem. "At will" was not a harsh reading, it was untrue.
+ *
+ * `b20-control` reported `distinctControllers: 2` while printing five distinct
+ * addresses in `roles` — it counted minters, seizers and admins only, leaving
+ * out the pause and rebase holders. b20-safety scores a live pause at 35 and a
+ * mutable multiplier at 15, so those addresses were controllers by our own risk
+ * model and not by this field's.
+ */
+describe("the same inversion, in the endpoints beside it", () => {
+  const src = readFileSync(new URL("../src/lib/b20-safety.ts", import.meta.url), "utf8");
+
+  it("does not call gated minting dilution at will", () => {
+    expect(src).toMatch(/s\.mintGated\s*\n?\s*\?\s*"Uncapped, but minting is policy-gated/);
+    // The blunt line survives for the case it is actually true of.
+    expect(src).toMatch(/No supply cap and no mint gating/);
+  });
+
+  it("counts every role that can move, freeze or rescale a balance", () => {
+    expect(src).toMatch(/const rebasers = roles\["operator \(rebase\)"\]/);
+    expect(src).toMatch(/new Set\(\[\.\.\.minters, \.\.\.seizers, \.\.\.admins, \.\.\.pausers, \.\.\.rebasers\]\)/);
+  });
+
+  it("publishes what the count includes, so it can be checked against roles", () => {
+    expect(src).toMatch(/controllerRoles: \[/);
+    expect(src).toMatch(/rebase: rebasers/);
   });
 });
