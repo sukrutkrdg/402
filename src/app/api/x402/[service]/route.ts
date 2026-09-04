@@ -30,6 +30,7 @@ import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
 import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
+import { withPaymentTerms } from "@/lib/challenge-terms";
 import { payerFromHeaders } from "@/lib/payer";
 import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
@@ -649,6 +650,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // top-level fields are spec-safe; x402 clients only read `accepts`.
       try {
         const body = (await res.clone().json()) as Record<string, unknown>;
+        // The terms belong in the body too — see src/lib/challenge-terms.ts for
+        // why, and for why it is not the demand fix it looks like.
+        withPaymentTerms(body, res.headers);
         const sample = (await loadSample(service.id)) ?? staticOutputExample(service.id);
         if (sample) {
           body.sample = {
