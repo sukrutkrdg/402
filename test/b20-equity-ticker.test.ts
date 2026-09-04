@@ -152,9 +152,16 @@ describe("the route wires it into the answer", () => {
     expect(src).toMatch(/assetProfile/);
     expect(src).toMatch(/equityTicker/);
     expect(src).toMatch(/issuerControlled/);
-    // The honesty guard: we read a control shape, never an identity.
+    // The honesty guard. Recognising the operator is a strong signal and still
+    // not proof of who they are, and the response has to keep saying so — a
+    // known policy admin is the most tempting place to start claiming identity.
     expect(src).toMatch(/verified: false/);
-    expect(src, "must say plainly that this is not an identity check").toMatch(/control shape, not the identity/);
+    expect(src, "must not turn operator recognition into an identity claim").toMatch(
+      /not that the operator is who they claim/,
+    );
+    expect(src, "an unrecognised operator must read as unknown, not as denial").toMatch(
+      /the shape is right and the operator is unknown/,
+    );
   });
 
   it("does not tell a holder to avoid an asset class", async () => {
@@ -204,5 +211,40 @@ describe("the same inversion, in the endpoints beside it", () => {
   it("publishes what the count includes, so it can be checked against roles", () => {
     expect(src).toMatch(/controllerRoles: \[/);
     expect(src).toMatch(/rebase: rebasers/);
+  });
+});
+
+/**
+ * The maintenance problem, and why the anchor is the operator and not the token.
+ *
+ * A list of "known good" token addresses has to grow every time a stock is
+ * tokenized, and is quietly wrong on the day nobody updates it — the exact
+ * failure this repo has now fixed in four other places. Measured on 2026-09-04,
+ * GOOGLc and METAc share ONE policy admin across all four scopes and all seven
+ * role holders, so anchoring there recognises the next issuance for free.
+ */
+describe("issuer recognition is anchored on the operator", () => {
+  const src = readFileSync(new URL("../src/lib/b20-safety.ts", import.meta.url), "utf8");
+
+  it("keys the seed on the policy admin, not on token addresses", () => {
+    expect(src).toMatch(/KNOWN_ASSET_ISSUERS/);
+    expect(src).toMatch(/0xec0f05c174e54fbf0fe16ad930a8afebce612812/);
+    // The two token addresses must NOT be what recognition depends on.
+    const seed = src.slice(src.indexOf("const KNOWN_ASSET_ISSUERS"), src.indexOf("ISSUER_ADMIN_ABI"));
+    expect(seed).not.toMatch(/0xb2000000000000000000002d0ba3164cc74f58b7/);
+    expect(seed).not.toMatch(/0xb2000000000000000000008bc8786b856e61707c/);
+  });
+
+  it("reads the admin of the policy the TOKEN points at, so it cannot be borrowed", () => {
+    expect(src).toMatch(/functionName: "policyAdmin", args: \[senderPolicyId\]/);
+  });
+
+  it("spends the extra read only where the answer matters", () => {
+    expect(src).toMatch(/ticker \? await recogniseIssuer\(s\.senderPolicyId\) : null/);
+  });
+
+  it("treats an unreadable or unknown admin as unrecognised, never as a denial", () => {
+    expect(src).toMatch(/if \(!admin\) return \{ policyAdmin: null, recognised: false, label: null \}/);
+    expect(src).toMatch(/senderPolicyId === 0n\) return \{ policyAdmin: null, recognised: false/);
   });
 });

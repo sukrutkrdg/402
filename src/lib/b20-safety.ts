@@ -340,6 +340,50 @@ export function issuerControlProfile(s: { transferGated: boolean; mintGated: boo
   return s.transferGated && s.mintGated;
 }
 
+/**
+ * Operators whose issuances have been confirmed, keyed on the POLICY ADMIN.
+ *
+ * A list of token addresses would have to grow every time a new stock is
+ * tokenized, and would be quietly wrong on the day it was not updated — the
+ * failure this codebase has now fixed in four separate places. The policy admin
+ * does not have that problem: measured on 2026-09-04, `GOOGLc` and `METAc` share
+ * one policy admin across all four scopes (transfer-sender, transfer-receiver,
+ * transfer-executor, mint-receiver) and all seven role holders. An `AAPLc` issued
+ * by the same operator tomorrow is recognised without anyone editing this file.
+ *
+ * A squatter cannot borrow it. `policyAdmin` is read from the policy registry
+ * precompile for the policy the TOKEN itself points at, so claiming this admin
+ * would mean the impersonator's token is administered by the real operator.
+ *
+ * It is still a seed, and a rotated key would go unrecognised — which reports as
+ * "not recognised" rather than as a denial, and that is the safe direction.
+ */
+const KNOWN_ASSET_ISSUERS: Record<string, string> = {
+  "0xec0f05c174e54fbf0fe16ad930a8afebce612812":
+    "same policy operator as Base's confirmed tokenized stocks (GOOGLc, METAc)",
+};
+
+/** `policyAdmin(uint64)` on the policy registry precompile. */
+const ISSUER_ADMIN_ABI = [
+  { type: "function", name: "policyAdmin", stateMutability: "view", inputs: [{ type: "uint64" }], outputs: [{ type: "address" }] },
+] as const;
+
+/**
+ * Who administers this token's transfer policy, and whether we have seen them
+ * before. Read only for tokens wearing an equity ticker — the one case where the
+ * answer changes what a caller should do.
+ */
+async function recogniseIssuer(senderPolicyId: bigint): Promise<{ policyAdmin: string | null; recognised: boolean; label: string | null }> {
+  if (senderPolicyId === 0n) return { policyAdmin: null, recognised: false, label: null };
+  const admin = await withRetry<string | null>(
+    () => client.readContract({ address: B20_POLICY_REGISTRY, abi: ISSUER_ADMIN_ABI, functionName: "policyAdmin", args: [senderPolicyId] }) as Promise<string | null>,
+    null,
+  );
+  if (!admin) return { policyAdmin: null, recognised: false, label: null };
+  const label = KNOWN_ASSET_ISSUERS[admin.toLowerCase()] ?? null;
+  return { policyAdmin: admin, recognised: label !== null, label };
+}
+
 // ---- 1. B20 Token Safety — freeze/seize verdict ----
 
 export async function b20Safety(params: Record<string, string>) {
@@ -390,6 +434,10 @@ export async function b20Safety(params: Record<string, string>) {
   // memecoin is, and the score above answers it backwards on its own.
   const ticker = wearsEquityTicker(s.symbol);
   const issuerControlled = issuerControlProfile(s);
+  // One extra precompile read, and only when the answer matters: a token wearing
+  // a famous ticker is the only case where "who runs this" changes what a caller
+  // should do with the verdict.
+  const issuer = ticker ? await recogniseIssuer(s.senderPolicyId) : null;
   if (ticker && !issuerControlled) {
     // The inversion this exists for. A real tokenized security cannot lack the
     // controls its issuer is obliged to keep, so a ticker without them is either
@@ -414,9 +462,16 @@ export async function b20Safety(params: Record<string, string>) {
     assetProfile: {
       equityTicker: ticker,
       issuerControlled,
+      // Who administers this token's transfer policy, and whether that operator
+      // also runs issuances we have confirmed. Anchored on the operator rather
+      // than on a list of token addresses, so a stock tokenized tomorrow is
+      // recognised without an edit here.
+      ...(issuer ? { issuer: { policyAdmin: issuer.policyAdmin, recognised: issuer.recognised, ...(issuer.label ? { label: issuer.label } : {}) } } : {}),
       classification: ticker
         ? issuerControlled
-          ? "issuer-controlled asset wearing an equity ticker"
+          ? issuer?.recognised
+            ? "issuer-controlled asset, run by a policy operator we have seen on confirmed issuances"
+            : "issuer-controlled asset wearing an equity ticker — operator not recognised"
           : "equity ticker WITHOUT issuer controls — cannot be a regulated security"
         : issuerControlled
           ? "issuer-controlled asset"
@@ -425,7 +480,11 @@ export async function b20Safety(params: Record<string, string>) {
       verified: false,
       note: ticker
         ? issuerControlled
-          ? `Carries the control surface Base's tokenized-stock spec requires of an issuer — holder eligibility and gated mint/redeem. That makes the freeze and seize powers above EXPECTED for a regulated instrument rather than a warning sign, and it is why the risk score reads high. This check does NOT prove the issuer is the real ${ticker} issuer: it reads the control shape, not the identity. Confirm the token address against the issuer's own published list before treating it as the security.`
+          ? `Carries the control surface Base's tokenized-stock spec requires of an issuer — holder eligibility and gated mint/redeem. That makes the freeze and seize powers above EXPECTED for a regulated instrument rather than a warning sign, and it is why the risk score reads high. ${
+              issuer?.recognised
+                ? `Its transfer policy is administered by ${issuer.policyAdmin}, the ${issuer.label}. That is a strong signal and still not identity: it says the same operator runs this token, not that the operator is who they claim.`
+                : `Its transfer policy is administered by ${issuer?.policyAdmin ?? "an address we could not read"}, which we have NOT seen on a confirmed issuance — so the shape is right and the operator is unknown.`
+            } Confirm the token address against the issuer's own published list before treating it as the security.`
           : `Wears the ${ticker} ticker with no issuer controls behind it. A regulated tokenized stock cannot look like this, so whatever it is, it is not that.`
         : issuerControlled
           ? "Issuer keeps holder-eligibility and mint gating — the shape of a controlled instrument rather than a free-floating token."
