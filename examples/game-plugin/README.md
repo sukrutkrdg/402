@@ -49,5 +49,5 @@ The agent now has these functions (it picks them automatically):
 
 ## Discover all services
 
-131 services, prices and schemas: <https://402.com.tr/.well-known/x402> ·
+Every service, price and schema: <https://402.com.tr/.well-known/x402> ·
 docs: <https://402.com.tr/agents> · MCP: `npx x402-bazaar-mcp`

@@ -59,5 +59,5 @@ wallet — the ACP buyer pays you more than the fulfilment cost, so it nets posi
 ## Why
 
 ACP is where Virtuals agents autonomously buy services from each other. Listing
-x402 Bazaar as a provider makes our 131 services hireable by the whole Virtuals
+x402 Bazaar as a provider makes our whole catalogue hireable by the whole Virtuals
 agent economy — the highest-leverage agent-to-agent distribution channel.
