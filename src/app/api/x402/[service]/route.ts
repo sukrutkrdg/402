@@ -233,8 +233,15 @@ function secretMatches(provided: string, expected: string): boolean {
  * no data for this input, 502 for upstream unavailability, 500 otherwise.
  * Used on every serve path — a data error must never surface as a blanket 503.
  */
-function handlerErrorResponse(err: unknown): NextResponse {
+function handlerErrorResponse(err: unknown, serviceId = "?"): NextResponse {
   const message = err instanceof Error ? err.message : "Service error";
+  // Say it out loud. This response is the only record a failing service leaves,
+  // and it does not survive the trip: Cloudflare replaces the body of any 5xx
+  // with its own error page, so the operator sees "502 Bad gateway" and the
+  // reason we carefully assembled never reaches them — or the runtime log, which
+  // until now recorded the request and nothing about why it failed. Two endpoints
+  // sat broken behind exactly that on 2026-09-04 and the logs held no trace.
+  console.error(`[x402 handler-fail] ${serviceId}: ${message}`, err instanceof Error ? err.stack?.slice(0, 800) : "");
   const m = message.toLowerCase();
   const status =
     // "must be", "too large/long", "choose one of", "not a" and "unsupported"
@@ -287,7 +294,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         { headers: { "x-warden-internal": "ok" } },
       );
     } catch (err) {
-      return handlerErrorResponse(err);
+      return handlerErrorResponse(err, service.id);
     }
   }
 
@@ -328,7 +335,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       data = withBaseReceipt(await service.handler(p), service.id, p);
     } catch (err) {
       await refundCredit(creditToken, cents); // charged but never delivered → give it back
-      return handlerErrorResponse(err);
+      return handlerErrorResponse(err, service.id);
     }
     await saveSample(service.id, data);
     const ip = clientIp(req);
@@ -394,7 +401,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
           { headers: { "x-free-tier": "true", "x-free-remaining": String(free.remaining) } },
         );
       } catch (err) {
-        return handlerErrorResponse(err);
+        return handlerErrorResponse(err, service.id);
       }
     } else if (free.degraded) {
       // We could not count the free call, which means nothing below can be
@@ -460,7 +467,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, true);
         return previewBody(preview);
       } catch (err) {
-        return handlerErrorResponse(err);
+        return handlerErrorResponse(err, service.id);
       }
     }
   }
@@ -476,7 +483,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       const p = paramsFrom(request, service);
       data = withBaseReceipt(await service.handler(p), service.id, p);
     } catch (err) {
-      return handlerErrorResponse(err);
+      return handlerErrorResponse(err, service.id);
     }
     // Refund rule, x402 side. The credit rail hands the debit back when the
     // answer is a refusal; this rail had no debit to hand back and billed for it
