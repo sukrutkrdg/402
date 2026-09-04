@@ -296,6 +296,50 @@ const notB20 = (address: string) => ({
   checkedAt: new Date().toISOString(),
 });
 
+/**
+ * The equity tickers Base documents as tokenized stocks. Used ONLY to notice
+ * that a token is wearing one, never to assert that it is the real thing.
+ */
+const EQUITY_TICKERS = new Set([
+  "AAPL", "AMZN", "COIN", "CRCL", "GOOGL", "INTC", "META", "MSFT", "MSTR", "NVDA", "SNDK", "SPCX", "TSLA",
+]);
+
+/**
+ * Does this symbol wear a major equity ticker?
+ *
+ * A single trailing lowercase letter is stripped first: the closest thing to a
+ * plausible issuance we found on mainnet calls itself `GOOGLc`, and a squatter
+ * would just as happily use `AAPL`. Both need to be noticed. Matching is exact
+ * after that, because a prefix rule would catch `COINBASE` and every memecoin
+ * built on the word.
+ */
+export function wearsEquityTicker(symbol: string | null | undefined): string | null {
+  const raw = (symbol ?? "").trim();
+  if (!raw) return null;
+  const stripped = /^[A-Z]{2,6}[a-z]$/.test(raw) ? raw.slice(0, -1) : raw;
+  return EQUITY_TICKERS.has(stripped.toUpperCase()) ? stripped.toUpperCase() : null;
+}
+
+/**
+ * The control surface a regulated issuer is obliged to keep, read as a shape
+ * rather than as a list of dangers.
+ *
+ * Every one of these powers is a real risk to a holder and the score keeps
+ * counting them. What this adds is the other half of the sentence. Base's own
+ * tokenized-stock spec requires the issuer to gate who may hold (a transfer
+ * policy) and who may mint or redeem (Authorized Participants only) — so on a
+ * regulated instrument these are compliance, not malice, and their ABSENCE is
+ * the tell.
+ *
+ * Measured on mainnet 2026-09-04, and the reason this exists: `GOOGLc`
+ * ("Alphabet Inc.") carries the full surface and scored 85/avoid, while a token
+ * calling itself COIN ("Bullcoin") carries none of it and scored 15/hold. For a
+ * caller asking "is this the real one", the ranking was exactly inverted.
+ */
+export function issuerControlProfile(s: { transferGated: boolean; mintGated: boolean }): boolean {
+  return s.transferGated && s.mintGated;
+}
+
 // ---- 1. B20 Token Safety — freeze/seize verdict ----
 
 export async function b20Safety(params: Record<string, string>) {
@@ -341,12 +385,52 @@ export async function b20Safety(params: Record<string, string>) {
   if (s.transferGated) add(25, "Transfers are policy-gated — your address can be frozen/blocklisted.");
   if (s.rebase) add(15, "Asset variant with a mutable rebase multiplier — your balance can be scaled up/down.");
   if (!s.supplyCapped) add(10, "No supply cap — mintable without ceiling (dilution risk).");
+
+  // A token wearing an equity ticker is answering a different question than a
+  // memecoin is, and the score above answers it backwards on its own.
+  const ticker = wearsEquityTicker(s.symbol);
+  const issuerControlled = issuerControlProfile(s);
+  if (ticker && !issuerControlled) {
+    // The inversion this exists for. A real tokenized security cannot lack the
+    // controls its issuer is obliged to keep, so a ticker without them is either
+    // an impersonation or something that merely shares a name — and until this
+    // flag existed it scored SAFER than the instrument it was imitating.
+    add(
+      30,
+      `Uses the equity ticker ${ticker} but has none of the issuer controls a regulated tokenized stock must carry (no holder-eligibility policy, no mint gating). It cannot be an issuer-run security; treat the name as decoration.`,
+    );
+  }
+
   risk = Math.min(100, risk);
   const verdict = risk >= 60 ? "avoid" : risk >= 30 ? "caution" : "hold";
 
   return {
     address, isB20: true, variant: s.variant, symbol: s.symbol, riskScore: risk, verdict,
     powers: { seizable: s.canSeize, freezable: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
+    // What KIND of thing this is, which the score alone cannot say. The powers
+    // above are a risk to a holder either way; this says whether they are the
+    // shape a regulated issuer is obliged to keep or the shape of a token that
+    // merely borrowed a famous name.
+    assetProfile: {
+      equityTicker: ticker,
+      issuerControlled,
+      classification: ticker
+        ? issuerControlled
+          ? "issuer-controlled asset wearing an equity ticker"
+          : "equity ticker WITHOUT issuer controls — cannot be a regulated security"
+        : issuerControlled
+          ? "issuer-controlled asset"
+          : "no issuer control surface",
+      // Said plainly, because the alternative is a reader inferring it.
+      verified: false,
+      note: ticker
+        ? issuerControlled
+          ? `Carries the control surface Base's tokenized-stock spec requires of an issuer — holder eligibility and gated mint/redeem. That makes the freeze and seize powers above EXPECTED for a regulated instrument rather than a warning sign, and it is why the risk score reads high. This check does NOT prove the issuer is the real ${ticker} issuer: it reads the control shape, not the identity. Confirm the token address against the issuer's own published list before treating it as the security.`
+          : `Wears the ${ticker} ticker with no issuer controls behind it. A regulated tokenized stock cannot look like this, so whatever it is, it is not that.`
+        : issuerControlled
+          ? "Issuer keeps holder-eligibility and mint gating — the shape of a controlled instrument rather than a free-floating token."
+          : "No holder-eligibility or mint gating — behaves like an ordinary token in this respect.",
+    },
     flags,
     receipt: {
       checked: address,
@@ -355,9 +439,16 @@ export async function b20Safety(params: Record<string, string>) {
       ...decisionReceipt({ endpoint: "b20-safety", params: { address }, degraded: false }),
     },
     recommendation:
-      verdict === "avoid" ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
-        : verdict === "caution" ? "Usable but the issuer retains control (policy/rebase/uncapped). Size accordingly."
-          : "No high-control powers detected — behaves close to a plain token.",
+      // The score measures how much control the issuer has over your balance,
+      // which is the right question for a memecoin and only half of it for a
+      // security. On an issuer-controlled asset the same powers are the terms of
+      // the instrument, so "avoid" would be advice to avoid regulated assets as
+      // a class — not what the number means.
+      issuerControlled
+        ? `Issuer-controlled: it can freeze eligibility and reassign balances, and on a regulated instrument that is the deal rather than a defect. Hold it only if you accept those terms and have confirmed the issuer independently${ticker ? ` — this check reads the control shape, not whether this is the real ${ticker}` : ""}.`
+        : verdict === "avoid" ? "Avoid holding size — the issuer can freeze or seize your balance at the protocol level."
+          : verdict === "caution" ? "Usable but the issuer retains control (policy/rebase/uncapped). Size accordingly."
+            : "No high-control powers detected — behaves close to a plain token.",
     note: "B20 is Base's native token standard. Unlike ERC-20, issuers can freeze (Policy Registry) and seize (burnBlocked) at the protocol level — this reads exactly those powers. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
