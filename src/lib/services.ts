@@ -62,6 +62,7 @@ import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
 import { b20Safety, b20Info, b20FreezeCheck, b20Rebase, b20Batch, b20LaunchRadar, b20PolicyWatch, b20Guard, b20Gate, b20TransferPreflight, b20Portfolio, b20Control, b20Memo, b20Supply, b20Metadata, b20Permit, b20PolicyAdmin, b20AccessType, b20Announcements, b20Stablecoin, b20SeizureHistory, b20Authenticity, b20ConfigAudit, b20PolicyMembers, b20GenesisAudit, b20MintWatch, b20RebaseHistory, b20Peg } from "./b20-safety";
+import { stockPosition } from "./stock-position";
 import { baseWithdrawal } from "./base-withdrawal";
 import { buyCredits } from "./credits";
 import { urlExtract, urlToJson } from "./web-services";
@@ -830,6 +831,19 @@ export const SERVICES: ServiceDef[] = [
       { name: "wallet", label: "Your wallet address", placeholder: "0x… wallet", required: true },
     ],
     handler: b20FreezeCheck,
+    noFreeTier: true,
+  },
+  {
+    id: "stock-position",
+    name: "Tokenized Stock Position",
+    tagline: "How many shares does this wallet actually control?",
+    description:
+      "B20 Asset tokens do NOT apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0→2.0 while holder balances read identically. Coinbase settles splits and dividend adjustments on its 13 tokenized equities through that multiplier, so reading balanceOf as a share count is wrong by exactly that factor the day one fires. Returns both numbers per holding: what an unadjusted integrator shows, and what is owed. Wallet balances only; LP/lending is declared excluded, never zeroed.",
+    price: "$0.03",
+    icon: "📊",
+    category: "B20",
+    params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
+    handler: stockPosition,
     noFreeTier: true,
   },
   {
