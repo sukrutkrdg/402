@@ -106,6 +106,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 🛡️ Check a token
               </Link>
               <Link
+                href="/stocks"
+                className="shrink-0 rounded-lg px-3 py-1.5 font-medium text-amber-300 hover:bg-white/5 hover:text-amber-200"
+              >
+                📊 Tokenized stocks
+              </Link>
+              <Link
                 href="/dashboard"
                 className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
               >

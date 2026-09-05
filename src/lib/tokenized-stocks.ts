@@ -128,6 +128,100 @@ export async function readMultipliers(
   return out;
 }
 
+const BOARD_ABI = [
+  { type: "function", name: "multiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "totalSupply", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "isPaused", stateMutability: "view", inputs: [{ type: "uint8" }], outputs: [{ type: "bool" }] },
+] as const;
+
+/** Tokenized equities carry 8 decimals, not the 18 an ERC-20 reader would assume. */
+const SHARE_UNIT = 10n ** 8n;
+
+export interface StockBoardRow {
+  sym: string;
+  ticker: string;
+  name: string;
+  token: string;
+  /** null when the read failed — never 0, which would read as "no supply". */
+  supplyShares: number | null;
+  multiplier: string | null;
+  multiplierRatio: number | null;
+  transferPaused: boolean | null;
+  /**
+   * Deployed but never issued. All thirteen contracts were created within five
+   * minutes of each other on 2026-07-26; supply arrives in batches, so a zero
+   * here means "announced, not yet launched" rather than "not real".
+   */
+  issued: boolean | null;
+}
+
+/**
+ * Read the whole board, sequentially.
+ *
+ * Base's public RPC rate-limits parallel eth_calls and this is a public page, so
+ * one read at a time with a small gap. A failure yields null rather than a
+ * number: on a board whose entire point is "the number you are reading is not
+ * the number you think", silently substituting a zero would be the worst
+ * available bug.
+ */
+export async function readStockBoard(): Promise<{
+  asOf: string;
+  count: number;
+  issuedCount: number;
+  rows: StockBoardRow[];
+  degraded: boolean;
+  finding: string;
+  note: string;
+}> {
+  const rows: StockBoardRow[] = [];
+  for (const s of TOKENIZED_STOCKS) {
+    const addr = getAddress(s.token);
+    const read = async <T>(fn: "multiplier" | "totalSupply" | "isPaused", args?: readonly [number]) => {
+      try {
+        return (await client.readContract({ address: addr, abi: BOARD_ABI, functionName: fn, ...(args ? { args } : {}) })) as T;
+      } catch {
+        return null;
+      }
+    };
+    const mult = await read<bigint>("multiplier");
+    await new Promise((r) => setTimeout(r, 90));
+    const supply = await read<bigint>("totalSupply");
+    await new Promise((r) => setTimeout(r, 90));
+    const paused = await read<boolean>("isPaused", [0]);
+    await new Promise((r) => setTimeout(r, 90));
+
+    rows.push({
+      sym: s.sym,
+      ticker: s.ticker,
+      name: s.name,
+      token: s.token,
+      supplyShares: supply === null ? null : Number((supply * 1000n) / SHARE_UNIT) / 1000,
+      multiplier: mult === null ? null : mult.toString(),
+      multiplierRatio: mult === null ? null : Number((mult * 1_000_000n) / WAD) / 1_000_000,
+      transferPaused: paused,
+      issued: supply === null ? null : supply > 0n,
+    });
+  }
+
+  const degraded = rows.some((r) => r.multiplier === null || r.supplyShares === null);
+  const moved = rows.filter((r) => r.multiplierRatio !== null && r.multiplierRatio !== 1);
+  const issuedCount = rows.filter((r) => r.issued === true).length;
+
+  return {
+    asOf: new Date().toISOString(),
+    count: rows.length,
+    issuedCount,
+    rows,
+    degraded,
+    finding:
+      moved.length > 0
+        ? `${moved.length} of ${rows.length} carry a multiplier other than 1.0 — for those, balanceOf understates or overstates the real position by exactly that factor.`
+        : "Every multiplier reads 1.0, so no corporate action has been applied to any of these yet. The day one is, balanceOf will not move and every naive reader will be silently wrong.",
+    note:
+      "B20 Asset tokens do not apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0 to 2.0 and holder balances read identically before and after. This board is free; per-wallet answers are the paid stock-position endpoint. Not financial advice.",
+  };
+}
+
 /**
  * Describe a multiplier move the way a holder experiences it.
  *
