@@ -309,6 +309,38 @@ export async function checkIndexHealth(payTo: string, siteUrl: string): Promise<
  * `degraded` is excluded for the opposite reason: when queries failed we do not
  * know what is wrong, and "we could not look" is not a finding.
  */
+/**
+ * What the reported problems cost to repair — and only those.
+ *
+ * `reseedCount`/`reseedCostUsd` count missing ∪ stalePrice ∪ staleNetworks,
+ * which is the right figure for "bring the whole index up to date" and the
+ * wrong one to put next to an alert. `staleNetworks` is deliberately never
+ * alerted on (it drains itself one settlement at a time), yet it dominates the
+ * total: on 2026-09-05 the alert reported ten services about to evict and then
+ * quoted 119 services and $10.23 — pricing a backlog nobody was being asked to
+ * clear, twelve times the actual repair. An operator who acts on that figure
+ * overspends; one who dismisses it as overblown misses the ten.
+ *
+ * So this prices exactly the set `indexHealthProblems` reports.
+ */
+export function indexHealthRepair(h: IndexHealth): { count: number; costUsd: number } {
+  const ids = new Set<string>([
+    ...h.missing.map((r) => r.id),
+    ...h.stalePrice.filter((r) => r.underQuoted).map((r) => r.id),
+    ...h.wrongPayTo.map((r) => r.id),
+    ...h.expiringSoon.map((r) => r.id),
+  ]);
+  const costUsd = Number(
+    [...ids]
+      .reduce((sum, id) => {
+        const svc = SERVICES.find((s) => s.id === id);
+        return sum + (svc ? (priceToMicro(svc.price) ?? 0) / 1e6 : 0);
+      }, 0)
+      .toFixed(4),
+  );
+  return { count: ids.size, costUsd };
+}
+
 export function indexHealthProblems(h: IndexHealth): string[] {
   const problems: string[] = [];
   if (h.missingCount > 0) {

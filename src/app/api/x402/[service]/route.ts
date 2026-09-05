@@ -32,7 +32,7 @@ import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
 import { withPaymentTerms } from "@/lib/challenge-terms";
 import { payerFromHeaders } from "@/lib/payer";
-import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
+import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
 import { returningCallerNote } from "@/lib/repeat-caller";
 import { loadPreview, savePreview } from "@/lib/preview-cache";
@@ -532,6 +532,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // cron would otherwise pay for. Marking it here is what makes that cron's
     // bill fall as demand rises instead of staying flat.
     await kvSet(indexFreshKey(service.id), "1", INDEX_FRESH_SECONDS);
+    // Dated too, so when the cron has a backlog it can spend its budget on
+    // whatever is closest to eviction. Without this a customer purchase would
+    // clear the freshness flag but leave the service looking equally urgent to
+    // one that has not settled in a month.
+    await kvSet(indexSeededKey(service.id), String(Date.now()), INDEX_SEEDED_SECONDS);
     // Lowercase before hashing: the payers dashboard hashes the lowercased
     // address from CDP SQL — a checksummed hash here would never match it.
     const payer = payerFromHeaders(request.headers);

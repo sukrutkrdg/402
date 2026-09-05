@@ -32,7 +32,7 @@ import { kvGet, kvSet } from "@/lib/kv";
 import { getConfig } from "@/lib/config";
 import { exampleInputFor } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
-import { indexFreshKey, INDEX_FRESH_SECONDS } from "@/lib/index-freshness";
+import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS } from "@/lib/index-freshness";
 import { probeAi } from "@/lib/ai-probe";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
 import { checkSurfaces } from "@/lib/surface-check";
@@ -117,6 +117,17 @@ export async function GET(req: NextRequest) {
   let stale = 0;
   let aiSkipped = 0;
 
+  // Which ones need paying for, and which of those are closest to falling out.
+  //
+  // This used to be one pass in catalogue order, and with a backlog larger than
+  // a run's budget that is the same as choosing at random: on 2026-09-05 ten
+  // services sat inside their last ten days while the conveyor spent the day's
+  // twelve slots on endpoints with three weeks of margin. The budget is not the
+  // problem — the order it is spent in was. So the stale set is collected first
+  // and sorted by when it last settled, oldest first, and a service with no
+  // timestamp at all (never settled, or so long ago the record expired) sorts
+  // ahead of every dated one.
+  const staleSet: Array<{ s: (typeof pool)[number]; seededAt: number }> = [];
   for (const s of pool) {
     // Fresh already — either this cron settled it recently, or, better, a real
     // customer did.
@@ -124,6 +135,13 @@ export async function GET(req: NextRequest) {
       results.push({ service: s.id, status: "fresh" });
       continue;
     }
+    const seen = await kvGet(indexSeededKey(s.id));
+    const seededAt = Number(seen);
+    staleSet.push({ s, seededAt: Number.isFinite(seededAt) && seen ? seededAt : 0 });
+  }
+  staleSet.sort((a, b) => a.seededAt - b.seededAt);
+
+  for (const { s } of staleSet) {
     stale++;
     // Not counted as an attempt: it never reached the wire, and it should be
     // first in line the moment the account is topped up.
@@ -176,6 +194,9 @@ export async function GET(req: NextRequest) {
         refreshed++;
         spent += cents;
         await kvSet(indexFreshKey(s.id), "1", INDEX_FRESH_SECONDS);
+        // Dated, so the next run with a backlog knows this one is now the least
+        // urgent rather than merely "not fresh".
+        await kvSet(indexSeededKey(s.id), String(Date.now()), INDEX_SEEDED_SECONDS);
       }
     } catch (e) {
       results.push({ service: s.id, status: e instanceof Error ? e.message.slice(0, 60) : "error" });

@@ -121,7 +121,7 @@ authoritative list is the MCP tool catalog itself (and
 | `rug_score` | $0.03 | Liquidity, holder concentration and deployer history → rug score |
 | `sellability` | $0.08 | Simulated exit: can this token actually be sold, and at what tax |
 | `pre_trade_gate` | $0.10 | The four checks above as one GO / HOLD / STOP before a buy |
-| `b20_safety` | $0.04 | B20 issuer powers (freeze, seize, pause, rebase) → hold/caution/avoid |
+| `b20_safety` | $0.04 | B20 issuer powers (freeze, seize, pause, rebase) → hold/caution/avoid; also authenticates Coinbase's 13 tokenized equities from the transfer-policy admin |
 | `wallet_networth` | $0.02 | Token balances and total value for a wallet |
 | `approval_advisor` | $0.05 | Live ERC-20 approvals, ranked by what they can drain, with a revoke queue |
 | `wallet_delegation` | $0.03 | EIP-7702 delegate, and whether it is a recognized implementation |
@@ -159,6 +159,7 @@ MCP submission tool (`send_calls`/`swap`/`sign`).
 3. "Profile wallet `0x…` — net worth, age, what can drain it." → call `wallet_networth`, `wallet_summary`, `approval_advisor`; summarize.
 4. "What's the 24h price & momentum of `0x…`?" → call `token_momentum`; report price and 1h/6h/24h change.
 5. "Is `0x…` a B20 token that can freeze or seize my funds?" → call `b20_safety`; report the hold/caution/avoid verdict and which issuer powers (freeze / seize / pause / rebase) are live.
+6. "Is this AAPL/NVDA token on Base the real Coinbase one?" → call `b20_safety`; it answers from the transfer-policy administrator on chain, so report whether the issuer is the operator behind Coinbase's confirmed issuances. Do not read holder-eligibility gating or gated mint as red flags on a genuine one — a regulated instrument must have them. Do not claim a corporate-action history: no tokenized equity on Base has had a multiplier change yet.
 6. "Is wallet `0x…` 7702-delegated to code I should worry about?" → call `wallet_delegation`; report the delegate and whether it is a known Coinbase implementation or unrecognized (takeover risk).
 7. "This invoice asks me to pay a new supplier at `billing@acme-payments.com` — check it." → call `email_verify` and `domain_check`; report deliverability plus how old the domain is, since a domain registered weeks ago is the standard vendor-impersonation pattern.
 

@@ -31,7 +31,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConfig, getSiteUrl } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
-import { checkIndexHealth, indexHealthProblems } from "@/lib/index-health";
+import { checkIndexHealth, indexHealthProblems, indexHealthRepair } from "@/lib/index-health";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
 
 export const dynamic = "force-dynamic";
@@ -75,9 +75,11 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Price the problems above, not the whole backlog. See indexHealthRepair.
+  const repair = indexHealthRepair(health);
   const alert = await alertOwner(
     "index-gap",
-    `${problems.join("\n\n")}\n\nOne paid call per affected service repairs all of it — ${health.reseedCount} service(s), about $${health.reseedCostUsd}. cron/index-all does this on its own schedule; run it sooner if this is costing sales.`,
+    `${problems.join("\n\n")}\n\nOne paid call per affected service repairs all of it — ${repair.count} service(s), about $${repair.costUsd}. cron/index-all does this on its own schedule, oldest-settled first, so anything close to eviction is what the next run buys; trigger it sooner if this is costing sales.`,
   );
 
   return NextResponse.json(
@@ -88,6 +90,11 @@ export async function GET(req: NextRequest) {
       underQuotedCount: health.underQuotedCount,
       expiringSoonCount: health.expiringSoonCount,
       wrongPayToCount: health.wrongPayTo.length,
+      // What the problems above cost to fix…
+      repairCount: repair.count,
+      repairCostUsd: repair.costUsd,
+      // …versus bringing the entire index up to date, which includes the stale
+      // network rows this deliberately does not alert on.
       reseedCount: health.reseedCount,
       reseedCostUsd: health.reseedCostUsd,
       alert,
