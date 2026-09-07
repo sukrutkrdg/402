@@ -61,6 +61,17 @@ const BATCH = 8;
  */
 export const EVICTION_DAYS = 30;
 
+/**
+ * How close to eviction a listing must be before it is worth waking someone.
+ *
+ * NOT the same as the reporting threshold. `expiringSoon` collects everything
+ * within 10 days so the number is visible in the health JSON; this is the point
+ * at which the daily keepalive has demonstrably failed to reach it. The two must
+ * stay apart, because the refresh cycle (21-day freshness key, 30-day eviction)
+ * parks every healthy service at 9 days remaining once per cycle.
+ */
+export const EXPIRING_ALERT_DAYS = 5;
+
 interface DiscoveryAccept {
   amount?: string;
   network?: string;
@@ -328,7 +339,10 @@ export function indexHealthRepair(h: IndexHealth): { count: number; costUsd: num
     ...h.missing.map((r) => r.id),
     ...h.stalePrice.filter((r) => r.underQuoted).map((r) => r.id),
     ...h.wrongPayTo.map((r) => r.id),
-    ...h.expiringSoon.map((r) => r.id),
+    // Only the ones actually alerted on — see EXPIRING_ALERT_DAYS. Pricing every
+    // row within 10 days would re-create the overstatement this function exists
+    // to remove, one layer down.
+    ...h.expiringSoon.filter((r) => r.daysLeft <= EXPIRING_ALERT_DAYS).map((r) => r.id),
   ]);
   const costUsd = Number(
     [...ids]
@@ -357,9 +371,25 @@ export function indexHealthProblems(h: IndexHealth): string[] {
   if (h.wrongPayTo.length > 0) {
     problems.push(`${h.wrongPayTo.length} row(s) advertise a payTo that is not ours: ${h.wrongPayTo.map((r) => r.id).join(", ")}`);
   }
-  if (h.expiringSoonCount > 0) {
+  // Reported at 10 days, alerted at 5 — and the gap between those two numbers is
+  // the whole point.
+  //
+  // A service re-settles when its freshness key expires at 21 days, against a
+  // 30-day eviction window, so a perfectly healthy service sits at 9 days
+  // remaining every time its turn comes round. At a 10-day threshold the alert
+  // therefore fires every single morning for endpoints that are working exactly
+  // as designed — which is the failure alert-owner.ts warns about in its own
+  // header: something that pages daily becomes a filter rule, and the next real
+  // alert is invisible behind it. On 2026-09-07 it reported 24 services and a
+  // $0.94 repair for a conveyor that was not actually behind.
+  //
+  // Below 5 days the conveyor has demonstrably failed to reach it: the run has a
+  // 12-service budget against roughly 7 due per day, so anything still unsettled
+  // four cycles later is a real fault, not a phase of the cycle.
+  const urgent = h.expiringSoon.filter((r) => r.daysLeft <= EXPIRING_ALERT_DAYS);
+  if (urgent.length > 0) {
     problems.push(
-      `${h.expiringSoonCount} row(s) leave the index within 10 days unless re-settled: ${h.expiringSoon.map((r) => `${r.id} (${r.daysLeft}d)`).join(", ")}`,
+      `${urgent.length} row(s) leave the index within ${EXPIRING_ALERT_DAYS} days unless re-settled: ${urgent.map((r) => `${r.id} (${r.daysLeft}d)`).join(", ")}`,
     );
   }
   return problems;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { indexHealthRepair, indexHealthProblems, type IndexHealth } from "@/lib/index-health";
+import { indexHealthRepair, indexHealthProblems, EXPIRING_ALERT_DAYS, type IndexHealth } from "@/lib/index-health";
 
 /**
  * An alert that quotes the wrong number is worse than one that quotes none.
@@ -81,10 +81,11 @@ describe("what the repair figure covers", () => {
   });
 
   it("prices each affected service at its own catalogue price", () => {
+    // Inside EXPIRING_ALERT_DAYS: only rows the alert actually names get priced.
     const h: IndexHealth = {
       ...base,
       expiringSoonCount: 2,
-      expiringSoon: [expiring("token-risk", 10), expiring("pre-trade-gate", 10)],
+      expiringSoon: [expiring("token-risk", 2), expiring("pre-trade-gate", 4)],
     };
     const r = indexHealthRepair(h);
     expect(r.count).toBe(2);
@@ -156,5 +157,69 @@ describe("the refresh cron spends on whatever is closest to eviction", () => {
   it("lets an organic purchase update it too, so the cron's bill falls as demand rises", () => {
     const paid = readFileSync("src/app/api/x402/[service]/route.ts", "utf8");
     expect(paid).toMatch(/kvSet\(indexSeededKey\(service\.id\), String\(Date\.now\(\)\), INDEX_SEEDED_SECONDS\)/);
+  });
+});
+
+describe("the alert threshold cannot collide with the refresh cycle", () => {
+  /**
+   * The bug this pins, found 2026-09-07.
+   *
+   * A listing is evicted 30 days after its last settlement, and the keepalive
+   * only touches it once its 21-day freshness key expires. So a service running
+   * exactly as designed reaches its turn with 30 - 21 = 9 days left, every
+   * cycle. Alerting at 10 days therefore pages every single morning about
+   * endpoints that are fine — and alert-owner.ts's own header says a thing that
+   * pages daily becomes a filter rule that hides the next real alert. It
+   * reported 24 services and a $0.94 repair for a conveyor that was not behind.
+   */
+  it("keeps the alert threshold below the cycle floor", () => {
+    expect(EXPIRING_ALERT_DAYS).toBeLessThan(30 - 21);
+  });
+
+  it("does not alert on a service sitting at the cycle's natural floor", () => {
+    const floor = 30 - 21; // EVICTION_DAYS minus the freshness window, in days
+    const h: IndexHealth = {
+      ...base,
+      expiringSoonCount: 1,
+      expiringSoon: [expiring("token-risk", floor)],
+    };
+    expect(indexHealthProblems(h)).toEqual([]);
+    expect(indexHealthRepair(h).count).toBe(0);
+  });
+
+  it("still alerts when the conveyor has genuinely fallen behind", () => {
+    const h: IndexHealth = {
+      ...base,
+      expiringSoonCount: 1,
+      expiringSoon: [expiring("token-risk", 3)],
+    };
+    const p = indexHealthProblems(h);
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatch(/token-risk \(3d\)/);
+    expect(indexHealthRepair(h).count).toBe(1);
+  });
+
+  it("keeps reporting the wider set even when it does not alert", () => {
+    // The 10-day collection stays in the JSON for visibility; only the alert
+    // narrows. Losing the report would trade one blind spot for another.
+    const h: IndexHealth = {
+      ...base,
+      expiringSoonCount: 2,
+      expiringSoon: [expiring("token-risk", 9), expiring("gas-oracle", 8)],
+    };
+    expect(h.expiringSoon).toHaveLength(2);
+    expect(indexHealthProblems(h)).toEqual([]);
+  });
+
+  it("alerts on only the urgent rows when the two sets overlap", () => {
+    const h: IndexHealth = {
+      ...base,
+      expiringSoonCount: 3,
+      expiringSoon: [expiring("token-risk", 2), expiring("gas-oracle", 9), expiring("chain-status", 10)],
+    };
+    const p = indexHealthProblems(h);
+    expect(p[0]).toMatch(/1 row\(s\)/);
+    expect(p[0]).toMatch(/token-risk/);
+    expect(p[0]).not.toMatch(/gas-oracle/);
   });
 });
