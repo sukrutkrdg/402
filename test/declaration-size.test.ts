@@ -47,7 +47,22 @@ import { readFileSync } from "node:fs";
  * than no guard, so this splits into entries first and then refuses to run at
  * all if anything about an entry is not a plain single-line string literal.
  */
-const LIMIT = 500;
+/**
+ * 499, not 500 — so the highest value this permits (498) is the highest one
+ * actually observed to settle.
+ *
+ * The rows above bracket the cutoff between 499 and 508: 498 code points
+ * settled, 508 refused, and nothing in between has ever been deployed. A limit
+ * of 500 allowed 499, which is one step inside that untested band — a round
+ * number rather than a measured one. Nothing in the catalogue was using it
+ * (the longest is `iban-check` at 498), so this costs nothing today and stops a
+ * future description from being written into the gap.
+ *
+ * Raise it only by measuring, not by needing the room: outside data on the same
+ * issue shows ~119 resources sitting at 508+ and taking payments, so the cutoff
+ * is not a property of the network and cannot be reasoned about from the spec.
+ */
+const LIMIT = 499;
 
 /**
  * Endpoints deliberately parked over the limit to run an experiment, and the
