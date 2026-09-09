@@ -31,6 +31,9 @@ export default function AgentsPage() {
   const freeExample =
     SERVICES.find((s) => !s.hidden && s.category !== "AI" && !s.noFreeTier && s.params.length > 0) ?? example;
   const freeTierCount = SERVICES.filter((s) => !s.hidden && s.category !== "AI" && !s.noFreeTier).length;
+  /** Counted, not typed. A number written into this sentence is the drift we
+   *  keep finding on other surfaces, one edit later. */
+  const b20Count = SERVICES.filter((s) => !s.hidden && s.category === "B20").length;
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-2">
@@ -221,8 +224,8 @@ const res = await fetch(
         <p className="text-xs text-gray-500">
           Once bound, tell your agent to <strong className="text-gray-300">bind these first</strong>:{" "}
           <code className="codechip">pre_trade_gate</code> (any token),{" "}
-          <code className="codechip">b20_gate</code> (Base-native B20 tokens — the only such tool
-          anywhere), <code className="codechip">sign_guard</code> (before signing a tx).
+          <code className="codechip">b20_gate</code> (Base-native B20 tokens, one of a {b20Count}-tool
+          suite), <code className="codechip">sign_guard</code> (before signing a tx).
         </p>
         <p className="text-xs text-gray-500">
           Holding tokenized equities? <code className="codechip">b20_safety</code> covers all 13 of
