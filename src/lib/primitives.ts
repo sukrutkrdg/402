@@ -1,7 +1,7 @@
 /**
  * Thin Base chain primitives — one RPC read, no interpretation, sub-cent.
  *
- * WHY THIS FILE EXISTS, given we already sell 124 analytical endpoints: because
+ * WHY THIS FILE EXISTS, given we already sell a large analytical catalogue: because
  * the index says analysis is not what agents buy. Of the fifteen resources with
  * the most distinct payers on the whole x402 network, thirteen belong to one
  * seller and every one of them is a thin wrapper over a raw JSON-RPC call —

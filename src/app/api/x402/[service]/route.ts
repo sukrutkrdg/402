@@ -196,7 +196,7 @@ async function attachRetention(serviceId: string, data: unknown, src: string): P
  * template. With no `routeTemplate` the indexer falls back to the request's own
  * pathname, which is exactly the per-service URL we want indexed. Declaring
  * `/api/x402/:service` instead would be worse than the bug: it is a single
- * template, so all 131 services would collapse into one canonical resource.
+ * template, so every catalogue service would collapse into one canonical resource.
  *
  * Only the header carries it — the 402 body does not — and nothing is signed
  * over it, so rewriting is safe for verification and settlement.

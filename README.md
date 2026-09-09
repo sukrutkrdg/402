@@ -1,8 +1,8 @@
 # x402 Bazaar — Pay-per-call API marketplace with Base Builder Codes
 
 A **live pay-per-call API marketplace** on **Base mainnet** — [402.com.tr](https://402.com.tr).
-143 public services as of 2026-09-06 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
-a 29-tool B20 protection suite incl. real-time seizure alerts and cover for all 13 of Coinbase's
+162 public services as of 2026-09-09 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
+a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 13 of Coinbase's
 tokenized equities, wallet intelligence, OFAC screening, AI-written reports — sold to AI agents and humans over
 [**x402**](https://docs.cdp.coinbase.com/x402), settled in USDC via the Coinbase CDP facilitator,
 with onchain attribution via [**Builder Codes**](https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes)
@@ -22,7 +22,7 @@ One Next.js app plays all three roles in the x402 flow:
 - **Marketplace** (`/`): every service is a real x402-protected, pay-per-call endpoint — pay from your own
   browser wallet (or the server buyer), a USDC micro-payment settles on Base, you get the data +
   the settlement tx. Safety responses include an auditable pre-spend `receipt` (GO/HOLD/STOP).
-- **B20 protection suite**: 29 tools reading Base's native-token precompiles — freeze/seize risk,
+- **B20 protection suite**: 30 tools reading Base's native-token precompiles — freeze/seize risk,
   "when did it turn seizable", real-time PolicyUpdated alerts (CDP webhooks), launch radar.
 - **Tokenized equities**: Coinbase's tokenized stocks are B20 Asset tokens, so the same reads cover
   them. `b20_safety` tells a real issuance apart from a token merely wearing an equity ticker, by

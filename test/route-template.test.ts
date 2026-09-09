@@ -13,8 +13,8 @@ import { readFileSync } from "node:fs";
  *
  * The repair is to REMOVE the field, not to substitute a template: with none,
  * the indexer uses the request pathname, which is the per-service URL we want.
- * Declaring `/api/x402/:service` would be worse than the bug, collapsing all 131
- * services into one canonical resource.
+ * Declaring `/api/x402/:service` would be worse than the bug, collapsing every
+ * catalogue service into one canonical resource.
  */
 const src = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8");
 

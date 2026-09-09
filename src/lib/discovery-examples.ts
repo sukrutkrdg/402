@@ -8,7 +8,7 @@
  * response, written on a successful serve and read back into `output.example`.
  * It works precisely where it is least needed. An endpoint nobody calls has no
  * sample, so the endpoints that most need a shop window are the ones that
- * advertise nothing; 46 of 131 declared no output at all. A discovery oracle
+ * advertise nothing; 46 catalogue entries declared no output at all. A discovery oracle
  * asked in August 2026 to find a rug check listed two of our three matching
  * endpoints as `output_keys: ["input"]` — "returns nothing" — and ranked the
  * one that did have a sample highest of the three. So a static example now

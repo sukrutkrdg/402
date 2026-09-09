@@ -81,6 +81,19 @@ import { vatCheck } from "./vat";
 import { onrampQuote, onrampCoverage } from "./onramp";
 import { baseBlock, baseReceipt, baseNonce, tokenSupply, tokenBalance, contractInfo, baseTx } from "./primitives";
 import { filePublish } from "./file-publish";
+import { bicCheck, binCheck, sepaCreditorCheck, taxIdCheck } from "./business-bank";
+import { addressCheck, geocode } from "./business-geo";
+import { trackingDetect, hsCodeSuggest } from "./business-ship";
+import { companySearch, sslCheck, breachCheck, urlRisk } from "./business-trust";
+import {
+  receiptParse,
+  meetingSlots,
+  holidayCalendar,
+  qrEncode,
+  upcLookup,
+  settlementLine,
+  bankCsvNormalize,
+} from "./business-office";
 
 export interface ServiceParam {
   name: string;
@@ -2079,6 +2092,292 @@ export const SERVICES: ServiceDef[] = [
     category: "Business",
     params: [{ name: "name", label: "Company legal name", placeholder: "Coinbase Global, Inc.", required: true }],
     handler: companyLei,
+  },
+  {
+    id: "bic-check",
+    name: "BIC / SWIFT Check",
+    tagline: "Is this bank code even well-formed?",
+    description:
+      "Validate a BIC/SWIFT code offline (ISO 9362): 8 or 11 characters, bank/country/location[/branch] layout, head-office vs branch, and the test-BIC flag. Every rejection names which check failed. Structure only — does not prove the bank is live.",
+    price: "$0.002",
+    icon: "🏦",
+    category: "Business",
+    params: [{ name: "bic", label: "BIC / SWIFT", placeholder: "DEUTDEFFXXX", required: true }],
+    handler: async (p) => bicCheck(p),
+  },
+  {
+    id: "bin-check",
+    name: "Card BIN Check",
+    tagline: "Scheme from the first 6–8 digits — never a full PAN",
+    description:
+      "Offline Issuer Identification Number check: accepts 6–8 digits only (refuses anything that looks like a full PAN), returns Visa/Mastercard/Amex/Discover/JCB/UnionPay/Maestro when the prefix is known. Not a live BIN registry lookup.",
+    price: "$0.002",
+    icon: "💳",
+    category: "Business",
+    params: [{ name: "bin", label: "BIN (6–8 digits)", placeholder: "424242", required: true }],
+    handler: async (p) => binCheck(p),
+  },
+  {
+    id: "sepa-creditor",
+    name: "SEPA Creditor ID",
+    tagline: "Is this Creditor Identifier self-consistent?",
+    description:
+      "Validate a SEPA Creditor Identifier offline: country, check digits (mod-97), business code and national id. Catches mistyped creditor ids before a mandate setup. Structure only — not a scheme-manager registration proof.",
+    price: "$0.002",
+    icon: "🇪🇺",
+    category: "Business",
+    params: [{ name: "creditorId", label: "Creditor Identifier", placeholder: "DE98ZZZ09999999999", required: true }],
+    handler: async (p) => sepaCreditorCheck(p),
+  },
+  {
+    id: "tax-id-check",
+    name: "Tax ID Check",
+    tagline: "EORI, EIN, TCKN and friends — format first",
+    description:
+      "Offline tax/customs id formats: EORI, US EIN/SSN, UK NINO, AU ABN (checksum), TR VKN/TCKN (checksum), CA BN. kind= selects the scheme. A well-formed id is not proof of registration.",
+    price: "$0.002",
+    icon: "🧾",
+    category: "Business",
+    params: [
+      { name: "kind", label: "Kind", placeholder: "EORI", required: true },
+      { name: "value", label: "Identifier", placeholder: "DE123456789012345", required: true },
+    ],
+    handler: async (p) => taxIdCheck(p),
+  },
+  {
+    id: "address-check",
+    name: "Address Check",
+    tagline: "Postal shape for TR/US/EU — before you ship",
+    description:
+      "Structural address check: country, street, city, and postal pattern for common countries (TR, US, GB, DE, FR, NL, …). Returns a normalised single-line form and named issues. Not proof of deliverability.",
+    price: "$0.002",
+    icon: "📫",
+    category: "Business",
+    params: [
+      { name: "country", label: "Country (ISO-2)", placeholder: "TR", required: true },
+      { name: "line1", label: "Street line", placeholder: "Atatürk Cad. No:1", required: true },
+      { name: "city", label: "City", placeholder: "Istanbul", required: true },
+      { name: "postal", label: "Postal code", placeholder: "34000" },
+      { name: "line2", label: "Line 2 (optional)", placeholder: "Daire 4" },
+    ],
+    handler: async (p) => addressCheck(p),
+  },
+  {
+    id: "geocode",
+    name: "Geocode",
+    tagline: "Address ↔ coordinates via OpenStreetMap",
+    description:
+      "Forward geocode an address (q=) or reverse geocode lat=+lon= using OpenStreetMap Nominatim. Returns up to 5 hits with display name and address parts. Community map data — not a postal authority.",
+    price: "$0.01",
+    icon: "📍",
+    category: "Business",
+    params: [
+      { name: "q", label: "Address text (forward)", placeholder: "Brandenburg Gate, Berlin" },
+      { name: "lat", label: "Latitude (reverse)", placeholder: "52.5163" },
+      { name: "lon", label: "Longitude (reverse)", placeholder: "13.3777" },
+    ],
+    handler: geocode,
+  },
+  {
+    id: "tracking-detect",
+    name: "Tracking Detect",
+    tagline: "Which carrier is this tracking number?",
+    description:
+      "Guess UPS / FedEx / USPS / DHL / DPD / TNT / TR carriers from tracking-number shape and return a carrier tracking URL. Live parcel status is NOT fetched — pattern detection only.",
+    price: "$0.002",
+    icon: "📦",
+    category: "Business",
+    params: [{ name: "tracking", label: "Tracking number", placeholder: "1Z999AA10123456784", required: true }],
+    handler: async (p) => trackingDetect(p),
+  },
+  {
+    id: "hs-code",
+    name: "HS Code Suggest",
+    tagline: "Product text → Harmonized System chapter hint",
+    description:
+      "Map a short product description to likely HS chapter/heading hints (electronics, apparel, coffee, pharma, …). Keyword table only — not a binding customs classification; confirm before filing.",
+    price: "$0.005",
+    icon: "🛃",
+    category: "Business",
+    params: [{ name: "q", label: "Product description", placeholder: "wireless bluetooth headphones", required: true }],
+    handler: async (p) => hsCodeSuggest(p),
+  },
+  {
+    id: "company-search",
+    name: "Company Search",
+    tagline: "Find a company in OpenCorporates",
+    description:
+      "Search company registers via OpenCorporates: name, number, jurisdiction, incorporation date, status, and a source URL. Optional jurisdiction= filter. Attribution included. Not a credit score.",
+    price: "$0.02",
+    icon: "🏢",
+    category: "Business",
+    params: [
+      { name: "q", label: "Company name", placeholder: "Coinbase", required: true },
+      { name: "jurisdiction", label: "Jurisdiction code (optional)", placeholder: "us_de" },
+    ],
+    handler: companySearch,
+  },
+  {
+    id: "ssl-check",
+    name: "SSL Cert Check",
+    tagline: "When does this host's certificate expire?",
+    description:
+      "TLS probe for host=: subject, issuer, validFrom/validTo, daysRemaining, expired/expiringSoon, fingerprint. GO/HOLD/STOP from dates. Chain trust is not asserted — dates and identity fields are.",
+    price: "$0.01",
+    icon: "🔒",
+    category: "Business",
+    params: [
+      { name: "host", label: "Hostname", placeholder: "402.com.tr", required: true },
+      { name: "port", label: "Port (optional)", placeholder: "443" },
+    ],
+    handler: sslCheck,
+  },
+  {
+    id: "breach-check",
+    name: "Password Breach Check",
+    tagline: "Has this password appeared in a dump?",
+    description:
+      "Have I Been Pwned Pwned Passwords via k-anonymity: only a 5-char SHA-1 prefix leaves the server. Returns pwned + occurrence count and a GO/HOLD/STOP. Password is not stored. Email breach lookup not offered.",
+    price: "$0.005",
+    icon: "⚠️",
+    category: "Business",
+    params: [{ name: "password", label: "Password to check", placeholder: "(never logged)", required: true }],
+    handler: breachCheck,
+    noFreeTier: true,
+  },
+  {
+    id: "url-risk",
+    name: "URL Risk",
+    tagline: "Cheap phishing heuristics before you click",
+    description:
+      "Heuristic URL risk: scheme, IP hosts, deep subdomains, credential-themed labels, sensitive paths/params, optional brand= lookalike. Returns reasons + GO/HOLD/STOP. Not a malware or Safe Browsing scan.",
+    price: "$0.002",
+    icon: "🔗",
+    category: "Business",
+    params: [
+      { name: "url", label: "URL", placeholder: "https://example.com/", required: true },
+      { name: "brand", label: "Expected brand host (optional)", placeholder: "coinbase.com" },
+    ],
+    handler: async (p) => urlRisk(p),
+  },
+  {
+    id: "receipt-parse",
+    name: "Receipt Parse",
+    tagline: "Pull totals, IBAN, dates out of receipt text",
+    description:
+      "Heuristic extraction from invoice/receipt text: totals, amounts, VAT hints, IBANs, dates, emails, invoice numbers. Not OCR — convert a scan to text first, then send it here.",
+    price: "$0.01",
+    icon: "🧾",
+    category: "Business",
+    params: [
+      {
+        name: "text",
+        label: "Receipt / invoice text",
+        placeholder: "Invoice #A-100\nTOTAL: 120.50 USD\nIBAN GB82WEST12345698765432\nDate 2026-09-01",
+        required: true,
+        multiline: true,
+      },
+    ],
+    handler: async (p) => receiptParse(p),
+  },
+  {
+    id: "meeting-slots",
+    name: "Meeting Slots",
+    tagline: "Overlap office hours across timezones",
+    description:
+      "Find 30-minute UTC slots where every zone is inside a local window (default 09–17) on a given date. Pass zones= IANA list. Does not know holidays or personal calendars.",
+    price: "$0.002",
+    icon: "🗓️",
+    category: "Business",
+    params: [
+      { name: "zones", label: "Timezones (comma-separated)", placeholder: "Europe/Istanbul,America/New_York", required: true },
+      { name: "date", label: "Date YYYY-MM-DD", placeholder: "2026-09-15" },
+      { name: "startHour", label: "Local start hour", placeholder: "9" },
+      { name: "endHour", label: "Local end hour", placeholder: "17" },
+    ],
+    handler: async (p) => meetingSlots(p),
+  },
+  {
+    id: "holiday-calendar",
+    name: "Holiday Calendar",
+    tagline: "Public holidays for a country and year",
+    description:
+      "List public holidays for country= + year= from Nager.Date (~110 countries). Marks national vs regional entries. Same source business-days uses — for agents that need the raw calendar.",
+    price: "$0.002",
+    icon: "🎌",
+    category: "Business",
+    params: [
+      { name: "country", label: "Country (ISO-2)", placeholder: "TR", required: true },
+      { name: "year", label: "Year", placeholder: "2026" },
+    ],
+    handler: holidayCalendar,
+  },
+  {
+    id: "qr-encode",
+    name: "QR Encode",
+    tagline: "Text in, SVG (or data-URL) QR out",
+    description:
+      "Encode text= into a QR code as SVG (default) or format=dataurl PNG. Offline, no upstream. Built for agents putting payment links, IBANs or URLs onto a page.",
+    price: "$0.002",
+    icon: "▣",
+    category: "Business",
+    params: [
+      { name: "text", label: "Payload", placeholder: "https://402.com.tr", required: true },
+      { name: "format", label: "svg (default) or dataurl", placeholder: "svg" },
+    ],
+    handler: qrEncode,
+  },
+  {
+    id: "upc-lookup",
+    name: "UPC / EAN Lookup",
+    tagline: "Checksum + Open Food Facts product hit",
+    description:
+      "Validate UPC/EAN/GTIN checksum offline, then look up the barcode on Open Food Facts when it is a food/consumer item. Non-food codes often checksum-ok with no product match.",
+    price: "$0.01",
+    icon: "🏷️",
+    category: "Business",
+    params: [{ name: "code", label: "Barcode digits", placeholder: "3017620422003", required: true }],
+    handler: upcLookup,
+  },
+  {
+    id: "settlement-line",
+    name: "Settlement Ledger Line",
+    tagline: "USDC payment → double-entry journal stub",
+    description:
+      "Turn a USDC settlement into bookkeeping lines: amount, accounts, memo, optional Base tx= enrichment (status, timestamp, to). Returns journal JSON plus a two-line CSV. Not tax advice.",
+    price: "$0.005",
+    icon: "📘",
+    category: "Business",
+    params: [
+      { name: "amount", label: "Amount", placeholder: "12.50" },
+      { name: "asset", label: "Asset", placeholder: "USDC" },
+      { name: "counterparty", label: "Counterparty", placeholder: "0x…" },
+      { name: "memo", label: "Memo", placeholder: "Invoice 1042" },
+      { name: "tx", label: "Base tx hash (optional)", placeholder: "0x…" },
+      { name: "debitAccount", label: "Debit account", placeholder: "Crypto Clearing" },
+      { name: "creditAccount", label: "Credit account", placeholder: "Accounts Receivable" },
+    ],
+    handler: settlementLine,
+  },
+  {
+    id: "bank-csv",
+    name: "Bank CSV Normalize",
+    tagline: "Messy bank export → one row shape",
+    description:
+      "Parse a bank CSV (comma/semicolon/tab, quoted fields) and map common headers (date/amount/debit/credit/balance/description, TR aliases) into one schema. Up to 500 rows. Best-effort.",
+    price: "$0.01",
+    icon: "📊",
+    category: "Business",
+    params: [
+      {
+        name: "text",
+        label: "CSV text",
+        placeholder: "Date,Description,Amount\n2026-01-02,Coffee,-4.50\n2026-01-03,Payroll,1000.00",
+        required: true,
+        multiline: true,
+      },
+    ],
+    handler: async (p) => bankCsvNormalize(p),
   },
   {
     id: "file-convert",
