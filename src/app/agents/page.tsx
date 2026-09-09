@@ -15,6 +15,22 @@ function Code({ children }: { children: string }) {
 
 export default function AgentsPage() {
   const example = SERVICES[0];
+  /**
+   * The free-tier example has to be a service that actually HAS a free tier.
+   *
+   * It did not. The quickstart said "every service serves one free call a day"
+   * and demonstrated it with `token-risk`, which is one of the 90 services where
+   * `freeTier` is false — so the first thing a developer copied returned a 402
+   * instead of the promised free result. An outside reader found this on
+   * 2026-09-09 by diffing this page against /api/catalog; nothing in our own
+   * tests compared the two.
+   *
+   * Derived rather than hardcoded, and by the same rule /api/catalog publishes
+   * (`category !== "AI" && !noFreeTier`), so the two cannot drift apart again.
+   */
+  const freeExample =
+    SERVICES.find((s) => !s.hidden && s.category !== "AI" && !s.noFreeTier && s.params.length > 0) ?? example;
+  const freeTierCount = SERVICES.filter((s) => !s.hidden && s.category !== "AI" && !s.noFreeTier).length;
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-2">
@@ -22,10 +38,13 @@ export default function AgentsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Call these APIs from your agent</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
           Every service here is a standard HTTP endpoint. No API keys, no sign-up, no subscription —
-          and <strong className="text-gray-200">no wallet needed to start</strong>: every service
-          serves one free call a day, and a prepaid credit token covers the rest with nothing but an
-          HTTP header. Pay per call in USDC over <strong className="text-gray-200">x402</strong> only
-          if you want to.
+          and <strong className="text-gray-200">no wallet needed to start</strong>:{" "}
+          <strong className="text-gray-200">{freeTierCount} of them</strong> serve one free call a
+          day if you ask for it with <code className="codechip">?free=1</code>, and a prepaid credit
+          token covers the rest with nothing but an HTTP header. AI and metered services are always
+          paid — each entry in <a className="text-sky-400 hover:underline" href="/api/catalog">the
+          catalogue</a> says which it is under <code className="codechip">freeTier</code>. Pay per
+          call in USDC over <strong className="text-gray-200">x402</strong> only if you want to.
         </p>
         <div className="card mt-1 flex flex-col gap-1 border-base-blue/30 bg-base-blue/10 p-4">
           <div className="text-sm font-semibold text-sky-200">🟦 Works with Base MCP & the Base agent economy</div>
@@ -67,10 +86,12 @@ export default function AgentsPage() {
         <Code>{`claude mcp add x402-bazaar -e X402_CREDIT_TOKEN=ck_… -- npx -y x402-bazaar-mcp
 claude mcp add x402-bazaar -e AGENT_PRIVATE_KEY=0x… -- npx -y x402-bazaar-mcp`}</Code>
         <p className="text-sm text-gray-400">
-          Or call any endpoint directly over HTTP — 1 free call per service per day (no wallet), so
-          you can try before wiring payments:
+          Or call a free-tier endpoint directly over HTTP — one free call per service per day, no
+          wallet. The flag is required: without it you get the 402 challenge, which is deliberate so
+          an unpaid probe always sees the price rather than an answer.
         </p>
-        <Code>{`curl "${SITE_URL}/api/x402/${example.id}?${example.params.map((p) => `${p.name}=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed`).join("&")}"`}</Code>
+        <Code>{`curl "${SITE_URL}/api/x402/${freeExample.id}?${freeExample.params.map((p) => `${p.name}=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed`).join("&")}&free=1"
+# or, same thing:  -H "x-402-free: 1"`}</Code>
         <p className="text-sm text-gray-400">
           Paying from code (no MCP)? The whole x402 flow is ~10 lines — the SDK handles the 402,
           signs a USDC payment and retries automatically:
@@ -87,9 +108,11 @@ const payFetch = wrapFetchWithPayment(fetch, client);
 const res = await payFetch("${SITE_URL}/api/x402/token-risk?address=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed");
 console.log(await res.json()); // verdict + flags — paid in USDC on Base, automatically`}</Code>
         <p className="text-xs text-gray-500">
-          After the free daily call you get a teaser preview + an{" "}
-          <code className="codechip">HTTP 402</code> — wire the payment below and your agent pays a
-          few cents in USDC per call, gasless on Base.
+          The example above is <code className="codechip">token-risk</code>, which has no free tier —
+          it settles a payment on the first call, like every AI and metered service. On a free-tier
+          service, once the daily call is used <code className="codechip">?free=1</code> returns a
+          teaser preview plus an <code className="codechip">HTTP 402</code>; wire the payment and
+          your agent pays a few cents in USDC per call, gasless on Base.
         </p>
       </section>
 
