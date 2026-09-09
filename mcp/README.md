@@ -27,7 +27,11 @@ Coinbase AgentKit, custom agents).
 tokens), `sign_guard` (before signing a tx).
 
 **No wallet needed to start.** Run it with no key, no token and no config at all
-and it uses the **free tier** — one free call/day per service. When you outgrow
+and it uses the **free tier** — one free call/day on each service that offers
+one. Roughly a third of the catalogue does not: AI and metered services are
+always paid, and every entry in
+[the catalogue](https://402.com.tr/api/catalog) says which it is under
+`freeTier`. When you outgrow
 that, a prepaid credit token keeps it walletless: one purchase, then every call
 is just an HTTP header. A wallet is only needed for the third mode, per-call
 payment.
@@ -37,8 +41,10 @@ no API keys, no subscriptions, no sign-up.  The agent pays only for what it uses
 typically fractions of a cent per call.
 
 **Works with zero config.** Run it with no wallet and no token and it uses the
-**free tier** (one free call/day per service, then a preview) — so an agent can
-try every tool instantly. Unlock unlimited paid calls with either a **prepaid
+**free tier** (one free call/day on each service that offers one, then a
+preview) — so an agent can try most of the catalogue instantly, and sees a
+priced 402 on the AI and metered tools rather than a surprise. Unlock unlimited
+paid calls with either a **prepaid
 credit token** (one x402 purchase up front, then no wallet or signing per call)
 or a **wallet key**.
 
@@ -85,7 +91,7 @@ Tiers: $0.25 starter, $1, $5 (+10%), $20 (+20%).
 ```bash
 npm install
 
-# Zero-config — free tier, try every tool instantly:
+# Zero-config — free tier on every service that offers one:
 npx x402-bazaar-mcp
 
 # Paid via prepaid credits (recommended — no wallet, no signing):
