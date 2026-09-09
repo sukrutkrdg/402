@@ -154,6 +154,28 @@ export default async function StocksPage() {
         </p>
       </section>
 
+      <section className="card flex flex-col gap-2 p-5">
+        <h2 className="text-lg font-semibold text-gray-200">What this page is not</h2>
+        <p className="text-xs leading-relaxed text-gray-400">
+          It is every tokenized equity <strong className="text-gray-200">Coinbase</strong> has
+          issued on Base, and it is complete: as of 2026-09-10 there are 91 B20 tokens carrying 8
+          decimals and only these {board.count} are equities — the rest are test tokens with random
+          symbols. It is <strong className="text-gray-200">not</strong> every tokenized stock on
+          Base. Other issuers are here too, and they are built differently: Bitwise&apos;s{" "}
+          <code className="codechip">Mag7X</code> and xStocks&apos;{" "}
+          <code className="codechip">AAPLx</code> are plain ERC-20 with 18 decimals and no{" "}
+          <code className="codechip">multiplier()</code>.
+        </p>
+        <p className="text-xs leading-relaxed text-gray-400">
+          That difference is why they are absent rather than pending. Both claims this page rests on
+          are B20 claims: membership is decided by the transfer-policy administrator, which a plain
+          ERC-20 does not have — we would be back to a hardcoded list, the thing the section above
+          says we do not keep. And the balance gap does not exist for them at all: with no
+          multiplier, <code className="codechip">balanceOf</code> really is the share count. Listing
+          them here would mean asserting two things about them that are not true.
+        </p>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-xl font-semibold">For agents</h2>
         <p className="max-w-3xl text-sm leading-relaxed text-gray-400">

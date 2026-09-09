@@ -384,6 +384,35 @@ async function recogniseIssuer(senderPolicyId: bigint): Promise<{ policyAdmin: s
   return { policyAdmin: admin, recognised: label !== null, label };
 }
 
+/**
+ * Is this address a tokenized equity from the operator we recognise?
+ *
+ * One question, one answer, so the roster-drift watcher does not need
+ * `readB20Signals` and `recogniseIssuer` opened up to it. Both stay private:
+ * they carry enough shape that a caller could start reasoning about partial
+ * reads, and the watcher has no business doing that — it wants a yes with a
+ * symbol, or a no.
+ *
+ * Returns null for anything unreadable as well as anything unrecognised, on
+ * purpose. A drift alert that fires on "we could not tell" is an alert that
+ * fires on a slow RPC, and this codebase has twice built a detector that paged
+ * often enough to be ignored.
+ */
+export async function recognisedEquityIssuance(
+  address: string,
+): Promise<{ symbol: string | null; policyAdmin: string | null } | null> {
+  if (!validAddr(address)) return null;
+  try {
+    const s = await readB20Signals(getAddress(address));
+    if (!s.isB20 || s.degraded) return null;
+    const issuer = await recogniseIssuer(s.senderPolicyId);
+    if (!issuer.recognised) return null;
+    return { symbol: s.symbol ?? null, policyAdmin: issuer.policyAdmin };
+  } catch {
+    return null;
+  }
+}
+
 // ---- 1. B20 Token Safety — freeze/seize verdict ----
 
 export async function b20Safety(params: Record<string, string>) {

@@ -46,7 +46,8 @@ import { safeEqual } from "@/lib/secure";
 import { kvGet, kvSet } from "@/lib/kv";
 import { alertOwner } from "@/lib/alert-owner";
 import { cdpSql } from "@/lib/covalent";
-import { readMultipliers, describeMultiplierChange } from "@/lib/tokenized-stocks";
+import { readMultipliers, describeMultiplierChange, TOKENIZED_STOCKS } from "@/lib/tokenized-stocks";
+import { recognisedEquityIssuance } from "@/lib/b20-safety";
 
 export const dynamic = "force-dynamic";
 // Thirteen sequential eth_calls plus one optional SQL lookup.
@@ -98,20 +99,44 @@ async function findEvidence(token: string): Promise<{ txHash?: string; at?: stri
  * operator anchor is what would confirm one.
  */
 async function rosterDrift(): Promise<string | null> {
-  const rows = await cdpSql<{ n?: string | number }>(
-    `SELECT count() AS n FROM base.events WHERE event_name = 'B20Created' ` +
-      `AND toString(parameters['decimals']) = '8'`,
+  const rows = await cdpSql<{ tok?: string }>(
+    `SELECT toString(parameters['token']) AS tok FROM base.events ` +
+      `WHERE event_name = 'B20Created' AND toString(parameters['decimals']) = '8' ` +
+      `ORDER BY block_timestamp DESC LIMIT 200`,
   );
-  const now = Number(rows?.[0]?.n ?? NaN);
-  if (!Number.isFinite(now)) return null; // query failed — say nothing
-  const prev = Number((await kvGet(ROSTER_KEY)) ?? NaN);
-  await kvSet(ROSTER_KEY, String(now));
-  if (!Number.isFinite(prev) || now <= prev) return null;
+  if (!rows) return null; // query failed — say nothing rather than guess
+  const known = new Set<string>(TOKENIZED_STOCKS.map((s) => s.token));
+  const seen = new Set((await kvGet(ROSTER_KEY))?.split(",").filter(Boolean) ?? []);
+  const candidates = rows
+    .map((r) => String(r.tok ?? "").toLowerCase())
+    .filter((a) => /^0x[0-9a-f]{40}$/.test(a) && !known.has(a) && !seen.has(a));
+
+  // Remember every candidate, confirmed or not, so a token is examined once
+  // rather than on every run for the rest of its life.
+  if (candidates.length) {
+    await kvSet(ROSTER_KEY, [...seen, ...candidates].slice(-400).join(","));
+  }
+  if (candidates.length === 0) return null;
+
+  // The count alone is noise. On 2026-09-10 there were 91 8-decimal B20s and
+  // only 13 were equities; the other 78 carry random symbols (UYDW, AQJL,
+  // XSTWJ) and are test tokens. A detector that fired on the count would have
+  // paged on junk until it was ignored, which is the failure this codebase has
+  // already made twice. So each candidate is checked against the thing that
+  // actually decides membership — who administers its transfer policy.
+  const confirmed: string[] = [];
+  for (const addr of candidates.slice(0, 12)) {
+    // Returns null for unreadable as well as unrecognised — a candidate we
+    // could not check is not reported as a find.
+    const hit = await recognisedEquityIssuance(addr);
+    if (hit) confirmed.push(`${hit.symbol ?? "?"} (${addr})`);
+  }
+  if (confirmed.length === 0) return null;
+
   return (
-    `${now - prev} new 8-decimal B20 token(s) since the last check (${prev} → ${now}). ` +
-    `That is the shape every tokenized equity has had. If any is administered by the same ` +
-    `policy operator, the roster in src/lib/tokenized-stocks.ts is missing a stock — ` +
-    `b20-safety recognises it either way, but the watcher will not be reading it.`
+    `${confirmed.length} new tokenized equity from the same policy operator: ${confirmed.join(", ")}. ` +
+    `b20-safety and stock-position already cover it — the operator anchor needs no list — but ` +
+    `TOKENIZED_STOCKS in src/lib/tokenized-stocks.ts drives the watcher and /stocks, so add it there.`
   );
 }
 
