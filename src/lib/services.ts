@@ -2216,6 +2216,23 @@ export const SERVICES: ServiceDef[] = [
       { name: "jurisdiction", label: "Jurisdiction code (optional)", placeholder: "us_de" },
     ],
     handler: companySearch,
+    /**
+     * Hidden 2026-09-10: the upstream now requires a key we do not hold.
+     *
+     * `api.opencorporates.com/v0.4/companies/search` answers 401 `Invalid Api
+     * Token` to an unauthenticated request — the open tier this was written
+     * against is gone. Every call fails, so the endpoint could never earn:
+     * withX402 settles only after a handler returns under 400, which is why
+     * nobody was charged for the failures and why it never entered the
+     * discovery index. It was the one service out of nineteen that would not
+     * settle when they were seeded.
+     *
+     * Hidden rather than deleted. The handler is correct and the only missing
+     * piece is a credential, so this comes back by setting a key and removing
+     * this flag. Leaving it listed would put a guaranteed error in front of the
+     * agents now finding us, which costs more than the service is worth.
+     */
+    hidden: true,
   },
   {
     id: "ssl-check",
