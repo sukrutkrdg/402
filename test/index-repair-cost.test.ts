@@ -223,3 +223,38 @@ describe("the alert threshold cannot collide with the refresh cycle", () => {
     expect(p[0]).not.toMatch(/gas-oracle/);
   });
 });
+
+describe("a withdrawn service is not a discovery failure", () => {
+  const src = readFileSync("src/lib/index-health.ts", "utf8");
+
+  /**
+   * Hiding company-search on 2026-09-10 — its upstream began demanding a key —
+   * immediately raised "absent from discovery, no agent can find them" about a
+   * service deliberately taken off sale. A hidden service is never settled, so
+   * it can never be indexed, so the incident could never clear.
+   *
+   * It had not bitten before by luck alone: the only other hideable services
+   * key off s3Config(), which is set in production, so the hidden set was empty
+   * there.
+   */
+  it("measures the sellable catalogue, not every declared service", () => {
+    expect(src).toMatch(/const catalogue = SERVICES\.filter\(\(s\) => !s\.hidden\)/);
+  });
+
+  it("counts, queries and compares against that same set", () => {
+    expect(src).toMatch(/catalog: catalogue\.length/);
+    expect(src).toMatch(/for \(let i = 0; i < catalogue\.length; i \+= BATCH\)/);
+    expect(src).toMatch(/for \(const s of catalogue\)/);
+    // Orphan detection too: a hidden service still indexed from an earlier life
+    // is a real orphan, and comparing against the unfiltered list would hide it.
+    expect(src).toMatch(/!catalogue\.some\(\(s\) => s\.id === id\)/);
+  });
+
+  it("keeps the same definition the refresh cron spends against", () => {
+    // index-all pays for `SERVICES.filter((s) => !s.hidden)`. If health measured
+    // a wider set than the cron can ever fix, the gap would be permanent by
+    // construction.
+    const cron = readFileSync("src/app/api/cron/index-all/route.ts", "utf8");
+    expect(cron).toMatch(/SERVICES\.filter\(\(s\) => !s\.hidden\)/);
+  });
+});

@@ -155,6 +155,22 @@ export interface IndexHealth {
 }
 
 export async function checkIndexHealth(payTo: string, siteUrl: string): Promise<IndexHealth> {
+  /**
+   * Only what we actually sell.
+   *
+   * This read `SERVICES` unfiltered, so a hidden service was measured as one
+   * that ought to be in discovery and reported as missing from it — forever,
+   * because a hidden service is never settled and therefore never indexed. On
+   * 2026-09-10, hiding `company-search` (its upstream started demanding a key)
+   * immediately raised a permanent "absent from discovery — no agent can find
+   * them" incident about a service deliberately withdrawn from sale.
+   *
+   * It had not bitten before only by luck: the other two hideable services key
+   * off `s3Config()`, which is set in production, so the hidden set was empty
+   * there. The same pool `cron/index-all` spends against is the right one to
+   * measure, and it is the definition of "should be findable".
+   */
+  const catalogue = SERVICES.filter((s) => !s.hidden);
   const host = new URL(siteUrl).host; // e.g. 402.com.tr
   const prefix = `${siteUrl}/api/x402/`;
   const idOf = (resource: string): string =>
@@ -190,8 +206,8 @@ export async function checkIndexHealth(payTo: string, siteUrl: string): Promise<
     }
   };
 
-  for (let i = 0; i < SERVICES.length; i += BATCH) {
-    const slice = SERVICES.slice(i, i + BATCH);
+  for (let i = 0; i < catalogue.length; i += BATCH) {
+    const slice = catalogue.slice(i, i + BATCH);
     const results = await Promise.all(slice.map((s) => search(payTo, s.id)));
     results.forEach((rows, k) => {
       queries++;
@@ -212,7 +228,7 @@ export async function checkIndexHealth(payTo: string, siteUrl: string): Promise<
   const expiringSoon: IndexHealth["expiringSoon"] = [];
   const staleNetworks: IndexHealth["staleNetworks"] = [];
 
-  for (const s of SERVICES) {
+  for (const s of catalogue) {
     const rec = seen.get(s.id);
     if (!rec) {
       // Only call it missing if we actually got an answer about it. A service
@@ -258,7 +274,7 @@ export async function checkIndexHealth(payTo: string, siteUrl: string): Promise<
   // Indexed under our host but not in the catalog (renamed / retired ids). The
   // search path cannot enumerate, so this is what the narrow queries happened to
   // surface — a floor, not an inventory, and named so it cannot be read as one.
-  const orphansSeen = [...seen.keys()].filter((id) => !SERVICES.some((s) => s.id === id));
+  const orphansSeen = [...seen.keys()].filter((id) => !catalogue.some((s) => s.id === id));
 
   // One settlement fixes every one of these for a given service, so a service
   // that is both mispriced and on the wrong chains must be counted once.
@@ -276,7 +292,7 @@ export async function checkIndexHealth(payTo: string, siteUrl: string): Promise<
     checkedAt: new Date().toISOString(),
     method: "discovery/search?payTo — one targeted query per service",
     queries,
-    catalog: SERVICES.length,
+    catalog: catalogue.length,
     indexedSeen: seen.size,
     // Non-empty means the counts below are a floor: these services were not
     // answered for, and none of them is being called missing on that basis.
