@@ -45,31 +45,9 @@ const ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || "https://402.com.tr").replac
 /** Settlements per invocation. Each takes a few seconds; this leaves headroom
  *  under maxDuration and spreads the spend across days rather than one burst. */
 const MAX_PER_RUN = 12;
-/**
- * Hard ceiling per invocation, in cents.
- *
- * Was 60, which was below what the catalogue actually costs to keep alive and
- * starved the conveyor. The arithmetic: 161 sellable services priced at 609c in
- * total (excluding buy-credits, which this cron skips), refreshed on a 21-day
- * freshness key, needs about 29c a day in the average case. But two services
- * cost 75c each, and the run stops buying once `spent` passes the cap — so on
- * any day an expensive one sorted first, the run settled exactly one service
- * and deferred the other 23.
- *
- * That is what evicted eight live endpoints by 2026-09-11: b20-gate,
- * b20-guard, token-price and five others fell out of discovery while a cron
- * that looked healthy was moving one service a day. The ordering change of
- * 2026-09-05 (oldest-settled first) did not cause it — it exposed it, by
- * letting a 75c service reach the front instead of sitting late in catalogue
- * order where it never blocked anything.
- *
- * 150 leaves room for the worst realistic day — one 75c service plus a dozen
- * cheap ones — while still bounding a runaway at $1.50. The real ceiling on
- * spend is not this number anyway: a service goes fresh for 21 days once
- * settled, so the cycle cannot cost more than the catalogue total however
- * often this runs. The cap is here to bound a bug, not the budget.
- */
-const MAX_SPEND_CENTS = 150;
+/** Hard ceiling per invocation, in cents. A cap that cannot be exceeded matters
+ *  more than the exact number: this route is the only scheduled thing that spends. */
+const MAX_SPEND_CENTS = 60;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -136,6 +114,9 @@ export async function GET(req: NextRequest) {
   let refreshed = 0;
   let attempts = 0;
   let spent = 0;
+  /** Price of the one over-cap purchase a run may make, deliberately kept out
+   *  of `spent` so it does not consume the budget it was exempted from. */
+  let exempted = 0;
   let stale = 0;
   let aiSkipped = 0;
 
@@ -179,7 +160,24 @@ export async function GET(req: NextRequest) {
     // forever, and would have evicted from the index with keepalive never once
     // having tried. Letting the FIRST purchase of a run exceed the cap fixes
     // that and still bounds the worst case at cap + one price.
-    const overCap = spent + cents > MAX_SPEND_CENTS && spent > 0;
+    // The exempted purchase does not eat the budget it was exempted from.
+    //
+    // `spent` counts only what the cap is meant to govern. When an over-cap
+    // service is let through as the first purchase, its price is recorded in
+    // `exempted` instead — otherwise it lands in `spent`, immediately exceeds
+    // the cap on its own, and every remaining service is deferred.
+    //
+    // That is what happened once the conveyor began sorting by urgency on
+    // 2026-09-05: a 75c report reached the front, and runs that reported
+    // healthy were settling exactly one service a day. Eight live endpoints —
+    // b20-gate, b20-guard, b20-batch, token-price and four more — aged past the
+    // 30-day eviction window and fell out of discovery before anyone noticed,
+    // because the cron's own output looked like a normal run.
+    //
+    // Worst case is unchanged and is still what the comment above promises:
+    // cap plus one price.
+    const exempt = spent === 0 && exempted === 0 && cents > MAX_SPEND_CENTS;
+    const overCap = !exempt && spent + cents > MAX_SPEND_CENTS;
     if (attempts >= MAX_PER_RUN || overCap) {
       results.push({ service: s.id, status: "deferred-next-run" });
       continue;
@@ -203,7 +201,8 @@ export async function GET(req: NextRequest) {
     if (dryRun) {
       results.push({ service: s.id, status: "would-pay", cents });
       attempts++;
-      spent += cents;
+      if (exempt) exempted = cents;
+      else spent += cents;
       continue;
     }
 
@@ -214,7 +213,8 @@ export async function GET(req: NextRequest) {
       results.push({ service: s.id, status: res.status, cents });
       if (res.ok) {
         refreshed++;
-        spent += cents;
+        if (exempt) exempted = cents;
+        else spent += cents;
         await kvSet(indexFreshKey(s.id), "1", INDEX_FRESH_SECONDS);
         // Dated, so the next run with a backlog knows this one is now the least
         // urgent rather than merely "not fresh".

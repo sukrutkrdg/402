@@ -23,9 +23,36 @@ const src = readFileSync(new URL("../src/app/api/cron/index-all/route.ts", impor
 const capOf = (name: string) => Number(src.match(new RegExp(`const ${name} = (\\d+)`))?.[1]);
 
 describe("the per-run spend cap", () => {
-  it("exempts the first purchase, so no single price can be permanently deferred", () => {
-    expect(src).toMatch(/const overCap = spent \+ cents > MAX_SPEND_CENTS && spent > 0;/);
-    expect(src, "the bare comparison is what excluded them").not.toMatch(/\|\| spent \+ cents > MAX_SPEND_CENTS\)/);
+  it("exempts one over-cap purchase, so no single price can be permanently deferred", () => {
+    expect(src).toMatch(/const exempt = spent === 0 && exempted === 0 && cents > MAX_SPEND_CENTS;/);
+    expect(src).toMatch(/const overCap = !exempt && spent \+ cents > MAX_SPEND_CENTS;/);
+    expect(src, "the bare comparison is what excluded them").not.toMatch(/const overCap = spent \+ cents > MAX_SPEND_CENTS;/);
+  });
+
+  /**
+   * The exempted purchase must not consume the budget it was exempted from.
+   *
+   * Folding its price into `spent` put the run over the cap on its opening
+   * purchase, so every remaining service was deferred. With the conveyor
+   * sorting by urgency from 2026-09-05, a 75c report reached the front
+   * regularly and runs that reported healthy were settling one service a day.
+   * Eight live endpoints aged past the 30-day eviction window and fell out of
+   * discovery before anyone noticed, because the cron's own output looked
+   * normal.
+   */
+  it("keeps the exempted price out of the budget the cap governs", () => {
+    expect(src).toMatch(/let exempted = 0;/);
+    // Both the dry-run and the settled path must account for it the same way,
+    // or a dry run would report a plan the real run cannot execute.
+    const assignments = src.match(/if \(exempt\) exempted = cents;\s*\n\s*else spent \+= cents;/g) ?? [];
+    expect(assignments).toHaveLength(2);
+    expect(src, "a bare accumulation is the bug").not.toMatch(/^\s+spent \+= cents;$/m);
+  });
+
+  it("allows only one exemption per run", () => {
+    // `exempted === 0` is what makes it one purchase deep rather than a hole:
+    // a second over-cap service in the same run is deferred normally.
+    expect(src).toMatch(/exempted === 0 && cents > MAX_SPEND_CENTS/);
   });
 
   it("still bounds a run: nothing is attempted once something has been spent and the cap is reached", () => {
