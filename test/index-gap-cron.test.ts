@@ -162,10 +162,26 @@ describe("the incident actually reaches a surface", () => {
     };
     const cron = vercel.crons.find((c) => c.path === "/api/cron/index-gap");
     expect(cron, "index-gap must be in vercel.json crons").toBeTruthy();
-    // 04:00 UTC — one hour after index-all re-settles, so the alert is about
-    // what the keepalive did NOT fix overnight.
-    expect(cron!.schedule).toBe("0 4 * * *");
+    // 04:00 UTC — one hour after index-all re-settles, so the first run of the
+    // day is about what the keepalive did NOT fix overnight.
+    expect(cron!.schedule).toMatch(/^0 4(,|\s)/);
     const reseed = vercel.crons.find((c) => c.path === "/api/cron/index-all");
     expect(reseed!.schedule).toBe("0 3 * * *");
+
+    /**
+     * And it repeats within the day, because this is the only thing that clears
+     * an index incident. On a daily schedule a problem fixed at 08:00 sat on
+     * the panel until 04:00 the next morning — twice in two days — and a panel
+     * that shows a resolved problem for twenty hours is one people stop
+     * reading. Six-hourly also matches the ~60–90 minute discovery ingest lag:
+     * a check run minutes after a repair cannot see it, one within six hours
+     * can.
+     */
+    const hours = cron!.schedule.split(" ")[1].split(",").map(Number);
+    expect(hours.length, "a once-a-day clear is too slow for a panel").toBeGreaterThan(1);
+    for (const h of hours) expect(Number.isInteger(h) && h >= 0 && h < 24).toBe(true);
+    // Still read-only and cheap, but not so often it hammers discovery: the
+    // sweep is ~161 queries and we have rate-limited ourselves by hand already.
+    expect(hours.length).toBeLessThanOrEqual(6);
   });
 });

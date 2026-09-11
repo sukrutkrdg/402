@@ -23,7 +23,22 @@
  *
  * Runs at 04:00 UTC, one hour after cron/index-all re-settles — late enough that
  * anything the keepalive fixed overnight is already fixed, so the alert is about
- * what is actually still wrong.
+ * what is actually still wrong. Then again at 10:00, 16:00 and 22:00.
+ *
+ * WHY FOUR TIMES AND NOT ONCE
+ * ---------------------------
+ * This is the only thing that CLEARS an index incident, so on a daily schedule
+ * a problem fixed at 08:00 stayed on the operator's panel until 04:00 the next
+ * morning. That happened twice in two days and both times the panel was telling
+ * the truth about a moment that had already passed — which is how a panel stops
+ * being read, the same failure the alert thresholds were tuned to avoid.
+ *
+ * Six-hourly also fits the thing being measured. A discovery record takes
+ * roughly 60–90 minutes to ingest a settlement, so a check that runs minutes
+ * after a repair cannot see it; one that runs within six hours can. The run is
+ * read-only — it queries discovery and spends nothing — and a degraded sweep
+ * already refuses to draw any conclusion, so the extra runs cannot raise a
+ * false alarm if the API rate-limits us.
  *
  * Auth: Authorization: Bearer ${CRON_SECRET}
  */
