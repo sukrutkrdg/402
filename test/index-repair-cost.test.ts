@@ -258,3 +258,38 @@ describe("a withdrawn service is not a discovery failure", () => {
     expect(cron).toMatch(/SERVICES\.filter\(\(s\) => !s\.hidden\)/);
   });
 });
+
+describe("the keepalive budget can actually keep the catalogue alive", () => {
+  const cron = readFileSync("src/app/api/cron/index-all/route.ts", "utf8");
+  const cap = Number(cron.match(/const MAX_SPEND_CENTS = (\d+)/)?.[1]);
+  const perRun = Number(cron.match(/const MAX_PER_RUN = (\d+)/)?.[1]);
+
+  /**
+   * On 2026-09-11 eight live endpoints — b20-gate, b20-guard, token-price and
+   * five more — had fallen out of discovery while the cron reported healthy
+   * runs. The cap was 60c against a catalogue needing ~29c/day, which sounds
+   * ample until an expensive service sorts first: `spent` passes the cap on
+   * the opening purchase and every remaining service is deferred. The run
+   * settled one service a day, so listings aged past the 30-day eviction while
+   * the conveyor looked like it was moving.
+   */
+  it("clears an expensive service and still has room for a full run", () => {
+    const dearest = 75; // b20-dossier and deep-dd
+    const typical = 4; // most of the catalogue sits at 1-5c
+    expect(cap).toBeGreaterThanOrEqual(dearest + (perRun - 1) * typical);
+  });
+
+  it("keeps a bound, so a bug cannot drain the wallet in one run", () => {
+    expect(cap).toBeLessThanOrEqual(300);
+    expect(perRun).toBeLessThanOrEqual(20);
+  });
+
+  /**
+   * The exemption that must survive: a service priced above the cap would
+   * otherwise be deferred on every run forever and evict with the keepalive
+   * never once having tried it.
+   */
+  it("still lets the first purchase of a run exceed the cap", () => {
+    expect(cron).toMatch(/spent \+ cents > MAX_SPEND_CENTS && spent > 0/);
+  });
+});
