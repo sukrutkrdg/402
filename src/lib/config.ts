@@ -12,26 +12,31 @@ export const NETWORK: Network = "eip155:8453";
 export const CHAIN_ID = 8453;
 
 /**
- * Additional networks we will also accept payment on.
+ * Additional networks we will also accept payment on. Currently none.
  *
- * x402 v2's `accepts` is a list, so a resource can quote several networks and
- * let the payer pick. We asked the CDP facilitator what it actually supports
- * before adding anything — it answers `exact` on eip155:8453, 137, 42161, 480
- * and on Solana — so this is a declaration of something already true rather
- * than a hopeful one.
+ * Polygon was here from 2026-08-30 as the cheapest possible test of whether
+ * multi-chain acceptance changes anything: same scheme, same payTo, no new
+ * dependency. It is removed on 2026-09-11, and the reason is worth keeping.
  *
- * Polygon first, and only Polygon, because it is the cheapest possible test of
- * whether multi-chain acceptance changes anything: same `ExactEvmScheme`, same
- * payTo (EVM addresses are chain-agnostic, so the money lands in the wallet we
- * already control), no new dependency, nothing to ask the operator for. If
- * agents do pay on it, that earns the harder work — Solana needs its own
- * package, its own wallet and an SPL token account.
+ * It never reached most callers. A discovery record only refreshes on a new
+ * settlement, so on 2026-09-03 just 7 of 67 indexed rows advertised Polygon at
+ * all — the question "did anyone pay on it" was being asked of a catalogue that
+ * had never offered it to ninety percent of its readers. No Polygon settlement
+ * was ever observed, though that is weaker than it sounds: two public Polygon
+ * RPCs failed when the check was finally run, so the absence is inferred from
+ * our own records rather than confirmed on that chain.
  *
- * The thing to keep in mind operationally: USDC received here is USDC *on
- * Polygon*. Same address, different chain, and it does not show up in the Base
- * revenue figures until it is bridged.
+ * What decided it was the cost of keeping it. Quoting two networks in one
+ * `accepts[]` gives a payer a choice it may not want: a buyer that binds one
+ * route to one network has to resolve the ambiguity or skip the resource, and
+ * at least one routing client reported skipping ours for exactly that. Paying
+ * that price for a network with no observed demand is the wrong trade.
+ *
+ * Emptying this array removes Polygon from everywhere at once — the challenge,
+ * the resource server registration, and the index-health network check — which
+ * is why the list exists rather than the ids being written out per call site.
  */
-export const EXTRA_NETWORKS: Network[] = ["eip155:137"];
+export const EXTRA_NETWORKS: Network[] = [];
 
 /** Every network a payer may settle on, primary first. */
 export const ALL_NETWORKS: Network[] = [NETWORK, ...EXTRA_NETWORKS];
