@@ -23,6 +23,23 @@ import { buyCredits, debitCredit, refundCredit, CREDIT_TIERS } from "@/lib/credi
 
 const GOOD_TOKEN = `ck_${"a".repeat(36)}`;
 
+/**
+ * A balance key, as opposed to a bookkeeping key.
+ *
+ * What these tests protect is that nothing adds to a customer's BALANCE with a
+ * bare, unguarded increment — a retried INCRBY can apply twice and pay someone
+ * for a call they made. They used to say that as "kvIncrBy is never called",
+ * which was the same thing right up until the rail grew counters of its own
+ * (`credits:spent:cents` and friends). Those are statistics, on their own keys,
+ * and a double-count there is a wrong number rather than wrong money.
+ *
+ * So the assertion names the thing it means: no unguarded increment against
+ * `credit:<hash>`. Bookkeeping may move; the balance may not.
+ */
+const BALANCE_KEY = /^credit:[0-9a-f]{24}$/;
+const balanceIncrements = () =>
+  kvMock.kvIncrBy.mock.calls.filter((c: unknown[]) => BALANCE_KEY.test(String(c[0])));
+
 describe("buyCredits — fail closed on ledger failure", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,7 +90,7 @@ describe("debitCredit — atomic debit-first with symmetric compensation", () =>
     kvMock.kvDecrBy.mockResolvedValue(97);
     const r = await debitCredit(GOOD_TOKEN, 3);
     expect(r).toEqual({ ok: true, remaining: 97 });
-    expect(kvMock.kvIncrBy).not.toHaveBeenCalled(); // no refund on success
+    expect(balanceIncrements(), "no refund on success").toHaveLength(0);
   });
 
   it("refunds exactly what it debited on overdraw and deletes a zero probe key", async () => {
@@ -135,9 +152,9 @@ describe("refundCredit", () => {
     expect(kvMock.kvIncrBy).not.toHaveBeenCalled();
   });
 
-  it("never uses a bare increment, which cannot be retried safely", async () => {
+  it("never uses a bare increment on the balance, which cannot be retried safely", async () => {
     await refundCredit(GOOD_TOKEN, 3);
-    expect(kvMock.kvIncrBy).not.toHaveBeenCalled();
+    expect(balanceIncrements()).toHaveLength(0);
   });
 
   it("retries a lost reply under the SAME guard, so it can only apply once", async () => {

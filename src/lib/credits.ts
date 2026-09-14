@@ -59,6 +59,68 @@ export function tierPrice(tier: string): string {
 const keyFor = (token: string) => `credit:${createHash("sha256").update(token).digest("hex").slice(0, 24)}`;
 
 /**
+ * The books for the prepaid rail, kept apart from ordinary call counting.
+ *
+ * A credit spend logs as a paid call, which is true, but no money moves at that
+ * moment — it moved when the pack was bought. So the usual counters show credit
+ * traffic as revenue-earning calls while revenue stays flat, and the prepaid
+ * business is invisible between the two. These five numbers are what a person
+ * actually needs: what we sold, what we owe, and what has been drawn down.
+ *
+ * Deliberately separate keys rather than a dimension on `usage:` — this is a
+ * liability ledger (unspent credit is money we have taken and not yet earned),
+ * and it should not be resettable by anything that resets call statistics.
+ */
+const LEDGER = {
+  packs: "credits:packs",
+  paidCents: "credits:paid:cents",
+  mintedCents: "credits:minted:cents",
+  spentCents: "credits:spent:cents",
+  spentCalls: "credits:spent:calls",
+} as const;
+
+/**
+ * What the prepaid rail has sold, drawn down, and still owes.
+ *
+ * `outstandingCents` is the liability: credit bought and not yet spent. It is
+ * derived rather than stored so it cannot drift from the two counters it sits
+ * between.
+ */
+export async function creditsLedger() {
+  if (!kvConfigured()) return null;
+  const [packs, paidCents, mintedCents, spentCents, spentCalls] = await Promise.all([
+    kvGetNumber(LEDGER.packs),
+    kvGetNumber(LEDGER.paidCents),
+    kvGetNumber(LEDGER.mintedCents),
+    kvGetNumber(LEDGER.spentCents),
+    kvGetNumber(LEDGER.spentCalls),
+  ]);
+  return {
+    packsSold: packs,
+    paidUsd: +(paidCents / 100).toFixed(2),
+    /** Includes the prepay bonus, so this exceeds paidUsd on the $5 and $20 tiers. */
+    creditedUsd: +(mintedCents / 100).toFixed(2),
+    spentUsd: +(spentCents / 100).toFixed(2),
+    spentCalls,
+    /** Money taken and not yet earned. Falls as customers call; does not fall when they don't. */
+    outstandingUsd: +((mintedCents - spentCents) / 100).toFixed(2),
+    /** Share of sold credit that has actually been used — the one number that says whether the rail works. */
+    drawdownPct: mintedCents > 0 ? +((spentCents / mintedCents) * 100).toFixed(1) : 0,
+  };
+}
+
+/** Does this look like a token we could have minted? A cheap shape check, with no
+ *  KV round trip — enough to decide how to meter a caller before spending one. */
+export const isCreditTokenShape = (token: string) => /^ck_[0-9a-f]{36}$/.test((token || "").trim());
+
+/**
+ * A stable, non-reversible handle for a token — safe to use as a rate-limit or
+ * log key, because it never puts a spendable bearer value in either.
+ */
+export const creditHandle = (token: string) =>
+  createHash("sha256").update((token || "").trim()).digest("hex").slice(0, 24);
+
+/**
  * Handler for the `buy-credits` service. Runs only AFTER x402 payment is verified
  * (the service is noFreeTier, so it never serves free), so minting a balance here
  * means the buyer has paid. Returns the bearer token exactly once.
@@ -76,7 +138,7 @@ export async function buyCredits(params: Record<string, string>) {
  *
  * Callers MUST have confirmed payment first — this function does not check.
  */
-export async function mintCredits(credits: number, paidUsd: number) {
+export async function mintCredits(credits: number, paidUsd: number, sale = true) {
   if (!kvConfigured()) throw new Error("Credits unavailable: durable storage not configured");
   if (!Number.isInteger(credits) || credits <= 0) throw new Error("Invalid credit amount");
 
@@ -88,6 +150,19 @@ export async function mintCredits(credits: number, paidUsd: number) {
   if (set === null) throw new Error("Credits unavailable: ledger write failed — payment not settled, retry shortly");
   // Refresh the TTL on the (new) balance key.
   await kvSet(keyFor(token), String(set), BALANCE_TTL);
+
+  // Book the sale. Recovery re-issues a balance that was already bought and
+  // already counted, so it passes sale=false — otherwise a customer who loses a
+  // token would show up as having bought the same pack twice.
+  if (sale) {
+    await Promise.all([
+      kvIncrBy(LEDGER.packs, 1),
+      kvIncrBy(LEDGER.paidCents, Math.round(paidUsd * 100)),
+      kvIncrBy(LEDGER.mintedCents, credits),
+    ]).catch(() => {
+      /* the balance is the money; this is only the books */
+    });
+  }
 
   return {
     creditToken: token,
@@ -215,7 +290,8 @@ export async function recoverCredits(owner: string): Promise<RecoverResult> {
 
     if (total <= 0) return { recoveredCents: 0, tokensMerged: 0 };
 
-    const minted = await mintCredits(total, total / 100);
+    // sale=false: this balance was bought and booked once already.
+    const minted = await mintCredits(total, total / 100, false);
     await linkCreditOwner(owner, minted.creditToken);
     return { recoveredCents: total, tokensMerged: merged, minted };
   } catch (err) {
@@ -264,6 +340,9 @@ export async function debitCredit(token: string, priceCents: number): Promise<De
     if (balance === 0) await kvDel(key);
     return { ok: false, remaining: 0, reason: "insufficient", balance: Math.max(0, balance) };
   }
+  await Promise.all([kvIncrBy(LEDGER.spentCents, priceCents), kvIncrBy(LEDGER.spentCalls, 1)]).catch(() => {
+    /* the debit above is the money; this is only the books */
+  });
   return { ok: true, remaining: after };
 }
 
@@ -288,7 +367,13 @@ export async function refundCredit(token: string, cents: number): Promise<void> 
   const guard = `refund:${crypto.randomUUID()}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await kvIncrByOnce(keyFor(t), cents, guard);
-    if (r !== null) return; // applied now, or proven already applied
+    if (r !== null) {
+      // Unwind the books too: a refunded call was delivered but not billed, so
+      // counting it as drawn-down credit would overstate what we have earned and
+      // understate what we still owe.
+      await Promise.all([kvIncrBy(LEDGER.spentCents, -cents), kvIncrBy(LEDGER.spentCalls, -1)]).catch(() => {});
+      return; // applied now, or proven already applied
+    }
     await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
   }
 

@@ -21,7 +21,14 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
-import { debitCredit, refundCredit, tierPrice, linkCreditOwner } from "@/lib/credits";
+import { debitCredit, refundCredit, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle } from "@/lib/credits";
+
+/**
+ * Calls a minute a single prepaid token may make. Ten a second — comfortably
+ * above the 200/minute the credits rail advertises, and still a ceiling, so a
+ * runaway client burns its own balance rather than our upstream quotas.
+ */
+const PREPAID_PER_MINUTE = 600;
 import { sinceLastCheck } from "@/lib/since-last";
 import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
@@ -273,9 +280,36 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     return NextResponse.json({ error: `Unknown service: ${serviceId}` }, { status: 404 });
   }
 
-  // Generous per-IP cap to blunt DoS (each call can fan out to RPC/GoPlus/DexScreener
-  // before payment is even validated). Legit agents stay well under this.
-  const rl = await rateLimitKv(`x402:${clientIp(req)}`, 60, 60);
+  /**
+   * Meter a prepaid caller by their token, not by their address.
+   *
+   * The per-IP cap blunts DoS: an unpaid call can fan out to RPC/GoPlus/
+   * DexScreener before payment is validated, so an anonymous caller has to be
+   * bounded before it reaches any of that.
+   *
+   * A prepaid caller is not in that position. The debit below is atomic and
+   * happens BEFORE the handler, so a token with no balance gets a 402 and
+   * touches no upstream at all — the balance is already the limit, and it is a
+   * limit we were paid for. A $20 pack buys at most 2,400 one-cent calls in its
+   * entire 180-day life, whoever sends them and from wherever.
+   *
+   * Metering them by IP instead broke the one thing this rail was sold on. The
+   * listing says it is built for agents firing many checks a minute, and the
+   * module header sizes that at 200 a minute; the cap was 60, applied before
+   * the credit path, so the customer who prepaid hit the same wall as an
+   * anonymous scraper. Found on 2026-09-14 while spending a real $1 pack — the
+   * test itself was rate-limited off the service it had paid for.
+   *
+   * Keyed by a hash of the token so one pack cannot be split across machines to
+   * multiply the ceiling, and so nothing spendable lands in a rate-limit key. A
+   * malformed token falls through to the IP path, which is where anything
+   * unpaid belongs.
+   */
+  const presented = req.headers.get("x-credit-token") || "";
+  const prepaid = isCreditTokenShape(presented);
+  const rl = prepaid
+    ? await rateLimitKv(`x402:ck:${creditHandle(presented)}`, PREPAID_PER_MINUTE, 60)
+    : await rateLimitKv(`x402:${clientIp(req)}`, 60, 60);
   if (!rl.ok) {
     return NextResponse.json(
       { error: `Rate limit — retry in ${Math.ceil(rl.retryAfterMs / 1000)}s` },

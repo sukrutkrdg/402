@@ -79,6 +79,21 @@ interface Usage {
   payersToday?: number;
   youSource?: string;
   ownerSources?: string[];
+  credits?: CreditsLedger | null;
+}
+/**
+ * The prepaid rail's own books. Kept out of the revenue figures above on
+ * purpose: a credit spend is a paid call that moves no money, because the money
+ * moved when the pack was bought. Mixing them makes both numbers lie.
+ */
+interface CreditsLedger {
+  packsSold: number;
+  paidUsd: number;
+  creditedUsd: number;
+  spentUsd: number;
+  spentCalls: number;
+  outstandingUsd: number;
+  drawdownPct: number;
 }
 interface PayerWallet {
   wallet: string;
@@ -528,6 +543,56 @@ export default function Stats() {
           {usage.degraded && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
               ⚠️ Analytics store was slow to reach this refresh — numbers may be understated. Refresh again in a moment.
+            </div>
+          )}
+
+          {/* Prepaid credits, on their own. A pack is revenue on the day it sells
+              and a liability until it is spent, and neither fact is visible in the
+              call counts below — where a credit spend looks like any other paid
+              call while revenue stays flat. Drawdown is the number that says
+              whether the rail is working: credit sold and never spent is a
+              customer who paid once and did not come back. */}
+          {usage.credits && usage.credits.packsSold > 0 && (
+            <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
+              <div className="mb-3 flex items-baseline gap-2">
+                <span className="pill">🎟️ Prepaid credits</span>
+                <span className="text-[10px] text-gray-500">
+                  bought up front, spent per call — no settlement, no money moving at call time
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <div className="label">Packs sold</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.credits.packsSold}</div>
+                  <div className="text-[10px] text-gray-500">${usage.credits.paidUsd.toFixed(2)} taken</div>
+                </div>
+                <div>
+                  <div className="label">Credit issued</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">${usage.credits.creditedUsd.toFixed(2)}</div>
+                  <div className="text-[10px] text-gray-500">
+                    {usage.credits.creditedUsd > usage.credits.paidUsd
+                      ? `incl. $${(usage.credits.creditedUsd - usage.credits.paidUsd).toFixed(2)} prepay bonus`
+                      : "no bonus at this tier"}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Drawn down</div>
+                  <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">
+                    ${usage.credits.spentUsd.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    {usage.credits.spentCalls} call{usage.credits.spentCalls === 1 ? "" : "s"} ·{" "}
+                    {usage.credits.drawdownPct}% of issued
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Outstanding</div>
+                  <div className="mt-1 font-mono text-2xl font-bold text-amber-300">
+                    ${usage.credits.outstandingUsd.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-gray-500">paid for, not yet used — owed as service</div>
+                </div>
+              </div>
             </div>
           )}
 

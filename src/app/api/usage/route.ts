@@ -7,6 +7,7 @@ import { kvGetNumber } from "@/lib/kv";
 import { SERVICES } from "@/lib/services";
 import { safeEqual } from "@/lib/secure";
 import { clientIp } from "@/lib/rate-limit";
+import { creditsLedger } from "@/lib/credits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // headroom for the per-service KV reads
@@ -56,11 +57,23 @@ export async function GET(req: NextRequest) {
   });
   const totalRevenue = +per.reduce((a, r) => a + r.revenue, 0).toFixed(2);
 
+  /**
+   * The prepaid rail, reported apart from everything above.
+   *
+   * A credit spend counts as a paid call in `per` — correctly, it was paid for —
+   * but no money moves at that moment, so it inflates call counts against flat
+   * revenue and the two never reconcile. Worse, the interesting number is not in
+   * either: how much sold credit is actually being drawn down. A pack bought and
+   * never spent is revenue today and a customer who never came back.
+   */
+  const credits = await creditsLedger();
+
   return NextResponse.json({
     ...data,
     youSource,
     ownerSources: cfg.ownerSources,
     totalRevenue,
+    credits,
     per,
     recent: data.recent.map((r) => ({ ...r, name: nameById[r.s] ?? r.s })),
   });

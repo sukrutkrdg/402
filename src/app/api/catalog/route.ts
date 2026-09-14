@@ -9,6 +9,7 @@
 import { SERVICES } from "@/lib/services";
 import { getConfig, getSiteUrl } from "@/lib/config";
 import { POLICY_VERSION } from "@/lib/envelope";
+import { exampleInputFor } from "@/lib/discovery-examples";
 
 // Checks that carry the FULL decision receipt (confidence/refusal/refund), vs the
 // baseline (inputHash + policyVersion) every other paid service carries.
@@ -93,12 +94,43 @@ export function GET() {
       method: "GET",
       x402: true,
       endpoint: `${SITE_URL}/api/x402/${s.id}`,
-      input: Object.fromEntries(
-        s.params.map((p) => [
-          p.name,
-          { type: "string", required: Boolean(p.required), description: p.label, in: "query", example: p.placeholder || undefined },
-        ]),
-      ),
+      input: (() => {
+        /**
+         * The example has to be a value an agent can send, not the hint a human
+         * reads above an input box.
+         *
+         * This published `p.placeholder` — our UI copy — so 107 of the 159
+         * required parameters here advertised things like
+         * `"0x… token address"`. An agent that discovers us through this
+         * document (and `/.well-known/x402` rewrites to it, so most do) has no
+         * way to construct a valid call from that: it either invents an address
+         * or gets `400 Provide a valid 0x… address` and leaves. Measured on
+         * 2026-09-14 by paying for a credit pack and trying to spend it from
+         * the catalogue alone — 52 of 159 parameters were runnable.
+         *
+         * `exampleInputFor` already derives real values from each parameter's
+         * label, and the keepalive settles against them daily, so the values
+         * were sitting one import away the whole time. Its own header describes
+         * this exact defect and fixes it — for the discovery payload and the
+         * 402 body. This surface was left behind.
+         *
+         * The placeholder stays as the fallback: for a parameter we hold no
+         * real value for, a shape is still better than nothing.
+         */
+        const runnable = exampleInputFor(s) ?? {};
+        return Object.fromEntries(
+          s.params.map((p) => [
+            p.name,
+            {
+              type: "string",
+              required: Boolean(p.required),
+              description: p.label,
+              in: "query",
+              example: runnable[p.name] ?? p.placeholder ?? undefined,
+            },
+          ]),
+        );
+      })(),
     })),
     // First-party partner services (same owner, separate host) — listed so
     // agents discovering the Bazaar also find them; they settle via x402 too.
