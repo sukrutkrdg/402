@@ -35,7 +35,7 @@ import { priceCents } from "@/lib/price";
 import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS, MISSING_KEY } from "@/lib/index-freshness";
 import { probeAi } from "@/lib/ai-probe";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
-import { checkSurfaces } from "@/lib/surface-check";
+import { checkSurfaces, edgeClientCheck } from "@/lib/surface-check";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -87,6 +87,36 @@ export async function GET(req: NextRequest) {
     );
   } else {
     await clearAlert("ai-credits", "Anthropic is answering again — the AI endpoints are back and the index refresh will resume covering them.");
+  }
+
+  /**
+   * The edge check runs EVERY day, not weekly with the rest.
+   *
+   * The others ask whether a registry still lists us — npm, Smithery, the
+   * discovery index — and those drift over weeks. The edge is different: a
+   * Cloudflare toggle can take every library client offline between one request
+   * and the next, and it did. Once as a Browser Integrity Check refusing
+   * Python-urllib and libwww-perl site-wide, and again on 2026-09-14 as a 523 on
+   * a published hostname. Neither is visible from inside this repository, and
+   * both were reported to us by strangers.
+   *
+   * A weekly check means up to seven days of an agent-facing outage nobody
+   * sees, which for the one failure mode we cannot fix in code is the wrong
+   * cadence. It costs five HEAD-ish requests.
+   */
+  let edge: Awaited<ReturnType<typeof edgeClientCheck>> | undefined;
+  if (!dryRun) {
+    edge = await edgeClientCheck();
+    // Its own incident kind, so the daily check and the weekly surfaces sweep
+    // cannot overwrite each other's verdict about different things.
+    if (!edge.ok) {
+      await alertOwner(
+        "edge-clients",
+        `Agents cannot reach us from outside:\n\n• ${edge.detail}\n\nThis is edge configuration, not code — a deploy will not fix it.`,
+      );
+    } else {
+      await clearAlert("edge-clients", "Library clients and every published hostname are answering again.");
+    }
   }
 
   // Once a week, check that the places we are published still show us. Folded
@@ -253,6 +283,7 @@ export async function GET(req: NextRequest) {
     capCents: MAX_SPEND_CENTS,
     total: pool.length,
     dryRun,
+    ...(edge ? { edge } : {}),
     ...(surfaces ? { surfaces } : {}),
     ai: ai.ok ? { ok: true } : { ok: false, reason: ai.reason, creditsExhausted: ai.creditsExhausted, skipped: aiSkipped, alert: aiAlert },
     note:

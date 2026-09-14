@@ -138,7 +138,18 @@ const discoveryCheck = (payTo: string) =>
  */
 const AGENT_CLIENTS = ["Python-urllib/3.12", "libwww-perl/6.68", "python-requests/2.32.3", "Go-http-client/2.0"];
 
-const edgeClientCheck = () =>
+/**
+ * Hostnames we publish that must answer, not just the one we develop against.
+ *
+ * `www.402.com.tr` resolved to Cloudflare and returned 523 (origin unreachable)
+ * to every client tried — browser, Python and curl alike — because the hostname
+ * is proxied at the edge but not configured on the origin. Every link anyone
+ * writes with a www is a dead door, and nothing here would ever have said so:
+ * the whole suite, this file included, only ever asked the apex.
+ */
+const PUBLISHED_HOSTS = ["https://402.com.tr", "https://www.402.com.tr"];
+
+export const edgeClientCheck = () =>
   probe("edge/clients", async () => {
     const blocked: string[] = [];
     for (const ua of AGENT_CLIENTS) {
@@ -152,15 +163,44 @@ const edgeClientCheck = () =>
       // this is asking.
       if (r.status === 403 || r.status === 401 || r.status === 429) blocked.push(`${ua} → ${r.status}`);
     }
-    if (blocked.length === 0) {
-      return { name: "edge/clients", ok: true, detail: `${AGENT_CLIENTS.length} common agent clients all reach the app` };
+
+    // 5xx from the edge is a different failure with the same effect: the client
+    // was not refused, the origin was never reached. A 523 on a published
+    // hostname is invisible from the apex we always test.
+    const deadHosts: string[] = [];
+    for (const host of PUBLISHED_HOSTS) {
+      try {
+        const r = await fetch(`${host}/.well-known/x402`, {
+          headers: { "user-agent": AGENT_CLIENTS[0] },
+          cache: "no-store",
+          redirect: "follow",
+          signal: AbortSignal.timeout(10000),
+        });
+        if (r.status >= 500) deadHosts.push(`${host} → ${r.status}`);
+      } catch (e) {
+        deadHosts.push(`${host} → ${e instanceof Error ? e.message.slice(0, 40) : "unreachable"}`);
+      }
+    }
+
+    if (blocked.length === 0 && deadHosts.length === 0) {
+      return {
+        name: "edge/clients",
+        ok: true,
+        detail: `${AGENT_CLIENTS.length} common agent clients reach the app on all ${PUBLISHED_HOSTS.length} published hostnames`,
+      };
     }
     return {
       name: "edge/clients",
       ok: false,
       detail:
-        `the CDN refuses ${blocked.join(", ")} before the app is reached — an agent on that client cannot read our price. ` +
-        `Not fixable in this repo: it is a Cloudflare bot rule (Security → Bots, or a WAF skip for /api/x402/* and /.well-known/*).`,
+        (blocked.length
+          ? `the CDN refuses ${blocked.join(", ")} before the app is reached — an agent on that client cannot read our price. ` +
+            `Not fixable in this repo: it is a Cloudflare bot rule (Security → Bots, or a WAF skip for /api/x402/* and /.well-known/*). `
+          : "") +
+        (deadHosts.length
+          ? `published hostname(s) not serving: ${deadHosts.join(", ")}. A 5xx here is the edge failing to reach the origin — ` +
+            `add the hostname to the origin project, or redirect it at the edge so it never gets there.`
+          : ""),
     };
   });
 
