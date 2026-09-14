@@ -50,9 +50,35 @@ export async function rateLimitKv(
 }
 
 export function clientIp(req: Request): string {
-  // On Vercel, x-vercel-forwarded-for is set by the platform and is the
-  // trustworthy client IP. x-forwarded-for is client-spoofable, so prefer the
-  // platform headers first.
+  /**
+   * Cloudflare first, because it is in front of Vercel and that changes who
+   * "the client" is.
+   *
+   * 402.com.tr is proxied through Cloudflare, so the connection Vercel sees
+   * comes from a Cloudflare edge server — and `x-vercel-forwarded-for`
+   * faithfully reports that edge, not the caller. Cloudflare's PoPs and
+   * connections vary, so every request could arrive under a different identity.
+   *
+   * Measured on 2026-09-14: four consecutive free-tier calls from one machine
+   * each came back `x-free-tier: true, x-free-remaining: 0` — each was counted
+   * as somebody's first call of the day. `cf-cache-status: DYNAMIC` and
+   * `x-vercel-cache: MISS` on all of them, so nothing was cached; the counter
+   * was simply writing a fresh key every time.
+   *
+   * Two things were silently ineffective, not one. The free tier promises one
+   * call per IP per day on every surface we publish, and was giving them away
+   * without limit. The per-IP rate limit that exists to blunt a DoS was
+   * bucketing by edge connection, which is close to no limit at all. Both read
+   * this function.
+   *
+   * `cf-connecting-ip` is safe to trust here specifically because Cloudflare
+   * overwrites it on every proxied request; a caller cannot forge it while
+   * coming through the proxy, and the proxy is the only path to this hostname.
+   * The Vercel header stays as the fallback for any deployment not behind
+   * Cloudflare.
+   */
+  const cf = req.headers.get("cf-connecting-ip");
+  if (cf) return cf.trim();
   const vercel = req.headers.get("x-vercel-forwarded-for");
   if (vercel) return vercel.split(",")[0].trim();
   const real = req.headers.get("x-real-ip");
