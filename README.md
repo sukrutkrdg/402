@@ -30,9 +30,13 @@ One Next.js app plays all three roles in the x402 flow:
   That recognises all 13 (AAPLc, AMZNc, COINc, CRCLc, GOOGLc, INTCc, METAc, MSFTc, MSTRc, NVDAc,
   SNDKc, SPCXc, TSLAc) with no per-token configuration, and a 14th the day it is issued. It also
   reports holder-eligibility gating and gated mint as the regulated shape they are, rather than
-  scoring a compliant issuer as dangerous. What it does **not** claim is a corporate-action feed:
-  across all thirteen the number of multiplier changes to date is zero, so there is nothing yet to
-  serve — a watcher records the first one when it happens.
+  scoring a compliant issuer as dangerous. A daily watcher records corporate actions, and caught the
+  first one any of them has ever had: on 14 September 2026 GOOGLc's multiplier moved
+  `1.0 → 1.000377118676784179` in block 51310619 while `balanceOf` for the largest holder — Uniswap
+  V4's PoolManager — returned `49170507575` on both sides of it, and `totalSupply` did not move
+  either. The entitlement changed; the number every contract and wallet reads did not. That is the
+  whole case for `stock-position`, and it is now evidenced on the real assets rather than a test
+  token.
 - **Protect wallet** (`/app?mode=wallet`): scan approvals, revoke the risky ones **gas-free**
   (sponsored via CDP Paymaster; one-signature Revoke All on smart wallets).
 - **Attribution dashboard** (`/dashboard`): paste any Base settlement tx hash; we read its calldata

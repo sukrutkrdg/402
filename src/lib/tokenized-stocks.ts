@@ -333,7 +333,10 @@ export async function readStockBoard(): Promise<{
     finding:
       moved.length > 0
         ? `${moved.length} of ${rows.length} carry a multiplier other than 1.0 — for those, balanceOf understates or overstates the real position by exactly that factor.`
-        : "Every multiplier reads 1.0, so no corporate action has been applied to any of these yet. The day one is, balanceOf will not move and every naive reader will be silently wrong.",
+        : // Not "no corporate action has been applied yet" — GOOGLc's landed on
+          // 2026-09-14 and this sentence would have gone on denying it. All this
+          // branch can say is what it just read.
+          "Every multiplier currently reads 1.0. That is a statement about right now, not a history: GOOGLc moved on 2026-09-14 and its balanceOf did not, which is what happens to a naive reader every time one of these moves.",
     note:
       "B20 Asset tokens do not apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0 to 2.0 and holder balances read identically before and after. This board is free; per-wallet answers are the paid stock-position endpoint. Not financial advice.",
   };

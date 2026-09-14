@@ -1,8 +1,29 @@
 /**
  * Watch the thirteen tokenized equities for the first corporate action.
  *
- * WHY THIS IS A WATCHER AND NOT A PRODUCT
- * ---------------------------------------
+ * IT FIRED. 2026-09-14, 18:29 UTC.
+ * ---------------------------------
+ * GOOGLc's multiplier moved 1.0 → 1.000377118676784179 in block 51310619 — the
+ * first corporate action any of Coinbase's tokenized equities has ever had.
+ * Verified independently of the alert: reading either side of that block,
+ * Uniswap V4's PoolManager (the largest holder) returns balanceOf =
+ * 49170507575 at 51310618 and 49170507575 at 51310620, and totalSupply is
+ * unchanged at 625695500195, so nothing was minted. The entitlement rose about
+ * 0.185 shares. The number every contract, wallet and indexer reads did not.
+ *
+ * Which settles the thing this was built to be uncertain about. The claim under
+ * /stocks and stock-position was previously evidenced on a synthetic B20 we
+ * watched move 1.0 → 2.0 — correct, but open to the objection that a test token
+ * is not one of these. It is now evidenced on the real asset, on a real event,
+ * at a known block.
+ *
+ * A +0.0377% move is not a split. It is the shape of an accrual — the
+ * "yield-generating mechanics" that make these productive assets — which means
+ * the next one is a matter of weeks, not years, and the classification work
+ * this deliberately deferred now has its first sample to be written against.
+ *
+ * WHY THIS WAS A WATCHER AND NOT A PRODUCT
+ * ----------------------------------------
  * On 2026-09-04 the total number of MultiplierUpdated events across all thirteen
  * of Coinbase's tokenized stocks on Base was ZERO, and every multiplier read
  * exactly 1.0. There has never been a split, a reverse split, or a dividend
@@ -276,7 +297,10 @@ export async function GET(req: NextRequest) {
       // Stated plainly so the value is legible even on the quiet days, which so
       // far is all of them.
       note:
-        "No multiplier has moved. Across all thirteen there has still never been one." +
+        // Not "there has still never been one" — GOOGLc ended that on
+        // 2026-09-14. A quiet run means nothing moved SINCE the last one, which
+        // is all this comparison can honestly say.
+        "No multiplier moved since the last run." +
         (policy.changes.length === 0 ? " Transfer policy unchanged: an unrelated address is still authorised to send and receive." : ""),
       checkedAt: new Date().toISOString(),
     });

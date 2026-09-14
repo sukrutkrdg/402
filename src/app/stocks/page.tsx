@@ -52,17 +52,33 @@ export default async function StocksPage() {
         </p>
       </section>
 
+      {/* The proof used to be a synthetic B20 whose multiplier we watched move
+          1.0 → 2.0. It made the point but invited the obvious objection: that is
+          a test token, not one of these. On 2026-09-14 the objection expired —
+          GOOGLc took the first corporate action any of Coinbase's tokenized
+          equities has ever had, and it behaved exactly as the synthetic one did.
+          A claim about these tokens should be evidenced on these tokens. */}
       <section className="card flex flex-col gap-2 border-amber-500/30 bg-amber-500/5 p-4">
-        <div className="text-sm font-semibold text-amber-200">Measured, not asserted — check it yourself</div>
+        <div className="text-sm font-semibold text-amber-200">
+          Measured on the real thing — the first corporate action, 14 Sep 2026
+        </div>
         <p className="text-xs leading-relaxed text-gray-300">
-          On B20 token <code className="codechip">0xb200…0971c4062c121ca876</code> the multiplier
-          moved <strong className="text-gray-200">1.0 → 2.0</strong> at block{" "}
-          <strong className="text-gray-200">50819308</strong>. A holder&apos;s{" "}
-          <code className="codechip">balanceOf</code> read{" "}
-          <strong className="text-gray-200">100000000</strong> at block 50819307 and{" "}
-          <strong className="text-gray-200">100000000</strong> at block 50819309. The entitlement
-          doubled. The balance did not move. <code className="codechip">totalSupply</code> behaves
-          the same way.
+          <strong className="text-gray-200">GOOGLc</strong>&apos;s multiplier moved{" "}
+          <strong className="text-gray-200">1.0 → 1.000377118676784179</strong> in block{" "}
+          <strong className="text-gray-200">51310619</strong>. Read either side of it, Uniswap V4&apos;s
+          PoolManager — the largest holder — returns{" "}
+          <code className="codechip">balanceOf</code> ={" "}
+          <strong className="text-gray-200">49170507575</strong> at block 51310618 and{" "}
+          <strong className="text-gray-200">49170507575</strong> at block 51310620.{" "}
+          <code className="codechip">totalSupply</code> is unchanged at{" "}
+          <strong className="text-gray-200">625695500195</strong> too, so nothing was minted.
+        </p>
+        <p className="text-xs leading-relaxed text-gray-300">
+          That position is entitled to about <strong className="text-gray-200">0.185</strong> more
+          shares than it was the block before, and every contract, wallet and indexer reading{" "}
+          <code className="codechip">balanceOf</code> still shows the old number. This is the event
+          the page was built for, and it has now happened once — which is the whole argument for
+          reading the entitlement rather than the balance.
         </p>
       </section>
 
@@ -248,10 +264,15 @@ export default async function StocksPage() {
         </div>
       </section>
 
+      {/* This used to read "the number of multiplier changes to date is zero",
+          which was true for as long as it was true and became false the moment
+          GOOGLc moved. A count belongs in the board above, which derives it; a
+          footer that asserts one is a claim waiting to go stale. */}
       <p className="text-xs leading-relaxed text-gray-500">
-        Read-only onchain data. No trading, no custody, no advice. Multiplier changes are watched
-        daily; across all {board.count} the number of multiplier changes to date is zero, so nothing
-        here claims a corporate-action history that does not yet exist.
+        Read-only onchain data. No trading, no custody, no advice. Multipliers are re-read daily and
+        the figures above are whatever the chain returned on this page load — the first corporate
+        action across these {board.count} landed on 14 September 2026, and this page makes no claim
+        about any history beyond what it can show you.
       </p>
     </div>
   );
