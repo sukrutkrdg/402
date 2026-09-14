@@ -291,3 +291,43 @@ describe("the keepalive conveyor is not blocked by one expensive service", () =>
     expect(cap).toBeLessThan(75);
   });
 });
+
+describe("the conveyor can see what the index says, not only what we recorded", () => {
+  const cron = readFileSync("src/app/api/cron/index-all/route.ts", "utf8");
+  const gap = readFileSync("src/app/api/cron/index-gap/route.ts", "utf8");
+
+  /**
+   * The blind spot, pinned. indexFreshKey records that WE settled something;
+   * the discovery index forms its own view, and only when a settlement actually
+   * produces a record. On 2026-09-14 eleven services were absent from discovery
+   * and all eleven read as `fresh`, so the keepalive was never going to touch
+   * them. We had paid to keep them alive, the payment had kept nothing alive,
+   * and nothing would ever have retried — a permanent invisibility trap that
+   * cost money every cycle to maintain.
+   */
+  it("treats absence from discovery as stale, whatever our own key says", () => {
+    expect(cron).toMatch(/!missingNow\.has\(s\.id\) && \(await kvGet\(indexFreshKey\(s\.id\)\)\)/);
+  });
+
+  it("reads the list the gap check writes, through one shared key", () => {
+    expect(gap).toMatch(/kvSet\(MISSING_KEY/);
+    expect(cron).toMatch(/kvGet\(MISSING_KEY\)/);
+    // Same constant on both sides — two string literals would drift silently.
+    const freshness = readFileSync("src/lib/index-freshness.ts", "utf8");
+    expect(freshness).toMatch(/export const MISSING_KEY = "index:missing";/);
+  });
+
+  it("writes the list even when nothing is missing, so a stale one clears", () => {
+    // An empty write is the signal. Skipping it on the happy path would leave
+    // yesterday's list forcing refreshes of services that are already back.
+    const write = gap.slice(gap.indexOf("kvSet(MISSING_KEY"), gap.indexOf("const problems"));
+    expect(write).toMatch(/health\.missing\.map/);
+    expect(gap.indexOf("kvSet(MISSING_KEY")).toBeLessThan(gap.indexOf("if (problems.length === 0)"));
+  });
+
+  it("never lets the hand-off break the check that produces it", () => {
+    // A detector must not be able to fail the run it is reporting on.
+    const write = gap.slice(gap.indexOf("try {"), gap.indexOf("const problems"));
+    expect(write).toMatch(/catch/);
+  });
+});

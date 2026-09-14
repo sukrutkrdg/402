@@ -32,7 +32,7 @@ import { kvGet, kvSet } from "@/lib/kv";
 import { getConfig } from "@/lib/config";
 import { exampleInputFor } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
-import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS } from "@/lib/index-freshness";
+import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS, MISSING_KEY } from "@/lib/index-freshness";
 import { probeAi } from "@/lib/ai-probe";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
 import { checkSurfaces } from "@/lib/surface-check";
@@ -130,11 +130,32 @@ export async function GET(req: NextRequest) {
   // and sorted by when it last settled, oldest first, and a service with no
   // timestamp at all (never settled, or so long ago the record expired) sorts
   // ahead of every dated one.
+  /**
+   * What the index says is missing, which our own freshness key cannot know.
+   *
+   * `indexFreshKey` records that WE settled something. The discovery index forms
+   * its own view, and only when a settlement actually produces a record — so the
+   * two drift, and the drift is invisible from here. On 2026-09-14 eleven
+   * services were absent from discovery and every one of them read as `fresh`,
+   * so this cron was never going to touch them: we had paid to keep them alive,
+   * the payment had kept nothing alive, and nothing would ever have retried.
+   *
+   * cron/index-gap measures this four times a day and writes the list down.
+   * Reading it turns a permanent blind spot into one extra settlement.
+   */
+  const missingNow = new Set(
+    ((await kvGet(MISSING_KEY)) ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
   const staleSet: Array<{ s: (typeof pool)[number]; seededAt: number }> = [];
   for (const s of pool) {
     // Fresh already — either this cron settled it recently, or, better, a real
-    // customer did.
-    if (!only.length && (await kvGet(indexFreshKey(s.id)))) {
+    // customer did. Unless discovery says it is not there at all, in which case
+    // our record of having paid is exactly the thing that is wrong.
+    if (!only.length && !missingNow.has(s.id) && (await kvGet(indexFreshKey(s.id)))) {
       results.push({ service: s.id, status: "fresh" });
       continue;
     }

@@ -48,6 +48,8 @@ import { getConfig, getSiteUrl } from "@/lib/config";
 import { safeEqual } from "@/lib/secure";
 import { checkIndexHealth, indexHealthProblems, indexHealthRepair } from "@/lib/index-health";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
+import { kvSet } from "@/lib/kv";
+import { MISSING_KEY } from "@/lib/index-freshness";
 
 export const dynamic = "force-dynamic";
 // One query per service at BATCH 8 — the same budget the owner-only route uses.
@@ -73,6 +75,31 @@ export async function GET(req: NextRequest) {
       reason: `${health.uncheckedCount} service(s) could not be queried; no conclusion drawn.`,
       checkedAt: health.checkedAt,
     });
+  }
+
+  /**
+   * Hand the keepalive the one fact it cannot work out for itself.
+   *
+   * cron/index-all decides what to refresh from OUR freshness key — set every
+   * time we settle — and the index has its own opinion, formed only when a
+   * settlement actually produces a record. The two drift, and when they do the
+   * conveyor is blind in the direction that matters: on 2026-09-14 eleven
+   * services were absent from discovery and all eleven were marked `fresh`, so
+   * the cron was never going to touch any of them. We had paid to keep them
+   * alive, the payment had kept nothing alive, and nothing would ever retry.
+   *
+   * This check already knows the answer four times a day and costs nothing
+   * extra to record, so it writes the list down and index-all forces those
+   * services back into its stale set regardless of what our own key says.
+   *
+   * Written on every non-degraded run, including the empty case — an empty list
+   * is the signal that clears a stale one. Failure here is swallowed: this is a
+   * detector, and it must not be able to break the run it is reporting on.
+   */
+  try {
+    await kvSet(MISSING_KEY, health.missing.map((m) => m.id).join(","), 60 * 60 * 26);
+  } catch {
+    /* the alert below is the point; this is a convenience for the other cron */
   }
 
   const problems = indexHealthProblems(health);
