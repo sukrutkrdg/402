@@ -21,9 +21,27 @@
  * package registries. Our own cron has no such restriction and already holds the
  * credentials, so the check belongs here.
  *
- * Runs at 04:00 UTC, one hour after cron/index-all re-settles — late enough that
- * anything the keepalive fixed overnight is already fixed, so the alert is about
- * what is actually still wrong. Then again at 10:00, 16:00 and 22:00.
+ * Runs at 07:00 UTC, four hours after cron/index-all re-settles, then again at
+ * 12:00, 17:00 and 22:00.
+ *
+ * WHY FOUR HOURS AND NOT ONE
+ * --------------------------
+ * It used to run at 04:00 on the reasoning that one hour was "late enough that
+ * anything the keepalive fixed overnight is already fixed". That reasoning is
+ * contradicted by the ingestion lag described below: a settlement takes roughly
+ * 60–90 minutes to reach the discovery record, so the 04:00 run read the index
+ * as it stood BEFORE the 03:00 repairs landed — every single morning.
+ *
+ * The alert was never wrong, which is what made it hard to see. It described a
+ * real moment that had already passed, and because alertOwner overwrites the
+ * body on every run, that pre-repair snapshot is what sat on the stats panel.
+ * Measured on 2026-09-14: the panel listed six services leaving the index, five
+ * of which the 03:00 keepalive had already re-settled. Live state was two, worth
+ * $0.004 to fix.
+ *
+ * An operator who reads "six services are falling out" and finds four of them
+ * healthy stops reading the panel. Four hours clears the ingestion window with
+ * margin, so the first run of the day reports what is actually still wrong.
  *
  * WHY FOUR TIMES AND NOT ONCE
  * ---------------------------

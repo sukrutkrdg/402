@@ -162,11 +162,31 @@ describe("the incident actually reaches a surface", () => {
     };
     const cron = vercel.crons.find((c) => c.path === "/api/cron/index-gap");
     expect(cron, "index-gap must be in vercel.json crons").toBeTruthy();
-    // 04:00 UTC — one hour after index-all re-settles, so the first run of the
-    // day is about what the keepalive did NOT fix overnight.
-    expect(cron!.schedule).toMatch(/^0 4(,|\s)/);
     const reseed = vercel.crons.find((c) => c.path === "/api/cron/index-all");
     expect(reseed!.schedule).toBe("0 3 * * *");
+
+    /**
+     * The first check of the day has to run AFTER the keepalive's repairs are
+     * visible, not merely after the keepalive.
+     *
+     * This used to pin the literal hour 04:00, on the reasoning that one hour
+     * was enough. It is not: a settlement takes ~60–90 minutes to reach the
+     * discovery record, so the 04:00 run measured the index as it stood before
+     * the 03:00 repairs landed, and — because alertOwner overwrites the body
+     * every run — that pre-repair snapshot is what sat on the stats panel all
+     * day. On 2026-09-14 it listed six services leaving the index; five had
+     * already been re-settled hours earlier and the live figure was two.
+     *
+     * So the assertion is the property, not the hour. Anyone may move these
+     * runs; nobody may move the first one back inside the ingest window.
+     */
+    const INGEST_LAG_HOURS = 2;
+    const firstRun = Math.min(...cron!.schedule.split(" ")[1].split(",").map(Number));
+    const reseedHour = Number(reseed!.schedule.split(" ")[1]);
+    expect(
+      firstRun - reseedHour,
+      "the first index-gap run reads the index before the keepalive's repairs are ingested",
+    ).toBeGreaterThan(INGEST_LAG_HOURS);
 
     /**
      * And it repeats within the day, because this is the only thing that clears
