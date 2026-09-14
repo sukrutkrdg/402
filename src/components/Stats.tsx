@@ -7,12 +7,24 @@ interface Payment {
   amountUsdc: string;
   txHash: string;
   block: string;
+  /** How the money moved: "x402" for a real settlement, otherwise the ERC-20
+   *  call that did it ("transfer", "transferFrom") — see revenue.ts. */
+  method?: string;
+  isSettlement?: boolean;
 }
 interface Revenue {
   payTo: string | null;
   windowBlocks: number;
   count: number;
   totalUsdc: string;
+  /** What customers settled over x402 — the revenue number. Everything else that
+   *  reached the wallet (a bridge delivering, a transfer between our own wallets)
+   *  is a balance change, and counting it as income made the panel describe
+   *  something other than the business. */
+  settledUsdc?: string;
+  settledCount?: number;
+  nonSettlementUsdc?: string;
+  nonSettlementCount?: number;
   payments: Payment[];
   rpcLimited?: boolean;
   note?: string;
@@ -290,14 +302,28 @@ export default function Stats() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Sold, not merely received. This tile used to show every USDC that
+            reached the wallet: on 2026-09-14 bridging funds off Base reported
+            $8.89 of income — 5 sent from our own buyer wallet and 3.89 delivered
+            by the bridge's solver — with nothing bought. An x402 settlement is
+            EIP-3009 and says so in the transaction; anything else that arrives
+            is a balance change. */}
         <div className="card p-5">
-          <div className="label">Received (recent window)</div>
+          <div className="label">Settled by customers (recent window)</div>
           <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">
-            {!data ? "—" : data.rpcLimited ? "—" : `$${data.totalUsdc}`}
+            {!data ? "—" : data.rpcLimited ? "—" : `$${data.settledUsdc ?? data.totalUsdc}`}
           </div>
           <div className="text-[11px] text-gray-500">
-            {data?.rpcLimited ? "RPC rate-limited — see BaseScan" : `USDC · last ~${data?.windowBlocks ?? 0} blocks`}
+            {data?.rpcLimited
+              ? "RPC rate-limited — see BaseScan"
+              : `x402 · ${data?.settledCount ?? 0} payment${(data?.settledCount ?? 0) === 1 ? "" : "s"} · last ~${data?.windowBlocks ?? 0} blocks`}
           </div>
+          {!data?.rpcLimited && (data?.nonSettlementCount ?? 0) > 0 && (
+            <div className="mt-2 border-t border-base-line pt-2 text-[11px] text-amber-300/80">
+              + ${data?.nonSettlementUsdc} arrived without a sale ({data?.nonSettlementCount} transfer
+              {(data?.nonSettlementCount ?? 0) === 1 ? "" : "s"}) — bridges, refunds or your own wallets. Not revenue.
+            </div>
+          )}
         </div>
         <div className="card p-5">
           <div className="label">Payments</div>
@@ -370,7 +396,20 @@ export default function Stats() {
                     {p.txHash.slice(0, 18)}…
                   </a>
                 </div>
-                <div className="shrink-0 font-mono text-sm font-bold text-emerald-300">${p.amountUsdc}</div>
+                <div className="shrink-0 text-right">
+                  <div
+                    className={`font-mono text-sm font-bold ${
+                      p.isSettlement === false ? "text-gray-400" : "text-emerald-300"
+                    }`}
+                  >
+                    ${p.amountUsdc}
+                  </div>
+                  {p.isSettlement === false && (
+                    <div className="text-[10px] text-amber-300/70" title="Money arrived, but nobody bought anything">
+                      {p.method === "transfer" ? "sent by hand" : p.method === "transferFrom" ? "pulled in (bridge/DEX)" : p.method}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

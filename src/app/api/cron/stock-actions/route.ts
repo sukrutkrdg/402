@@ -46,7 +46,7 @@ import { safeEqual } from "@/lib/secure";
 import { kvGet, kvSet } from "@/lib/kv";
 import { alertOwner } from "@/lib/alert-owner";
 import { cdpSql } from "@/lib/covalent";
-import { readMultipliers, describeMultiplierChange, TOKENIZED_STOCKS } from "@/lib/tokenized-stocks";
+import { readMultipliers, describeMultiplierChange, TOKENIZED_STOCKS, readTransferPolicy } from "@/lib/tokenized-stocks";
 import { recognisedEquityIssuance } from "@/lib/b20-safety";
 
 export const dynamic = "force-dynamic";
@@ -87,6 +87,65 @@ async function findEvidence(token: string): Promise<{ txHash?: string; at?: stri
   } catch {
     return {};
   }
+}
+
+const POLICY_KEY = (sym: string) => `stock:policy:${sym}`;
+
+/**
+ * Has the question "who may hold these" changed since yesterday?
+ *
+ * Measured on 2026-09-14: every tokenized equity carries transfer policy id 5 —
+ * a set id, not the unset 0 that the registry treats as always-allow — and the
+ * registry authorises an address with no relationship to the issuer: never
+ * KYC'd, never a holder, in one case never even used. So the "eligible users in
+ * permitted jurisdictions" restriction is not enforced at transfer. It is
+ * enforced at issuance and redemption, inside Coinbase's own app.
+ *
+ * That permissiveness is what makes every builder category Base is asking for
+ * possible today — pools, lending markets, gifting contracts, agents holding
+ * positions. It is also a policy rather than a property: its admin can change
+ * what id 5 authorises at any block, and when they do, nothing about the token
+ * address, its ABI or its multiplier changes to announce it. The integrations
+ * break silently and all at once.
+ *
+ * Same discipline as the multiplier watch above: a failed read is never written
+ * as a baseline (unknown is not unchanged), and first sight seeds silently
+ * rather than alerting thirteen times on first deploy.
+ */
+async function policyWatch(): Promise<{ changes: string[]; seeded: number; unread: number }> {
+  const changes: string[] = [];
+  let seeded = 0;
+  let unread = 0;
+
+  for (const s of TOKENIZED_STOCKS) {
+    const p = await readTransferPolicy(s.token);
+    // Any failed leg makes the whole row untrustworthy: a null canary answer
+    // beside a real policy id could be read as "not authorised", which is the
+    // false alarm this watch exists to avoid.
+    if (p.senderPolicyId === null || p.receiverPolicyId === null || p.canaryMaySend === null || p.canaryMayReceive === null) {
+      unread++;
+      continue;
+    }
+    const now = `${p.senderPolicyId}/${p.receiverPolicyId}/${p.canaryMaySend ? "send" : "-"}/${p.canaryMayReceive ? "recv" : "-"}`;
+    const prev = await kvGet(POLICY_KEY(s.sym));
+    if (prev === null) {
+      await kvSet(POLICY_KEY(s.sym), now);
+      seeded++;
+      continue;
+    }
+    if (prev === now) continue;
+
+    const tightened = (p.canaryMaySend === false || p.canaryMayReceive === false) && /send\/recv$/.test(prev);
+    changes.push(
+      `${s.sym} (${s.ticker}) transfer policy ${prev} → ${now}` +
+        (tightened
+          ? " — TIGHTENED: an unrelated address can no longer freely send and/or receive this token."
+          : " — the policy id or the canary's authorisation moved; read the board before assuming either direction."),
+    );
+    await kvSet(POLICY_KEY(s.sym), now);
+  }
+
+  return { changes, seeded, unread };
 }
 
 /**
@@ -189,6 +248,17 @@ export async function GET(req: NextRequest) {
   }
 
   const drift = await rosterDrift().catch(() => null);
+  const policy = await policyWatch().catch(() => ({ changes: [], seeded: 0, unread: 0 }));
+
+  if (policy.changes.length > 0) {
+    await alertOwner(
+      "stock-policy",
+      `TRANSFER POLICY CHANGED on Base's tokenized equities.\n\n${policy.changes.join("\n\n")}\n\n` +
+        `Until now the registry authorised an address with no relationship to the issuer — never KYC'd, never a holder — so these tokens transferred freely and anything could hold them. ` +
+        `If that has tightened, every pool, vault, lending market and agent position built on the permissive behaviour is affected, and nothing about the token address or its ABI changed to signal it. ` +
+        `Check /stocks and the board JSON before telling anyone these still move freely.`,
+    );
+  }
 
   if (changes.length === 0) {
     return NextResponse.json({
@@ -197,9 +267,17 @@ export async function GET(req: NextRequest) {
       ...(seeded ? { seeded } : {}),
       ...(unreadable.length ? { unreadableCount: unreadable.length, unreadable: unreadable.map((u) => u.sym) } : {}),
       ...(drift ? { rosterDrift: drift } : {}),
+      policy: {
+        watched: TOKENIZED_STOCKS.length - policy.unread,
+        ...(policy.seeded ? { seeded: policy.seeded } : {}),
+        ...(policy.unread ? { unread: policy.unread } : {}),
+        changes: policy.changes,
+      },
       // Stated plainly so the value is legible even on the quiet days, which so
       // far is all of them.
-      note: "No multiplier has moved. Across all thirteen there has still never been one.",
+      note:
+        "No multiplier has moved. Across all thirteen there has still never been one." +
+        (policy.changes.length === 0 ? " Transfer policy unchanged: an unrelated address is still authorised to send and receive." : ""),
       checkedAt: new Date().toISOString(),
     });
   }
@@ -224,6 +302,7 @@ export async function GET(req: NextRequest) {
     changes,
     ...(unreadable.length ? { unreadableCount: unreadable.length } : {}),
     ...(drift ? { rosterDrift: drift } : {}),
+    policy: { changes: policy.changes, ...(policy.unread ? { unread: policy.unread } : {}) },
     alert,
     checkedAt: new Date().toISOString(),
   });

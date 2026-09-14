@@ -154,6 +154,36 @@ export default async function StocksPage() {
         </p>
       </section>
 
+      {/* Who may hold these, measured rather than assumed.
+          Base's Request for Builders repeats three times that tokenized stocks
+          are for "eligible users in permitted jurisdictions outside the United
+          States", and every category it asks for — brokerage front-ends,
+          personalised indices, gifting, yield stripping, agents allocating on
+          their own — has to know whether an address can hold the asset before
+          it builds a transaction. Nobody publishes that answer. It is two
+          contract reads. */}
+      <section className="card flex flex-col gap-3 border-amber-500/30 bg-amber-500/5 p-5">
+        <h2 className="text-lg font-semibold text-amber-200">Who is allowed to hold these today</h2>
+        <p className="text-xs leading-relaxed text-gray-300">{board.transferPolicy}</p>
+        <p className="text-xs leading-relaxed text-gray-400">
+          Read from the B20 policy registry at{" "}
+          <code className="codechip">0x8453…0002</code>:{" "}
+          <code className="codechip">policyId(TRANSFER_SENDER_POLICY)</code> on the token, then{" "}
+          <code className="codechip">isAuthorized(policyId, address)</code> on the registry. The
+          address we test with is a canary chosen for having no relationship to any of this — never
+          KYC&apos;d, never a holder. Deliberately not one of our own wallets: a canary that could be
+          individually allow-listed cannot detect a general tightening.
+        </p>
+        <p className="text-xs leading-relaxed text-gray-400">
+          What this does <strong className="text-gray-200">not</strong> mean: that these tokens are
+          unrestricted, or that they will stay this way. Eligibility is enforced where the shares are
+          issued and redeemed, which is Coinbase&apos;s own app — not at transfer. And a live policy
+          id is something an administrator can change at any block, with nothing about the token
+          address, its ABI or its multiplier changing to announce it. We re-read all{" "}
+          {board.count} every day and say so the moment an answer moves.
+        </p>
+      </section>
+
       <section className="card flex flex-col gap-2 p-5">
         <h2 className="text-lg font-semibold text-gray-200">What this page is not</h2>
         <p className="text-xs leading-relaxed text-gray-400">

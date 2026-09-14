@@ -42,7 +42,7 @@
  */
 
 import "server-only";
-import { createPublicClient, getAddress } from "viem";
+import { createPublicClient, getAddress, keccak256, toBytes } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 
@@ -132,7 +132,103 @@ const BOARD_ABI = [
   { type: "function", name: "multiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "totalSupply", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "isPaused", stateMutability: "view", inputs: [{ type: "uint8" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "policyId", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "uint64" }] },
 ] as const;
+
+/**
+ * Who may send and receive these tokens — a question every builder on top of
+ * them has to answer, and one nobody publishes.
+ *
+ * Base's own Request for Builders repeats three times that tokenized stocks are
+ * "available to eligible users in permitted jurisdictions outside the United
+ * States", and every category it names — brokerage front-ends, personalised
+ * indices, gifting, yield stripping, agents allocating on their own — has to
+ * know whether a given address can hold the asset before it builds a
+ * transaction that would revert.
+ *
+ * Measured on 2026-09-14 against AAPLc and AMZNc: both carry sender and receiver
+ * policy id 5 — set, not the unset 0 that reads as always-allow — and the
+ * registry answered `true` for every address tried, including a burn address, a
+ * token contract, a DEX factory and an EOA that has never existed. So the
+ * eligibility restriction is not enforced at transfer. It lives at issuance and
+ * redemption, in Coinbase's own app.
+ *
+ * Which is the finding worth publishing, and also the reason to watch it: this
+ * is a POLICY, not a property of the token. Policy 5 is live and its admin can
+ * change what it authorizes at any block, and on that day every integration
+ * built on "these transfer freely" breaks at once — silently, because nothing
+ * about the token address or its ABI will have changed.
+ *
+ * CANARY is an address with no relationship to any of this: never KYC'd, never
+ * a holder. If the policy ever stops authorizing it, the permissive era is over.
+ * Deliberately not one of our own wallets — a canary that could be individually
+ * allow-listed cannot detect a general tightening.
+ */
+const TRANSFER_SENDER_POLICY = keccak256(toBytes("TRANSFER_SENDER_POLICY"));
+const TRANSFER_RECEIVER_POLICY = keccak256(toBytes("TRANSFER_RECEIVER_POLICY"));
+
+export const B20_POLICY_REGISTRY = "0x8453000000000000000000000000000000000002" as const;
+export const CANARY = "0x1234567890AbcdEF1234567890aBcdef12345678" as const;
+
+const REGISTRY_ABI = [
+  { type: "function", name: "isAuthorized", stateMutability: "view", inputs: [{ type: "uint64" }, { type: "address" }], outputs: [{ type: "bool" }] },
+] as const;
+
+export interface TransferPolicyRead {
+  /** null when the read failed — never 0, which would read as "no policy, allow all". */
+  senderPolicyId: string | null;
+  receiverPolicyId: string | null;
+  /** Whether an unrelated address may send / receive. null when unread. */
+  canaryMaySend: boolean | null;
+  canaryMayReceive: boolean | null;
+}
+
+/**
+ * Read one token's transfer policy and whether the canary passes it.
+ *
+ * A policy id of 0 means the slot is unset, which the registry treats as
+ * always-allow; that is reported as-is rather than collapsed into "permissive",
+ * because "no policy" and "a policy that currently permits everyone" are
+ * different facts with different futures.
+ */
+export async function readTransferPolicy(token: string): Promise<TransferPolicyRead> {
+  const addr = getAddress(token);
+  const readId = async (scope: `0x${string}`) => {
+    try {
+      return (await client.readContract({ address: addr, abi: BOARD_ABI, functionName: "policyId", args: [scope] })) as bigint;
+    } catch {
+      return null;
+    }
+  };
+  const authorised = async (id: bigint | null) => {
+    if (id === null) return null;
+    try {
+      return (await client.readContract({
+        address: B20_POLICY_REGISTRY,
+        abi: REGISTRY_ABI,
+        functionName: "isAuthorized",
+        args: [id, CANARY],
+      })) as boolean;
+    } catch {
+      return null;
+    }
+  };
+
+  const senderId = await readId(TRANSFER_SENDER_POLICY);
+  await new Promise((r) => setTimeout(r, 90));
+  const receiverId = await readId(TRANSFER_RECEIVER_POLICY);
+  await new Promise((r) => setTimeout(r, 90));
+  const maySend = await authorised(senderId);
+  await new Promise((r) => setTimeout(r, 90));
+  const mayReceive = await authorised(receiverId);
+
+  return {
+    senderPolicyId: senderId === null ? null : senderId.toString(),
+    receiverPolicyId: receiverId === null ? null : receiverId.toString(),
+    canaryMaySend: maySend,
+    canaryMayReceive: mayReceive,
+  };
+}
 
 /** Tokenized equities carry 8 decimals, not the 18 an ERC-20 reader would assume. */
 const SHARE_UNIT = 10n ** 8n;
@@ -153,6 +249,8 @@ export interface StockBoardRow {
    * here means "announced, not yet launched" rather than "not real".
    */
   issued: boolean | null;
+  /** Who may send and receive this token today — see readTransferPolicy. */
+  policy: TransferPolicyRead;
 }
 
 /**
@@ -170,6 +268,7 @@ export async function readStockBoard(): Promise<{
   issuedCount: number;
   rows: StockBoardRow[];
   degraded: boolean;
+  transferPolicy: string;
   finding: string;
   note: string;
 }> {
@@ -189,6 +288,8 @@ export async function readStockBoard(): Promise<{
     await new Promise((r) => setTimeout(r, 90));
     const paused = await read<boolean>("isPaused", [0]);
     await new Promise((r) => setTimeout(r, 90));
+    const policy = await readTransferPolicy(addr);
+    await new Promise((r) => setTimeout(r, 90));
 
     rows.push({
       sym: s.sym,
@@ -200,6 +301,7 @@ export async function readStockBoard(): Promise<{
       multiplierRatio: mult === null ? null : Number((mult * 1_000_000n) / WAD) / 1_000_000,
       transferPaused: paused,
       issued: supply === null ? null : supply > 0n,
+      policy,
     });
   }
 
@@ -207,12 +309,27 @@ export async function readStockBoard(): Promise<{
   const moved = rows.filter((r) => r.multiplierRatio !== null && r.multiplierRatio !== 1);
   const issuedCount = rows.filter((r) => r.issued === true).length;
 
+  /**
+   * One sentence on who may move these today, derived rather than asserted.
+   *
+   * Stated as what was measured — "the registry authorises an unrelated address"
+   * — and never as "anyone can hold these", which is a claim about a policy's
+   * future that no read can support.
+   */
+  const policed = rows.filter((r) => r.policy.senderPolicyId !== null && r.policy.senderPolicyId !== "0");
+  const openToCanary = rows.filter((r) => r.policy.canaryMaySend === true && r.policy.canaryMayReceive === true);
+  const closedToCanary = rows.filter((r) => r.policy.canaryMaySend === false || r.policy.canaryMayReceive === false);
+
   return {
     asOf: new Date().toISOString(),
     count: rows.length,
     issuedCount,
     rows,
     degraded,
+    transferPolicy:
+      closedToCanary.length > 0
+        ? `${closedToCanary.length} of ${rows.length} no longer authorise an unrelated address to send or receive. The permissive era is over for those: a contract, pool or agent holding them needs the policy checked before it builds a transfer.`
+        : `${policed.length} of ${rows.length} carry a transfer policy (a set id, not the unset 0 that means always-allow), and for ${openToCanary.length} the registry still authorises an address with no relationship to the issuer — never KYC'd, never a holder. So eligibility is not enforced at transfer today; it is enforced at issuance and redemption. That is a policy, not a property: its admin can change it at any block, and nothing about the token address or its ABI would change with it.`,
     finding:
       moved.length > 0
         ? `${moved.length} of ${rows.length} carry a multiplier other than 1.0 — for those, balanceOf understates or overstates the real position by exactly that factor.`

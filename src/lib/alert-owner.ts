@@ -49,6 +49,12 @@ export const ALERT_KINDS = [
   "buyer-funds",
   "surfaces",
   "stock-actions",
+  // Who may send/receive the tokenized equities changed. Separate from
+  // stock-actions because it is a different event with a different response: a
+  // multiplier move redenominates positions, a policy change can stop them
+  // moving at all — and it breaks integrations built on today's permissiveness
+  // without changing anything about the token itself.
+  "stock-policy",
 ] as const;
 
 export type AlertKind = (typeof ALERT_KINDS)[number];
