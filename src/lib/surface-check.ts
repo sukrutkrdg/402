@@ -182,11 +182,45 @@ export const edgeClientCheck = () =>
       }
     }
 
-    if (blocked.length === 0 && deadHosts.length === 0) {
+    /**
+     * The hostname we ADVERTISE has to be the one that answers.
+     *
+     * Everything we publish names the apex — 161 catalogue endpoints, every
+     * `resource.url` in a 402 challenge, the discovery records the Bazaar holds,
+     * npm, the MCP manifests, the README. On 2026-09-15 adding `www` to the
+     * origin project made www primary and turned the apex into a 308 toward it,
+     * so every agent following our own published URL took a redirect to reach
+     * us. Payments still settled, which is exactly why nothing noticed: the
+     * failure is latent, in clients that do not follow redirects or that drop
+     * headers across a host change, and in any verifier that compares the
+     * advertised resource URL against the URL that served it.
+     *
+     * So this asserts the property directly. A redirect within the canonical
+     * host is fine (http→https, trailing slash); one that lands on a DIFFERENT
+     * host means we are advertising an address we no longer serve from.
+     */
+    let canonical: string | null = null;
+    try {
+      const r = await fetch(`${SITE}/.well-known/x402`, {
+        headers: { "user-agent": AGENT_CLIENTS[0] },
+        cache: "no-store",
+        redirect: "follow",
+        signal: AbortSignal.timeout(10000),
+      });
+      const served = new URL(r.url).host;
+      const advertised = new URL(SITE).host;
+      if (served !== advertised) {
+        canonical = `${advertised} redirects to ${served}, but every URL we publish names ${advertised}`;
+      }
+    } catch {
+      /* the dead-host sweep above already covers unreachable */
+    }
+
+    if (blocked.length === 0 && deadHosts.length === 0 && !canonical) {
       return {
         name: "edge/clients",
         ok: true,
-        detail: `${AGENT_CLIENTS.length} common agent clients reach the app on all ${PUBLISHED_HOSTS.length} published hostnames`,
+        detail: `${AGENT_CLIENTS.length} common agent clients reach the app directly on all ${PUBLISHED_HOSTS.length} published hostnames`,
       };
     }
     return {
@@ -199,7 +233,11 @@ export const edgeClientCheck = () =>
           : "") +
         (deadHosts.length
           ? `published hostname(s) not serving: ${deadHosts.join(", ")}. A 5xx here is the edge failing to reach the origin — ` +
-            `add the hostname to the origin project, or redirect it at the edge so it never gets there.`
+            `add the hostname to the origin project, or redirect it at the edge so it never gets there. `
+          : "") +
+        (canonical
+          ? `canonical host moved: ${canonical}. Make the advertised host primary on the origin project and point the other at it, ` +
+            `rather than re-publishing 161 endpoints and every discovery record under a new name.`
           : ""),
     };
   });

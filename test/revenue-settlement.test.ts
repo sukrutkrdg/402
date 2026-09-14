@@ -73,3 +73,34 @@ describe("revenue counts settlements, not arrivals", () => {
     expect(panel).toMatch(/Not revenue/);
   });
 });
+
+/**
+ * The hostname we advertise must be the one that serves.
+ *
+ * Adding `www` to the origin project on 2026-09-15 made it primary and turned
+ * the apex into a 308 toward it. Every URL we publish names the apex — 161
+ * catalogue endpoints, every `resource.url` in a 402 challenge, the discovery
+ * records, npm, the MCP manifests — so every agent following our own address
+ * took a redirect to reach us. Payments still settled, which is precisely why
+ * nothing noticed: the exposure is in clients that do not follow redirects, in
+ * clients that drop headers across a host change, and in any verifier comparing
+ * the advertised resource URL against the one that answered.
+ */
+describe("canonical host", () => {
+  const surface = readFileSync("src/lib/surface-check.ts", "utf8");
+
+  it("compares the host that answered against the host we publish", () => {
+    const code = strip(surface);
+    expect(code).toMatch(/new URL\(r\.url\)\.host/);
+    expect(code).toMatch(/new URL\(SITE\)\.host/);
+    expect(code).toMatch(/served !== advertised/);
+  });
+
+  it("follows redirects before judging, so http→https is not a failure", () => {
+    expect(strip(surface)).toMatch(/redirect:\s*"follow"/);
+  });
+
+  it("fails the check rather than only mentioning it", () => {
+    expect(strip(surface)).toMatch(/deadHosts\.length === 0 && !canonical/);
+  });
+});
