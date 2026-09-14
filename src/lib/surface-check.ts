@@ -115,6 +115,55 @@ const discoveryCheck = (payTo: string) =>
  * Check every published surface. Returns one row per surface; `ok: false` means
  * a stranger looking for us today would not find us there.
  */
+/**
+ * Clients the edge refuses before we ever see them.
+ *
+ * On 2026-09-14 an outside auditor found `402.com.tr` answering 403 to
+ * `Python-urllib/3.12` and `libwww-perl/6.68` while curl got its 402. The block
+ * is Cloudflare's — the refusal carries a CF-RAY and no `x-vercel-*` header, so
+ * the request never reached the app — and it was site-wide: `/api/catalog` and
+ * `/.well-known/x402` were refused too, meaning an agent on Python's standard
+ * library could not even discover us, let alone pay.
+ *
+ * Nothing of ours could have caught it. Our suite, the SMOKE sweep and the
+ * keepalive all speak through Node or curl, and a request that is refused at the
+ * CDN never becomes a log line, a failed test or a missing index row. It is the
+ * third finding in a week that was invisible from inside our own assumptions,
+ * and the only one where the fix is not in this repository at all.
+ *
+ * So this asks the question from outside, in the identities we cannot otherwise
+ * speak in. `.well-known/x402` is the target because it is the cheapest public
+ * document and the first thing a discovering agent reads: if that is refused,
+ * everything behind it is moot.
+ */
+const AGENT_CLIENTS = ["Python-urllib/3.12", "libwww-perl/6.68", "python-requests/2.32.3", "Go-http-client/2.0"];
+
+const edgeClientCheck = () =>
+  probe("edge/clients", async () => {
+    const blocked: string[] = [];
+    for (const ua of AGENT_CLIENTS) {
+      const r = await fetch(`${SITE}/.well-known/x402`, {
+        headers: { "user-agent": ua },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000),
+      });
+      // 401/403/429 are the edge turning a client away. Anything the app itself
+      // answers — including a 402 — means the request got through, which is all
+      // this is asking.
+      if (r.status === 403 || r.status === 401 || r.status === 429) blocked.push(`${ua} → ${r.status}`);
+    }
+    if (blocked.length === 0) {
+      return { name: "edge/clients", ok: true, detail: `${AGENT_CLIENTS.length} common agent clients all reach the app` };
+    }
+    return {
+      name: "edge/clients",
+      ok: false,
+      detail:
+        `the CDN refuses ${blocked.join(", ")} before the app is reached — an agent on that client cannot read our price. ` +
+        `Not fixable in this repo: it is a Cloudflare bot rule (Security → Bots, or a WAF skip for /api/x402/* and /.well-known/*).`,
+    };
+  });
+
 export async function checkSurfaces(payTo: string): Promise<SurfaceResult[]> {
-  return Promise.all([npmCheck(), smitheryCheck(), hostedMcpCheck(), discoveryCheck(payTo)]);
+  return Promise.all([npmCheck(), smitheryCheck(), hostedMcpCheck(), discoveryCheck(payTo), edgeClientCheck()]);
 }
