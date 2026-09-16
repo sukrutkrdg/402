@@ -36,6 +36,7 @@ import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECOND
 import { probeAi } from "@/lib/ai-probe";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
 import { checkSurfaces, edgeClientCheck } from "@/lib/surface-check";
+import { recordKeepaliveSpend } from "@/lib/keepalive-economics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -266,6 +267,10 @@ export async function GET(req: NextRequest) {
         refreshed++;
         if (exempt) exempted = cents;
         else spent += cents;
+        // What discovery costs us, recorded where the decision will be made.
+        // Only on a successful settlement: a failed call buys no index presence
+        // and must not be charged to one.
+        await recordKeepaliveSpend(cents);
         await kvSet(indexFreshKey(s.id), "1", INDEX_FRESH_SECONDS);
         // Dated, so the next run with a backlog knows this one is now the least
         // urgent rather than merely "not fresh".

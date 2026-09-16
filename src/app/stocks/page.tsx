@@ -80,6 +80,9 @@ export default async function StocksPage() {
           the page was built for, and it has now happened once — which is the whole argument for
           reading the entitlement rather than the balance.
         </p>
+        <Link className="w-fit text-xs font-semibold text-sky-400 hover:underline" href="/stocks/first-corporate-action">
+          The full record, with the commands to verify it yourself →
+        </Link>
       </section>
 
       <section className="flex flex-col gap-3">

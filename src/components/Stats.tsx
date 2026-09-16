@@ -25,6 +25,7 @@ interface Revenue {
   settledCount?: number;
   nonSettlementUsdc?: string;
   nonSettlementCount?: number;
+  keepalive?: KeepaliveLedger | null;
   payments: Payment[];
   rpcLimited?: boolean;
   note?: string;
@@ -33,6 +34,27 @@ interface Revenue {
    *  in KV until it clears. Surfaced here because there is no other channel. */
   openIncident?: { kind: string; since: string; text: string };
   unpaidRefunds?: { count: number; cents: number };
+}
+
+/**
+ * What we pay to stay findable, against what outsiders pay us.
+ *
+ * Keepalive settlements land in the seller wallet and look exactly like income,
+ * so `externalUsd` is settled revenue minus what we paid ourselves. Early
+ * readings are expected to be poor — the catalogue only began publishing
+ * runnable examples on 2026-09-14 — which is why the ledger carries its own
+ * start date and refuses to draw a conclusion before two weeks have passed.
+ */
+interface KeepaliveLedger {
+  since: string | null;
+  days: number;
+  spentUsd: number;
+  settlements: number;
+  spentUsdPerDay: number;
+  externalUsd: number;
+  externalUsdPerDay: number;
+  returnRatio: number | null;
+  verdict: string;
 }
 
 const BASESCAN_TX = (h: string) => `https://basescan.org/tx/${h}`;
@@ -325,6 +347,56 @@ export default function Stats() {
             </div>
           )}
         </div>
+
+        {/* Discovery is not free: the keepalive settles real payments into this
+            wallet to keep listings inside the Bazaar's rolling window, which
+            means part of "revenue" is our own money going in a circle. This is
+            the only place the two sit side by side. */}
+        {data?.keepalive && (
+          <div className="card p-5 sm:col-span-2">
+            <div className="label">Cost of being findable</div>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <div>
+                <span className="font-mono text-2xl font-bold text-amber-300">
+                  ${data.keepalive.spentUsd.toFixed(2)}
+                </span>
+                <span className="ml-1 text-[11px] text-gray-500">
+                  spent · ${data.keepalive.spentUsdPerDay.toFixed(2)}/day
+                </span>
+              </div>
+              <div>
+                <span className="font-mono text-2xl font-bold text-emerald-300">
+                  ${data.keepalive.externalUsd.toFixed(2)}
+                </span>
+                <span className="ml-1 text-[11px] text-gray-500">
+                  from outside · ${data.keepalive.externalUsdPerDay.toFixed(2)}/day
+                </span>
+              </div>
+              {data.keepalive.returnRatio !== null && (
+                <div>
+                  <span
+                    className={`font-mono text-2xl font-bold ${
+                      data.keepalive.returnRatio >= 1 ? "text-emerald-300" : "text-gray-400"
+                    }`}
+                  >
+                    {data.keepalive.returnRatio}×
+                  </span>
+                  <span className="ml-1 text-[11px] text-gray-500">returned per $1 spent</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-2 text-[11px] leading-relaxed text-gray-500">
+              {data.keepalive.settlements} keepalive settlement
+              {data.keepalive.settlements === 1 ? "" : "s"} over {data.keepalive.days} day
+              {data.keepalive.days === 1 ? "" : "s"}
+              {data.keepalive.since ? ` since ${data.keepalive.since.slice(0, 10)}` : ""}. External is
+              settled revenue minus what we paid ourselves.
+            </div>
+            <div className="mt-2 border-t border-base-line pt-2 text-[11px] leading-relaxed text-gray-400">
+              {data.keepalive.verdict}
+            </div>
+          </div>
+        )}
         <div className="card p-5">
           <div className="label">Payments</div>
           <div className="mt-1 font-mono text-2xl font-bold">{!data ? "—" : data.rpcLimited ? "—" : data.count}</div>

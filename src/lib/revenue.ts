@@ -12,6 +12,7 @@ import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
 import { baseTransport } from "./base-transport";
 import { kvGet, kvSet } from "./kv";
+import { keepaliveEconomics, type KeepaliveEconomics } from "./keepalive-economics";
 
 const transferEvent = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)",
@@ -29,6 +30,8 @@ export interface RevenueResult {
   /** Arrived without anybody buying anything: bridges, refunds, our own transfers. */
   nonSettlementUsdc?: string;
   nonSettlementCount?: number;
+  /** Discovery spend against what outsiders paid — see keepalive-economics.ts. */
+  keepalive?: KeepaliveEconomics | null;
   payments: Array<{
     from: string;
     amountUsdc: string;
@@ -125,6 +128,10 @@ export async function getRevenue(blocks = 5000): Promise<RevenueResult> {
     /** Arrived, but nobody bought anything: bridges, refunds, our own transfers. */
     nonSettlementUsdc: formatUnits(otherTotal, 6),
     nonSettlementCount: other.length,
+    // What discovery costs against what it returns. Settled revenue includes our
+    // own keepalive — money we paid ourselves to stay findable — so the ledger
+    // subtracts it rather than letting the conveyor read as demand.
+    keepalive: await keepaliveEconomics(Number(formatUnits(settled, 6))).catch(() => null),
     payments,
     checkedAt: now,
   };
