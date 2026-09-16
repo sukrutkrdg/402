@@ -17,6 +17,7 @@ import { cdpSql } from "@/lib/covalent";
 import { kvGet } from "@/lib/kv";
 import { srcHash, getPayerServices } from "@/lib/usage";
 import { SERVICES } from "@/lib/services";
+import { getBuyerAddress } from "@/lib/x402-client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -54,6 +55,18 @@ export async function GET(req: NextRequest) {
   }
   const payTo = cfg.payTo.toLowerCase();
   const usdc = USDC_BASE.toLowerCase();
+
+  /**
+   * Every wallet that is us — the configured list, plus the buyer, derived.
+   *
+   * `getBuyerAddress()` reads the key the keepalive actually signs with, so this
+   * cannot drift from reality the way a list does. Returns undefined when no
+   * buyer key is configured, which is the correct answer for a deployment that
+   * never settles its own payments.
+   */
+  const ourWallets = new Set(cfg.ownWallets.map((w) => w.toLowerCase()));
+  const buyer = getBuyerAddress();
+  if (buyer) ourWallets.add(buyer.toLowerCase());
 
   // USDC transfers INTO the seller wallet on this UTC day. parameters are Variants,
   // so both the address filter and the value need toString() before comparison/cast.
@@ -139,7 +152,7 @@ export async function GET(req: NextRequest) {
           firstService,
           services,
           serviceCalls: services.reduce((n, s) => n + s.calls, 0),
-          ours: cfg.ownWallets.includes(w.wallet),
+          ours: ourWallets.has(w.wallet.toLowerCase()),
         };
       }),
   );
@@ -147,6 +160,14 @@ export async function GET(req: NextRequest) {
   // Our own wallets settle on chain exactly like a customer's, so leaving them in
   // the headline makes our own testing read as demand. They are still returned,
   // just counted apart — hiding them entirely would be its own way of lying.
+  //
+  // Which is why the buyer is derived and not merely listed. OWN_WALLETS was set
+  // and did not contain it, so the wallet that settles a dozen keepalive payments
+  // every morning at 03:00 was counted as a customer — on 2026-09-16 it was 5 of
+  // the day's 6 payments and $0.06 of the $0.09. That is the same mistake the
+  // revenue scan made two days earlier in a different place: our own money read
+  // back to us as demand. An env var someone has to remember is not a defence
+  // against it; the key we sign payments with is.
   const ours = wallets.filter((w) => w.ours);
   const external = wallets.filter((w) => !w.ours);
   const sum = (list: typeof wallets, pick: (w: (typeof wallets)[number]) => number) =>
@@ -171,7 +192,7 @@ export async function GET(req: NextRequest) {
     paidCallCountAllTime: external.reduce((n, w) => n + w.serviceCalls, 0),
     wallets: external,
     ownWallets: {
-      configured: cfg.ownWallets.length,
+      configured: ourWallets.size,
       walletCount: ours.length,
       txCount: ours.reduce((n, w) => n + w.txCount, 0),
       totalUsdc: sum(ours, (w) => w.totalUsdc),
