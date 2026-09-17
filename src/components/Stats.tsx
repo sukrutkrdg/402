@@ -586,7 +586,22 @@ export default function Stats() {
                             that tells us whether to build more of it. */}
                         {w.services && w.services.length > 0 ? (
                           <div className="mb-2">
-                            <div className="mb-1 text-[10px] text-gray-500">Everything this wallet has bought (all time, not just this day)</div>
+                            {/* The count matters as much as the label. This list is
+                                lifetime and the payment row below it is one day, so
+                                "6 services" sitting above "1 payment this day" reads
+                                as five things delivered unpaid — it did, to the
+                                operator, on 2026-09-17. Stating the lifetime paid
+                                total makes the two rows reconcile on sight. */}
+                            <div className="mb-1 text-[10px] text-gray-500">
+                              Everything this wallet has bought — all time, not this day
+                              {typeof w.serviceCalls === "number" && (
+                                <>
+                                  {" "}
+                                  · <span className="text-gray-400">{w.serviceCalls} paid call{w.serviceCalls === 1 ? "" : "s"}</span> across{" "}
+                                  {w.services.length} service{w.services.length === 1 ? "" : "s"}
+                                </>
+                              )}
+                            </div>
                             <div className="flex flex-wrap gap-1.5">
                               {w.services.map((s) => (
                                 <span key={s.id} className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300/90">
