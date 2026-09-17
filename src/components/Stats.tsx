@@ -37,23 +37,24 @@ interface Revenue {
 }
 
 /**
- * What we pay to stay findable, against what outsiders pay us.
+ * What outsiders actually paid, with our own circular settlements taken out.
  *
- * Keepalive settlements land in the seller wallet and look exactly like income,
- * so `externalUsd` is settled revenue minus what we paid ourselves. Early
- * readings are expected to be poor — the catalogue only began publishing
- * runnable examples on 2026-09-14 — which is why the ledger carries its own
- * start date and refuses to draw a conclusion before two weeks have passed.
+ * The keepalive moves USDC from our buyer wallet to our seller wallet. Verified
+ * on chain: one Transfer log, full amount, no facilitator cut, gas paid by the
+ * facilitator. Both wallets are ours, so it costs nothing — it is circulated,
+ * not spent, and this panel said "spent" until 2026-09-17.
+ *
+ * It is still subtracted from revenue: costing nothing does not make it a sale.
  */
 interface KeepaliveLedger {
   since: string | null;
   days: number;
-  spentUsd: number;
+  circulatedUsd: number;
   settlements: number;
-  spentUsdPerDay: number;
+  circulatedUsdPerDay: number;
   externalUsd: number;
   externalUsdPerDay: number;
-  returnRatio: number | null;
+  externalVsCirculated: number | null;
   verdict: string;
 }
 
@@ -354,14 +355,14 @@ export default function Stats() {
             the only place the two sit side by side. */}
         {data?.keepalive && (
           <div className="card p-5 sm:col-span-2">
-            <div className="label">Cost of being findable</div>
+            <div className="label">Outside demand, with our own circulation removed</div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <div>
-                <span className="font-mono text-2xl font-bold text-amber-300">
-                  ${data.keepalive.spentUsd.toFixed(2)}
+                <span className="font-mono text-2xl font-bold text-gray-400">
+                  ${data.keepalive.circulatedUsd.toFixed(2)}
                 </span>
                 <span className="ml-1 text-[11px] text-gray-500">
-                  spent · ${data.keepalive.spentUsdPerDay.toFixed(2)}/day
+                  circulated (ours, costs nothing) · ${data.keepalive.circulatedUsdPerDay.toFixed(2)}/day
                 </span>
               </div>
               <div>
@@ -372,16 +373,14 @@ export default function Stats() {
                   from outside · ${data.keepalive.externalUsdPerDay.toFixed(2)}/day
                 </span>
               </div>
-              {data.keepalive.returnRatio !== null && (
+              {data.keepalive.externalVsCirculated !== null && (
                 <div>
-                  <span
-                    className={`font-mono text-2xl font-bold ${
-                      data.keepalive.returnRatio >= 1 ? "text-emerald-300" : "text-gray-400"
-                    }`}
-                  >
-                    {data.keepalive.returnRatio}×
+                  <span className="font-mono text-2xl font-bold text-gray-400">
+                    {data.keepalive.externalVsCirculated}×
                   </span>
-                  <span className="ml-1 text-[11px] text-gray-500">returned per $1 spent</span>
+                  <span className="ml-1 text-[11px] text-gray-500">
+                    outside vs our own traffic — scale, not return
+                  </span>
                 </div>
               )}
             </div>
@@ -390,7 +389,8 @@ export default function Stats() {
               {data.keepalive.settlements === 1 ? "" : "s"} over {data.keepalive.days} day
               {data.keepalive.days === 1 ? "" : "s"}
               {data.keepalive.since ? ` since ${data.keepalive.since.slice(0, 10)}` : ""}. External is
-              settled revenue minus what we paid ourselves.
+              settled revenue minus our own. The real cost of staying indexed is upstream usage —
+              Anthropic on 11 services, Exa/Tavily on 5 — not this USDC.
             </div>
             <div className="mt-2 border-t border-base-line pt-2 text-[11px] leading-relaxed text-gray-400">
               {data.keepalive.verdict}

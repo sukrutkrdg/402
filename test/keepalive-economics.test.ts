@@ -76,9 +76,9 @@ describe("keepalive economics", () => {
     };
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
     const e = (await keepaliveEconomics(3.0))!;
-    expect(e.spentUsd).toBe(2.5);
-    expect(e.externalUsd, "settled 3.00 minus 2.50 we paid ourselves").toBe(0.5);
-    expect(e.returnRatio).toBe(0.2);
+    expect(e.circulatedUsd).toBe(2.5);
+    expect(e.externalUsd, "settled 3.00 minus 2.50 that circulated between our own wallets").toBe(0.5);
+    expect(e.externalVsCirculated).toBe(0.2);
     expect(e.settlements).toBe(140);
   });
 
@@ -91,7 +91,7 @@ describe("keepalive economics", () => {
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
     const e = (await keepaliveEconomics(1.0))!;
     expect(e.externalUsd).toBe(0);
-    expect(e.returnRatio).toBe(0);
+    expect(e.externalVsCirculated).toBe(0);
   });
 
   it("refuses to draw a conclusion before the window is long enough", async () => {
@@ -106,7 +106,14 @@ describe("keepalive economics", () => {
     expect(e.verdict, "and it should say why, not just decline").toMatch(/2026-09-14|runnable examples/);
   });
 
-  it("names the narrowing question once there is enough data to ask it", async () => {
+  /**
+   * The keepalive USDC is not a cost and the verdict must not imply it is.
+   * Verified on chain against the $1 credit pack (tx 0xddfb88cd…): exactly one
+   * USDC Transfer log, buyer → seller, full amount, no facilitator cut, and gas
+   * paid by the facilitator's own submitter. Both wallets are ours, so the money
+   * goes in a circle. Calling it spend framed a question whose premise was false.
+   */
+  it("does not present circulated USDC as money we spent", async () => {
     const at: Record<string, string> = {
       "keepalive:since": new Date(Date.now() - 30 * DAY).toISOString(),
       "keepalive:spent:cents": "600",
@@ -115,7 +122,9 @@ describe("keepalive economics", () => {
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
     const e = (await keepaliveEconomics(6.5))!;
     expect(e.verdict).not.toMatch(/Too early/i);
-    expect(e.verdict).toMatch(/no external purchase/i);
+    expect(e.verdict).toMatch(/circular/i);
+    expect(e.verdict, "the real cost is upstream consumption, not the USDC").toMatch(/Anthropic|Exa/);
+    expect(e.verdict).not.toMatch(/what we pay to be findable/i);
   });
 
   it("says nothing rather than zero when there is no ledger", async () => {
