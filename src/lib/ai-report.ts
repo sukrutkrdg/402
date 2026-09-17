@@ -10,6 +10,7 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropicClient } from "./anthropic-client";
+import { kvGet, kvSet } from "./kv";
 import { tokenRisk } from "./onchain";
 import { holderDistribution } from "./holders";
 import { tokenPrice, txDecode } from "./onchain-extra";
@@ -532,9 +533,62 @@ export async function aiWalletReport(params: Record<string, string>) {
  * situational brief (mood, highlights, new & notable, cautions). Lets an agent
  * get market context in one paid call instead of many.
  */
+/**
+ * How long a market brief stays good enough to serve again.
+ *
+ * This endpoint takes no parameters, so every caller is asking the identical
+ * question and the answer is a snapshot of the whole Base token market rather
+ * than anything caller-specific. One generation can therefore serve everyone
+ * inside the window.
+ *
+ * It needs a window because generating one is slow: measured on 2026-09-17,
+ * end to end took 9.7s, 10.8s, 16.1s and 19.5s across four paid calls, of which
+ * roughly 2.5s is x402 settlement and the two upstream data fetches are under a
+ * second — the rest is a single Claude call, and the spread is the model's own
+ * variance rather than a cold start (a second call straight after the first was
+ * no faster). An agent with a default 10-second client timeout would sometimes
+ * pay and then abandon the request.
+ *
+ * Ten minutes is short against what is being summarised — trending and
+ * newly-listed tokens move over hours — and long enough that a burst of calls
+ * pays for one generation instead of one each. The response always reports how
+ * old the brief is, so nobody has to guess.
+ */
+const BRIEF_TTL_SECONDS = 600;
+const BRIEF_KEY = "ai:market-brief";
+
+interface MarketBrief {
+  mood: string;
+  summary: string;
+  highlights: string[];
+  newAndNotable: string[];
+  cautions: string[];
+  sources: { trending: number; newTokens: number };
+  model: string;
+  generatedAt: string;
+}
+
 export async function aiMarketBrief(_params: Record<string, string>) {
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     throw new Error("AI not configured: set ANTHROPIC_API_KEY");
+  }
+
+  // A cached brief is served with its age attached, never dressed up as fresh.
+  // Failure to read the cache is not failure to answer — fall through and
+  // generate, which is the slow path but always the correct one.
+  try {
+    const hit = await kvGet(BRIEF_KEY);
+    if (hit) {
+      const brief = JSON.parse(hit) as MarketBrief;
+      const ageSeconds = Math.max(0, Math.round((Date.now() - new Date(brief.generatedAt).getTime()) / 1000));
+      // A brief with an unreadable timestamp is not "age zero" — it is unknown,
+      // and unknown age must not be served as fresh.
+      if (brief.mood && Number.isFinite(ageSeconds) && ageSeconds <= BRIEF_TTL_SECONDS) {
+        return { ...brief, cached: true, ageSeconds, checkedAt: new Date().toISOString() };
+      }
+    }
+  } catch {
+    /* unreadable or unparseable cache — generate a fresh one */
   }
 
   const [trending, fresh] = await Promise.allSettled([trendingTokens({}), newTokens({})]);
@@ -585,7 +639,8 @@ export async function aiMarketBrief(_params: Record<string, string>) {
     throw parseFailure(msg);
   }
 
-  return {
+  const generatedAt = new Date().toISOString();
+  const brief = {
     mood: parsed.mood ?? "mixed",
     summary: parsed.summary ?? "",
     highlights: parsed.highlights ?? [],
@@ -596,8 +651,22 @@ export async function aiMarketBrief(_params: Record<string, string>) {
       newTokens: data.newTokens ? (data.newTokens as { count?: number }).count ?? 0 : 0,
     },
     model: MODEL,
-    generatedAt: new Date().toISOString(),
-    checkedAt: new Date().toISOString(), // canonical timestamp field (alias of generatedAt)
+    generatedAt,
+  };
+
+  // Store it for the next caller. Best-effort by design: a cache write that
+  // fails must not cost this caller the answer they already paid for.
+  try {
+    await kvSet(BRIEF_KEY, JSON.stringify(brief), BRIEF_TTL_SECONDS);
+  } catch {
+    /* the answer is the point; the cache is an optimisation */
+  }
+
+  return {
+    ...brief,
+    cached: false,
+    ageSeconds: 0,
+    checkedAt: generatedAt, // canonical timestamp field (alias of generatedAt)
   };
 }
 
