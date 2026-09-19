@@ -59,6 +59,10 @@ export const ALERT_KINDS = [
   // origin. Separate from "surfaces" because it is checked daily rather than
   // weekly, and because the fix is never in this repository.
   "edge-clients",
+  // A wallet that paid us before came back on a later day. Not a fault — the
+  // opposite — but it belongs in the same channel, because it is the one event
+  // the operator has been waiting months for and nothing else would surface it.
+  "repeat-buyer",
 ] as const;
 
 export type AlertKind = (typeof ALERT_KINDS)[number];

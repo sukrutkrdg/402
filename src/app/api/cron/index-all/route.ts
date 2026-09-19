@@ -37,6 +37,7 @@ import { probeAi } from "@/lib/ai-probe";
 import { alertOwner, clearAlert } from "@/lib/alert-owner";
 import { checkSurfaces, edgeClientCheck } from "@/lib/surface-check";
 import { recordKeepaliveSpend } from "@/lib/keepalive-economics";
+import { checkRepeatBuyers, repeatBuyerMessage } from "@/lib/repeat-buyers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -126,6 +127,23 @@ export async function GET(req: NextRequest) {
   // a listing that quietly goes invisible is the same class of failure as an
   // endpoint that quietly falls out of the index, which is what this cron exists
   // to prevent.
+  /**
+   * Did anyone come back yesterday?
+   *
+   * Runs here because this is the daily job that already knows how to raise an
+   * incident, and because at 03:00 UTC yesterday is a closed day — reading
+   * today would be three hours of partial data re-alerting every morning on the
+   * same wallet. Never clears: a repeat purchase is an event, not a condition,
+   * so there is nothing to recover from.
+   */
+  let repeat: Awaited<ReturnType<typeof checkRepeatBuyers>> | undefined;
+  if (!dryRun) {
+    repeat = await checkRepeatBuyers().catch(() => null);
+    if (repeat && !repeat.degraded && repeat.returning.length) {
+      await alertOwner("repeat-buyer", repeatBuyerMessage(repeat));
+    }
+  }
+
   let surfaces: Awaited<ReturnType<typeof checkSurfaces>> | undefined;
   if (!dryRun && !(await kvGet("surfaces:checked"))) {
     await kvSet("surfaces:checked", "1", 60 * 60 * 24 * 7);
@@ -289,6 +307,7 @@ export async function GET(req: NextRequest) {
     total: pool.length,
     dryRun,
     ...(edge ? { edge } : {}),
+    ...(repeat ? { repeatBuyers: repeat } : {}),
     ...(surfaces ? { surfaces } : {}),
     ai: ai.ok ? { ok: true } : { ok: false, reason: ai.reason, creditsExhausted: ai.creditsExhausted, skipped: aiSkipped, alert: aiAlert },
     note:
