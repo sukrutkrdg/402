@@ -53,6 +53,7 @@ interface KeepaliveLedger {
   settlements: number;
   circulatedUsdPerDay: number;
   externalUsd: number;
+  externalCalls: number;
   externalUsdPerDay: number;
   externalVsCirculated: number | null;
   verdict: string;
@@ -370,7 +371,8 @@ export default function Stats() {
                   ${data.keepalive.externalUsd.toFixed(2)}
                 </span>
                 <span className="ml-1 text-[11px] text-gray-500">
-                  from outside · ${data.keepalive.externalUsdPerDay.toFixed(2)}/day
+                  from outside · {data.keepalive.externalCalls} call
+                  {data.keepalive.externalCalls === 1 ? "" : "s"} · ${data.keepalive.externalUsdPerDay.toFixed(2)}/day
                 </span>
               </div>
               {data.keepalive.externalVsCirculated !== null && (

@@ -35,10 +35,12 @@ import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { priceCents } from "@/lib/price";
+import { recordExternalRevenue } from "@/lib/keepalive-economics";
 import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
 import { withPaymentTerms } from "@/lib/challenge-terms";
 import { payerFromHeaders } from "@/lib/payer";
+import { getBuyerAddress } from "@/lib/x402-client";
 import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
 import { returningCallerNote } from "@/lib/repeat-caller";
@@ -575,6 +577,24 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // address from CDP SQL — a checksummed hash here would never match it.
     const payer = payerFromHeaders(request.headers);
     await logUsage(service.id, true, srcHash(clientIp(request)), request.headers.get("user-agent") || "", request.headers.get("referer") || "", false, false, false, payer ? srcHash(payer) : "");
+    /**
+     * Book this as outside demand, unless it was us.
+     *
+     * The ledger used to derive external revenue by subtracting our cumulative
+     * keepalive from a ~11-hour block scan — two different periods, so the
+     * answer was noise. On 2026-09-22 it read $0 external over 5.1 days, three
+     * days after a wallet paid $0.70 in one afternoon.
+     *
+     * Counting it here fixes that: this path knows who signed, so "not us" is a
+     * fact rather than a residue, and both sides of the ledger start at the
+     * same moment. A payer we could not read is NOT counted — an unknown payer
+     * might be our own buyer, and inventing demand is the one direction this
+     * whole ledger exists to avoid.
+     */
+    const ourBuyer = getBuyerAddress()?.toLowerCase();
+    if (payer && payer.toLowerCase() !== ourBuyer) {
+      await recordExternalRevenue(priceCents(await effectivePriceFor(service, request)));
+    }
     // buy-credits settles at the CHOSEN tier, not the listed price — record the
     // real cents so the revenue dashboard doesn't count every pack as $5.
     if (service.id === "buy-credits") {

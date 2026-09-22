@@ -38,12 +38,18 @@
  * from a stated start date so the next reading is taken with the funnel whole,
  * and refuses to draw a conclusion before two weeks of it exist.
  *
- * NET, NOT GROSS
- * --------------
- * Keepalive settlements arrive in the seller wallet and look exactly like
- * income, so they are always subtracted. Costing nothing does not make them
- * sales — the same error that had our own buyer listed as a customer and a
- * bridge delivery booked as revenue.
+ * COUNTED, NOT DERIVED
+ * --------------------
+ * External revenue used to be inferred: settled-in-the-revenue-window minus
+ * circulated-all-time. Those are different periods, so the subtraction produced
+ * noise — on 2026-09-22 it read $0 external over 5.1 days, three days after a
+ * wallet had paid $0.70 in one afternoon.
+ *
+ * Both sides are now counted where they happen and share one start date. The
+ * x402 paid path knows who signed, so a settlement that is not ours is a fact
+ * rather than a residue, and a payer we cannot read is left out entirely —
+ * an unknown payer might be our own buyer, and inventing demand is the one
+ * direction this ledger exists to avoid.
  */
 
 import "server-only";
@@ -56,7 +62,37 @@ const KEY = {
   calls: "keepalive:calls",
   /** When counting began — the baseline date, so a ratio has a window. */
   since: "keepalive:since",
+  /**
+   * Cents settled by somebody who is not us, counted at settle time.
+   *
+   * This used to be derived: external = (settled in the revenue window) minus
+   * (circulated, all time). Those are different periods — an ~11-hour block
+   * scan against a counter running since the baseline — so the subtraction was
+   * meaningless. On 2026-09-22 it read $0 external over 5.1 days, three days
+   * after a wallet had paid $0.70 in one afternoon.
+   *
+   * Counting it where it happens makes both sides cumulative and both sides
+   * start at the same moment.
+   */
+  external: "external:revenue:cents",
+  externalCalls: "external:calls",
 } as const;
+
+/**
+ * Record one settlement by somebody else.
+ *
+ * Called from the x402 paid path, which knows the payer address, so "not us" is
+ * decided from who actually signed rather than inferred from a total.
+ */
+export async function recordExternalRevenue(cents: number): Promise<void> {
+  if (!kvConfigured() || !Number.isFinite(cents) || cents <= 0) return;
+  try {
+    if (!(await kvGet(KEY.since))) await kvSet(KEY.since, new Date().toISOString());
+    await Promise.all([kvIncrBy(KEY.external, Math.round(cents)), kvIncrBy(KEY.externalCalls, 1)]);
+  } catch {
+    /* the settlement is the point; this is only the books */
+  }
+}
 
 /**
  * Record one keepalive settlement.
@@ -87,6 +123,8 @@ export interface KeepaliveEconomics {
   circulatedUsdPerDay: number;
   /** Settled revenue less our own keepalive — what outsiders actually paid. */
   externalUsd: number;
+  /** Settlements by somebody who is not us, over the same window. */
+  externalCalls: number;
   externalUsdPerDay: number;
   /**
    * External revenue against circulated USDC — a scale reference, NOT a return
@@ -99,16 +137,17 @@ export interface KeepaliveEconomics {
 }
 
 /**
- * Read the ledger. `settledUsd` comes from the caller because only the revenue
- * scan knows it, and it must already exclude non-settlement arrivals — bridges,
- * refunds and transfers between our own wallets are not revenue.
+ * Read the ledger. Both sides are counted at settle time and share a start
+ * date, so no caller has to supply a figure and no two periods can be mixed.
  */
-export async function keepaliveEconomics(settledUsd: number): Promise<KeepaliveEconomics | null> {
+export async function keepaliveEconomics(): Promise<KeepaliveEconomics | null> {
   if (!kvConfigured()) return null;
-  const [since, spentRaw, callsRaw] = await Promise.all([
+  const [since, spentRaw, callsRaw, extRaw, extCallsRaw] = await Promise.all([
     kvGet(KEY.since),
     kvGet(KEY.spent),
     kvGet(KEY.calls),
+    kvGet(KEY.external),
+    kvGet(KEY.externalCalls),
   ]);
   const spentCents = Number(spentRaw ?? 0) || 0;
   const settlements = Number(callsRaw ?? 0) || 0;
@@ -119,9 +158,10 @@ export async function keepaliveEconomics(settledUsd: number): Promise<KeepaliveE
   // by zero dressed up as infinity.
   const days = startedAt ? Math.max(1, (Date.now() - startedAt.getTime()) / 86_400_000) : 0;
 
-  // Still subtracted: our own settlements land in the seller wallet and would
-  // otherwise read as demand. That they cost nothing does not make them sales.
-  const externalUsd = +Math.max(0, settledUsd - circulatedUsd).toFixed(2);
+  // Counted, not derived. Our own settlements never enter this number in the
+  // first place, so there is nothing to subtract and no window to mismatch.
+  const externalUsd = +((Number(extRaw ?? 0) || 0) / 100).toFixed(2);
+  const externalCalls = Number(extCallsRaw ?? 0) || 0;
   const perDay = (n: number) => (days > 0 ? +(n / days).toFixed(3) : 0);
   const externalVsCirculated = circulatedUsd > 0 ? +(externalUsd / circulatedUsd).toFixed(2) : null;
 
@@ -132,6 +172,7 @@ export async function keepaliveEconomics(settledUsd: number): Promise<KeepaliveE
     settlements,
     circulatedUsdPerDay: perDay(circulatedUsd),
     externalUsd,
+    externalCalls,
     externalUsdPerDay: perDay(externalUsd),
     externalVsCirculated,
     verdict:

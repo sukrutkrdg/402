@@ -30,7 +30,7 @@ const { kvMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/kv", () => kvMock);
 
-import { recordKeepaliveSpend, keepaliveEconomics } from "@/lib/keepalive-economics";
+import { recordKeepaliveSpend, recordExternalRevenue, keepaliveEconomics } from "@/lib/keepalive-economics";
 
 const DAY = 86_400_000;
 
@@ -68,29 +68,59 @@ describe("keepalive economics", () => {
    * make the conveyor look like demand — the same error that had our own buyer
    * listed as a customer and a bridge delivery booked as a sale.
    */
-  it("subtracts what we paid ourselves from what was settled", async () => {
+  it("reads external revenue from its own counter, not by subtraction", async () => {
     const at: Record<string, string> = {
       "keepalive:since": new Date(Date.now() - 20 * DAY).toISOString(),
       "keepalive:spent:cents": "250",
       "keepalive:calls": "140",
+      "external:revenue:cents": "50",
+      "external:calls": "18",
     };
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
-    const e = (await keepaliveEconomics(3.0))!;
+    const e = (await keepaliveEconomics())!;
     expect(e.circulatedUsd).toBe(2.5);
-    expect(e.externalUsd, "settled 3.00 minus 2.50 that circulated between our own wallets").toBe(0.5);
+    expect(e.externalUsd).toBe(0.5);
+    expect(e.externalCalls).toBe(18);
     expect(e.externalVsCirculated).toBe(0.2);
     expect(e.settlements).toBe(140);
   });
 
-  it("never reports negative external revenue when we outspend the take", async () => {
+  /**
+   * The bug this replaced: external was (settled in a ~11-hour block scan) minus
+   * (circulated since the baseline). Different periods, so the answer was noise
+   * — on 2026-09-22 it read $0 external over 5.1 days, three days after a wallet
+   * paid $0.70 in one afternoon.
+   */
+  it("does not let circulated USDC reduce external revenue", async () => {
+    const at: Record<string, string> = {
+      "keepalive:since": new Date(Date.now() - 20 * DAY).toISOString(),
+      "keepalive:spent:cents": "9999",
+      "keepalive:calls": "500",
+      "external:revenue:cents": "70",
+      "external:calls": "18",
+    };
+    kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
+    const e = (await keepaliveEconomics())!;
+    expect(e.externalUsd, "outside demand stands on its own").toBe(0.7);
+  });
+
+  it("books an outside settlement against the external counter only", async () => {
+    await recordExternalRevenue(3);
+    expect(kvMock.kvIncrBy).toHaveBeenCalledWith("external:revenue:cents", 3);
+    expect(kvMock.kvIncrBy).toHaveBeenCalledWith("external:calls", 1);
+    expect(kvMock.kvIncrBy).not.toHaveBeenCalledWith("keepalive:spent:cents", expect.anything());
+  });
+
+  it("reports zero external when nobody outside has paid", async () => {
     const at: Record<string, string> = {
       "keepalive:since": new Date(Date.now() - 20 * DAY).toISOString(),
       "keepalive:spent:cents": "500",
       "keepalive:calls": "200",
     };
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
-    const e = (await keepaliveEconomics(1.0))!;
+    const e = (await keepaliveEconomics())!;
     expect(e.externalUsd).toBe(0);
+    expect(e.externalCalls).toBe(0);
     expect(e.externalVsCirculated).toBe(0);
   });
 
@@ -101,7 +131,7 @@ describe("keepalive economics", () => {
       "keepalive:calls": "30",
     };
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
-    const e = (await keepaliveEconomics(0.6))!;
+    const e = (await keepaliveEconomics())!;
     expect(e.verdict).toMatch(/Too early/i);
     expect(e.verdict, "and it should say why, not just decline").toMatch(/2026-09-14|runnable examples/);
   });
@@ -120,7 +150,7 @@ describe("keepalive economics", () => {
       "keepalive:calls": "360",
     };
     kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
-    const e = (await keepaliveEconomics(6.5))!;
+    const e = (await keepaliveEconomics())!;
     expect(e.verdict).not.toMatch(/Too early/i);
     expect(e.verdict).toMatch(/circular/i);
     expect(e.verdict, "the real cost is upstream consumption, not the USDC").toMatch(/Anthropic|Exa/);
@@ -129,6 +159,6 @@ describe("keepalive economics", () => {
 
   it("says nothing rather than zero when there is no ledger", async () => {
     kvMock.kvConfigured.mockReturnValue(false);
-    expect(await keepaliveEconomics(5)).toBeNull();
+    expect(await keepaliveEconomics()).toBeNull();
   });
 });

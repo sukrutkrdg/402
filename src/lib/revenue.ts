@@ -131,7 +131,7 @@ export async function getRevenue(blocks = 5000): Promise<RevenueResult> {
     // What discovery costs against what it returns. Settled revenue includes our
     // own keepalive — money we paid ourselves to stay findable — so the ledger
     // subtracts it rather than letting the conveyor read as demand.
-    keepalive: await keepaliveEconomics(Number(formatUnits(settled, 6))).catch(() => null),
+    keepalive: await keepaliveEconomics().catch(() => null),
     payments,
     checkedAt: now,
   };
