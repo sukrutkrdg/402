@@ -38,6 +38,7 @@ import { alertOwner, clearAlert } from "@/lib/alert-owner";
 import { checkSurfaces, edgeClientCheck } from "@/lib/surface-check";
 import { recordKeepaliveSpend } from "@/lib/keepalive-economics";
 import { checkRepeatBuyers, repeatBuyerMessage } from "@/lib/repeat-buyers";
+import { checkBuyerFunds } from "@/lib/buyer-funds";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -106,6 +107,26 @@ export async function GET(req: NextRequest) {
    * sees, which for the one failure mode we cannot fix in code is the wrong
    * cadence. It costs five HEAD-ish requests.
    */
+  /**
+   * Can we still pay? Asked before spending, because a run that cannot settle
+   * reports `refreshed: 0` and `ok` — indistinguishable from a morning where
+   * everything was already fresh. The buyer wallet ran dry after the 03:00 run
+   * on 2026-09-21 and the next two mornings settled nothing while looking
+   * entirely healthy.
+   *
+   * This gates nothing for customers: they pay from their own wallets. It gates
+   * the keepalive, and therefore discovery, which decays over thirty days —
+   * a slow disappearance, which is exactly why it needs an alarm.
+   */
+  const funds = await checkBuyerFunds().catch(() => null);
+  if (funds?.low) {
+    await alertOwner("buyer-funds", funds.reason + `
+
+Wallet: ${funds.address}`);
+  } else if (funds && !funds.low) {
+    await clearAlert("buyer-funds", `Keepalive buyer wallet is funded again ($${funds.usdc.toFixed(2)}).`);
+  }
+
   let edge: Awaited<ReturnType<typeof edgeClientCheck>> | undefined;
   if (!dryRun) {
     edge = await edgeClientCheck();
@@ -308,6 +329,7 @@ export async function GET(req: NextRequest) {
     dryRun,
     ...(edge ? { edge } : {}),
     ...(repeat ? { repeatBuyers: repeat } : {}),
+    ...(funds ? { buyerFunds: funds } : {}),
     ...(surfaces ? { surfaces } : {}),
     ai: ai.ok ? { ok: true } : { ok: false, reason: ai.reason, creditsExhausted: ai.creditsExhausted, skipped: aiSkipped, alert: aiAlert },
     note:

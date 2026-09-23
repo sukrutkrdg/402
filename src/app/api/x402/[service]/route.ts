@@ -591,9 +591,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
      * might be our own buyer, and inventing demand is the one direction this
      * whole ledger exists to avoid.
      */
-    const ourBuyer = getBuyerAddress()?.toLowerCase();
-    if (payer && payer.toLowerCase() !== ourBuyer) {
-      await recordExternalRevenue(priceCents(await effectivePriceFor(service, request)));
+    // Wrapped, because this runs AFTER settlement. The customer has already
+    // paid by the time we get here, so nothing in the bookkeeping is allowed to
+    // cost them the response — and `getBuyerAddress` throws on a malformed key
+    // rather than returning undefined, which would have turned a bad env var
+    // into a paid-but-undelivered call.
+    try {
+      const ourBuyer = getBuyerAddress()?.toLowerCase();
+      if (payer && payer.toLowerCase() !== ourBuyer) {
+        await recordExternalRevenue(priceCents(await effectivePriceFor(service, request)));
+      }
+    } catch {
+      /* the answer is the point; the ledger is an optimisation */
     }
     // buy-credits settles at the CHOSEN tier, not the listed price — record the
     // real cents so the revenue dashboard doesn't count every pack as $5.
