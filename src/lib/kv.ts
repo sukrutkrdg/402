@@ -50,11 +50,29 @@ async function cmdOnce<T = unknown>(args: (string | number)[]): Promise<{ ok: bo
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return { ok: false, result: null };
-    const j = (await res.json()) as { result?: T };
+    const j = (await res.json()) as { result?: T; error?: string };
+    // Upstash reports some failures — notably "Your database has been
+    // temporarily rate-limited" when a plan's limit is hit — as HTTP 200 with an
+    // `error` body. Reading only the status turned those into a successful null:
+    // writes vanished and reads looked like empty keys, so every fail-closed
+    // guard built on "null means KV failed" was bypassed without a trace.
+    if (j.error) {
+      noteKvError(j.error);
+      return { ok: false, result: null };
+    }
     return { ok: true, result: (j.result ?? null) as T | null };
   } catch {
     return { ok: false, result: null };
   }
+}
+
+let lastKvErrorLog = 0;
+/** Log a KV error body at most once a minute per instance — loud enough to be seen, not per request. */
+function noteKvError(error: string) {
+  const now = Date.now();
+  if (now - lastKvErrorLog < 60_000) return;
+  lastKvErrorLog = now;
+  console.error(`[kv] Upstash refused a command: ${error.slice(0, 200)}`);
 }
 
 async function cmd<T = unknown>(args: (string | number)[]): Promise<T | null> {
@@ -100,6 +118,28 @@ export async function kvPipeline(commands: (string | number)[][]): Promise<unkno
 }
 
 /**
+ * Should this instance (re)send EXPIRE for `key` now?
+ *
+ * Analytics and counters used to send EXPIRE with every INCR/SADD — on the
+ * unpaid-402 path that was a third of the commands a request cost, and the
+ * Upstash plan limit is counted in commands. A TTL only has to be refreshed
+ * before it can lapse, so each instance re-sends it at most once per half-TTL
+ * (capped at an hour). That keeps the guarantee that a key never outlives its
+ * TTL by more than the TTL itself: a key re-created after expiring is touched
+ * again after the half-TTL mark, which re-sends EXPIRE before it could lapse.
+ */
+const ttlSentAt = new Map<string, number>();
+export function ttlDue(key: string, ttlSeconds: number): boolean {
+  const now = Date.now();
+  const every = Math.min(ttlSeconds * 500, 3_600_000); // half the TTL, in ms, at most 1h
+  const at = ttlSentAt.get(key);
+  if (at !== undefined && now - at < every) return false;
+  if (ttlSentAt.size > 5000) ttlSentAt.clear(); // bound memory; worst case re-sends once
+  ttlSentAt.set(key, now);
+  return true;
+}
+
+/**
  * Increment a counter; set TTL (seconds) when requested. Returns the new value,
  * or NULL when KV is configured but unreachable — callers guarding money or
  * quota MUST treat null as "deny" (fail closed), never as 0. A silent 0 here is
@@ -109,7 +149,7 @@ export async function kvIncr(key: string, ttlSeconds?: number): Promise<number |
   if (kvConfigured()) {
     // Single round trip: INCR + EXPIRE pipelined. TTL is always (re)set so a key
     // never persists without expiry; daily reset comes from the date in the key.
-    if (ttlSeconds) {
+    if (ttlSeconds && ttlDue(key, ttlSeconds)) {
       const results = await kvPipeline([["INCR", key], ["EXPIRE", key, ttlSeconds]]);
       const n = results?.[0];
       return typeof n === "number" ? n : null;
