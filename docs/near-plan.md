@@ -293,8 +293,9 @@ Birleştirilen PR'lar (hepsi `main`'de, Vercel'de canlı):
 | #16, #17 | `near-token-safety` servisi; sahip ve duraklatma kontrolü, açıklama 499 sınırında |
 
 npm: `x402-bazaar-mcp@0.2.8` sahibi tarafından yayınlandı (2026-09-26). Pazar bağlayıcı başvurusu Telegram'dan
-gönderildi, cevap bekleniyor. `near-token-safety` canlıda ilk çağrıda USDt için GO döndü (anahtar yok);
-sahip kontrolünden sonra tekrar denenecek.
+gönderildi, cevap bekleniyor. `near-token-safety` canlıda doğrulandı (2026-09-26): ilk çağrıda USDt için GO döndü (anahtar yok); sahip
+kontrolünden (#17) sonra `owner()` → `tether.multisafe.near` bulundu ve karar **HOLD** oldu. Çağrı, NEAR ile alınmış
+kredi token'ıyla ödendi ($0.02). NEAR'da ödeme → Base'e tahsilat → NEAR servisi döngüsü uçtan uca çalışıyor.
 
 Ortam ve işletme:
 
