@@ -16,6 +16,7 @@ import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector, encodeSelector } from "./onchain-extra3";
 import { basenameResolve, ensResolve, basenameProfile } from "./basename";
+import { nearTokenSafety } from "./near-token-safety";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1286,6 +1287,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "query", label: "ENS name or address", placeholder: "vitalik.eth or 0x…", required: true }],
     handler: ensResolve,
+  },
+  {
+    id: "near-token-safety",
+    name: "NEAR Token Safety",
+    tagline: "Who can change a NEAR token's contract? GO / HOLD / STOP",
+    description:
+      "Before an agent takes a NEP-141 token on NEAR: is a contract deployed, does it answer ft_metadata, and — the question that matters — how many full-access keys can redeploy it (new code can rewrite balances, block transfers or mint). Locked (no full-access key) → GO; upgradeable by key → HOLD; no contract or not NEP-141 → STOP. Also returns name, symbol, decimals, total supply, and whether NEAR Intents routes the token, with its price. Read live from the NEAR RPC.",
+    price: "$0.02",
+    icon: "Ⓝ",
+    category: "Onchain",
+    params: [{ name: "token", label: "NEAR token contract account", placeholder: "usdt.tether-token.near", required: true }],
+    handler: nearTokenSafety,
   },
   {
     id: "encode-selector",

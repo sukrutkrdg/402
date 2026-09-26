@@ -45,6 +45,7 @@ export function nearFundingLines(site: string): string[] {
   const lines = [
     "## Agents on NEAR",
     `- ${f.chainSignatures.how}: ${f.chainSignatures.summary}`,
+    `- NEAR-native check: [near-token-safety](${site}/api/x402/near-token-safety?token=usdt.tether-token.near) — before taking a NEP-141 token, who can redeploy its contract (full-access keys), plus metadata, supply and NEAR Intents liquidity. GO / HOLD / STOP.`,
   ];
   if ("nearIntentsCredits" in f && f.nearIntentsCredits) {
     lines.push(

@@ -76,6 +76,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "token-supply": ["json-rpc", "erc20", "supply", "chain-read", "primitive"],
   "contract-info": ["json-rpc", "contract", "bytecode", "chain-read", "primitive"],
   "ens-resolve": ["ens", "name-resolution", "chain-read", "primitive"],
+  "near-token-safety": ["near", "nep-141", "token-safety", "upgradeability", "chain-read"],
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
 };

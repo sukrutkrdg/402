@@ -237,6 +237,7 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "basename-profile": { name: "jesse.base.eth" },
   basename: { query: "jesse.base.eth" },
   "ens-resolve": { query: "vitalik.eth" },
+  "near-token-safety": { token: "usdt.tether-token.near" },
   "base-tx": { hash: TX },
   "base-receipt": { hash: TX },
   "tx-decode": { hash: TX },
