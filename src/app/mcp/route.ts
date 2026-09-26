@@ -4,7 +4,7 @@
  * The hosted MCP server lives at `/api/mcp`. This mounts the same handlers at
  * the short path, because that is the shape every connector UI, directory
  * listing and piece of documentation assumes: `https://<host>/mcp`. Smithery's
- * publish flow, Claude's custom-connector dialog and ChatGPT's connector field
+ * publish flow, desktop assistants' custom-connector dialogs
  * all take a bare URL, and a reviewer who tries the obvious one and gets a 404
  * does not try the second one.
  *

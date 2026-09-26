@@ -26,7 +26,7 @@ risk: [irreversible]
 x402 Bazaar is a pay-per-call API marketplace on Base exposing read-only
 services — token safety (risk, honeypot, rug score), wallet intelligence
 (net worth, age/activity, approvals, transfers, NFTs), OFAC sanctions screening,
-prices/momentum/pools, and Claude-written AI token & wallet reports. The agent
+prices/momentum/pools, and AI-written AI token & wallet reports. The agent
 reads the tool list live from the catalog at startup, so the count tracks the
 marketplace rather than this document. Alongside the onchain reads it now also
 covers checks an agent needs before it acts off-chain: `url_extract` /
@@ -57,7 +57,7 @@ live service list is also at `https://402.com.tr/.well-known/x402`.
 
 ## Installation
 
-Add the MCP server to the host config (Claude Desktop / Cursor / any MCP client):
+Add the MCP server to the host config (Cursor / Cline / any MCP client):
 
 ```json
 {
@@ -104,7 +104,7 @@ authorizes one transfer of the quoted amount to the seller, nothing else.
 
 | Capability | Surface | Execution path |
 |---|---|---|
-| Any read (token/wallet/compliance/AI report) | MCP client (Claude Desktop, Cursor, Code) | `x402-bazaar` MCP tool → pays x402 → returns JSON |
+| Any read (token/wallet/compliance/AI report) | MCP client (Cursor, Cline, VS Code) | `x402-bazaar` MCP tool → pays x402 → returns JSON |
 | Same | chat-only host without the MCP server | Not available — instruct the user to add `x402-bazaar-mcp` (see Installation) |
 
 Shell-less fallback: none required — all access is via the MCP server's tools.
@@ -132,7 +132,7 @@ authoritative list is the MCP tool catalog itself (and
 | `domain_check` | $0.02 | Registration age, expiry and registry status from RDAP → GO/HOLD/STOP |
 | `url_extract` | $0.002 | Any web page as clean, agent-ready text |
 | `url_to_json` | $0.04 | The same page as structured JSON against a caller-supplied shape |
-| `ai_token_report` | $0.12 | Claude-written token due diligence |
+| `ai_token_report` | $0.12 | AI-written token due diligence |
 | `deep_dd` | $0.75 | The full multi-signal due-diligence report |
 
 Prices are quoted live in each 402 challenge; the numbers above are indicative.

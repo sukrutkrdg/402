@@ -65,7 +65,7 @@ export default function AgentsPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">⚡ Quickstart — 30 seconds</h2>
         <p className="text-sm text-gray-400">
-          Fastest path: add the MCP server to Claude Code (or any MCP client). No key, no wallet, no
+          Fastest path: add the MCP server to any MCP client. No key, no wallet, no
           config — it runs on the free tier as-is:
         </p>
         <Code>{`claude mcp add x402-bazaar -- npx -y x402-bazaar-mcp`}</Code>
@@ -230,7 +230,7 @@ const s = await (await fetch(
           package — the same config works everywhere. No code to write:
         </p>
         <div className="flex flex-wrap gap-1.5 text-[11px]">
-          {["Claude Desktop", "Cursor", "Cline", "Windsurf", "VS Code", "Claude Code", "Coinbase AgentKit"].map((h) => (
+          {["Cursor", "Cline", "Windsurf", "VS Code", "Coinbase AgentKit", "any MCP client"].map((h) => (
             <span key={h} className="rounded-full border border-base-line bg-white/5 px-2 py-0.5 text-gray-300">{h}</span>
           ))}
         </div>

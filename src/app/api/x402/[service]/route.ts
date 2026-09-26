@@ -70,7 +70,7 @@ const CHALLENGE_EXAMPLES: Record<string, Record<string, unknown>> = {
 };
 
 export const dynamic = "force-dynamic";
-// AI services aggregate several upstreams + Claude, and x402 settlement adds a few
+// AI services aggregate several upstreams + an LLM call, and x402 settlement adds a few
 // seconds — well over the serverless default. Give the handler room so paid AI
 // reports (e.g. the mini-app) don't time out AFTER the buyer has paid.
 export const maxDuration = 60;
@@ -427,7 +427,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const forcePay = req.headers.get("x-x402-force") === "1";
   const freeAsked =
     new URL(req.url).searchParams.get("free") === "1" || req.headers.get("x-402-free") === "1";
-  // AI services have real upstream cost (Claude) — never give them away on the
+  // AI services have real upstream cost (the LLM) — never give them away on the
   // free tier (the in-memory counter resets per serverless instance, so free
   // AI calls could run up the owner's bill). Cheap RPC services stay free-eligible.
   const freeEligible = service.category !== "AI" && !service.noFreeTier;

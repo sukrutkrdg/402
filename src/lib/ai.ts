@@ -1,9 +1,9 @@
 /**
- * Claude-powered service handlers (the "valuable" paid endpoints).
+ * AI-powered service handlers (the "valuable" paid endpoints).
  *
  * Each function calls the Anthropic API server-side. They run *inside* the x402
  * handler, which only settles payment when the handler returns successfully — so
- * if a Claude call throws, withX402 returns an error and the buyer is NOT
+ * if a model call throws, withX402 returns an error and the buyer is NOT
  * charged. That's why these throw on failure instead of returning a stub.
  *
  * Model is configurable via ANTHROPIC_MODEL. Default is claude-haiku-4-5 —

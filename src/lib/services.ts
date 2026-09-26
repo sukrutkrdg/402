@@ -652,7 +652,7 @@ export const SERVICES: ServiceDef[] = [
     name: "B20 Due-Diligence Dossier",
     tagline: "Institutional AI report on a Base-native B20 token",
     description:
-      "🆕 The premium tier of the B20 suite — no ERC-20 tool can produce it. Composes the full B20 picture: seize/freeze/pause/mint powers, WHO holds them (admin renounced?), allowlist-vs-blocklist access model, supply-cap dilution headroom, metadata mutability, and ACTUAL seizure history (burnBlocked) — then Claude writes an institutional due-diligence verdict: issuer-control score, seizure risk (enforced/armed/none), red flags, and a hold/avoid recommendation.",
+      "🆕 The premium tier of the B20 suite — no ERC-20 tool can produce it. Composes the full B20 picture: seize/freeze/pause/mint powers, WHO holds them (admin renounced?), allowlist-vs-blocklist access model, supply-cap dilution headroom, metadata mutability, and ACTUAL seizure history (burnBlocked) — then AI writes an institutional due-diligence verdict: issuer-control score, seizure risk (enforced/armed/none), red flags, and a hold/avoid recommendation.",
     price: "$0.75",
     icon: "📚",
     category: "B20",
@@ -1180,7 +1180,7 @@ export const SERVICES: ServiceDef[] = [
     name: "Deep Due-Diligence",
     tagline: "Institutional-grade full report on a Base token — one call",
     description:
-      "The premium flagship. One call runs the FULL battery — contract risk, holder concentration, liquidity depth, EXIT liquidity (can you actually sell), OFAC sanctions — and Claude synthesizes an institutional verdict: safety score, explicit buy/sell tradeability, liquidity & holder assessments, factors, risks, positives and a recommendation. The value is the orchestration + AI synthesis you can't get in one call anywhere else.",
+      "The premium flagship. One call runs the FULL battery — contract risk, holder concentration, liquidity depth, EXIT liquidity (can you actually sell), OFAC sanctions — and AI synthesizes an institutional verdict: safety score, explicit buy/sell tradeability, liquidity & holder assessments, factors, risks, positives and a recommendation. The value is the orchestration + AI synthesis you can't get in one call anywhere else.",
     price: "$0.75",
     icon: "🏛️",
     category: "AI",
@@ -1672,9 +1672,9 @@ export const SERVICES: ServiceDef[] = [
   {
     id: "ai-wallet-report",
     name: "AI Wallet Report",
-    tagline: "Claude-written verdict on any wallet",
+    tagline: "AI-written verdict on any wallet",
     description:
-      "The flagship wallet report: aggregates net worth, age/activity and recent transactions, then Claude synthesizes a verdict (e.g. fresh/risky → established/active) with key observations. One call, agent-ready wallet intelligence.",
+      "The flagship wallet report: aggregates net worth, age/activity and recent transactions, then AI synthesizes a verdict (e.g. fresh/risky → established/active) with key observations. One call, agent-ready wallet intelligence.",
     price: "$0.06",
     icon: "🧠",
     category: "AI",
@@ -1688,9 +1688,9 @@ export const SERVICES: ServiceDef[] = [
   {
     id: "ai-token-report",
     name: "AI Token Report",
-    tagline: "Claude-written due-diligence verdict for a Base token",
+    tagline: "AI-written due-diligence verdict for a Base token",
     description:
-      "The flagship report: aggregates token risk, holder concentration, price/liquidity and OFAC sanctions, then Claude synthesizes a structured verdict (avoid → favorable) with key risks and positives. One call, agent-ready intelligence you can't get free.",
+      "The flagship report: aggregates token risk, holder concentration, price/liquidity and OFAC sanctions, then AI synthesizes a structured verdict (avoid → favorable) with key risks and positives. One call, agent-ready intelligence you can't get free.",
     price: "$0.12",
     icon: "🔬",
     category: "AI",
@@ -1700,9 +1700,9 @@ export const SERVICES: ServiceDef[] = [
   {
     id: "ai-market-brief",
     name: "AI Market Brief",
-    tagline: "Claude-written situational brief of the Base token market",
+    tagline: "AI-written situational brief of the Base token market",
     description:
-      "The zoom-out flagship: aggregates trending and newly-listed Base tokens, then Claude writes a concise market brief — mood, highlights, new & notable launches, and cautions (fresh/unknown tokens flagged for rug risk). One call gives a trading agent market context instead of dozens of lookups.",
+      "The zoom-out flagship: aggregates trending and newly-listed Base tokens, then AI writes a concise market brief — mood, highlights, new & notable launches, and cautions (fresh/unknown tokens flagged for rug risk). One call gives a trading agent market context instead of dozens of lookups.",
     price: "$0.05",
     icon: "🗞️",
     category: "AI",
@@ -1714,7 +1714,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Wallet Security Audit",
     tagline: "What can drain this wallet — and what to revoke",
     description:
-      "Pulls a wallet's active token approvals and Claude writes a security audit: overall risk level, USD at risk, and concrete revoke recommendations (which token/spender and why). The wallet-safety check agents and users run before trusting an address.",
+      "Pulls a wallet's active token approvals and AI writes a security audit: overall risk level, USD at risk, and concrete revoke recommendations (which token/spender and why). The wallet-safety check agents and users run before trusting an address.",
     price: "$0.06",
     icon: "🛡️",
     category: "AI",
@@ -1726,7 +1726,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Transaction Explainer",
     tagline: "Plain-English explanation of any Base transaction",
     description:
-      "Give a Base transaction hash and Claude explains what it actually did in plain English — the action, a risk read (failed tx, risky approval, high-value transfer), and notes. Turns raw calldata into an answer agents and humans can use.",
+      "Give a Base transaction hash and AI explains what it actually did in plain English — the action, a risk read (failed tx, risky approval, high-value transfer), and notes. Turns raw calldata into an answer agents and humans can use.",
     price: "$0.04",
     icon: "💬",
     category: "AI",
@@ -1738,7 +1738,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Contract Risk Explainer",
     tagline: "What dangerous powers a contract has, in plain English",
     description:
-      "Combines security flags with the verified ABI's function names, then Claude explains the contract's dangerous capabilities — owner can mint, pause, blacklist, upgrade or self-destruct — with a danger level. Goes beyond raw flags to read what the contract can actually do.",
+      "Combines security flags with the verified ABI's function names, then AI explains the contract's dangerous capabilities — owner can mint, pause, blacklist, upgrade or self-destruct — with a danger level. Goes beyond raw flags to read what the contract can actually do.",
     price: "$0.04",
     icon: "📜",
     category: "AI",
@@ -1762,7 +1762,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Extract",
     tagline: "Unstructured text → structured JSON, one call",
     description:
-      "Turn ANY text into clean, schema-enforced JSON: pass text= plus the fields you want (fields=name,email,price,date — up to 10) and get exactly those keys back, guaranteed-valid JSON via Claude structured outputs. Add list=true to extract EVERY repeated record (invoice lines, listings, table rows) as an array. Up to 16K chars per call. Not crypto-specific — the universal parse step for agent pipelines: pages, emails, receipts, logs. Many documents? ai-extract-batch: 10 in one call for $0.10.",
+      "Turn ANY text into clean, schema-enforced JSON: pass text= plus the fields you want (fields=name,email,price,date — up to 10) and get exactly those keys back, guaranteed-valid JSON via structured outputs. Add list=true to extract EVERY repeated record (invoice lines, listings, table rows) as an array. Up to 16K chars per call. Not crypto-specific — the universal parse step for agent pipelines: pages, emails, receipts, logs. Many documents? ai-extract-batch: 10 in one call for $0.10.",
     // Raised from $0.03 on 2026-08-20. list=true can return every row of a 16K
     // document, and at the output budget that needs, the model cost alone ran to
     // ~$0.044 — selling it below cost. The batch endpoint is now the cheap path
@@ -2569,7 +2569,7 @@ export const SERVICES: ServiceDef[] = [
     name: "AI Translate",
     tagline: "Translate up to 6K chars to any language",
     description:
-      "Claude-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. Priced by length: $0.03 to 2,000 characters, $0.08 above — the 402 challenge quotes the price for the text you sent. No API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users.",
+      "LLM-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. Priced by length: $0.03 to 2,000 characters, $0.08 above — the 402 challenge quotes the price for the text you sent. No API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users.",
     price: "$0.03",
     icon: "🌐",
     category: "AI",

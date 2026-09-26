@@ -68,7 +68,7 @@ export function GET() {
         homepage: SITE,
         catalog: `${SITE}/.well-known/x402`,
         install: { command: "npx", args: ["-y", "x402-bazaar-mcp"] },
-        // Preferred by every zero-install surface (Smithery, Claude and ChatGPT
+        // Preferred by every zero-install surface (Smithery and desktop assistants'
         // connectors); none of them can take a stdio server.
         remote: { type: "streamable-http", url: `${SITE}/mcp` },
         toolCount: tools.length,

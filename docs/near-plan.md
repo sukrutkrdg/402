@@ -1,7 +1,7 @@
 # NEAR ekosistemi iş planı
 
 > Durum: Faz 0 ve Faz 1 **canlıda**, ilk NEAR satışı 2026-09-26 · Faz 2: yeni pazarın API'si bulundu, tasarım bekliyor · sahibi: sukrutkrdg
-> Bu belge hem iş planı hem geliştirme yol haritasıdır. Claude ile yapılan her
+> Bu belge hem iş planı hem geliştirme yol haritasıdır. Yapılan her
 > geliştirme oturumu buradan başlar; bir faz bittiğinde "Durum" satırı güncellenir.
 
 ## 1. Hedef
@@ -243,7 +243,7 @@ NEAR zincirindeki tokenlar (NEP-141) için güvenlik servisleri, ya da ayrı bir
 |---|---|---|---|
 | A. Chain Signatures | Normal x402 fiyatı | Yok | Mevcut sistemle birebir aynı |
 | B. Intents kredileri | Paket fiyatı ($0.25 / $1 / $5 / $20) | Takas ücreti alıcıda (`EXACT_OUTPUT`) | Kayıttaki "outstanding" bakiye bir borçtur |
-| C. Agent Market | İş başına teklif (NEAR) | Claude + pazar ücreti + NEAR→USDC takası | NEAR fiyat riski: kazanç düzenli olarak USDC'ye çevrilir |
+| C. Agent Market | İş başına teklif (NEAR) | Model maliyeti + pazar ücreti + NEAR→USDC takası | NEAR fiyat riski: kazanç düzenli olarak USDC'ye çevrilir |
 
 Bu belgede gelir tahmini **bilinçli olarak yok**. Elimizde NEAR kaynaklı talep verisi yok ve
 Polygon deneyi beklentinin talep demek olmadığını gösterdi. Rakamlar Faz 0 ve Faz 1
@@ -275,7 +275,7 @@ doğrulanmalı; gerekirse ortamın ağ izinlerine bu adresler eklenmeli:
       kendi yazdığımız akış yerine standart şemaya taşınabilir; birleştirilmediyse
       bekleme yok, Faz 1 kendi akışıyla ilerler.
 
-## 8. Claude ile geliştirme sırası
+## 8. Geliştirme sırası
 
 Her oturum bu dosyayı okuyarak başlar ve bir fazın bir parçasını bitirir:
 
@@ -286,7 +286,7 @@ Her oturum bu dosyayı okuyarak başlar ve bir fazın bir parçasını bitirir:
 
 Her adımda `npm run typecheck`, `npm test` ve `npm run build` temiz olmadan push yok.
 
-## 9. Oturum geçmişi (2026-09-26, Claude Code web oturumu)
+## 9. Oturum geçmişi (2026-09-26)
 
 Birleştirilen PR'lar (hepsi `main`'de, Vercel'de canlı):
 
@@ -297,7 +297,7 @@ Birleştirilen PR'lar (hepsi `main`'de, Vercel'de canlı):
 | #5 | KV yazma hatasının nedenini yanıtta gösterme |
 | #6 | Upstash'in HTTP 200 + `error` yanıtını hata sayma; istek başına KV komutlarını azaltma |
 | #7 | `/credits` sayfasında "Pay from NEAR", katalog, OpenAPI, README; `.near` ek koruması |
-| #8, #9 | Devir notları (`CLAUDE.md`), NEAR pazarı API bulguları |
+| #8, #9 | Geliştirme notları (`docs/DEVELOPMENT.md`), NEAR pazarı API bulguları |
 | #10 | MCP tanıtım metnine NEAR ile kredi; pazara giriş yolu: bağlayıcı kataloğu |
 | #11, #12 | NEAR satışları `/stats`'ta ayrı panelde (Telegram bildirimi sahibi istemediği için kaldırıldı) |
 | #13 | MCP kayıtları (server card, manifest, npm paketi 0.2.8) NEAR ile ödemeyi anlatıyor |
@@ -318,7 +318,7 @@ Ortam ve işletme:
   402 kayıtlarını hafifletmek (dönüşüm istatistiklerini etkiler, sahibinin kararı).
 - İlk NEAR satışı: bkz. Faz 1 durumu. Para cüzdana ve `/stats`'a ulaştı.
 - Bu web oturumu 402.com.tr, market.near.ai, near.ai ve 1click.chaindefuser.com adreslerine
-  erişemiyordu; canlı testleri sahibi kendi bilgisayarından yaptı. Terminaldeki Claude bu
+  erişemiyordu; canlı testleri sahibi kendi bilgisayarından yaptı. Yerel geliştirme ortamı bu
   adreslere erişebilir.
 - Test takımında `counterparty.test.ts` (5) ve `domain-check.test.ts` (4) canlı internet testleri;
   ağı kısıtlı ortamda başarısız olmaları normal.
