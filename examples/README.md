@@ -10,7 +10,7 @@ There are three ways to integrate, easiest first.
 
 ---
 
-## 1. MCP (Claude Desktop, Cursor, any MCP client) — recommended
+## 1. MCP (Cursor, Cline, any MCP client) — recommended
 
 Every Bazaar service appears as a tool automatically.
 

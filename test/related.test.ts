@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { relatedFor } from "@/lib/related";
 
 /**
  * Read the catalogue from source rather than importing SERVICES: the module
@@ -73,5 +74,13 @@ describe("related suggestions point at things that exist", () => {
     const src = readFileSync(new URL("../src/lib/related.ts", import.meta.url), "utf8");
     const map = src.split("const PAIRS")[1].split("};")[0];
     expect(map).not.toMatch(/\$\d/);
+  });
+
+  it("keeps a NEAR call's suggestions on NEAR — no Base tools, no file tools", () => {
+    for (const id of ["near-token-safety", "near-pre-trade-gate", "near-transfer-preflight", "near-swap-quote", "near-account", "near-portfolio"]) {
+      const ids = relatedFor(id).map((r) => r.id);
+      expect(ids.length, id).toBe(3);
+      expect(ids.every((x) => x.startsWith("near-")), `${id} → ${ids.join(", ")}`).toBe(true);
+    }
   });
 });

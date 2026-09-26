@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Regression for the bug where aiContractRisk read `abiData.abi` (which never
-// exists) instead of `abiData.functions`, so Claude got zero function names.
+// exists) instead of `abiData.functions`, so the model got zero function names.
 const { createMock, tokenRiskMock, contractAbiMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
   tokenRiskMock: vi.fn(),
@@ -20,7 +20,7 @@ import { aiContractRisk } from "@/lib/ai-report";
 
 const CONTRACT = "0x4444444444444444444444444444444444444444";
 
-describe("aiContractRisk — passes ABI function names to Claude", () => {
+describe("aiContractRisk — passes ABI function names to the model", () => {
   beforeEach(() => {
     createMock.mockReset();
     process.env.ANTHROPIC_API_KEY = "test-key";
@@ -48,7 +48,7 @@ describe("aiContractRisk — passes ABI function names to Claude", () => {
     });
   });
 
-  it("includes the contract's function names in the message sent to Claude", async () => {
+  it("includes the contract's function names in the message sent to the model", async () => {
     await aiContractRisk({ address: CONTRACT });
     expect(createMock).toHaveBeenCalledOnce();
     const payload = createMock.mock.calls[0][0] as { messages: Array<{ content: string }> };

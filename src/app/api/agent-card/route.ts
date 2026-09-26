@@ -16,7 +16,7 @@ export function GET() {
   return Response.json({
     name: "x402 Bazaar",
     description:
-      "Pay-per-call onchain data & AI reports for the Base agent economy — token risk, wallet intelligence, OFAC sanctions, prices, NFTs, and Claude-written AI verdicts. Paid per request in USDC over x402, no API keys.",
+      "Pay-per-call onchain data & AI reports for the Base agent economy — token risk, wallet intelligence, OFAC sanctions, prices, NFTs, and AI-written AI verdicts. Paid per request in USDC over x402, no API keys.",
     url: SITE,
     documentationUrl: `${SITE}/agents`,
     version: "1.0.0",

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
  * question and the answer summarises the whole Base token market. Measured on
  * 2026-09-17 across four paid calls it took 9.7s, 10.8s, 16.1s and 19.5s end to
  * end — about 2.5s of that is x402 settlement and under a second is the two
- * upstream fetches, so the rest is one Claude call. A second call immediately
+ * upstream fetches, so the rest is one model call. A second call immediately
  * after the first was no faster, so it is the model's own variance rather than
  * a cold start.
  *

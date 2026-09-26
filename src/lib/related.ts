@@ -42,7 +42,18 @@ const PAIRS: Record<string, string[]> = {
   "rug-score": ["pre-trade-gate", "token-risk"],
   "sellability": ["pre-trade-gate", "rug-score"],
   "b20-safety": ["b20-gate", "b20-policy-watch"],
+  // NEAR: a caller asking about a NEAR token or account wants the next NEAR
+  // step, not the Base toolkit that shares its category.
+  "near-token-safety": ["near-pre-trade-gate", "near-transfer-preflight", "near-swap-quote"],
+  "near-pre-trade-gate": ["near-swap-quote", "near-transfer-preflight", "near-portfolio"],
+  "near-transfer-preflight": ["near-account", "near-token-safety", "near-swap-quote"],
+  "near-swap-quote": ["near-pre-trade-gate", "near-token-safety", "near-transfer-preflight"],
+  "near-account": ["near-portfolio", "near-transfer-preflight", "near-token-safety"],
+  "near-portfolio": ["near-account", "near-pre-trade-gate", "near-swap-quote"],
 };
+
+/** NEAR-native services: suggestions stay on NEAR, and the (EVM-side) file tools are not appended. */
+const isNear = (id: string) => id.startsWith("near-");
 
 /**
  * The capability every agent needs and almost none of our callers know we have:
@@ -81,7 +92,7 @@ export function relatedFor(serviceId: string): Related[] {
     }
   }
   // One line about the output side, for callers who have never seen it.
-  if (!OUTPUT_SIDE.includes(serviceId) && !picks.some((p) => OUTPUT_SIDE.includes(p))) {
+  if (!isNear(serviceId) && !OUTPUT_SIDE.includes(serviceId) && !picks.some((p) => OUTPUT_SIDE.includes(p))) {
     picks.length = Math.min(picks.length, 2);
     add(OUTPUT_SIDE[0]);
   }

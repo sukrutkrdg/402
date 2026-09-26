@@ -2,7 +2,7 @@
  * AI Token Report — the flagship differentiated service.
  *
  * Aggregates our own on-chain services (risk + holder distribution + price +
- * OFAC sanctions) and asks Claude to synthesize a concise, structured
+ * OFAC sanctions) and asks the model to synthesize a concise, structured
  * due-diligence verdict for an AI trading agent. This is value you can't get
  * free anywhere: it combines data we already fetch with the LLM reasoning layer.
  */
@@ -213,7 +213,7 @@ export async function aiTokenReport(params: Record<string, string>) {
 /**
  * Deep Due-Diligence — the premium flagship. One call runs the FULL battery of
  * signals (contract risk, holder concentration, liquidity depth, EXIT liquidity,
- * OFAC sanctions) and has Claude synthesize an institutional-grade verdict with a
+ * OFAC sanctions) and has the model synthesize an institutional-grade verdict with a
  * confidence-weighted score and an explicit tradeability read (can you buy AND
  * sell). The moat is the orchestration + synthesis, not any single datapoint —
  * hard to replicate, worth a premium.
@@ -339,7 +339,7 @@ export async function aiDeepDueDiligence(params: Record<string, string>) {
  * premium tier of the B20 suite (uncontested: no one else has the B20
  * primitives). Composes the full picture — powers, who holds them, allowlist vs
  * blocklist, dilution headroom, metadata mutability, and ACTUAL seizure history
- * (burnBlocked) — then Claude writes an institutional verdict. Priced for the
+ * (burnBlocked) — then the model writes an institutional verdict. Priced for the
  * depth. Not financial advice.
  */
 export async function b20Dossier(params: Record<string, string>) {
@@ -466,7 +466,7 @@ export async function b20Dossier(params: Record<string, string>) {
 
 /**
  * AI Wallet Report — flagship wallet intelligence. Aggregates net worth, age/
- * activity and recent transactions, then Claude synthesizes a verdict.
+ * activity and recent transactions, then the model synthesizes a verdict.
  */
 export async function aiWalletReport(params: Record<string, string>) {
   const address = (params.address || "").trim();
@@ -529,7 +529,7 @@ export async function aiWalletReport(params: Record<string, string>) {
 
 /**
  * AI Market Brief — second flagship. A zoom-OUT companion to AI Token Report:
- * aggregates trending + newly-listed Base tokens and has Claude write a concise
+ * aggregates trending + newly-listed Base tokens and has the model write a concise
  * situational brief (mood, highlights, new & notable, cautions). Lets an agent
  * get market context in one paid call instead of many.
  */
@@ -544,7 +544,7 @@ export async function aiWalletReport(params: Record<string, string>) {
  * It needs a window because generating one is slow: measured on 2026-09-17,
  * end to end took 9.7s, 10.8s, 16.1s and 19.5s across four paid calls, of which
  * roughly 2.5s is x402 settlement and the two upstream data fetches are under a
- * second — the rest is a single Claude call, and the spread is the model's own
+ * second — the rest is a single model call, and the spread is the model's own
  * variance rather than a cold start (a second call straight after the first was
  * no faster). An agent with a default 10-second client timeout would sometimes
  * pay and then abandon the request.
@@ -671,7 +671,7 @@ export async function aiMarketBrief(_params: Record<string, string>) {
 }
 
 /**
- * AI Wallet Security Audit — pulls a wallet's token approvals and has Claude
+ * AI Wallet Security Audit — pulls a wallet's token approvals and has the model
  * produce a security report: what can drain it, which approvals to revoke, why.
  */
 export async function aiWalletSecurity(params: Record<string, string>) {
@@ -779,7 +779,7 @@ export async function aiWalletSecurity(params: Record<string, string>) {
 }
 
 /**
- * AI Transaction Explainer — decodes a Base tx and has Claude explain in plain
+ * AI Transaction Explainer — decodes a Base tx and has the model explain in plain
  * English what it did, plus a risk read. Turns raw calldata into an answer.
  */
 export async function aiTxExplain(params: Record<string, string>) {
@@ -843,7 +843,7 @@ export async function aiTxExplain(params: Record<string, string>) {
 
 /**
  * AI Contract Risk Explainer — combines security flags (GoPlus) with the
- * verified ABI's function names, and Claude explains what dangerous capabilities
+ * verified ABI's function names, and the model explains what dangerous capabilities
  * the contract has (mint, pause, blacklist, ownership, upgradeable) in plain English.
  */
 export async function aiContractRisk(params: Record<string, string>) {
@@ -858,7 +858,7 @@ export async function aiContractRisk(params: Record<string, string>) {
   if (!riskData && !abiData) throw new Error("No contract data available for this address");
 
   // contractAbi() returns a ready `functions: string[]` (not a raw `abi` array).
-  // Reading `.abi` yielded [] → Claude got no function names to analyse.
+  // Reading `.abi` yielded [] → the model got no function names to analyse.
   //
   // Order matters because the list gets capped: state-changing functions are
   // the only ones that can do anything to a holder, so they go first. Taking

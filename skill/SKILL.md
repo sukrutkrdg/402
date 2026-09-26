@@ -16,7 +16,7 @@ rail).
 |---|---|
 | "Is token X safe? Is it a rug / honeypot?" | `token-risk`, `rug-score`, `ai-token-report` |
 | "Is this AAPL/TSLA token on Base the real one?" | `b20-safety` — covers all 13 of Coinbase's tokenized equities by reading the transfer-policy administrator on chain, not a list, so a lookalike wearing the ticker is separated from a real issuance and a newly issued one is recognised immediately |
-| "Give me a verdict on token X" | `ai-token-report` (Claude-written) |
+| "Give me a verdict on token X" | `ai-token-report` (AI-written) |
 | "Screen address X for OFAC sanctions" | `sanctions`, `sanctions-batch`, `compliance-check` |
 | "What's in wallet X? Net worth?" | `wallet-networth` |
 | "How old / active is wallet X?" (sybil check) | `wallet-summary` |
@@ -35,7 +35,7 @@ Full, always-current list: fetch `https://402.com.tr/.well-known/x402`.
 
 ## How to call it
 
-**Easiest — MCP server** (Claude Desktop, Cursor, any MCP client):
+**Easiest — MCP server** (Cursor, Cline, any MCP client):
 
 ```json
 {

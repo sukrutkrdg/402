@@ -432,10 +432,10 @@ export async function POST(req: NextRequest) {
   if (/^\/ai\b/i.test(text)) {
     const m = text.match(/0x[0-9a-fA-F]{40}/);
     if (!m) {
-      await send(chatId, "Usage: <code>/ai 0x…</code> — Claude-written due-diligence verdict for a token.");
+      await send(chatId, "Usage: <code>/ai 0x…</code> — AI-written due-diligence verdict for a token.");
       return NextResponse.json({ ok: true });
     }
-    // /ai calls Claude (real cost) — cap per chat per day.
+    // /ai calls the model (real cost) — cap per chat per day.
     const day = new Date().toISOString().slice(0, 10);
     if (((await kvIncr(`tg:ai:${chatId}:${day}`, 86400)) ?? 99) > 15) {
       await send(chatId, "Daily /ai limit reached (15). Use /scan for a free instant report anytime.");
@@ -466,7 +466,7 @@ export async function POST(req: NextRequest) {
   if (/^\/wallet\b/i.test(text)) {
     const m = text.match(/0x[0-9a-fA-F]{40}/);
     if (!m) {
-      await send(chatId, "Usage: <code>/wallet 0x…</code> — Claude-written profile of a wallet.");
+      await send(chatId, "Usage: <code>/wallet 0x…</code> — AI-written profile of a wallet.");
       return NextResponse.json({ ok: true });
     }
     const day = new Date().toISOString().slice(0, 10);
