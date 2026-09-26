@@ -30,22 +30,22 @@ const frameEmbed = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "x402 Bazaar — Pay-per-call API marketplace on Base",
+  title: "x402 Bazaar — Pay-per-call API marketplace on Base & NEAR",
   description:
-    "A pay-per-call API marketplace powered by x402 and Base Builder Codes. Every payment is attributed onchain via ERC-8021.",
+    "A pay-per-call API marketplace for agents on Base and NEAR, powered by x402 and Base Builder Codes. Every payment is attributed onchain via ERC-8021; NEAR agents can pay from NEAR.",
   applicationName: "x402 Bazaar",
   alternates: { canonical: SITE_URL },
   openGraph: {
     type: "website",
     siteName: "x402 Bazaar",
     url: SITE_URL,
-    title: "x402 Bazaar — Pay-per-call API marketplace on Base",
+    title: "x402 Bazaar — Pay-per-call API marketplace on Base & NEAR",
     description:
-      "Pay-per-call APIs for AI agents on Base. Pay a tiny USDC micro-payment per call over x402 — no keys, no signup.",
+      "Pay-per-call APIs for AI agents on Base and NEAR. Pay a tiny USDC micro-payment per call over x402, or buy credits from NEAR — no keys, no signup.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "x402 Bazaar — Pay-per-call APIs on Base",
+    title: "x402 Bazaar — Pay-per-call APIs on Base & NEAR",
     description: "Pay-per-call APIs for AI agents. USDC over x402, no keys. MCP-ready.",
   },
   other: {
@@ -91,7 +91,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="leading-tight">
                 <div className="text-sm font-bold tracking-tight">x402 Bazaar</div>
                 <div className="text-[10px] uppercase tracking-widest text-gray-500">
-                  Builder Codes · Base
+                  Base · NEAR
                 </div>
               </div>
             </Link>
@@ -161,7 +161,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main className="mx-auto max-w-6xl px-5 py-8">{children}</main>
         <footer className="mx-auto max-w-6xl px-5 py-10 text-center text-xs text-gray-500">
-          <p>Built with x402 v2 + Base Builder Codes (ERC-8021). Payments settle in USDC on Base mainnet.</p>
+          <p>Built with x402 v2 + Base Builder Codes (ERC-8021). Payments settle in USDC on Base mainnet; NEAR agents can pay from NEAR via NEAR Intents.</p>
           <p className="mt-2">
             Contact:{" "}
             <a className="text-sky-400 hover:underline" href="mailto:sukrutkrdg@gmail.com">

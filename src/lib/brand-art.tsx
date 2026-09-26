@@ -358,13 +358,13 @@ export function thumbArt() {
           402
         </div>
         <div style={{ display: "flex", fontSize: 28, fontWeight: 600, color: "#7e8aa0", letterSpacing: 4 }}>
-          BUILDER CODES · BASE
+          BASE · NEAR
         </div>
       </div>
 
       <div style={{ display: "flex", fontSize: 86, fontWeight: 800, lineHeight: 1.05 }}>x402 Bazaar</div>
       <div style={{ display: "flex", fontSize: 38, color: "#aab4c5", marginTop: 20 }}>
-        Pay-per-call APIs on Base, attributed onchain.
+        Pay-per-call APIs for agents on Base &amp; NEAR.
       </div>
 
       <div style={{ display: "flex", marginTop: 42 }}>
