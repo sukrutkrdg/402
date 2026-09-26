@@ -44,6 +44,23 @@ export default function BaseSwapClient() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
+  // Picking the token already on the other side swaps the two, so sell ≠ buy always.
+  const pickSell = (v: string) => {
+    if (v === buy) setBuy(sell);
+    setSell(v);
+    setQuote(null);
+  };
+  const pickBuy = (v: string) => {
+    if (v === sell) setSell(buy);
+    setBuy(v);
+    setQuote(null);
+  };
+  const flip = () => {
+    setSell(buy);
+    setBuy(sell);
+    setQuote(null);
+  };
+
   const web = connectors.filter((c) => !/farcaster/i.test(c.id + c.name));
   const input = "w-full rounded-xl border border-base-line bg-black/50 px-3 py-2 text-sm outline-none focus:border-sky-400";
 
@@ -149,7 +166,7 @@ export default function BaseSwapClient() {
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-xs text-gray-400">
           You sell
-          <select className={input} value={sell} onChange={(e) => (setSell(e.target.value), setQuote(null))}>
+          <select className={input} value={sell} onChange={(e) => pickSell(e.target.value)}>
             {TOKENS.map((t) => (
               <option key={t}>{t}</option>
             ))}
@@ -161,21 +178,26 @@ export default function BaseSwapClient() {
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-400">
           You buy
-          <select className={input} value={buy} onChange={(e) => (setBuy(e.target.value), setQuote(null))}>
+          <select className={input} value={buy} onChange={(e) => pickBuy(e.target.value)}>
             {TOKENS.map((t) => (
               <option key={t}>{t}</option>
             ))}
           </select>
         </label>
       </div>
-      <button
-        type="button"
-        disabled={!!busy || !amount}
-        onClick={getQuote}
-        className="w-fit rounded-xl border border-sky-500/50 px-5 py-2 text-sm font-semibold hover:bg-sky-500/10 disabled:opacity-50"
-      >
-        Preview route
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={flip} title="Swap direction" className="rounded-xl border border-base-line px-3 py-2 text-sm hover:border-sky-400">
+          ⇅ {buy} → {sell}
+        </button>
+        <button
+          type="button"
+          disabled={!!busy || !amount || sell === buy}
+          onClick={getQuote}
+          className="rounded-xl border border-sky-500/50 px-5 py-2 text-sm font-semibold hover:bg-sky-500/10 disabled:opacity-50"
+        >
+          Preview route
+        </button>
+      </div>
 
       {quote && (
         <div className="flex flex-col gap-3 rounded-xl border border-base-line bg-black/40 p-4 text-sm">
