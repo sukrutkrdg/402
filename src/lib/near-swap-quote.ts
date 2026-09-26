@@ -53,6 +53,8 @@ export interface QuoteResult {
   amountIn: string;
   amountInUsd: number | null;
   amountOut: string;
+  /** amountOut in base units — what a follow-up quote (e.g. selling it back) takes as input. */
+  amountOutRaw: string;
   amountOutUsd: number | null;
   minAmountOut: string;
   rate: number | null;
@@ -110,6 +112,7 @@ export async function dryQuote(from: IntentsToken, to: IntentsToken, amountBase:
     amountIn: String(q.amountInFormatted ?? formatUnits(String(q.amountIn), from.decimals)),
     amountInUsd: inUsd,
     amountOut: String(q.amountOutFormatted ?? formatUnits(String(q.amountOut), to.decimals)),
+    amountOutRaw: String(q.amountOut),
     amountOutUsd: outUsd,
     minAmountOut: formatUnits(String(q.minAmountOut ?? q.amountOut), to.decimals),
     rate: inH > 0 ? +(outH / inH).toPrecision(8) : null,
