@@ -336,3 +336,21 @@ Ortam ve işletme:
 - `NEARBLOCKS_API_KEY` isteğe bağlı; yoksa herkese açık, IP başına sınırlı API kullanılır.
 - Ortak `formatUnits` düzeltmesi: "3.000000" yerine "3".
 - Bu oturum NearBlocks'a erişemedi; canlı doğrulamayı sahibi yapacak.
+
+## Faz 5 — para nerede: NEAR Intents komisyonu ve DeFi (2026-09-26)
+
+NEAR'da gelirin %85'i NEAR Intents ücretlerinden (toplam $20 milyar+ hacim). Dağıtım ortakları
+1Click `appFees` ile her swap'tan pay alıyor (JWT ile 50/50 bölünür). DeFi'de en büyükler Rhea
+($224M), Meta Pool ($92M), LiNEAR ($90M).
+
+- `near-swap` ($0.01): gerçek 1Click teklifi + yatırma adresi. Para bizden geçmez. NEAR token
+  alırken önce near-token-safety; STOP ise force=1 olmadan reddedilir (ücret alınmaz).
+  `NEAR_INTENTS_FEE_RECIPIENT` + `NEAR_INTENTS_FEE_BPS` ayarlanınca `appFees` eklenir (en çok 100 bps).
+  Boşken komisyon kapalı.
+- `near-swap-status` ($0.002): yatırma adresine göre swap durumu; bilinmeyen adres NOT_FOUND döner.
+- `near-staking-yields` ($0.02): LiNEAR `ft_price()` ve Meta Pool `get_st_near_price()` bugün ile
+  N gün önce (arşiv RPC) karşılaştırılıp yıllıklandırılır; ayrıca NEAR Intents ile anında çıkış maliyeti.
+- `near-lending-health` ($0.02): Rhea Lending (`contract.main.burrow.near`) sağlık faktörü, kontratın
+  formülüyle (volatility_ratio, extra_decimals); fiyatlar NEAR Intents'ten. Formül kaynağı: burrowHQ/burrow-sdk-python.
+- Sahibinin yapacakları: Partner Dashboard'dan 1Click anahtarı → `NEAR_INTENTS_JWT`; komisyon hesabı →
+  `NEAR_INTENTS_FEE_RECIPIENT`; oran → `NEAR_INTENTS_FEE_BPS` (öneri 20).

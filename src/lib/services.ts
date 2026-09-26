@@ -24,6 +24,9 @@ import { nearPreTradeGate } from "./near-pre-trade-gate";
 import { nearPortfolio } from "./near-portfolio";
 import { nearWalletActivity } from "./near-wallet-activity";
 import { nearTokenHolders } from "./near-token-holders";
+import { nearSwap, nearSwapStatus } from "./near-swap";
+import { nearStakingYields } from "./near-staking-yields";
+import { nearLendingHealth } from "./near-lending-health";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1408,6 +1411,64 @@ export const SERVICES: ServiceDef[] = [
       { name: "top", label: "Holders to list (optional, 1-25)", placeholder: "10" },
     ],
     handler: nearTokenHolders,
+  },
+  {
+    id: "near-swap",
+    name: "NEAR Intents Swap",
+    tagline: "Swap any asset through NEAR Intents — get a deposit address",
+    description:
+      "An executable NEAR Intents swap: a binding quote with a deposit address. Send amountIn of the origin asset there before the deadline; the output goes to recipient, or it is refunded to refundTo. Funds never pass through us. Any asset NEAR Intents routes, across chains. Buying a NEAR token runs near-token-safety first and refuses a STOP token unless force=1. Track with near-swap-status.",
+    price: "$0.01",
+    icon: "🔁",
+    category: "NEAR",
+    params: [
+      { name: "from", label: "Asset you pay with", placeholder: "USDC", required: true },
+      { name: "to", label: "Asset you want", placeholder: "NEAR", required: true },
+      { name: "amount", label: "Amount of the paying asset", placeholder: "100", required: true },
+      { name: "recipient", label: "Receiving address on the destination chain", placeholder: "alice.near", required: true },
+      { name: "refundTo", label: "Your address on the origin chain (refunds)", placeholder: "alice.near", required: true },
+      { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
+    ],
+    handler: nearSwap,
+  },
+  {
+    id: "near-swap-status",
+    name: "NEAR Intents Swap Status",
+    tagline: "Where is my NEAR Intents swap?",
+    description:
+      "Status of a NEAR Intents swap by its deposit address: waiting for deposit, deposit seen, processing, done, refunded or failed — with amounts in and out, refund reason, and the origin and destination transactions. Use after near-swap.",
+    price: "$0.002",
+    icon: "🔁",
+    category: "NEAR",
+    params: [{ name: "depositAddress", label: "Deposit address from near-swap", placeholder: "0x… or …near", required: true }],
+    handler: nearSwapStatus,
+  },
+  {
+    id: "near-staking-yields",
+    name: "NEAR Staking Yields",
+    tagline: "What liquid staking on NEAR really pays, measured on-chain",
+    description:
+      "Measured APY of NEAR liquid staking (LiNEAR, Meta Pool stNEAR): each token's redemption price in NEAR now against N days ago from an archival node, annualised — no advertised rates. Plus NEAR staked behind each, and the cost of exiting instantly by selling for wNEAR through NEAR Intents instead of waiting ~2–3 days to unstake. days sets the window (default 7), size the exit in USD.",
+    price: "$0.02",
+    icon: "Ⓝ",
+    category: "NEAR",
+    params: [
+      { name: "days", label: "Window in days (optional, 1-30)", placeholder: "7" },
+      { name: "size", label: "Exit size in USD (optional)", placeholder: "1000" },
+    ],
+    handler: nearStakingYields,
+  },
+  {
+    id: "near-lending-health",
+    name: "NEAR Lending Health",
+    tagline: "How close is this Rhea Lending position to liquidation?",
+    description:
+      "Health factor of an account's Rhea Lending (Burrow) position on NEAR, computed as the contract does — collateral discounted and debt marked up by each asset's volatility ratio — with collateral and debt in USD, how far collateral can fall before liquidation, and GO / HOLD / STOP. Positions from the contract, prices from NEAR Intents.",
+    price: "$0.02",
+    icon: "🩺",
+    category: "NEAR",
+    params: [{ name: "account", label: "NEAR account", placeholder: "alice.near", required: true }],
+    handler: nearLendingHealth,
   },
   {
     id: "encode-selector",

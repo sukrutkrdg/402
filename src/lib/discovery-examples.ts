@@ -245,6 +245,11 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "near-portfolio": { account: "tether.multisafe.near" },
   "near-wallet-activity": { account: "tether.multisafe.near" },
   "near-token-holders": { token: "usdt.tether-token.near" },
+  "near-staking-yields": { days: "7" },
+  // A quote only: no deposit is ever sent, so nothing moves.
+  "near-swap": { from: "USDC", to: "NEAR", amount: "1", recipient: "intents.near", refundTo: "intents.near" },
+  "near-swap-status": { depositAddress: "0x0000000000000000000000000000000000000000" },
+  "near-lending-health": { account: "tether.multisafe.near" },
   "base-tx": { hash: TX },
   "base-receipt": { hash: TX },
   "tx-decode": { hash: TX },

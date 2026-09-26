@@ -54,6 +54,9 @@ export function nearFundingLines(site: string): string[] {
     `  - [near-portfolio](${site}/api/x402/near-portfolio?account=alice.near) — NEAR + NEP-141 holdings valued in USD.`,
     `  - [near-wallet-activity](${site}/api/x402/near-wallet-activity?account=alice.near) — recent history summed up: NEAR and token flows, contracts called, counterparties.`,
     `  - [near-token-holders](${site}/api/x402/near-token-holders?token=usdt.tether-token.near) — top holders and supply concentration, pools told apart from whales.`,
+    `  - [near-swap](${site}/api/x402/near-swap?from=USDC&to=NEAR&amount=100&recipient=alice.near&refundTo=alice.near) — executable NEAR Intents swap: returns a deposit address; track with near-swap-status.`,
+    `  - [near-staking-yields](${site}/api/x402/near-staking-yields) — measured APY of LiNEAR and stNEAR, and the cost of exiting instantly.`,
+    `  - [near-lending-health](${site}/api/x402/near-lending-health?account=alice.near) — Rhea Lending health factor and distance to liquidation.`,
   ];
   if ("nearIntentsCredits" in f && f.nearIntentsCredits) {
     lines.push(
