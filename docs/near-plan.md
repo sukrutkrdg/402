@@ -113,7 +113,7 @@ servis çağrısında harcanmış, `creditsLedger` bunu NEAR kanalında gösterm
 
 ### Faz 2 — NEAR AI Agent Market'te satıcı olmak (tasarım aşaması)
 
-**Durum: API bulundu, tasarım bekliyor. Kod yazılmadı.**
+**Durum: spesifikasyon incelendi (aşağıda). Sahibinin A/B kararı bekleniyor. Kod yazılmadı.**
 
 **2026-09-26'da öğrenilenler:**
 
@@ -148,6 +148,47 @@ iş geldiğinde servisler içeriden çağrılır. Pazar x402 destekliyorsa, öde
 3. Kayıt akışını belirle: hesap (`/v1/auth/signup`) mı gerekiyor, ajan kaydı yeterli mi,
    builder agreement (`/v1/legal/builder-agreement`) kabulü mü gerekiyor?
 4. Sonucu bu bölüme yaz, sahibine sade dille özetle, onay almadan kod yazma.
+
+**Spesifikasyondan çıkanlar (2026-09-26, `docs/near-market/market.json`, "agents-market API 2.0.0"):**
+
+- **Pazar ne:** ajan *kiralama* platformu. Alıcı (insan ya da ajan) bir ajanı kiralar, pazar parayı
+  emanete alır, ajan işi teslim eder, alıcı onaylar, para ajanın pazar cüzdanına geçer.
+- **Alıcı pazara x402 ile ödüyor.** `/.well-known/x402` → `near:mainnet`, NEAR üzerindeki USDC,
+  `payTo` pazarın kendi hesabı. Şema `eip155:8453` (Base) ağını da tanıyor, ama şu an listede sadece
+  NEAR var. Yani x402 **pazarın tahsilatı** için; pazar bizim `/api/x402/*` uçlarımıza ödeme yapmıyor.
+- **Komisyon:** `GET /v1/platform/config` → `platform_fee_bps: 500` (%5).
+- **Kayıt:** `POST /v1/agents/register` giriş istemiyor: `handle` (3–30, `[a-z][a-z0-9-]*`, sonradan
+  değişmez), `name`, `category` (`finance`, `data`, `research`, `legal_compliance`, …), isteğe bağlı
+  `email`, `sla_seconds`. Yanıtta `accountId`, `agentId` ve **bir kez gösterilen** `apiToken` gelir.
+- **Çalışma şekli:** `runtime: http` (kendimiz barındırırız; pazar HMAC-SHA256 imzalı `hire.created`
+  olayını `webhook_url`'imize POST eder) ya da `managed` (pazar kendi LLM döngüsünü + becerileri çalıştırır).
+  `PATCH /v1/agents/{id}` ile `webhook_url`, `webhook_secret`, `description`, `input_schema`,
+  `output_schema`, `tags`, `listing_status` (`draft|live|paused|archived`) ayarlanır.
+  `POST /v1/agents/{id}/webhook/test` sahte bir ping gönderir. Webhook gövdesinin şeması
+  spesifikasyonda **yok**; ilk ping ile görülecek.
+- **Fiyat:** `POST /v1/agents/{id}/pricing-plans`, v1'de sadece `model: per_call`, `price_token` USD ya da USDC.
+- **Teslim:** `POST /v1/assignments/{id}/submit` → `{deliverableUrl, deliverableHash}`, isteğe bağlı
+  `/v1/assignments/{id}/start`.
+- **Parayı çekme — engel:** Yeni pazarda para çekme **sadece Stripe Connect ile USD olarak**
+  yapılıyor (`/v1/wallet/fiat/payout/*`). Kripto çekme uç noktası yok, sadece kripto *yatırma*
+  (`deposit-intents`) var. Stripe Connect'in Türkiye'de açılıp açılamadığı doğrulanmalı; açılamıyorsa
+  pazarda kazanılan para çekilemez.
+- **Beceri kataloğu:** `POST /v1/accounts/{id}/skills` (başlık, açıklama, ≤8 MiB dosya ya da https
+  linki). Pazarın barındırdığı (`managed`) ajanlar bu becerileri kullanıyor. Bizim `skill/SKILL.md`
+  dosyamız buraya konabilir; o zaman pazardaki ajanlar bizi doğrudan çağırıp **mevcut
+  yollarımızdan** (x402 Base ya da kredi) öder. Stripe gerekmez.
+
+**İki yol:**
+
+| | A. Satıcı ajan (`runtime: http`) | B. Beceri / araç olarak listelenmek |
+|---|---|---|
+| Para nereye gelir | Pazar cüzdanına (USD), %5 komisyon | Doğrudan bize: Base USDC ya da kredi |
+| Çekme | Sadece Stripe Connect (Türkiye'de olmayabilir) | Sorun yok, mevcut sistem |
+| Kod | Webhook alıcısı + iş yürütücü + teslim | Neredeyse yok: beceri dosyası + kayıt |
+| Risk | Teslim anlaşmazlıkları, SLA | Düşük |
+
+**Öneri:** Önce B (ucuz ve para doğrudan bize gelir), A'ya ancak Stripe ile para çekilebildiği
+doğrulanırsa geçilir. **Sahibinin kararı bekleniyor.**
 
 **Koruma önlemleri (değişmedi):** `ENABLE_NEAR_MARKET` bayrağı; ilk 2 hafta
 `NEAR_MARKET_MODE=dry-run` (hiçbir teklif ya da listeleme canlıya gitmez, sadece günlüğe yazılır);
