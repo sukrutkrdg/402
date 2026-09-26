@@ -322,3 +322,17 @@ Ortam ve işletme:
   adreslere erişebilir.
 - Test takımında `counterparty.test.ts` (5) ve `domain-check.test.ts` (4) canlı internet testleri;
   ağı kısıtlı ortamda başarısız olmaları normal.
+
+## Faz 4 — pazar analizinden gelen servisler (2026-09-26)
+
+`docs/near-market/analysis.md`: NEAR ajan pazarında en çok iş alan kripto servisleri cüzdan geçmişi
+(19 iş) ve token sahip yoğunluğu (7 iş). İkisi eklendi, NearBlocks indexer'ını okuyor
+(`src/lib/nearblocks.ts`, yanıt şekilleri NearBlocks'un açık kaynak API kodundan):
+
+- `near-wallet-activity` ($0.02): son işlemler + token transferleri → NEAR giriş/çıkış, token akışları,
+  en çok çağrılan kontratlar, karşı taraflar, sinyaller, tek satır özet.
+- `near-token-holders` ($0.02): en büyük sahipler, toplam arza oranla payları, kontrat/hesap ayrımı
+  (havuz ≠ balina), LOW/MEDIUM/HIGH yoğunluk.
+- `NEARBLOCKS_API_KEY` isteğe bağlı; yoksa herkese açık, IP başına sınırlı API kullanılır.
+- Ortak `formatUnits` düzeltmesi: "3.000000" yerine "3".
+- Bu oturum NearBlocks'a erişemedi; canlı doğrulamayı sahibi yapacak.

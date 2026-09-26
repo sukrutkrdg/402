@@ -126,8 +126,9 @@ export function formatUnits(raw: string, decimals: number): string {
   if (!/^\d+$/.test(raw)) return raw;
   const s = raw.padStart(decimals + 1, "0");
   const int = s.slice(0, s.length - decimals) || "0";
-  const frac = decimals ? s.slice(s.length - decimals).replace(/0+$/, "") : "";
-  return frac ? `${int}.${frac.slice(0, 6)}` : int;
+  // Cut to 6 places first, then drop trailing zeros — "3.0000001" reads as "3", not "3.000000".
+  const frac = decimals ? s.slice(s.length - decimals).slice(0, 6).replace(/0+$/, "") : "";
+  return frac ? `${int}.${frac}` : int;
 }
 
 /** Human decimal string → base-unit integer string; null when it is not a positive amount. */
