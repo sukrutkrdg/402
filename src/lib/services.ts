@@ -1399,7 +1399,7 @@ export const SERVICES: ServiceDef[] = [
     name: "NEAR Token Holders",
     tagline: "Who holds this NEAR token, and how concentrated is it?",
     description:
-      "Top holders of a NEP-141 token on NEAR with each one's share of total supply, labelled as the token itself, a contract (pool, bridge, custodian) or a plain account, so a pool is not mistaken for a whale. Holder count, top-1 and top-10 shares, and a LOW / MEDIUM / HIGH concentration over plain accounts. Supply from the NEAR RPC, holders from NearBlocks.",
+      "Top holders of a NEP-141 token on NEAR with each one's share of total supply, labelled as the token itself, an issuer treasury, a contract (pool, bridge, custodian) or a plain account, so neither a pool nor unissued stock is mistaken for a whale. Holder count, shares, and LOW / MEDIUM / HIGH concentration of plain accounts over circulating supply. Supply from the NEAR RPC, holders from NearBlocks.",
     price: "$0.02",
     icon: "Ⓝ",
     category: "NEAR",

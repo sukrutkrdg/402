@@ -7,13 +7,19 @@
  * from the NearBlocks indexer, since no contract can list its own holders.
  * Each top holder is labelled — the token itself, a contract (pools, bridges,
  * NEAR Intents: one account holding for many users), or a plain account —
- * because a pool holding 40% is not a whale holding 40%. Concentration is
- * measured over plain accounts only, and over everything.
+ * because a pool holding 40% is not a whale holding 40%. An issuer's treasury
+ * (named treasury/reserve/foundation/vault) holds stock not yet in circulation
+ * — normal for a stablecoin — so whale concentration is measured over plain
+ * accounts against the circulating supply (total minus token-contract and
+ * treasury holdings), and shown against the total too.
  */
 
 import "server-only";
 import { NEAR_ACCOUNT_RE, EMPTY_CODE_HASH, rpcQuery, viewCall, formatUnits, accountKind } from "./near-rpc";
 import { nearblocks, toBigInt } from "./nearblocks";
+
+/** Account names an issuer or protocol keeps unissued or reserve stock under. */
+const TREASURY_RE = /(^|[.\-_])(treasury|reserve|reserves|foundation|vault)([.\-_]|$)/;
 
 const pct = (part: bigint, whole: bigint) => (whole > 0n ? Number((part * 1_000_000n) / whole) / 10_000 : null);
 
@@ -63,32 +69,41 @@ export async function nearTokenHolders(params: Record<string, string>) {
         ? ("token-contract" as const)
         : codes[i]
           ? ("contract" as const)
-          : ("account" as const),
+          : TREASURY_RE.test(h.account)
+            ? ("treasury" as const)
+            : ("account" as const),
   }));
 
   const sum = (xs: { amount: bigint }[]) => xs.reduce((s, h) => s + h.amount, 0n);
   const whole = supply ?? sum(labelled);
   const plain = labelled.filter((h) => h.type === "account");
+  const reserved = sum(labelled.filter((h) => h.type === "treasury" || h.type === "token-contract"));
+  const circulating = whole > reserved ? whole - reserved : whole;
   const top1 = pct(labelled[0]?.amount ?? 0n, whole);
   const top10 = pct(sum(labelled.slice(0, 10)), whole);
-  const plainTop1 = pct(plain[0]?.amount ?? 0n, whole);
-  const plainTop10 = pct(sum(plain.slice(0, 10)), whole);
+  // Whale shares are of what circulates: a treasury's unissued stock is not float.
+  const plainTop1 = pct(plain[0]?.amount ?? 0n, circulating);
+  const plainTop10 = pct(sum(plain.slice(0, 10)), circulating);
 
   const signals: string[] = [];
   let concentration: "LOW" | "MEDIUM" | "HIGH" = "LOW";
   if (plainTop1 !== null && plainTop1 > 50) {
     concentration = "HIGH";
-    signals.push(`One plain account, ${plain[0].account}, holds ${plainTop1}% of the supply — it alone can move the price.`);
+    signals.push(`One plain account, ${plain[0].account}, holds ${plainTop1}% of the circulating supply — it alone can move the price.`);
   } else if (plainTop10 !== null && plainTop10 > 80) {
     concentration = "HIGH";
-    signals.push(`The top plain accounts hold ${plainTop10}% of the supply.`);
+    signals.push(`The top plain accounts hold ${plainTop10}% of the circulating supply.`);
   } else if ((plainTop1 !== null && plainTop1 > 20) || (plainTop10 !== null && plainTop10 > 50)) {
     concentration = "MEDIUM";
-    signals.push(`Top plain account ${plainTop1}%, top 10 plain accounts ${plainTop10}% of the supply.`);
+    signals.push(`Top plain account ${plainTop1}%, top 10 plain accounts ${plainTop10}% of the circulating supply.`);
   }
+  for (const t of labelled.filter((h) => h.type === "treasury"))
+    signals.push(`${t.account} holds ${pct(t.amount, whole)}% — an issuer or reserve treasury: unissued stock, normal for a stablecoin; watch it only if it starts selling.`);
+  if (plain.length && plain.slice(0, 5).filter((h) => accountKind(h.account) === "implicit").length >= 3)
+    signals.push("Most top plain holders are implicit (64-hex) accounts — often exchange hot wallets, which hold for many users.");
   const selfHeld = labelled.find((h) => h.type === "token-contract");
   if (selfHeld) signals.push(`The token contract itself holds ${pct(selfHeld.amount, whole)}% — unissued or treasury supply.`);
-  if (top1 !== null && plainTop1 !== null && top1 > plainTop1 + 20)
+  if (labelled[0]?.type === "contract")
     signals.push(`The largest holder is a contract (${labelled[0].account}) — a pool, bridge or custodian holding for many users, not one owner.`);
   if (holderCount !== null && holderCount < 50) signals.push(`Only ${holderCount} holders.`);
   if (!labelled.length) signals.push("The indexer lists no holders — a new or unused token.");
@@ -102,9 +117,15 @@ export async function nearTokenHolders(params: Record<string, string>) {
     decimals,
     checkedAt,
     totalSupply: supply !== null ? formatUnits(supply.toString(), decimals) : null,
+    circulatingSupply: reserved > 0n ? formatUnits(circulating.toString(), decimals) : null,
     holderCount,
     concentration,
-    shares: { top1Pct: top1, top10Pct: top10, top1AccountPct: plainTop1, top10AccountsPct: plainTop10 },
+    shares: {
+      top1Pct: top1,
+      top10Pct: top10,
+      top1AccountPctOfCirculating: plainTop1,
+      top10AccountsPctOfCirculating: plainTop10,
+    },
     signals,
     holders: labelled.slice(0, n).map((h, i) => ({
       rank: i + 1,
