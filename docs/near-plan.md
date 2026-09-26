@@ -359,3 +359,14 @@ Canlı swap testi (2026-09-26): 5 USDC → 1,029 NEAR, SUCCESS, ~25 sn. Meteor, 
 yatırma hesabına "account does not exist" diyerek göndermedi; önce 0,01 NEAR gönderilince geçti.
 `near-swap` artık bunu yanıtta söylüyor ve `depositType=INTENTS` ile Intents bakiyesinden ödemeyi destekliyor.
 Not: kredi ödemesi en az 1 sent keser ($0.002'lik servisler krediyle $0.01).
+
+## Faz 6 — swap geliri: Base içi swap ve insanlar için /swap (2026-09-26)
+
+- `base-swap` ($0.01): 0x Swap API (AllowanceHolder) ile Base içi swap; Uniswap, Aerodrome, Balancer,
+  Curve vb. arasında en iyi fiyat. İmzalanacak işlem döner, ajan kendi imzalar. Komisyon
+  `BASE_SWAP_FEE_BPS` ile aynı işlem içinde `BASE_SWAP_FEE_RECIPIENT`'a (yoksa PAY_TO_ADDRESS) gider,
+  bölünmez. Bilinmeyen token alırken `sellability`; satılamıyorsa force=1 olmadan reddedilir.
+  `ZEROX_API_KEY` gerekir (swap-route da kullanır).
+- `/swap` sayfası: insanlar için NEAR Intents swap'ı (yatırma adresi akışı, cüzdan bağlamak yok),
+  `/api/swap/quote` ve `/api/swap/status` ücretsiz, IP başına sınırlı. Gelir swap komisyonundan.
+- Düzeltme: NEAR servis sayısı 12 (daha önce yanlışlıkla 14 denmişti).
