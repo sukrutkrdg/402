@@ -56,6 +56,15 @@ micro-payment with an x402 client (e.g. `@x402/fetch`), retry:
 GET https://402.com.tr/api/x402/<service>?<params>
 ```
 
+## Agents on NEAR
+
+- **Chain Signatures:** a NEAR account can control an EVM address and sign the
+  x402 payment on Base directly — the standard flow, signed through the NEAR MPC
+  signer. The derived address needs USDC on Base.
+- **No USDC on Base?** When enabled on the deployment, buy a credit pack with any
+  asset NEAR Intents routes: `GET https://402.com.tr/api/credits/near/quote`
+  describes the flow, and the resulting `x-credit-token` works on every endpoint.
+
 ## Payment
 
 - **x402** protocol, **USDC on Base** (`eip155:8453`), gasless for the payer.

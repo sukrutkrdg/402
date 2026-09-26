@@ -6,6 +6,7 @@
 
 import { SERVICES } from "@/lib/services";
 import { getSiteUrl, getConfig } from "@/lib/config";
+import { nearFunding } from "@/lib/near-funding";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,9 @@ export function GET() {
         attribution: "ERC-8021 Builder Codes",
       },
     },
+    // Other ways to fund the Base payment above — the challenge itself does not
+    // change. Kept outside `payments` so a client that binds on it sees one rail.
+    fundingOptions: { near: nearFunding(SITE) },
     discovery: {
       catalog: `${SITE}/.well-known/x402`,
       openapi: `${SITE}/openapi.json`,

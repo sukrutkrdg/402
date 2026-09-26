@@ -1,5 +1,6 @@
 import { SERVICES } from "@/lib/services";
 import { getSiteUrl } from "@/lib/config";
+import { nearCreditsOn } from "@/lib/near-funding";
 
 export const metadata = { title: "For Agents & Developers — x402 Bazaar" };
 
@@ -176,6 +177,42 @@ const res = await fetch(
           One settlement mints the pack ($5 and $20 tiers carry a bonus); after that the agent runs
           walletless. Balance lasts 180 days.
         </p>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">2c. Agents on NEAR</h2>
+        <p className="text-sm text-gray-400">
+          <strong>Chain Signatures:</strong> a NEAR account can control an EVM address and sign the
+          x402 payment on Base directly — the standard flow above, signed through the NEAR MPC
+          signer. The derived address needs USDC on Base; gas is paid by the facilitator.
+        </p>
+        {nearCreditsOn() && (
+          <>
+            <p className="text-sm text-gray-400">
+              <strong>No USDC on Base?</strong> Buy a credit pack with any asset NEAR Intents routes
+              (NEAR, USDC on NEAR, BTC, SOL, …). It is swapped to USDC on Base and you get the same{" "}
+              <code className="codechip">x-credit-token</code> as above:
+            </p>
+            <Code>{`// 1. create an order — returns depositAddress, amountIn, orderId, orderSecret
+const order = await (await fetch("${SITE_URL}/api/credits/near/quote", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ tier: "5", originAsset: "nep141:wrap.near", refundTo: "you.near" }),
+})).json();
+
+// 2. send order.pay.amountIn of your asset to order.pay.depositAddress
+
+// 3. poll until SUCCESS — the response carries creditToken ("ck_…")
+const s = await (await fetch(
+  "${SITE_URL}/api/credits/near/status?orderId=" + order.orderId,
+  { headers: { "x-order-secret": order.orderSecret } }
+)).json();`}</Code>
+            <p className="text-xs text-gray-500">
+              Quoted as an exact output, so the swap cost is on the payer and any unused input is
+              refunded by NEAR Intents. Polling again after success returns the same token.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-3">
