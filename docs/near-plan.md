@@ -218,7 +218,20 @@ GO ("kilitli", sözleşmenin kendi yönetici fonksiyonları hariç), sözleşme 
 Metadata, toplam arz ve NEAR Intents'te işlem görüp görmediği (fiyatıyla) da dönüyor. Kaynaklar ücretsiz:
 NEAR RPC (FastNEAR, yedek olarak near.org; `NEAR_RPC_URL` ile değiştirilebilir) ve 1Click token listesi.
 Bu geliştirme ortamı NEAR'a erişemediği için yalnızca RPC yanıt biçimlerini taklit eden testlerle doğrulandı;
-**ilk canlı çağrı sahibi tarafından kontrol edilmeli.** Diğer NEAR servisleri talebe göre eklenecek.
+**ilk canlı çağrı sahibi tarafından kontrol edilmeli.**
+
+**Beş servis daha (2026-09-26, sahibinin isteğiyle, #20–#24):** hepsi `src/lib/near-rpc.ts` üzerinden ücretsiz
+kaynaklara (NEAR RPC, 1Click) gidiyor, testleri `test/stubs/near-stub.ts` sahte RPC'siyle.
+
+| Servis | Fiyat | Base karşılığı | Ne yapar |
+|---|---|---|---|
+| `near-account` | $0.01 | wallet-summary | Hesap türü, bakiye (serbest/stake/depolama), sözleşme mi, anahtarlar ve yetkileri |
+| `near-transfer-preflight` | $0.01 | b20-transfer-preflight | Alıcı token'a kayıtlı mı (`storage_deposit`), gönderenin bakiyesi, duraklatma |
+| `near-swap-quote` | $0.01 | swap-route | NEAR Intents'ten bağlayıcı olmayan teklif, maliyet % |
+| `near-pre-trade-gate` | $0.05 | pre-trade-gate | Token kontrolü + USDC ile gidiş-dönüş testi → GO/HOLD/STOP |
+| `near-portfolio` | $0.02 | wallet-networth | NEAR + NEP-141 bakiyeleri, USD değeriyle |
+
+Hepsi yalnızca taklit yanıtlarla test edildi; **ilk canlı çağrılar sahibiyle kontrol edilecek.**
 
 Bu faz ancak Faz 1 ve Faz 2'nin sayıları gerçek talep gösterirse açılır. Olası adımlar:
 NEAR zincirindeki tokenlar (NEP-141) için güvenlik servisleri, ya da ayrı bir uç noktada

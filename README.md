@@ -51,6 +51,10 @@ Agents from the NEAR ecosystem reach the same catalogue two ways; the x402 chall
   (or any asset NEAR Intents routes). `POST /api/credits/near/quote` returns a deposit address; once the swap
   settles as USDC on Base at `PAY_TO_ADDRESS`, `GET /api/credits/near/status` returns the `x-credit-token`.
   Humans can do the same from [`/credits`](https://402.com.tr/credits). Plan and design: [`docs/near-plan.md`](docs/near-plan.md).
+- **NEAR-native services** — `near-pre-trade-gate`, `near-token-safety`, `near-transfer-preflight`,
+  `near-swap-quote`, `near-account`, `near-portfolio`: the Base safety toolkit's counterparts for NEP-141
+  tokens and NEAR accounts, read live from the NEAR RPC and NEAR Intents. Paid in USDC on Base like
+  every other endpoint.
 
 ## How Builder Codes are wired
 

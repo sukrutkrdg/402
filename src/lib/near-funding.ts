@@ -45,7 +45,13 @@ export function nearFundingLines(site: string): string[] {
   const lines = [
     "## Agents on NEAR",
     `- ${f.chainSignatures.how}: ${f.chainSignatures.summary}`,
-    `- NEAR-native check: [near-token-safety](${site}/api/x402/near-token-safety?token=usdt.tether-token.near) — before taking a NEP-141 token, who can redeploy its contract (full-access keys), plus metadata, supply and NEAR Intents liquidity. GO / HOLD / STOP.`,
+    "- NEAR-native services (paid like every other endpoint):",
+    `  - [near-pre-trade-gate](${site}/api/x402/near-pre-trade-gate?token=wrap.near) — bind first: one GO/HOLD/STOP before buying a NEP-141 token (control + a USDC round trip through NEAR Intents).`,
+    `  - [near-token-safety](${site}/api/x402/near-token-safety?token=usdt.tether-token.near) — who can change a token: full-access keys, owner, pause.`,
+    `  - [near-transfer-preflight](${site}/api/x402/near-transfer-preflight?token=usdt.tether-token.near&to=alice.near) — will a token transfer go through (receiver registered via storage_deposit, sender balance).`,
+    `  - [near-swap-quote](${site}/api/x402/near-swap-quote?from=USDC&to=NEAR&amount=100) — indicative NEAR Intents quote with cost %.`,
+    `  - [near-account](${site}/api/x402/near-account?account=alice.near) — what an account is and who controls it (keys, balances, contract).`,
+    `  - [near-portfolio](${site}/api/x402/near-portfolio?account=alice.near) — NEAR + NEP-141 holdings valued in USD.`,
   ];
   if ("nearIntentsCredits" in f && f.nearIntentsCredits) {
     lines.push(
