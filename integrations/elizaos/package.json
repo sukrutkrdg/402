@@ -1,6 +1,6 @@
 {
   "name": "@sukrutkrdg/plugin-x402-bazaar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Check, then act — x402 Bazaar plugin for ElizaOS: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base (0x) executed from the agent's wallet, cross-chain swaps through NEAR Intents, and 150+ pay-per-call agent APIs.",
   "type": "module",
   "main": "dist/index.js",
@@ -64,6 +64,14 @@
       "X402_BAZAAR_URL": {
         "type": "string",
         "description": "Optional API base URL (default https://402.com.tr)"
+      },
+      "X402_BAZAAR_EXECUTE": {
+        "type": "string",
+        "description": "\"true\" to let the agent sign swaps and deposits. Off by default."
+      },
+      "X402_BAZAAR_RECIPIENTS": {
+        "type": "string",
+        "description": "Comma-separated addresses a cross-chain swap may deliver to when the agent deposits itself."
       }
     }
   },

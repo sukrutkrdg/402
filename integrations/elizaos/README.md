@@ -36,7 +36,9 @@ export const character = {
 | Setting | |
 |---|---|
 | `X402_CREDIT_TOKEN` | Prepaid credit token — one header per call, no signing |
-| `EVM_PRIVATE_KEY` | Base wallet key — required for `SWAP_ON_BASE` and for sending cross-chain deposits from Base; pays per call over x402 when there is no credit token |
+| `EVM_PRIVATE_KEY` | Base wallet key — signs swaps and cross-chain deposits from Base; pays per call over x402 when there is no credit token |
+| `X402_BAZAAR_EXECUTE` | `true` to let the agent send transactions (`SWAP_ON_BASE`, cross-chain deposits). Off by default: without it, swaps return instructions only |
+| `X402_BAZAAR_RECIPIENTS` | Comma-separated addresses a cross-chain swap may deliver to when depositing automatically. A recipient outside the list gets instructions instead — parameters are read from chat, so keep this set |
 | `X402_BAZAAR_URL` | Optional, defaults to `https://402.com.tr` |
 
 Parameters are read from the conversation by the agent's model (or taken from the planner on runtimes that pass them). Calls cost $0.002–$0.10; failed calls are not charged. Swaps carry a small service fee inside the swap, shown in every quote.

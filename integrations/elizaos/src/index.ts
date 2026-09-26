@@ -9,6 +9,12 @@
  *   EVM_PRIVATE_KEY     a Base wallet key — pays per call over x402 when there is no
  *                       credit token, and signs the swaps this plugin executes
  *   X402_BAZAAR_URL     optional, defaults to https://402.com.tr
+ *   X402_BAZAAR_EXECUTE "true" lets the agent SIGN swaps and deposits. Off by default:
+ *                       a chat agent's inputs come from whoever talks to it, so
+ *                       without this it only quotes and explains.
+ *   X402_BAZAAR_RECIPIENTS  comma-separated addresses a cross-chain swap may deliver
+ *                       to when the agent deposits itself. Required for an automatic
+ *                       cross-chain deposit; anyone else gets instructions only.
  *
  * Swaps are sent by the agent's own wallet (Base) or deposited by it to NEAR
  * Intents (cross-chain); nothing is held by x402 Bazaar.
@@ -18,7 +24,7 @@ import { ModelType, parseJSONObjectFromText, type Action, type IAgentRuntime, ty
 import { createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { BazaarClient, baseOriginToken, type BaseSwapQuote, type NearSwapQuote } from "./client.js";
+import { BazaarClient, baseOriginToken, assertSafeBaseSwap, assertSafeDeposit, type BaseSwapQuote, type NearSwapQuote } from "./client.js";
 
 export { BazaarClient } from "./client.js";
 
@@ -37,6 +43,14 @@ function wallet(runtime: IAgentRuntime) {
     reader: createPublicClient({ chain: base, transport: http() }),
   };
 }
+
+/** May this agent sign transactions at all? Off unless the operator says so. */
+const canExecute = (runtime: IAgentRuntime) => /^(1|true|yes)$/i.test(setting(runtime, "X402_BAZAAR_EXECUTE"));
+const allowedRecipients = (runtime: IAgentRuntime) =>
+  setting(runtime, "X402_BAZAAR_RECIPIENTS")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
 
 function client(runtime: IAgentRuntime): BazaarClient {
   const w = wallet(runtime);
@@ -104,24 +118,30 @@ const swapOnBase: Action = {
   name: "SWAP_ON_BASE",
   similes: ["BASE_SWAP", "SWAP_TOKENS_BASE", "BUY_ON_BASE", "SELL_ON_BASE"],
   description:
-    "Swap tokens on Base at the best price across Base DEXes (routed by 0x) and execute it from the agent's wallet (EVM_PRIVATE_KEY). Approves exactly the amount sold if needed. Unknown tokens get a sellability check first; honeypots are refused.",
-  validate: async (runtime) => Boolean(setting(runtime, "EVM_PRIVATE_KEY")),
+    "Swap tokens on Base at the best price across Base DEXes (routed by 0x) and execute it from the agent's wallet (EVM_PRIVATE_KEY, with X402_BAZAAR_EXECUTE=true). Approves exactly the amount sold if needed. Unknown tokens get a sellability check first; honeypots are refused.",
+  validate: async (runtime) => Boolean(setting(runtime, "EVM_PRIVATE_KEY")) && canExecute(runtime),
   handler: async (runtime, message, state, options, callback) => {
     try {
       const w = wallet(runtime);
       if (!w) throw new Error("EVM_PRIVATE_KEY is not set");
+      if (!canExecute(runtime)) throw new Error("signing is off — set X402_BAZAAR_EXECUTE=true to let this agent swap");
       const p = await inputs(runtime, message, state, options, `"sell": token symbol or 0x address, "buy": token symbol or 0x address, "amount": amount to sell in whole units`);
       const c = client(runtime);
       const quote = () => c.call<BaseSwapQuote>("base-swap", { sell: p.sell, buy: p.buy, amount: p.amount, taker: w.account.address });
       let q = await quote();
       if (q.insufficientBalance) throw new Error(`the wallet does not hold ${q.sell.amount} ${q.sell.symbol}`);
+      assertSafeBaseSwap(q, p.amount);
       if (q.needsApproval) {
         const approval = await w.wallet.sendTransaction({
           to: q.needsApproval.token as Hex,
           data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [q.needsApproval.spender as Hex, BigInt(q.sell.amountBaseUnits)] }),
         });
-        await w.reader.waitForTransactionReceipt({ hash: approval });
+        const ar = await w.reader.waitForTransactionReceipt({ hash: approval });
+        if (ar.status !== "success") throw new Error(`the approval reverted: ${approval}`);
         q = await quote();
+        if (q.insufficientBalance) throw new Error(`the wallet does not hold ${q.sell.amount} ${q.sell.symbol}`);
+        if (q.needsApproval) throw new Error("the approval did not register; nothing was swapped");
+        assertSafeBaseSwap(q, p.amount);
       }
       const hash = await w.wallet.sendTransaction({
         to: q.transaction.to as Hex,
@@ -150,7 +170,7 @@ const crossChainSwap: Action = {
   name: "CROSS_CHAIN_SWAP",
   similes: ["BRIDGE_AND_SWAP", "SWAP_TO_NEAR", "SWAP_ACROSS_CHAINS", "NEAR_INTENTS_SWAP"],
   description:
-    "Swap across chains through NEAR Intents (NEAR, Base, Ethereum, Solana, Bitcoin…), e.g. USDC@base → NEAR. Returns a one-time deposit address; when paying from Base with EVM_PRIVATE_KEY set, the agent's wallet sends the deposit itself. Output goes to the recipient; failed swaps are refunded.",
+    "Swap across chains through NEAR Intents (NEAR, Base, Ethereum, Solana, Bitcoin…), e.g. USDC@base → NEAR. Returns a one-time deposit address and what to send. The agent deposits itself only when paying from Base with EVM_PRIVATE_KEY, X402_BAZAAR_EXECUTE=true and a recipient listed in X402_BAZAAR_RECIPIENTS. Failed swaps are refunded.",
   validate: always,
   handler: async (runtime, message, state, options, callback) => {
     try {
@@ -166,11 +186,13 @@ const crossChainSwap: Action = {
       if (!refundTo) throw new Error("say where a refund should go (your address on the chain you pay from)");
       const q = await client(runtime).call<NearSwapQuote>("near-swap", { from: p.from, to: p.to, amount: p.amount, recipient: p.recipient, refundTo });
       const origin = q.deposit.chain === "base" ? baseOriginToken(q.from.assetId) : null;
-      if (!origin || !w) {
+      const recipientOk = allowedRecipients(runtime).includes(p.recipient.trim().toLowerCase());
+      if (!origin || !w || !canExecute(runtime) || !recipientOk) {
         const text = `Send exactly ${q.deposit.amount} ${q.deposit.asset} on ${q.deposit.chain} to ${q.deposit.address}${q.deposit.memo ? ` (memo ${q.deposit.memo})` : ""} before ${q.deposit.sendBefore}. You get ~${q.amountOut} ${q.to.symbol}.`;
         await callback?.({ text, actions: ["CROSS_CHAIN_SWAP"] });
         return { success: true, text, data: q as unknown as Record<string, unknown> };
       }
+      assertSafeDeposit(q, p.amount);
       const amount = BigInt(q.deposit.amountBaseUnits);
       const hash = origin.native
         ? await w.wallet.sendTransaction({ to: q.deposit.address as Hex, value: amount })
@@ -178,7 +200,8 @@ const crossChainSwap: Action = {
             to: origin.address,
             data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [q.deposit.address as Hex, amount] }),
           });
-      await w.reader.waitForTransactionReceipt({ hash });
+      const dr = await w.reader.waitForTransactionReceipt({ hash });
+      if (dr.status !== "success") throw new Error(`the deposit reverted; nothing was sent: ${hash}`);
       const text = `Deposited ${q.deposit.amount} ${q.deposit.asset} on Base (https://basescan.org/tx/${hash}); ~${q.amountOut} ${q.to.symbol} is on its way to ${p.recipient}. Track: deposit address ${q.deposit.address}.`;
       await callback?.({ text, actions: ["CROSS_CHAIN_SWAP"] });
       return { success: true, text, data: { depositTx: hash, depositAddress: q.deposit.address } };

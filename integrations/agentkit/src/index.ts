@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { ActionProvider, CreateAction, EvmWalletProvider, type Network } from "@coinbase/agentkit";
 import { encodeFunctionData, erc20Abi } from "viem";
-import { BazaarClient, baseOriginToken, type BaseSwapQuote, type NearSwapQuote } from "./client.js";
+import { BazaarClient, baseOriginToken, assertSafeBaseSwap, assertSafeDeposit, type BaseSwapQuote, type NearSwapQuote } from "./client.js";
 
 export { BazaarClient } from "./client.js";
 
@@ -58,6 +58,12 @@ export interface X402BazaarOptions {
   /** Prepaid credit token (ck_…). Without it, each call is paid over x402 from the AgentKit wallet. */
   creditToken?: string;
   baseUrl?: string;
+  /**
+   * Where cross_chain_swap may send output when it deposits from this wallet. When set, a
+   * recipient outside the list gets instructions instead of an automatic deposit. Leave unset
+   * only if the agent's inputs are trusted.
+   */
+  allowedRecipients?: string[];
 }
 
 export class X402BazaarActionProvider extends ActionProvider<EvmWalletProvider> {
@@ -114,6 +120,7 @@ Buying an unknown token runs a sellability check first and refuses a honeypot. T
         c.call<BaseSwapQuote>("base-swap", { sell: args.sell, buy: args.buy, amount: args.amount, taker, slippage: args.slippageBps });
       let q = await quote();
       if (q.insufficientBalance) return `Error: this wallet does not hold ${q.sell.amount} ${q.sell.symbol}.`;
+      assertSafeBaseSwap(q, args.amount);
       let approval: string | null = null;
       if (q.needsApproval) {
         approval = await wallet.sendTransaction({
@@ -124,8 +131,12 @@ Buying an unknown token runs a sellability check first and refuses a honeypot. T
             args: [q.needsApproval.spender as `0x${string}`, BigInt(q.sell.amountBaseUnits)],
           }),
         });
-        await wallet.waitForTransactionReceipt(approval as `0x${string}`);
+        const ar = (await wallet.waitForTransactionReceipt(approval as `0x${string}`)) as { status?: string };
+        if (ar?.status && ar.status !== "success") return `Error: the approval reverted. Tx: ${approval}`;
         q = await quote(); // quotes are short-lived; take a fresh one after the approval
+        if (q.insufficientBalance) return `Error: this wallet does not hold ${q.sell.amount} ${q.sell.symbol}.`;
+        if (q.needsApproval) return "Error: the approval did not register; nothing was swapped.";
+        assertSafeBaseSwap(q, args.amount);
       }
       const hash = await wallet.sendTransaction({
         to: q.transaction.to as `0x${string}`,
@@ -162,9 +173,12 @@ The output goes to recipient, or the deposit is refunded to refundTo. Buying a N
       if (!refundTo) return "Error: refundTo is required when not paying from Base (your address on the origin chain).";
       const q = await c.call<NearSwapQuote>("near-swap", { from: args.from, to: args.to, amount: args.amount, recipient: args.recipient, refundTo });
       const origin = q.deposit.chain === "base" ? baseOriginToken(q.from.assetId) : null;
-      if (!origin || wallet.getNetwork().chainId !== "8453") {
+      const allowed = this.options.allowedRecipients?.map((r) => r.toLowerCase());
+      const recipientOk = !allowed || allowed.includes(args.recipient.toLowerCase());
+      if (!origin || wallet.getNetwork().chainId !== "8453" || !recipientOk) {
         return JSON.stringify({ sendThis: q.deposit, youGet: `~${q.amountOut} ${q.to.symbol} (min ${q.minAmountOut})`, next: q.next });
       }
+      assertSafeDeposit(q, args.amount);
       const amount = BigInt(q.deposit.amountBaseUnits);
       const hash = origin.native
         ? await wallet.sendTransaction({ to: q.deposit.address as `0x${string}`, value: amount })
@@ -172,7 +186,8 @@ The output goes to recipient, or the deposit is refunded to refundTo. Buying a N
             to: origin.address,
             data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [q.deposit.address as `0x${string}`, amount] }),
           });
-      await wallet.waitForTransactionReceipt(hash);
+      const dr = (await wallet.waitForTransactionReceipt(hash)) as { status?: string };
+      if (dr?.status && dr.status !== "success") return `Error: the deposit reverted; nothing was sent. Tx: ${hash}`;
       return JSON.stringify({
         deposited: `${q.deposit.amount} ${q.deposit.asset} on Base → ${q.deposit.address}`,
         depositTx: `https://basescan.org/tx/${hash}`,

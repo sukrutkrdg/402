@@ -98,3 +98,36 @@ export interface NearSwapQuote {
   minAmountOut: string;
   next: string[];
 }
+
+/** 0x's AllowanceHolder on Base: the only contract a base swap may approve or call. */
+export const ALLOWANCE_HOLDER = "0x0000000000001ff3684f28c67538d4d072c22734";
+const NATIVE_ETH = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+/**
+ * Check a base-swap answer before signing anything from it. The wallet is the
+ * agent's; a server that is wrong (or not ours — a bad baseUrl) must not be able
+ * to point an approval or a transaction anywhere else.
+ */
+export function assertSafeBaseSwap(q: BaseSwapQuote, requestedAmount: string): void {
+  const to = q.transaction.to.toLowerCase();
+  if (to !== ALLOWANCE_HOLDER) throw new Error(`refusing: swap transaction targets ${q.transaction.to}, not 0x AllowanceHolder`);
+  if (q.needsApproval && q.needsApproval.spender.toLowerCase() !== ALLOWANCE_HOLDER)
+    throw new Error(`refusing: approval spender ${q.needsApproval.spender} is not 0x AllowanceHolder`);
+  if (q.needsApproval && q.needsApproval.token.toLowerCase() !== q.sell.address.toLowerCase())
+    throw new Error("refusing: approval is for a different token than the one sold");
+  const value = BigInt(q.transaction.value || "0");
+  const sellingEth = q.sell.address.toLowerCase() === NATIVE_ETH;
+  if (!sellingEth && value !== 0n) throw new Error("refusing: an ERC-20 sell must not send ETH");
+  if (sellingEth && value !== BigInt(q.sell.amountBaseUnits)) throw new Error("refusing: ETH sent does not match the amount sold");
+  if (!sameAmount(q.sell.amount, requestedAmount)) throw new Error(`refusing: quote sells ${q.sell.amount}, not the ${requestedAmount} requested`);
+}
+
+/** Check a near-swap answer before depositing: the deposit must be what was asked. */
+export function assertSafeDeposit(q: NearSwapQuote, requestedAmount: string): void {
+  if (!sameAmount(q.deposit.amount, requestedAmount)) throw new Error(`refusing: deposit is ${q.deposit.amount}, not the ${requestedAmount} requested`);
+}
+
+function sameAmount(a: string, b: string): boolean {
+  const x = Number(a), y = Number(b);
+  return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) <= Math.max(1e-9, Math.abs(y) * 1e-9);
+}

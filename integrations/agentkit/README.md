@@ -25,10 +25,16 @@ import { x402BazaarActionProvider } from "x402-bazaar-agentkit";
 const agentkit = await AgentKit.from({
   walletProvider, // any EvmWalletProvider on Base mainnet
   actionProviders: [
-    x402BazaarActionProvider({ creditToken: process.env.X402_CREDIT_TOKEN }),
+    x402BazaarActionProvider({
+      creditToken: process.env.X402_CREDIT_TOKEN,
+      // cross_chain_swap only deposits automatically when the recipient is listed here
+      allowedRecipients: ["alice.near"],
+    }),
   ],
 });
 ```
+
+Every swap transaction is checked before it is signed: it must go to the 0x AllowanceHolder contract, approve only the token and amount being sold, and sell exactly the amount asked. Anything else is refused and nothing is sent.
 
 ## Paying
 
