@@ -32,6 +32,7 @@ export function GET() {
     ...nearFundingLines(site),
     "",
     "## Discovery",
+    `- Reliability: ${site}/api/status — per-endpoint success rate and latency over the last 7 days, measured on real calls.`,
     `- Machine-readable catalog (JSON): ${site}/.well-known/x402`,
     `- OpenAPI spec: ${site}/openapi.json`,
     `- Agent docs + ready-to-run MCP server: ${site}/agents`,

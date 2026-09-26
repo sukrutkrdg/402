@@ -138,6 +138,22 @@ export async function baseSwap(params: Record<string, string>) {
   }
 
   const fmt = (raw: string | undefined, d: number) => (raw ? formatUnits(BigInt(raw), d) : null);
+  // Book it for /stats — except the daily discovery probe, which quotes for a wallet it does not own.
+  if (taker.toLowerCase() !== "0xd8da6bf26964af9d7eed9e03e53415d37aa96045") {
+    const stable = /^(USDC|USDBC|DAI|EURC)$/i.test(sell.symbol);
+    await import("./near-swap-ledger")
+      .then((m) =>
+        m.recordBaseSwapQuote({
+          t: new Date().toISOString(),
+          sell: sell.symbol,
+          buy: buy.symbol,
+          amount: formatUnits(sellAmount, sell.decimals),
+          usd: stable ? Number(formatUnits(sellAmount, sell.decimals)) : null,
+          feeBps: fee?.bps ?? 0,
+        }),
+      )
+      .catch(() => {});
+  }
   const feeDec = feeToken === sell.address ? sell.decimals : buy.decimals;
   const feeSym = feeToken === sell.address ? sell.symbol : buy.symbol;
   const allowance = q.issues?.allowance ?? null;

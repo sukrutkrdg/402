@@ -1,42 +1,29 @@
-/** Non-secret config status for the UI (are seller + buyer wired up?). */
+/**
+ * Service health as JSON, for agents choosing whether to call us: per service,
+ * calls, success rate (our failures only — a refused input is the caller's),
+ * and median / 90th-percentile latency over the last 7 days, from real calls.
+ */
 
-import { NextRequest, NextResponse } from "next/server";
-import { getConfig, sellerReady, buyerReady } from "@/lib/config";
-import { aiConfigured } from "@/lib/ai";
-import { searchConfigured } from "@/lib/web-search";
-import { exaConfigured } from "@/lib/exa";
-import { freeRemaining } from "@/lib/free-tier";
-import { clientIp } from "@/lib/rate-limit";
-import { kvConfigured } from "@/lib/kv";
+import { NextResponse } from "next/server";
+import { readHealth } from "@/lib/health";
+import { SERVICES } from "@/lib/services";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
-export async function GET(req: NextRequest) {
-  const cfg = getConfig();
-  const seller = sellerReady(cfg);
-  const buyer = buyerReady(cfg);
-
-  // Public endpoint — expose only non-sensitive booleans (no wallet addresses,
-  // no list of which env vars are unset).
-  return NextResponse.json({
-    network: "Base mainnet (eip155:8453)",
-    appBuilderCode: cfg.appBuilderCode,
-    clientBuilderCode: cfg.clientBuilderCode,
-    seller: { ok: seller.ok },
-    buyer: { ok: buyer.ok },
-    buyerEnabled: cfg.enableBuyer,
-    buyTokenRequired: Boolean(cfg.buyAccessToken),
-    aiReady: aiConfigured(),
-    alchemyReady: Boolean(process.env.ALCHEMY_API_KEY?.trim()),
-    // web-search sells an upstream we pay for, so "is the key actually in the
-    // deployed env" is a question we need answerable from outside — otherwise
-    // the only way to find out is a buyer hitting a service that cannot serve.
-    searchReady: searchConfigured(),
-    // Same reason as searchReady: exa-search is paid-only and spends an upstream
-    // credit, so "is the key in the deployed env" must be answerable without a
-    // buyer discovering the answer at their own expense.
-    exaReady: exaConfigured(),
-    kv: kvConfigured(),
-    freeTier: await freeRemaining(`free:${clientIp(req)}`),
-  });
+export async function GET() {
+  const h = await readHealth(7);
+  const visible = new Set(SERVICES.filter((s) => !s.hidden).map((s) => s.id));
+  const services = h.services.filter((s) => visible.has(s.service)).sort((a, b) => b.calls - a.calls);
+  const ok = services.reduce((s, x) => s + x.ok, 0);
+  const fail = services.reduce((s, x) => s + x.fail, 0);
+  return NextResponse.json(
+    {
+      window: { from: h.from, to: h.to, days: 7 },
+      overall: { calls: services.reduce((s, x) => s + x.calls, 0), successPct: ok + fail ? +((ok / (ok + fail)) * 100).toFixed(1) : null },
+      method: "Recorded on every handler run. successPct = answered ÷ (answered + our failures); a refused input (400) is the caller's and not counted. Latency is the bucket holding the median / 90th-percentile answered call.",
+      services,
+      notCalledThisWeek: [...visible].filter((id) => !services.some((s) => s.service === id)).sort(),
+    },
+    { headers: { "cache-control": "public, max-age=60, s-maxage=300" } },
+  );
 }

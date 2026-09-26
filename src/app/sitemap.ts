@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${site}/stocks`, lastModified: now, priority: 0.9 },
     { url: `${site}/near`, lastModified: now, priority: 0.9 },
     { url: `${site}/swap`, lastModified: now, priority: 0.8 },
+    { url: `${site}/status`, lastModified: now, priority: 0.6 },
     // A fixed historical record rather than a live page, and the one thing here
     // worth citing: the first corporate action on a Coinbase tokenized equity,
     // with the block numbers to check it.

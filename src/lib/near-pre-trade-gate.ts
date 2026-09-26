@@ -11,12 +11,18 @@
  *
  * Round-trip loss thresholds: over 15% → STOP, over 5% → HOLD. The worse of
  * the two answers is the verdict.
+ *
+ *   3. Who holds it?            near-token-holders: when a few plain accounts
+ *      hold most of the circulating supply (HIGH), they can move the price at
+ *      will → HOLD. Best-effort: the holder list comes from an indexer, and if
+ *      it cannot be read the gate still answers on 1 and 2 and says so.
  */
 
 import "server-only";
 import { nearTokenSafety } from "./near-token-safety";
 import { intentsTokens, findNearToken, parseUnits } from "./near-rpc";
 import { dryQuote, resolveAsset, type QuoteResult } from "./near-swap-quote";
+import { nearTokenHolders } from "./near-token-holders";
 
 type Verdict = "GO" | "HOLD" | "STOP";
 const rank: Record<Verdict, number> = { GO: 0, HOLD: 1, STOP: 2 };
@@ -48,8 +54,14 @@ export async function nearPreTradeGate(params: Record<string, string>) {
   };
 
   if (safety.verdict === "STOP") {
-    return { ...base, verdict, reasons, route: null };
+    return { ...base, verdict, reasons, route: null, holders: null };
   }
+
+  // Started now, awaited last: the indexer call overlaps the round-trip quotes.
+  const holdersP = nearTokenHolders({ token: safety.token, top: "5" }).then(
+    (h) => ({ ok: true as const, h }),
+    (e: Error) => ({ ok: false as const, why: e.message }),
+  );
 
   const tokens = await intentsTokens();
   const target = tokens ? findNearToken(tokens, safety.token) : undefined;
@@ -89,5 +101,23 @@ export async function nearPreTradeGate(params: Record<string, string>) {
     }
   }
 
-  return { ...base, verdict, reasons, route };
+  const held = await holdersP;
+  let holders: { concentration: string; holderCount: number | null; top1AccountPctOfCirculating: number | null; top10AccountsPctOfCirculating: number | null } | null = null;
+  if (held.ok) {
+    const h = held.h;
+    holders = {
+      concentration: h.concentration,
+      holderCount: h.holderCount,
+      top1AccountPctOfCirculating: h.shares.top1AccountPctOfCirculating,
+      top10AccountsPctOfCirculating: h.shares.top10AccountsPctOfCirculating,
+    };
+    if (h.concentration === "HIGH") {
+      verdict = worse(verdict, "HOLD");
+      reasons.push(`Concentrated: ${h.signals[0] ?? "a few accounts hold most of the circulating supply"}`);
+    }
+  } else {
+    reasons.push("Holder concentration not checked (indexer unavailable).");
+  }
+
+  return { ...base, verdict, reasons, route, holders };
 }

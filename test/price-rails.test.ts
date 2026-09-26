@@ -29,9 +29,10 @@ describe("one price, both rails", () => {
   it("the credit rail debits that function's answer, not the declared price", () => {
     // The regression in one line: `priceCents(service.price)` ignores every
     // per-request rule.
-    expect(code).toMatch(/const cents = priceCents\(await effectivePriceFor\(service, req\)\)/);
+    // Metered in mills since sub-cent debits; still that function's answer.
+    expect(code).toMatch(/const mills = priceMills\(await effectivePriceFor\(service, req\)\)/);
     expect(code, "the bare declared price must not be debited directly").not.toMatch(
-      /let cents = priceCents\(service\.price\)/,
+      /(let|const) (cents|mills) = price(Cents|Mills)\(service\.price\)/,
     );
   });
 

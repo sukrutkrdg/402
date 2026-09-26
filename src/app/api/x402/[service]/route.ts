@@ -8,6 +8,7 @@
  * for an error.
  */
 
+import { timed, errorStatus } from "@/lib/health";
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { withX402, type RouteConfig } from "@x402/next";
@@ -21,7 +22,7 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
-import { debitCredit, refundCredit, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle } from "@/lib/credits";
+import { debitCreditMills, refundCreditMills, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle } from "@/lib/credits";
 
 /**
  * Calls a minute a single prepaid token may make. Ten a second — comfortably
@@ -34,7 +35,7 @@ import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
-import { priceCents } from "@/lib/price";
+import { priceCents, priceMills } from "@/lib/price";
 import { recordExternalRevenue } from "@/lib/keepalive-economics";
 import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
@@ -244,17 +245,7 @@ function secretMatches(provided: string, expected: string): boolean {
  */
 function handlerErrorResponse(err: unknown, serviceId = "?"): NextResponse {
   const message = err instanceof Error ? err.message : "Service error";
-  const m = message.toLowerCase();
-  const status =
-    // "must be", "too large/long", "choose one of", "not a" and "unsupported"
-    // are all the caller's input talking. A health sweep caught `business-days`
-    // answering 500 to a malformed date — telling an agent "our fault, retry"
-    // when retrying the same input can only fail again.
-    /provide|missing|valid|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price/.test(m)
-      ? 400
-      : /unavailable|failed|responded \d|timeout|fetch/.test(m)
-        ? 502
-        : 500;
+  const status = errorStatus(message);
   // Say it out loud, at the level it deserves.
   //
   // The response is the only record a failing service leaves and it does not
@@ -332,7 +323,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const internalHeader = req.headers.get("x-warden-internal");
   if (cfg.internalSecret && internalHeader && secretMatches(internalHeader, cfg.internalSecret) && service.id !== "buy-credits") {
     try {
-      const data = await service.handler(paramsFrom(req, service));
+      const data = await timed(service.id, () => service.handler(paramsFrom(req, service)));
       const ip = clientIp(req);
       await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "warden-internal", req.headers.get("referer") || "", true);
       return NextResponse.json(
@@ -354,12 +345,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // Credit payers get the same funnel prices as x402 payers: an unexpired
     // coupon (earned by paying the entry check on this token) discounts the AI
     // report here exactly as it discounts the x402 challenge.
-    const cents = priceCents(await effectivePriceFor(service, req));
+    // Metered in mills (tenths of a cent) so a $0.002 call costs $0.002, not the 1¢ floor.
+    const mills = priceMills(await effectivePriceFor(service, req));
     // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
     // one step, so two concurrent calls can't each pass a cheap pre-check and get a
     // free call on the race. An underfunded/unknown token is refunded inside
     // debitCredit and reported here.
-    const debit = await debitCredit(creditToken, cents);
+    const debit = await debitCreditMills(creditToken, mills);
     if (!debit.ok) {
       // This is a price wall too — log it as a challenge so the funnel counts
       // credit-exhausted callers, not just x402 walk-aways.
@@ -368,8 +360,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         {
           error: debit.reason === "insufficient" ? "Insufficient credits" : "Invalid or unusable credit token",
           service: service.id,
-          priceUsd: +(cents / 100).toFixed(2),
-          balanceUsd: +((debit.balance ?? 0) / 100).toFixed(2),
+          priceUsd: +(mills / 1000).toFixed(3),
+          balanceUsd: +((debit.balanceMills ?? 0) / 1000).toFixed(3),
           topUp: "Buy more at /api/x402/buy-credits (tier=0.25|1|5|20), or omit x-credit-token to pay per-call via x402.",
         },
         { status: 402 },
@@ -378,9 +370,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     let data: unknown;
     try {
       const p = paramsFrom(req, service);
-      data = withBaseReceipt(await service.handler(p), service.id, p);
+      data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
-      await refundCredit(creditToken, cents); // charged but never delivered → give it back
+      await refundCreditMills(creditToken, mills); // charged but never delivered → give it back
       return handlerErrorResponse(err, service.id);
     }
     await saveSample(service.id, data);
@@ -391,8 +383,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // because our core data feed was unavailable — is delivered but NOT billed.
     // Give the debit back and tell the caller via `x-refunded`.
     const refunded = isRefundable(data);
-    if (refunded) await refundCredit(creditToken, cents);
-    const remaining = refunded ? debit.remaining + cents : debit.remaining;
+    if (refunded) await refundCreditMills(creditToken, mills);
+    const remainingMills = refunded ? debit.remainingMills + mills : debit.remainingMills;
     return NextResponse.json(
       withRelated({
         service: service.id,
@@ -401,11 +393,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         paidVia: refunded ? "credits-refunded" : "credits",
         // What we actually took, not what the price string says. They differ for
         // sub-cent services, and the buyer should see that rather than discover it.
-        chargedUsd: refunded ? 0 : +(cents / 100).toFixed(3),
-        creditBalanceUsd: +(remaining / 100).toFixed(2),
+        chargedUsd: refunded ? 0 : +(mills / 1000).toFixed(3),
+        creditBalanceUsd: +(remainingMills / 1000).toFixed(3),
         ...(refunded ? { refunded: true, refundReason: "Refusal (core data feed unavailable) — not billed per this check's refundRule." } : {}),
       }, service.id),
-      { headers: { "x-credit-balance": String(remaining), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },
+      { headers: { "x-credit-balance": String(Math.floor(remainingMills / 10)), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },
     );
   }
 
@@ -439,7 +431,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     const free = await consumeFree(`free:${ip}:${service.id}`);
     if (free.allowed) {
       try {
-        const data = await service.handler(paramsFrom(req, service));
+        const data = await timed(service.id, () => service.handler(paramsFrom(req, service)));
         await saveSample(service.id, data);
         await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "");
         return NextResponse.json(
@@ -506,7 +498,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         );
       }
       try {
-        const full = await service.handler(params);
+        const full = await timed(service.id, () => service.handler(params));
         await saveSample(service.id, full);
         const preview = toPreview(full);
         await savePreview(service.id, params, preview);
@@ -527,7 +519,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     let data: unknown;
     try {
       const p = paramsFrom(request, service);
-      data = withBaseReceipt(await service.handler(p), service.id, p);
+      data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
       return handlerErrorResponse(err, service.id);
     }

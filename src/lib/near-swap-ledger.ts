@@ -19,6 +19,60 @@ import { kvIncrBy, kvGetNumber, kvLPush, kvLRange } from "./kv";
 import { viewCall, intentsTokens, formatUnits } from "./near-rpc";
 import { swapFee } from "./near-swap";
 
+/** Base swaps (base-swap, 0x): the fee is paid inside the swap tx straight to the fee wallet, so
+ *  there is no balance to read here — quotes and the fee they would earn are what we can count. */
+export const BASE_SWAP_LEDGER = {
+  quotes: "base:swap:quotes",
+  quotedCents: "base:swap:quotedCents",
+  recent: "base:swap:recent",
+};
+
+interface BaseQuoteRecord {
+  t: string;
+  sell: string;
+  buy: string;
+  amount: string;
+  usd: number | null;
+  feeBps: number;
+}
+
+/** Called by base-swap after a transaction is handed out. Best-effort. */
+export async function recordBaseSwapQuote(q: BaseQuoteRecord): Promise<void> {
+  await Promise.all([
+    kvIncrBy(BASE_SWAP_LEDGER.quotes, 1),
+    kvIncrBy(BASE_SWAP_LEDGER.quotedCents, Math.round((q.usd ?? 0) * 100)),
+    kvLPush(BASE_SWAP_LEDGER.recent, JSON.stringify(q), 50),
+  ]).catch(() => {});
+}
+
+async function baseSwapBook() {
+  const [quotes, quotedCents, raw] = await Promise.all([
+    kvGetNumber(BASE_SWAP_LEDGER.quotes),
+    kvGetNumber(BASE_SWAP_LEDGER.quotedCents),
+    kvLRange(BASE_SWAP_LEDGER.recent, 0, 9),
+  ]);
+  const recent = raw
+    .map((s) => {
+      try {
+        return JSON.parse(s) as BaseQuoteRecord;
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is BaseQuoteRecord => Boolean(x));
+  const bps = Number(process.env.BASE_SWAP_FEE_BPS || 0);
+  const feeBps = Number.isInteger(bps) && bps > 0 ? Math.min(bps, 100) : 0;
+  const quotedUsd = +(quotedCents / 100).toFixed(2);
+  return {
+    feeBps,
+    quotes,
+    quotedUsd,
+    /** What the stablecoin-priced quotes would earn if every one were sent; the real fees are in the fee wallet's USDC history. */
+    feeIfAllSentUsd: +((quotedUsd * feeBps) / 10000).toFixed(4),
+    recent,
+  };
+}
+
 export const SWAP_LEDGER = {
   quotes: "near:swap:quotes",
   quotedCents: "near:swap:quotedCents",
@@ -109,5 +163,6 @@ export async function nearSwapBook() {
     estFeeRecentUsd: fee ? +((completedUsd * fee.bps) / 20000).toFixed(4) : 0,
     earned: fee ? await earned(fee.recipient).catch(() => null) : null,
     recent: recent.slice(0, 10),
+    base: await baseSwapBook().catch(() => null),
   };
 }
