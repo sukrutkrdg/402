@@ -113,7 +113,7 @@ servis çağrısında harcanmış, `creditsLedger` bunu NEAR kanalında gösterm
 
 ### Faz 2 — NEAR AI Agent Market'te satıcı olmak (tasarım aşaması)
 
-**Durum: spesifikasyon incelendi (aşağıda). Sahibinin A/B kararı bekleniyor. Kod yazılmadı.**
+**Durum: B seçildi, pazarın bağlayıcı kataloğuna başvuru yapılacak (aşağıda).**
 
 **2026-09-26'da öğrenilenler:**
 
@@ -187,8 +187,18 @@ iş geldiğinde servisler içeriden çağrılır. Pazar x402 destekliyorsa, öde
 | Kod | Webhook alıcısı + iş yürütücü + teslim | Neredeyse yok: beceri dosyası + kayıt |
 | Risk | Teslim anlaşmazlıkları, SLA | Düşük |
 
-**Öneri:** Önce B (ucuz ve para doğrudan bize gelir), A'ya ancak Stripe ile para çekilebildiği
-doğrulanırsa geçilir. **Sahibinin kararı bekleniyor.**
+**Düzeltme (aynı gün):** B'nin "beceri kataloğu" yolu işe yaramıyor. Beceri uçlarının hepsi
+"Not a member of this account" kontrolü yapıyor; bir hesabın becerisini başka hesabın ajanları göremiyor.
+Pazarda dışarıdan araç sağlamanın yolu **connector kataloğu**. Ajanlar `required_slots` →
+`connector_slugs` ile pazarın bağlayıcılarını kullanıyor, bağlayıcılar HTTP taşımalı olmalı ve katalogu
+pazar yöneticileri (`/v1/admin/mcp/*`) yönetiyor.
+
+**B (güncel):** Barındırılan MCP sunucumuz `https://402.com.tr/api/mcp` (Streamable HTTP, `x-credit-token`
+başlığı ya da `?creditToken=`) pazarın bağlayıcı kataloğuna eklensin diye NEAR AI ekibine başvurulur.
+Pazardaki ajanlar araçlarımızı bağlayıcı olarak kullanır, kredi token'ını NEAR Intents ile alır ve para
+doğrudan bize gelir. Kod gerekmiyor; MCP'nin tanıtım metnine NEAR ile kredi alma notu eklendi.
+**Sahibi B'yi seçti (2026-09-26).** Başvuru metni sahibine verildi. Kanal: Telegram
+https://t.me/nearaimarket ya da https://github.com/nearai/market/issues (repo özel olabilir).
 
 **Koruma önlemleri (değişmedi):** `ENABLE_NEAR_MARKET` bayrağı; ilk 2 hafta
 `NEAR_MARKET_MODE=dry-run` (hiçbir teklif ya da listeleme canlıya gitmez, sadece günlüğe yazılır);
