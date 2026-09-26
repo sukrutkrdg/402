@@ -53,10 +53,15 @@ describe("handler failures are logged at the level they deserve", () => {
   });
 
   it("leaves the caller's status mapping untouched — only the logging changed", () => {
+    // The mapping lives in errorStatus (shared with /status health), and the
+    // route must still take its status from it.
+    expect(fn).toMatch(/const status = errorStatus\(message\)/);
     // The 400 branch is what makes "no LP data" a caller error in the first
     // place; if it ever became a 500 the log level would follow it wrongly.
-    expect(fn).toMatch(/no \.\*data/);
-    expect(fn).toMatch(/\? 400/);
-    expect(fn).toMatch(/\? 502/);
+    const health = readFileSync(new URL("../src/lib/health.ts", import.meta.url), "utf8");
+    const mapping = health.slice(health.indexOf("export function errorStatus("), health.indexOf("export function errorStatus(") + 900);
+    expect(mapping).toMatch(/no \.\*data/);
+    expect(mapping).toMatch(/return 400/);
+    expect(mapping).toMatch(/return 502/);
   });
 });

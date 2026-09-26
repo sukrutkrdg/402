@@ -186,6 +186,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Token radar
             </a>{" "}
             ·{" "}
+            <a className="text-sky-400 hover:underline" href="/status">
+              Status
+            </a>{" "}
+            ·{" "}
             <a className="text-sky-400 hover:underline" href="https://github.com/sukrutkrdg/x402-bazaar-mcp" target="_blank" rel="noreferrer">
               GitHub
             </a>

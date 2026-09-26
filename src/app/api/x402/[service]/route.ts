@@ -8,6 +8,7 @@
  * for an error.
  */
 
+import { timed, errorStatus } from "@/lib/health";
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { withX402, type RouteConfig } from "@x402/next";
@@ -244,17 +245,7 @@ function secretMatches(provided: string, expected: string): boolean {
  */
 function handlerErrorResponse(err: unknown, serviceId = "?"): NextResponse {
   const message = err instanceof Error ? err.message : "Service error";
-  const m = message.toLowerCase();
-  const status =
-    // "must be", "too large/long", "choose one of", "not a" and "unsupported"
-    // are all the caller's input talking. A health sweep caught `business-days`
-    // answering 500 to a malformed date — telling an agent "our fault, retry"
-    // when retrying the same input can only fail again.
-    /provide|missing|valid|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price/.test(m)
-      ? 400
-      : /unavailable|failed|responded \d|timeout|fetch/.test(m)
-        ? 502
-        : 500;
+  const status = errorStatus(message);
   // Say it out loud, at the level it deserves.
   //
   // The response is the only record a failing service leaves and it does not
@@ -332,7 +323,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   const internalHeader = req.headers.get("x-warden-internal");
   if (cfg.internalSecret && internalHeader && secretMatches(internalHeader, cfg.internalSecret) && service.id !== "buy-credits") {
     try {
-      const data = await service.handler(paramsFrom(req, service));
+      const data = await timed(service.id, () => service.handler(paramsFrom(req, service)));
       const ip = clientIp(req);
       await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "warden-internal", req.headers.get("referer") || "", true);
       return NextResponse.json(
@@ -378,7 +369,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     let data: unknown;
     try {
       const p = paramsFrom(req, service);
-      data = withBaseReceipt(await service.handler(p), service.id, p);
+      data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
       await refundCredit(creditToken, cents); // charged but never delivered → give it back
       return handlerErrorResponse(err, service.id);
@@ -439,7 +430,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     const free = await consumeFree(`free:${ip}:${service.id}`);
     if (free.allowed) {
       try {
-        const data = await service.handler(paramsFrom(req, service));
+        const data = await timed(service.id, () => service.handler(paramsFrom(req, service)));
         await saveSample(service.id, data);
         await logUsage(service.id, false, srcHash(ip), req.headers.get("user-agent") || "", req.headers.get("referer") || "");
         return NextResponse.json(
@@ -506,7 +497,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         );
       }
       try {
-        const full = await service.handler(params);
+        const full = await timed(service.id, () => service.handler(params));
         await saveSample(service.id, full);
         const preview = toPreview(full);
         await savePreview(service.id, params, preview);
@@ -527,7 +518,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     let data: unknown;
     try {
       const p = paramsFrom(request, service);
-      data = withBaseReceipt(await service.handler(p), service.id, p);
+      data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
       return handlerErrorResponse(err, service.id);
     }
