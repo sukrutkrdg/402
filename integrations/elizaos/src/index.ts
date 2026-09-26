@@ -1,7 +1,7 @@
 /**
  * x402 Bazaar plugin for ElizaOS — check, then act.
  *
- *   import { x402BazaarPlugin } from "x402-bazaar-eliza";
+ *   import { x402BazaarPlugin } from "@sukrutkrdg/plugin-x402-bazaar";
  *   character.plugins = [..., x402BazaarPlugin];
  *
  * Settings (character secrets or env):

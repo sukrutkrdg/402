@@ -1,4 +1,4 @@
-# x402-bazaar-eliza
+# @sukrutkrdg/plugin-x402-bazaar
 
 **Check, then act** — an [x402 Bazaar](https://402.com.tr) plugin for [ElizaOS](https://github.com/elizaOS/eliza).
 
@@ -15,11 +15,11 @@ Your agent checks a token before it buys, then swaps at the best price — from 
 ## Install
 
 ```bash
-npm install x402-bazaar-eliza
+npm install @sukrutkrdg/plugin-x402-bazaar
 ```
 
 ```ts
-import { x402BazaarPlugin } from "x402-bazaar-eliza";
+import { x402BazaarPlugin } from "@sukrutkrdg/plugin-x402-bazaar";
 
 export const character = {
   // …
