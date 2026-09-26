@@ -17,9 +17,9 @@ const { store, kvMock, mintMock } = vi.hoisted(() => {
   const kvMock = {
     kvConfigured: vi.fn(() => true),
     kvGet: vi.fn(async (k: string) => store.get(k) ?? null),
-    kvSetChecked: vi.fn(async (k: string, v: string) => {
+    kvSetChecked: vi.fn(async (k: string, v: string): Promise<{ ok: boolean; detail?: string }> => {
       store.set(k, v);
-      return true;
+      return { ok: true };
     }),
     kvSetNx: vi.fn(async (k: string) => {
       if (store.has(k)) return false;
@@ -189,8 +189,9 @@ describe("order storage", () => {
   });
 
   it("refuses to hand out a deposit address when the write was not acknowledged", async () => {
-    kvMock.kvSetChecked.mockResolvedValueOnce(false);
-    await expect(order()).rejects.toMatchObject({ status: 503 });
+    kvMock.kvSetChecked.mockResolvedValueOnce({ ok: false, detail: "kv HTTP 429: ERR max requests limit exceeded" });
+    // the reason travels with the refusal, so a failure can be diagnosed from the response
+    await expect(order()).rejects.toMatchObject({ status: 503, message: expect.stringContaining("kv HTTP 429") });
   });
 });
 

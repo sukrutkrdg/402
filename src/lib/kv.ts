@@ -185,17 +185,42 @@ export async function kvSet(key: string, value: string, ttlSeconds?: number): Pr
  * SET that reports whether the write landed, from the write's own reply.
  *
  * Do not confirm a write by reading it back: an Upstash global database serves
- * reads from the nearest replica, so a GET issued right after a SET can miss it
- * (this is what made every NEAR credit order fail with "could not be stored"
- * while the order was in fact stored). The primary's "OK" is the confirmation.
+ * reads from the nearest replica, so a GET issued right after a SET can miss it.
+ * The primary's "OK" is the confirmation.
+ *
+ * On failure `detail` says why — the HTTP status and Upstash's own error text
+ * (a quota or rate limit reads very differently from a timeout), so a failed
+ * money path can be diagnosed from its response instead of guessed at.
  */
-export async function kvSetChecked(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
-  if (kvConfigured()) {
-    const r = await cmd<string>(ttlSeconds ? ["SET", key, value, "EX", ttlSeconds] : ["SET", key, value]);
-    return r === "OK";
+export async function kvSetChecked(
+  key: string,
+  value: string,
+  ttlSeconds?: number,
+): Promise<{ ok: boolean; detail?: string }> {
+  if (!kvConfigured()) {
+    mem.set(key, { value, expireAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined });
+    return { ok: true };
   }
-  mem.set(key, { value, expireAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined });
-  return true;
+  const args = ttlSeconds ? ["SET", key, value, "EX", ttlSeconds] : ["SET", key, value];
+  try {
+    const res = await fetch(URL_ENV, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN_ENV}`, "content-type": "application/json" },
+      body: JSON.stringify(args),
+      signal: AbortSignal.timeout(5000),
+    });
+    const text = await res.text();
+    let j: { result?: unknown; error?: string } = {};
+    try {
+      j = JSON.parse(text);
+    } catch {
+      /* non-JSON body */
+    }
+    if (res.ok && j.result === "OK") return { ok: true };
+    return { ok: false, detail: `kv HTTP ${res.status}: ${(j.error || text || res.statusText).slice(0, 160)}` };
+  } catch (err) {
+    return { ok: false, detail: `kv request failed: ${(err as Error).name}: ${(err as Error).message}`.slice(0, 200) };
+  }
 }
 
 export async function kvDel(key: string): Promise<void> {
