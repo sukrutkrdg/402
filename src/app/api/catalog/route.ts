@@ -25,7 +25,7 @@ export function GET() {
     {
     name: "x402 Bazaar",
     description:
-      "Pay-per-call API marketplace on Base. Call any endpoint over HTTP; pay a USDC micro-payment via x402 (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
+      "Pay-per-call API marketplace for agents on Base and NEAR. Call any endpoint over HTTP; pay a USDC micro-payment via x402 on Base, or with a credit token bought from NEAR (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
     x402Version: 2,
     protocol: "x402",
     network: "eip155:8453",

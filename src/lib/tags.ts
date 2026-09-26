@@ -24,6 +24,7 @@ const STOPWORDS = new Set(["ai", "api", "get", "the", "and", "a", "of", "v2", "x
 
 const CATEGORY_TAGS: Record<string, string[]> = {
   Onchain: ["onchain", "base", "evm", "wallet-intel"],
+  NEAR: ["near", "nep-141", "near-intents", "onchain"],
   B20: ["b20", "base-token-standard", "freeze", "seize", "token-safety", "stablecoin", "compliance"],
   AI: ["ai", "llm", "analysis", "report"],
   Markets: ["market-data", "price", "liquidity", "dex"],

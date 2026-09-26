@@ -1,6 +1,6 @@
-# x402 Bazaar — Pay-per-call API marketplace with Base Builder Codes
+# x402 Bazaar — Pay-per-call API marketplace for agents on Base & NEAR
 
-A **live pay-per-call API marketplace** on **Base mainnet** — [402.com.tr](https://402.com.tr).
+A **live pay-per-call API marketplace** on **Base mainnet**, with NEAR-native checks and payment from **NEAR** — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
 161 public services as of 2026-09-10 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
 a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 13 of Coinbase's
 tokenized equities, wallet intelligence, OFAC screening, AI-written reports — sold to AI agents and humans over

@@ -43,7 +43,7 @@ const CHECKER = "https://buildercode-checker.vercel.app/";
 // Category display order — earlier index = rendered first.
 // "Web" sits high on purpose: it's the category that isn't crypto, and it's the
 // one a non-crypto agent operator can recognise on the first screen.
-const CATEGORY_ORDER = ["B20", "Web", "Files", "Compliance", "Business", "AI", "Onchain", "Accounts", "Lending", "Markets", "Data", "Utility", "Fun"];
+const CATEGORY_ORDER = ["B20", "NEAR", "Web", "Files", "Compliance", "Business", "AI", "Onchain", "Accounts", "Lending", "Markets", "Data", "Utility", "Fun"];
 
 // The AI synthesis suite — the differentiated moat, featured up top.
 const AI_FLAGSHIP_IDS = [
@@ -57,6 +57,7 @@ const AI_FLAGSHIP_IDS = [
 
 const TRUST_PILLS = [
   { label: "USDC on Base" },
+  { label: "Pay from NEAR" },
   { label: "No API keys" },
   { label: "x402 protocol" },
   { label: "MCP-ready" },
@@ -399,7 +400,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       {/* Hero */}
       <section className="flex flex-col gap-5">
         <div className="flex flex-col gap-4">
-          <span className="pill w-fit">⚡ x402 · Base mainnet · Builder Codes</span>
+          <span className="pill w-fit">⚡ x402 · Base + NEAR · Builder Codes</span>
 
           <h1 className="max-w-2xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
             Your agent shouldn&apos;t touch a Base token{" "}
@@ -415,7 +416,9 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             autonomous agents settle USDC micro-payments over the{" "}
             <strong className="text-gray-200">x402 protocol</strong> on Base, with every transaction
             attributed onchain via{" "}
-            <strong className="text-gray-200">ERC-8021 Builder Codes</strong>.
+            <strong className="text-gray-200">ERC-8021 Builder Codes</strong>. Agents on{" "}
+            <strong className="text-gray-200">NEAR</strong> get their own checks — token control, transfer
+            preflight, NEAR Intents quotes — and can pay from NEAR.
           </p>
 
           {/* CTAs */}
