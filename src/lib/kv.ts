@@ -181,6 +181,23 @@ export async function kvSet(key: string, value: string, ttlSeconds?: number): Pr
   mem.set(key, { value, expireAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined });
 }
 
+/**
+ * SET that reports whether the write landed, from the write's own reply.
+ *
+ * Do not confirm a write by reading it back: an Upstash global database serves
+ * reads from the nearest replica, so a GET issued right after a SET can miss it
+ * (this is what made every NEAR credit order fail with "could not be stored"
+ * while the order was in fact stored). The primary's "OK" is the confirmation.
+ */
+export async function kvSetChecked(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+  if (kvConfigured()) {
+    const r = await cmd<string>(ttlSeconds ? ["SET", key, value, "EX", ttlSeconds] : ["SET", key, value]);
+    return r === "OK";
+  }
+  mem.set(key, { value, expireAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined });
+  return true;
+}
+
 export async function kvDel(key: string): Promise<void> {
   if (kvConfigured()) {
     await cmd(["DEL", key]);

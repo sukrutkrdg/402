@@ -17,8 +17,9 @@ const { store, kvMock, mintMock } = vi.hoisted(() => {
   const kvMock = {
     kvConfigured: vi.fn(() => true),
     kvGet: vi.fn(async (k: string) => store.get(k) ?? null),
-    kvSet: vi.fn(async (k: string, v: string) => {
+    kvSetChecked: vi.fn(async (k: string, v: string) => {
       store.set(k, v);
+      return true;
     }),
     kvSetNx: vi.fn(async (k: string) => {
       if (store.has(k)) return false;
@@ -176,6 +177,21 @@ describe("ASSET_RE", () => {
   it.each(["wNEAR", "USDC", "erc20:0xabc", "nep141:", "nep141:a b"])("rejects %s", (id) =>
     expect(ASSET_RE.test(id)).toBe(false),
   );
+});
+
+describe("order storage", () => {
+  it("trusts the write's own OK, not a read-back a replica may not have yet", async () => {
+    // Production failed here: the GET went to a replica that had not seen the
+    // SET yet. Creating an order must not depend on reading it back at all.
+    const o = await order();
+    expect(o.orderId).toMatch(/^[0-9a-f]{24}$/);
+    expect(kvMock.kvGet).not.toHaveBeenCalled();
+  });
+
+  it("refuses to hand out a deposit address when the write was not acknowledged", async () => {
+    kvMock.kvSetChecked.mockResolvedValueOnce(false);
+    await expect(order()).rejects.toMatchObject({ status: 503 });
+  });
 });
 
 describe("checkNearOrder", () => {
