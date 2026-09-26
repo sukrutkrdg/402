@@ -8,6 +8,7 @@ import { SERVICES } from "@/lib/services";
 import { safeEqual } from "@/lib/secure";
 import { clientIp } from "@/lib/rate-limit";
 import { creditsLedger } from "@/lib/credits";
+import { nearRailLedger } from "@/lib/near-intents";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // headroom for the per-service KV reads
@@ -67,6 +68,9 @@ export async function GET(req: NextRequest) {
    * never spent is revenue today and a customer who never came back.
    */
   const credits = await creditsLedger();
+  // The NEAR Intents rail's own books (quotes → packs), so its conversion is
+  // visible on its own rather than folded into the credit totals above.
+  const nearCredits = await nearRailLedger();
 
   return NextResponse.json({
     ...data,
@@ -74,6 +78,7 @@ export async function GET(req: NextRequest) {
     ownerSources: cfg.ownerSources,
     totalRevenue,
     credits,
+    nearCredits,
     per,
     recent: data.recent.map((r) => ({ ...r, name: nameById[r.s] ?? r.s })),
   });

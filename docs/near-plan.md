@@ -1,6 +1,6 @@
 # NEAR ekosistemi iş planı
 
-> Durum: taslak · 2026-09-26 · sahibi: sukrutkrdg
+> Durum: Faz 0 ve Faz 1 kodda (bayrak kapalı) · Faz 2 doğrulama bekliyor · 2026-09-26 · sahibi: sukrutkrdg
 > Bu belge hem iş planı hem geliştirme yol haritasıdır. Claude ile yapılan her
 > geliştirme oturumu buradan başlar; bir faz bittiğinde "Durum" satırı güncellenir.
 
@@ -43,6 +43,8 @@ servisleri yazmak bu planın kapsamında değil (bkz. Faz 3).
 
 ### Faz 0 — Görünürlük (1–2 gün, risk yok)
 
+**Durum: uygulandı.** `src/lib/near-funding.ts` tek kaynak; llms.txt, agent-card (`fundingOptions.near`), `/agents` (2c) ve `skill/SKILL.md` buradan besleniyor. Link bazlı `ref=near` sayacı eklenmedi: bunun için ücretli ana rotaya dokunmak gerekirdi. Ölçüm onun yerine Faz 1 sayaçlarından yapılıyor (teklif → satılan paket).
+
 **Amaç:** NEAR ajanlarının bizi bulması ve Base'de nasıl ödeyeceklerini anlaması.
 
 - `/llms.txt` (`src/app/api/llms/route.ts`): "NEAR ajanları için" paragrafı. Chain
@@ -60,6 +62,8 @@ servisleri yazmak bu planın kapsamında değil (bkz. Faz 3).
 testler geçiyor.
 
 ### Faz 1 — NEAR Intents ile kredi satın alma (≈1 hafta)
+
+**Durum: uygulandı, `ENABLE_NEAR_CREDITS=false` ile kapalı.** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts` (10 test). Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. Canlıya almadan önce: 7. bölümdeki 1Click kontrolleri ve $0.25'lik gerçek bir deneme.
 
 **Amaç:** Base'de USDC'si olmayan bir ajanın, NEAR'daki (ya da başka bir zincirdeki)
 varlığıyla kredi paketi alabilmesi.
@@ -100,6 +104,8 @@ varlığıyla kredi paketi alabilmesi.
 servis çağrısında harcanmış, `creditsLedger` bunu NEAR kanalında göstermiş.
 
 ### Faz 2 — NEAR AI Agent Market çalışanı (≈2–3 hafta, önce dry-run)
+
+**Durum: başlanmadı.** Pazarın API'si (`market.near.ai/skill.md`) bu geliştirme ortamından okunamadı. Doğrulanmamış uç noktalara kod yazılmadı.
 
 **Amaç:** market.near.ai'deki ilanlara teklif vermek ve işi kendi servislerimizle yapıp
 NEAR kazanmak. Pazar 2026 Eylül itibarıyla servis kataloğundan **ajan kiralama modeline**
