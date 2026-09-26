@@ -16,6 +16,8 @@ interface World {
   supply?: string;
   tokens?: { assetId: string; blockchain: string; contractAddress?: string; price?: number }[];
   firstRpcDown?: boolean;
+  /** view method → JSON answer; methods not listed fail like a missing method. */
+  views?: Record<string, unknown>;
 }
 
 function stub(w: World) {
@@ -40,6 +42,8 @@ function stub(w: World) {
         if (p.method_name === "ft_metadata")
           return w.metadata ? ok({ result: enc(w.metadata), logs: [] }) : ok({ error: "wasm execution failed: MethodNotFound", logs: [] });
         if (p.method_name === "ft_total_supply") return ok({ result: enc(w.supply ?? "0"), logs: [] });
+        if (w.views && p.method_name in w.views) return ok({ result: enc(w.views[p.method_name]), logs: [] });
+        return ok({ error: "wasm execution failed: MethodNotFound", logs: [] });
       }
       return new Response("?", { status: 400 });
     }),
@@ -72,6 +76,28 @@ describe("nearTokenSafety", () => {
     expect(r.verdict).toBe("GO");
     expect(r.reasons.join(" ")).toMatch(/does not read the contract's source/);
     expect(r.reasons.join(" ")).toMatch(/Not routed by NEAR Intents/);
+  });
+
+  it("HOLD when there are no keys but the contract names an owner — the USDt case", async () => {
+    stub({ account: TOKEN, keys: [], metadata: META, supply: "1", views: { owner_id: "tether-treasury.near" } });
+    const r = await nearTokenSafety({ token: "usdt.tether-token.near" });
+    expect(r.verdict).toBe("HOLD");
+    expect(r).toMatchObject({ control: { fullAccessKeys: 0, owner: "tether-treasury.near", ownerMethod: "owner_id", paused: null } });
+    expect(r.reasons[0]).toMatch(/Owner-controlled/);
+  });
+
+  it("reads an owner returned as an object, and reports an existing pause switch", async () => {
+    stub({ account: TOKEN, keys: [], metadata: META, supply: "1", views: { get_owner: { owner_id: "dao.sputnik-dao.near" }, is_paused: false } });
+    const r = await nearTokenSafety({ token: "x.near" });
+    expect(r).toMatchObject({ verdict: "HOLD", control: { owner: "dao.sputnik-dao.near", paused: false } });
+    expect(r.reasons.join(" ")).toMatch(/pause switch exists/);
+  });
+
+  it("STOP when the contract says it is paused", async () => {
+    stub({ account: TOKEN, keys: [], metadata: META, supply: "1", views: { paused: true } });
+    const r = await nearTokenSafety({ token: "x.near" });
+    expect(r.verdict).toBe("STOP");
+    expect(r.reasons[0]).toMatch(/Paused/);
   });
 
   it("STOP for an account with no contract, and for a contract that is not NEP-141", async () => {
