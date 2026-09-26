@@ -1,6 +1,6 @@
 # NEAR ekosistemi iş planı
 
-> Durum: Faz 0 ve Faz 1 kodda (bayrak kapalı) · Faz 2 doğrulama bekliyor · 2026-09-26 · sahibi: sukrutkrdg
+> Durum: Faz 0 ve Faz 1 **canlıda**, ilk NEAR satışı 2026-09-26 · Faz 2 doğrulama bekliyor · sahibi: sukrutkrdg
 > Bu belge hem iş planı hem geliştirme yol haritasıdır. Claude ile yapılan her
 > geliştirme oturumu buradan başlar; bir faz bittiğinde "Durum" satırı güncellenir.
 
@@ -63,7 +63,15 @@ testler geçiyor.
 
 ### Faz 1 — NEAR Intents ile kredi satın alma (≈1 hafta)
 
-**Durum: uygulandı, `ENABLE_NEAR_CREDITS=false` ile kapalı.** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts` (10 test). Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. Canlıya almadan önce: 7. bölümdeki 1Click kontrolleri ve $0.25'lik gerçek bir deneme.
+**Durum: canlıda (`ENABLE_NEAR_CREDITS=true`).** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts`. Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. İnsanlar için `/credits` sayfasında "Pay from NEAR" bölümü (`NearCreditsClient.tsx`).
+
+**İlk canlı satış (2026-09-26):** $0.25 paket, NEAR üzerindeki USDC ile (0.255004 USDC gönderildi), 1Click takası Base'de `0x6c66b2df…0089704` ile `PAY_TO_ADDRESS`'e ulaştı, token basıldı, para cüzdanda ve `/stats`'ta görüldü.
+
+**Canlıya alırken öğrenilenler:**
+- 64 karakterlik NEAR implicit hesabı `.near` eki olmadan yazılır; ekli hali başka (genelde var olmayan) bir hesaptır ve iade oraya giderdi. Sunucu artık bu biçimi reddedip doğrusunu öneriyor, arayüz de uyarıyor.
+- Upstash ücretsiz planı aşılmıştı ve Upstash bunu **HTTP 200 + `error` gövdesi** ile bildiriyordu; KV istemcisi bunu başarı sanıyordu. Artık hata sayılıyor ve loglanıyor (`[kv] Upstash refused a command`). Plan Pay-as-you-go'ya alındı; istek başına komut sayısı yaklaşık %30 azaltıldı.
+- Yazmayı hemen geri okuyarak doğrulamak güvenilir değil (Upstash okumayı kopyadan yapabilir); doğrulama SET'in kendi `OK` yanıtıyla yapılıyor (`kvSetChecked`).
+- 1Click, 1 saat istediğimiz halde yaklaşık 3 günlük bir `deadline` döndürdü; ajana 1Click'in değeri gösteriliyor.
 
 **Amaç:** Base'de USDC'si olmayan bir ajanın, NEAR'daki (ya da başka bir zincirdeki)
 varlığıyla kredi paketi alabilmesi.

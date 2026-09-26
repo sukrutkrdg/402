@@ -42,6 +42,16 @@ One Next.js app plays all three roles in the x402 flow:
 - **Attribution dashboard** (`/dashboard`): paste any Base settlement tx hash; we read its calldata
   and decode the `a` / `w` / `s` Builder Codes straight from chain (no DB, no trust).
 
+## Agents on NEAR
+
+Agents from the NEAR ecosystem reach the same catalogue two ways; the x402 challenge itself stays Base-only.
+
+- **Chain Signatures** — a NEAR account controls an EVM address and signs the standard x402 payment on Base.
+- **NEAR Intents credits** (`ENABLE_NEAR_CREDITS=true`) — pay a credit pack with USDC, USDT or NEAR on NEAR
+  (or any asset NEAR Intents routes). `POST /api/credits/near/quote` returns a deposit address; once the swap
+  settles as USDC on Base at `PAY_TO_ADDRESS`, `GET /api/credits/near/status` returns the `x-credit-token`.
+  Humans can do the same from [`/credits`](https://402.com.tr/credits). Plan and design: [`docs/near-plan.md`](docs/near-plan.md).
+
 ## How Builder Codes are wired
 
 **Seller** declares the app code per route:

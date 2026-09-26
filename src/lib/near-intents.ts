@@ -196,6 +196,19 @@ function secretMatches(secret: string, storedHash: string): boolean {
 export const ASSET_RE = /^(nep141|nep245|1cs_v1):[A-Za-z0-9._:\-]{2,200}$/;
 /** Refund target: any chain's address or a NEAR account — shape-checked only, 1Click validates it. */
 const REFUND_RE = /^[A-Za-z0-9._:\-]{2,128}$/;
+export const IMPLICIT_WITH_SUFFIX = /^[0-9a-f]{64}\.near$/;
+
+/**
+ * How a buyer on this rail gets a lost token back. mintCredits' own `security`
+ * text points at wallet-signature recovery, which needs the wallet that paid on
+ * Base — here that is 1Click's, not the buyer's — so it is replaced.
+ */
+const NEAR_SECURITY =
+  "This token is a bearer key — anyone holding it can spend the balance. Store it secretly. Lost it? Poll GET /api/credits/near/status again with the same orderId and x-order-secret: the same token comes back. Keep the orderSecret as safely as the token itself.";
+
+/** Basescan link for a Base tx, when 1Click did not supply an explorer URL. */
+const withExplorer = (txs: { hash: string; explorerUrl?: string }[] | undefined) =>
+  (txs ?? []).map((t) => ({ hash: t.hash, explorerUrl: t.explorerUrl || `https://basescan.org/tx/${t.hash}` }));
 
 export interface CreateOrderInput {
   tier?: string;
@@ -225,6 +238,15 @@ export async function createNearOrder(input: CreateOrderInput) {
   const refundTo = (input.refundTo || "").trim();
   if (!REFUND_RE.test(refundTo)) {
     throw new NearOrderError("refundTo is required: where 1Click returns your funds if the swap does not complete", 400);
+  }
+  // A 64-hex NEAR implicit account is written WITHOUT a suffix. With ".near"
+  // appended it names a different (almost always nonexistent) account, and a
+  // refund sent there is lost — the first live test made exactly this mistake.
+  if (IMPLICIT_WITH_SUFFIX.test(refundTo)) {
+    throw new NearOrderError(
+      `refundTo looks like a NEAR implicit account with ".near" appended. Implicit accounts have no suffix — use "${refundTo.slice(0, 64)}".`,
+      400,
+    );
   }
   const depositType: DepositType = input.depositType === "INTENTS" ? "INTENTS" : "ORIGIN_CHAIN";
 
@@ -363,7 +385,7 @@ export async function checkNearOrder(orderId: string, secret: string) {
   // Already minted: hand the same token back.
   if (rec.sealedToken) {
     const token = unseal(rec.sealedToken, secret);
-    if (token) return { status: "SUCCESS" as const, creditToken: token, alreadyClaimed: true };
+    if (token) return { status: "SUCCESS" as const, creditToken: token, alreadyClaimed: true, security: NEAR_SECURITY };
   }
 
   const q = new URLSearchParams({ depositAddress: rec.depositAddress });
@@ -424,7 +446,8 @@ export async function checkNearOrder(orderId: string, secret: string) {
   return {
     status: "SUCCESS" as const,
     ...minted,
-    settlement: s.swapDetails?.destinationChainTxHashes ?? [],
+    security: NEAR_SECURITY,
+    settlement: withExplorer(s.swapDetails?.destinationChainTxHashes),
   };
 }
 
