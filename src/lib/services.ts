@@ -19,6 +19,7 @@ import { basenameResolve, ensResolve, basenameProfile } from "./basename";
 import { nearTokenSafety } from "./near-token-safety";
 import { nearAccount } from "./near-account";
 import { nearTransferPreflight } from "./near-transfer-preflight";
+import { nearSwapQuote } from "./near-swap-quote";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1330,6 +1331,22 @@ export const SERVICES: ServiceDef[] = [
       { name: "amount", label: "Amount in token units (optional)", placeholder: "25" },
     ],
     handler: nearTransferPreflight,
+  },
+  {
+    id: "near-swap-quote",
+    name: "NEAR Intents Swap Quote",
+    tagline: "What does swapping A for B through NEAR Intents give back?",
+    description:
+      "An indicative quote for swapping any asset NEAR Intents routes — NEAR, USDC, USDT, BTC, SOL and more, across chains. Name assets as a symbol (USDC = on NEAR, USDC@base for another chain), a NEAR token account, or a 1Click asset id. Returns amount out, minimum out, USD in and out, the rate, the cost in percent lost to fees and price impact, and the expected time. Nothing is reserved or paid.",
+    price: "$0.01",
+    icon: "Ⓝ",
+    category: "Onchain",
+    params: [
+      { name: "from", label: "Asset you pay with", placeholder: "USDC", required: true },
+      { name: "to", label: "Asset you want", placeholder: "NEAR", required: true },
+      { name: "amount", label: "Amount of the paying asset", placeholder: "100", required: true },
+    ],
+    handler: nearSwapQuote,
   },
   {
     id: "encode-selector",
