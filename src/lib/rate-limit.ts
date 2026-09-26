@@ -6,6 +6,7 @@
  * For hard guarantees on a public deploy, front it with a shared store.
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { kvIncr, kvConfigured } from "./kv";
 
 const hits = new Map<string, number[]>();
@@ -49,7 +50,34 @@ export async function rateLimitKv(
   return { ok: true, retryAfterMs: 0 };
 }
 
+/**
+ * Our own server calling our own API on a caller's behalf (the hosted MCP
+ * endpoint) arrives from a Vercel egress IP, so every hosted-MCP user shared one
+ * free quota and one rate limit. That server passes the caller's IP in a header
+ * signed with a server-only secret; anyone else sending the header is ignored.
+ */
+const FWD_IP = "x-402-client-ip";
+const FWD_SIG = "x-402-client-sig";
+const fwdKey = () => process.env.CRON_SECRET || "";
+const sign = (ip: string) => createHmac("sha256", fwdKey()).update(`client-ip:${ip}`).digest("hex");
+
+export function forwardedIpHeaders(ip: string): Record<string, string> {
+  if (!fwdKey() || !ip || ip === "unknown") return {};
+  return { [FWD_IP]: ip, [FWD_SIG]: sign(ip) };
+}
+
+function signedForwardedIp(req: Request): string | null {
+  const ip = req.headers.get(FWD_IP);
+  const sig = req.headers.get(FWD_SIG);
+  if (!ip || !sig || !fwdKey()) return null;
+  const want = Buffer.from(sign(ip));
+  const got = Buffer.from(sig);
+  return want.length === got.length && timingSafeEqual(want, got) ? ip.trim() : null;
+}
+
 export function clientIp(req: Request): string {
+  const forwarded = signedForwardedIp(req);
+  if (forwarded) return forwarded;
   /**
    * Cloudflare first, because it is in front of Vercel and that changes who
    * "the client" is.
