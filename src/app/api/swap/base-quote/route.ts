@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { baseSwap } from "@/lib/base-swap";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
+import { onBasePage, PAGE_QUOTES_PER_DAY } from "@/lib/swap-page-tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,14 @@ export async function GET(req: NextRequest) {
     const v = p.get(k);
     if (v) params[k] = v;
   }
+  if (!(onBasePage(params.sell) && onBasePage(params.buy))) {
+    return NextResponse.json(
+      { error: "This page quotes the tokens in its lists. Any other token: the paid API at /api/x402/base-swap." },
+      { status: 400 },
+    );
+  }
+  const day = await rateLimitKv("swapbase:all", PAGE_QUOTES_PER_DAY, 86400);
+  if (!day.ok) return NextResponse.json({ error: "The page has handed out today's quotes — try again tomorrow, or use the paid API." }, { status: 429 });
   try {
     return NextResponse.json(await baseSwap(params));
   } catch (e) {

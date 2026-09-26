@@ -8,21 +8,10 @@
  */
 
 import { useEffect, useState } from "react";
+import { NEAR_PAGE_ASSETS } from "@/lib/swap-page-tokens";
 
 /** Common pairs; the server resolves `SYMBOL@chain` against NEAR Intents' list. */
-const ASSETS = [
-  { v: "USDC", label: "USDC · NEAR" },
-  { v: "USDT", label: "USDT · NEAR" },
-  { v: "NEAR", label: "NEAR" },
-  { v: "USDC@base", label: "USDC · Base" },
-  { v: "ETH@base", label: "ETH · Base" },
-  { v: "ETH@eth", label: "ETH · Ethereum" },
-  { v: "USDC@eth", label: "USDC · Ethereum" },
-  { v: "USDC@arb", label: "USDC · Arbitrum" },
-  { v: "BTC@btc", label: "BTC · Bitcoin" },
-  { v: "SOL@sol", label: "SOL · Solana" },
-  { v: "USDC@sol", label: "USDC · Solana" },
-] as const;
+const ASSETS = NEAR_PAGE_ASSETS;
 
 interface Quote {
   from: { symbol: string; chain: string };
@@ -94,8 +83,17 @@ export default function SwapClient() {
     }
   }, []);
 
+  // Past the deadline with nothing deposited, the address is dead: stop polling and say so.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!quote || status?.done) return;
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const expired =
+    !!quote && now > Date.parse(quote.deposit.sendBefore) + 10 * 60_000 && (!status || status.status === "PENDING_DEPOSIT" || status.status === "NOT_FOUND");
+
+  useEffect(() => {
+    if (!quote || status?.done || expired) return;
     let stop = false;
     const tick = async () => {
       try {
@@ -112,7 +110,7 @@ export default function SwapClient() {
       stop = true;
       clearInterval(id);
     };
-  }, [quote, status?.done]);
+  }, [quote, status?.done, expired]);
 
   async function getQuote(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +152,19 @@ export default function SwapClient() {
 
   if (quote) {
     const fresh = quote.deposit.chain === "near" && /^[0-9a-f]{64}$/.test(quote.deposit.address);
+    if (expired) {
+      return (
+        <div className="flex flex-col gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">
+          <div className="text-sm text-amber-200">
+            This quote expired on {new Date(quote.deposit.sendBefore).toLocaleString()} and nothing was deposited. Do not send to its
+            address — get a new quote.
+          </div>
+          <button type="button" onClick={reset} className="w-fit rounded-xl border border-base-line px-4 py-2 text-sm hover:border-teal-400">
+            New swap
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-4 rounded-2xl border border-teal-500/30 bg-teal-500/5 p-5">
         <div className="text-sm text-gray-300">

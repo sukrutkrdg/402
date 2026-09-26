@@ -30,4 +30,11 @@ describe("/api/swap/quote", () => {
     expect(r.status).toBe(400);
     expect((await r.json()).error).toMatch(/recipient/);
   });
+
+  it("quotes only the page's own assets — any other token is the paid API's job", async () => {
+    stubNear({ tokens: TOKENS });
+    const r = await POST(req({ from: "USDC", to: "some-token.near", amount: "5", recipient: "a.near", refundTo: "a.near" }));
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toMatch(/near-swap/);
+  });
 });

@@ -36,11 +36,15 @@ interface BaseQuoteRecord {
   feeBps: number;
 }
 
+/** One quote's USD, capped: quotes are free to ask for, so one made-up $1B quote must not own the panel. */
+const MAX_QUOTE_USD = 250_000;
+const bookedCents = (usd: number | null) => Math.round(Math.min(Math.max(usd ?? 0, 0), MAX_QUOTE_USD) * 100);
+
 /** Called by base-swap after a transaction is handed out. Best-effort. */
 export async function recordBaseSwapQuote(q: BaseQuoteRecord): Promise<void> {
   await Promise.all([
     kvIncrBy(BASE_SWAP_LEDGER.quotes, 1),
-    kvIncrBy(BASE_SWAP_LEDGER.quotedCents, Math.round((q.usd ?? 0) * 100)),
+    kvIncrBy(BASE_SWAP_LEDGER.quotedCents, bookedCents(q.usd)),
     kvLPush(BASE_SWAP_LEDGER.recent, JSON.stringify(q), 50),
   ]).catch(() => {});
 }
@@ -92,7 +96,7 @@ interface RecentQuote {
 export async function recordSwapQuote(q: RecentQuote): Promise<void> {
   await Promise.all([
     kvIncrBy(SWAP_LEDGER.quotes, 1),
-    kvIncrBy(SWAP_LEDGER.quotedCents, Math.round((q.usd ?? 0) * 100)),
+    kvIncrBy(SWAP_LEDGER.quotedCents, bookedCents(q.usd)),
     kvLPush(SWAP_LEDGER.recent, JSON.stringify(q), 50),
   ]).catch(() => {});
 }
@@ -134,7 +138,7 @@ export async function nearSwapBook() {
     kvGetNumber(SWAP_LEDGER.quotes),
     kvGetNumber(SWAP_LEDGER.quotedCents),
     kvLRange(SWAP_LEDGER.recent, 0, 19),
-  ]);
+  ]).catch(() => [0, 0, [] as string[]] as const); // a failed NEAR read must not take the Base panel with it
   const recentQuotes = rawRecent
     .map((s) => {
       try {

@@ -7,11 +7,12 @@
  * swap agents get from base-swap. Nothing is held by us; the wallet sends it.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain, useSendTransaction, useWriteContract, usePublicClient } from "wagmi";
 import { erc20Abi } from "viem";
+import { BASE_PAGE_TOKENS } from "@/lib/swap-page-tokens";
 
-const TOKENS = ["USDC", "ETH", "WETH", "cbBTC", "AERO", "DAI", "EURC", "cbETH"] as const;
+const TOKENS = BASE_PAGE_TOKENS;
 const BASE_ID = 8453;
 
 interface BaseQuote {
@@ -60,6 +61,12 @@ export default function BaseSwapClient() {
     setBuy(sell);
     setQuote(null);
   };
+
+  // A quote is built for one wallet (its balance, allowance and the tx sender); a different wallet needs a new one.
+  useEffect(() => {
+    setQuote(null);
+    setDone(null);
+  }, [address, chainId]);
 
   const web = connectors.filter((c) => !/farcaster/i.test(c.id + c.name));
   const input = "w-full rounded-xl border border-base-line bg-black/50 px-3 py-2 text-sm outline-none focus:border-sky-400";

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { nearSwap } from "@/lib/near-swap";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
+import { onNearPage, PAGE_QUOTES_PER_DAY } from "@/lib/swap-page-tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,14 @@ export async function POST(req: NextRequest) {
   for (const k of ["from", "to", "amount", "recipient", "refundTo", "slippage"]) {
     if (typeof body[k] === "string" || typeof body[k] === "number") params[k] = String(body[k]);
   }
+  if (!(onNearPage(params.from) && onNearPage(params.to))) {
+    return NextResponse.json(
+      { error: "This page quotes the tokens in its lists. Any other token: the paid API at /api/x402/near-swap." },
+      { status: 400 },
+    );
+  }
+  const day = await rateLimitKv("swapquote:all", PAGE_QUOTES_PER_DAY, 86400);
+  if (!day.ok) return NextResponse.json({ error: "The page has handed out today's quotes — try again tomorrow, or use the paid API." }, { status: 429 });
   try {
     return NextResponse.json(await nearSwap(params));
   } catch (e) {

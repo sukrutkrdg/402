@@ -25,9 +25,14 @@ const DEADLINE_MS = 60 * 60_000;
 
 /** The distribution fee, or null when off. Capped at 1% so a typo cannot overcharge. */
 export function swapFee(): { recipient: string; bps: number } | null {
-  const recipient = (process.env.NEAR_INTENTS_FEE_RECIPIENT || "").trim();
+  const recipient = (process.env.NEAR_INTENTS_FEE_RECIPIENT || "").trim().toLowerCase();
   const bps = Number(process.env.NEAR_INTENTS_FEE_BPS || 0);
   if (!recipient || !Number.isInteger(bps) || bps <= 0) return null;
+  // A NEAR account: 64-hex implicit or a named account. A typo here would send every fee to a stranger or fail every quote.
+  if (!/^([0-9a-f]{64}|(?=.{2,64}$)[a-z0-9]+([_-][a-z0-9]+)*(\.[a-z0-9]+([_-][a-z0-9]+)*)*)$/.test(recipient)) {
+    console.error("[near-swap] NEAR_INTENTS_FEE_RECIPIENT is not a NEAR account — fee disabled");
+    return null;
+  }
   return { recipient, bps: Math.min(bps, 100) };
 }
 
