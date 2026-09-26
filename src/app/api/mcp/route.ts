@@ -17,6 +17,7 @@ import { mcpToolList, visibleServices } from "@/lib/mcp-tools";
 import { getSiteUrl } from "@/lib/config";
 import { MCP_CHANNEL_HOST } from "@/lib/usage";
 import { rateLimitKv, clientIp } from "@/lib/rate-limit";
+import { nearCreditsOn } from "@/lib/near-funding";
 
 const MAX_BATCH = 20; // cap JSON-RPC batch fan-out so one POST can't amplify to N outbound calls
 
@@ -86,7 +87,12 @@ async function handle(rpc: RpcReq, creditToken: string): Promise<object | null> 
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER,
         instructions:
-          "x402 Bazaar tools: onchain safety, wallet/account intelligence, lending and AI reads on Base, paid per call over x402. Configure an x-credit-token header (buy once via buy-credits, no wallet) for unlimited calls; otherwise 1 free call/day per tool.",
+          "x402 Bazaar tools: onchain safety, wallet/account intelligence, lending and AI reads on Base, paid per call over x402. Configure an x-credit-token header (buy once via buy-credits, no wallet) for unlimited calls; otherwise 1 free call/day per tool." +
+          // Agents reaching us through the NEAR agent market hold USDC or NEAR on
+          // NEAR, not USDC on Base — tell them the credit token is buyable there.
+          (nearCreditsOn()
+            ? ` No USDC on Base? Buy the credit token with USDC, USDT or NEAR on NEAR via NEAR Intents: POST ${getSiteUrl()}/api/credits/near/quote.`
+            : ""),
       });
     case "notifications/initialized":
     case "notifications/cancelled":
