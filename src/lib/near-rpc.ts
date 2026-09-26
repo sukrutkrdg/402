@@ -155,3 +155,77 @@ export function accountKind(id: string): "implicit" | "eth-implicit" | "named" |
   if (parts.length === 2 && REGISTRARS.has(parts[1])) return "named";
   return "sub-account";
 }
+
+/**
+ * Archival reads — state as of a past block, for anything measured over time
+ * (a staking token's price a week ago). Regular RPC nodes keep only recent
+ * blocks, so these go to archival nodes. Override with NEAR_ARCHIVAL_RPC_URL.
+ */
+export const ARCHIVAL_RPCS = () =>
+  (process.env.NEAR_ARCHIVAL_RPC_URL ? [process.env.NEAR_ARCHIVAL_RPC_URL] : []).concat([
+    "https://archival-rpc.mainnet.fastnear.com",
+    "https://archival-rpc.mainnet.near.org",
+  ]);
+
+async function archival<T>(method: string, params: Record<string, unknown>): Promise<{ ok: true; value: T } | { ok: false; message: string }> {
+  let last = "no archival RPC reachable";
+  for (const url of ARCHIVAL_RPCS()) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: "402", method, params }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        last = `${url} HTTP ${res.status}`;
+        continue;
+      }
+      const j = (await res.json()) as { result?: T & { error?: string }; error?: { cause?: { name?: string }; message?: string } };
+      if (j.error) return { ok: false, message: j.error.cause?.name || j.error.message || "rpc error" };
+      if (j.result && typeof j.result.error === "string") return { ok: false, message: j.result.error.slice(0, 200) };
+      if (j.result) return { ok: true, value: j.result };
+      last = `${url} empty result`;
+    } catch (e) {
+      last = `${url} ${(e as Error).name}`;
+    }
+  }
+  throw new Error(`NEAR archival RPC unavailable (${last}) — not charged, retry shortly`);
+}
+
+/** A block's height and time (ms). `at` is a height, or "final" for the latest. Null when the height was skipped. */
+export async function blockAt(at: number | "final"): Promise<{ height: number; timeMs: number } | null> {
+  const r = await archival<{ header: { height: number; timestamp: number | string; timestamp_nanosec?: string } }>(
+    "block",
+    at === "final" ? { finality: "final" } : { block_id: at },
+  );
+  if (!r.ok) return null;
+  const ns = String(r.value.header.timestamp_nanosec ?? r.value.header.timestamp);
+  return { height: r.value.header.height, timeMs: Number(ns.slice(0, ns.length - 6)) };
+}
+
+/** The nearest existing block at or after `height` (NEAR skips some heights). */
+export async function blockNear(height: number): Promise<{ height: number; timeMs: number } | null> {
+  for (let h = height; h < height + 5; h++) {
+    const b = await blockAt(h);
+    if (b) return b;
+  }
+  return null;
+}
+
+/** A view call as of a past block; null when it fails. */
+export async function viewCallAt<T>(accountId: string, method: string, blockId: number, args: Record<string, unknown> = {}): Promise<T | null> {
+  const r = await archival<{ result: number[] }>("query", {
+    request_type: "call_function",
+    block_id: blockId,
+    account_id: accountId,
+    method_name: method,
+    args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
+  });
+  if (!r.ok) return null;
+  try {
+    return JSON.parse(Buffer.from(r.value.result).toString("utf8")) as T;
+  } catch {
+    return null;
+  }
+}

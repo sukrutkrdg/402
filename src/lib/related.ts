@@ -47,11 +47,15 @@ const PAIRS: Record<string, string[]> = {
   "near-token-safety": ["near-pre-trade-gate", "near-token-holders", "near-transfer-preflight"],
   "near-pre-trade-gate": ["near-swap-quote", "near-transfer-preflight", "near-portfolio"],
   "near-transfer-preflight": ["near-account", "near-token-safety", "near-swap-quote"],
-  "near-swap-quote": ["near-pre-trade-gate", "near-token-safety", "near-transfer-preflight"],
+  "near-swap-quote": ["near-swap", "near-pre-trade-gate", "near-token-safety"],
   "near-account": ["near-wallet-activity", "near-portfolio", "near-transfer-preflight"],
   "near-portfolio": ["near-account", "near-wallet-activity", "near-pre-trade-gate"],
   "near-wallet-activity": ["near-account", "near-portfolio", "near-transfer-preflight"],
   "near-token-holders": ["near-pre-trade-gate", "near-token-safety", "near-swap-quote"],
+  "near-swap": ["near-swap-status", "near-pre-trade-gate", "near-swap-quote"],
+  "near-swap-status": ["near-swap", "near-wallet-activity", "near-portfolio"],
+  "near-staking-yields": ["near-lending-health", "near-swap", "near-portfolio"],
+  "near-lending-health": ["near-portfolio", "near-staking-yields", "near-swap"],
 };
 
 /** NEAR-native services: suggestions stay on NEAR, and the (EVM-side) file tools are not appended. */

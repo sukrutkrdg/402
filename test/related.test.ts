@@ -77,7 +77,7 @@ describe("related suggestions point at things that exist", () => {
   });
 
   it("keeps a NEAR call's suggestions on NEAR — no Base tools, no file tools", () => {
-    for (const id of ["near-token-safety", "near-pre-trade-gate", "near-transfer-preflight", "near-swap-quote", "near-account", "near-portfolio", "near-wallet-activity", "near-token-holders"]) {
+    for (const id of ["near-token-safety", "near-pre-trade-gate", "near-transfer-preflight", "near-swap-quote", "near-account", "near-portfolio", "near-wallet-activity", "near-token-holders", "near-swap", "near-swap-status", "near-staking-yields", "near-lending-health"]) {
       const ids = relatedFor(id).map((r) => r.id);
       expect(ids.length, id).toBe(3);
       expect(ids.every((x) => x.startsWith("near-")), `${id} → ${ids.join(", ")}`).toBe(true);

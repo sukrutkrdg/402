@@ -85,6 +85,10 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "near-portfolio": ["near", "portfolio", "net-worth", "nep-141", "wallet-intel"],
   "near-wallet-activity": ["near", "wallet-intel", "transaction-history", "counterparties", "indexer"],
   "near-token-holders": ["near", "nep-141", "holders", "concentration", "whale-watch"],
+  "near-swap": ["near", "near-intents", "swap", "cross-chain", "execution"],
+  "near-swap-status": ["near", "near-intents", "swap", "status", "tracking"],
+  "near-staking-yields": ["near", "staking", "liquid-staking", "yield", "apy"],
+  "near-lending-health": ["near", "lending", "health-factor", "liquidation", "defi"],
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
 };
