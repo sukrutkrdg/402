@@ -77,6 +77,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "contract-info": ["json-rpc", "contract", "bytecode", "chain-read", "primitive"],
   "ens-resolve": ["ens", "name-resolution", "chain-read", "primitive"],
   "near-token-safety": ["near", "nep-141", "token-safety", "upgradeability", "chain-read"],
+  "near-account": ["near", "account", "access-keys", "wallet-intel", "chain-read"],
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
 };
