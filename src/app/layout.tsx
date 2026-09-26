@@ -118,6 +118,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Ⓝ NEAR
               </Link>
               <Link
+                href="/swap"
+                className="shrink-0 rounded-lg px-3 py-1.5 font-medium text-teal-300 hover:bg-white/5 hover:text-teal-200"
+              >
+                🔁 Swap
+              </Link>
+              <Link
                 href="/dashboard"
                 className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
               >

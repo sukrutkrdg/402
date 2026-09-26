@@ -230,6 +230,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "morpho-vault": { vault: VAULT },
   // The route is quoted OUT of USDC, so quoting into USDC would price nothing.
   "swap-route": { tokenOut: DEGEN, amountUsd: "100" },
+  // A quote only: the transaction is returned, never sent.
+  "base-swap": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   "paymaster-check": { paymaster: PAYMASTER, days: "7" },
   "pair-info": { pair: PAIR },
   "nft-floor": { contract: NFT_COLLECTION },

@@ -27,6 +27,7 @@ import { nearTokenHolders } from "./near-token-holders";
 import { nearSwap, nearSwapStatus } from "./near-swap";
 import { nearStakingYields } from "./near-staking-yields";
 import { nearLendingHealth } from "./near-lending-health";
+import { baseSwap } from "./base-swap";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1052,6 +1053,24 @@ export const SERVICES: ServiceDef[] = [
   //     handler: preSignPreflight,
   //     noFreeTier: true,
   //   },
+  {
+    id: "base-swap",
+    name: "Base Swap",
+    tagline: "Swap on Base at the best price — a ready-to-sign transaction",
+    description:
+      "An executable swap on Base, routed by 0x across Uniswap, Aerodrome, Balancer, Curve and more. Returns the transaction for your own wallet to sign, plus the approval step if needed, minimum out, route and fees. We never hold funds. Name tokens as ETH, USDC, WETH, cbBTC, AERO… or a 0x address; buying an unknown token runs a sellability check first and refuses a honeypot unless force=1.",
+    price: "$0.01",
+    icon: "🔁",
+    category: "Onchain",
+    params: [
+      { name: "sell", label: "Token you sell", placeholder: "USDC", required: true },
+      { name: "buy", label: "Token you buy", placeholder: "ETH", required: true },
+      { name: "amount", label: "Amount you sell", placeholder: "100", required: true },
+      { name: "taker", label: "Your wallet (signs the swap)", placeholder: "0x…", required: true },
+      { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
+    ],
+    handler: baseSwap,
+  },
   {
     id: "swap-route",
     name: "Swap Route + Safety",

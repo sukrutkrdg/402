@@ -44,6 +44,7 @@ const PAIRS: Record<string, string[]> = {
   "b20-safety": ["b20-gate", "b20-policy-watch"],
   // NEAR: a caller asking about a NEAR token or account wants the next NEAR
   // step, not the Base toolkit that shares its category.
+  "base-swap": ["pre-trade-gate", "swap-route", "sellability"],
   "near-token-safety": ["near-pre-trade-gate", "near-token-holders", "near-transfer-preflight"],
   "near-pre-trade-gate": ["near-swap-quote", "near-transfer-preflight", "near-portfolio"],
   "near-transfer-preflight": ["near-account", "near-token-safety", "near-swap-quote"],
