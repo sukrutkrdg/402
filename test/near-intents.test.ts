@@ -48,6 +48,8 @@ const { store, kvMock, mintMock } = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/kv", () => kvMock);
+const { notifyMock } = vi.hoisted(() => ({ notifyMock: vi.fn(async (_text: string) => ({ ok: true })) }));
+vi.mock("@/lib/alert-owner", () => ({ notifyOwner: notifyMock }));
 vi.mock("@/lib/credits", () => ({
   CREDIT_TIERS: {
     "0.25": { usd: 0.25, credits: 25 },
@@ -247,6 +249,19 @@ describe("checkNearOrder", () => {
     // stored sealed, never in plaintext
     expect([...store.values()].join()).not.toContain(first.creditToken);
     expect(await nearRailLedger()).toMatchObject({ quotes: 1, packsSold: 1, paidUsd: 5 });
+  });
+
+  it("tells the owner about each sale exactly once", async () => {
+    const o = await order();
+    statusReply = {
+      status: "SUCCESS",
+      ...matchingEcho(),
+      swapDetails: { amountOut: "5000000", destinationChainTxHashes: [{ hash: "0xfeed" }] },
+    };
+    await checkNearOrder(o.orderId, o.orderSecret);
+    await checkNearOrder(o.orderId, o.orderSecret); // repeat poll: no second notice
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    expect(notifyMock.mock.calls[0][0]).toMatch(/\$5\.00 → \$5\.50[\s\S]*basescan\.org\/tx\/0xfeed/);
   });
 
   it("mints once when two polls race on SUCCESS", async () => {

@@ -63,7 +63,7 @@ testler geçiyor.
 
 ### Faz 1 — NEAR Intents ile kredi satın alma (≈1 hafta)
 
-**Durum: canlıda (`ENABLE_NEAR_CREDITS=true`).** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts`. Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. İnsanlar için `/credits` sayfasında "Pay from NEAR" bölümü (`NearCreditsClient.tsx`).
+**Durum: canlıda (`ENABLE_NEAR_CREDITS=true`).** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts`. Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. Her satışta sahibine Telegram bildirimi gider (`notifyOwner`; `TELEGRAM_BOT_TOKEN` ve `OWNER_TELEGRAM_CHAT_ID` gerekli). İnsanlar için `/credits` sayfasında "Pay from NEAR" bölümü (`NearCreditsClient.tsx`).
 
 **İlk canlı satış (2026-09-26):** $0.25 paket, NEAR üzerindeki USDC ile (0.255004 USDC gönderildi), 1Click takası Base'de `0x6c66b2df…0089704` ile `PAY_TO_ADDRESS`'e ulaştı, token basıldı, para cüzdanda ve `/stats`'ta görüldü.
 
@@ -246,6 +246,7 @@ doğrulanmalı; gerekirse ortamın ağ izinlerine bu adresler eklenmeli:
 - [ ] Yeni pazarın ücreti ve kuralları: `GET https://market.near.ai/v1/platform/config`.
 - [x] Base USDC 1Click listesinde var: `nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, 6 ondalık (2026-09-26, kullanıcı doğruladı).
 - [ ] 1Click API: anahtar gerekiyor mu, minimum tutar ve ücret ne (ilk gerçek $0.25'lik teklifte görülür).
+- [x] (2026-09-26) #2102 kapatıldı; yerine gelen #3370 hâlâ **açık** (son hareket 23 Eylül). Standart henüz yok, kendi yolumuzla devam.
 - [ ] x402 spesifikasyonundaki NEAR Intents önerilerinin durumu
       ([#2102](https://github.com/x402-foundation/x402/pull/2102),
       [#3370](https://github.com/x402-foundation/x402/pull/3370)). Birleştirilmişse Faz 1
