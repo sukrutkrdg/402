@@ -81,6 +81,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "near-transfer-preflight": ["near", "nep-141", "transfer", "storage-deposit", "preflight"],
   "near-swap-quote": ["near", "near-intents", "swap", "quote", "cross-chain"],
   "near-pre-trade-gate": ["near", "pre-trade", "honeypot", "token-safety", "near-intents"],
+  "near-portfolio": ["near", "portfolio", "net-worth", "nep-141", "wallet-intel"],
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
 };

@@ -21,6 +21,7 @@ import { nearAccount } from "./near-account";
 import { nearTransferPreflight } from "./near-transfer-preflight";
 import { nearSwapQuote } from "./near-swap-quote";
 import { nearPreTradeGate } from "./near-pre-trade-gate";
+import { nearPortfolio } from "./near-portfolio";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1363,6 +1364,18 @@ export const SERVICES: ServiceDef[] = [
       { name: "size", label: "Trade size in USD (optional, default 100)", placeholder: "100" },
     ],
     handler: nearPreTradeGate,
+  },
+  {
+    id: "near-portfolio",
+    name: "NEAR Portfolio",
+    tagline: "What a NEAR account holds, and what it is worth",
+    description:
+      "Net worth of a NEAR account: its NEAR (liquid and staked) plus balances in every NEP-141 token NEAR Intents routes with a live price — USDC, USDT, wNEAR, bridged BTC and ETH and more — each valued in USD and sorted by value, with the total. Says how many tokens were scanned; tokens outside that list are not included. Live from the NEAR RPC, priced by NEAR Intents.",
+    price: "$0.02",
+    icon: "Ⓝ",
+    category: "Onchain",
+    params: [{ name: "account", label: "NEAR account", placeholder: "alice.near", required: true }],
+    handler: nearPortfolio,
   },
   {
     id: "encode-selector",

@@ -242,6 +242,7 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "near-transfer-preflight": { token: "usdt.tether-token.near", to: "tether.multisafe.near" },
   "near-swap-quote": { from: "USDC", to: "NEAR", amount: "100" },
   "near-pre-trade-gate": { token: "wrap.near" },
+  "near-portfolio": { account: "tether.multisafe.near" },
   "base-tx": { hash: TX },
   "base-receipt": { hash: TX },
   "tx-decode": { hash: TX },
