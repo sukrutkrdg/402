@@ -187,8 +187,13 @@ function secretMatches(secret: string, storedHash: string): boolean {
 
 // ── input validation ──────────────────────────────────────────────────────
 
-/** 1Click asset ids look like `nep141:wrap.near`, `nep141:base-0x….omft.near`, `nep245:…`. */
-const ASSET_RE = /^nep(141|245):[A-Za-z0-9._:\-]{2,200}$/;
+/**
+ * 1Click asset ids, as its /v0/tokens list spells them:
+ *   nep141:wrap.near · nep141:base-0x….omft.near
+ *   nep245:v2_1.omni.hot.tg:56_111…   (HOT-bridged: BNB, OP, AVAX, TON… — note the underscores)
+ *   1cs_v1:btc:native:coin · 1cs_v1:hypercore:erc20:0x…
+ */
+export const ASSET_RE = /^(nep141|nep245|1cs_v1):[A-Za-z0-9._:\-]{2,200}$/;
 /** Refund target: any chain's address or a NEAR account — shape-checked only, 1Click validates it. */
 const REFUND_RE = /^[A-Za-z0-9._:\-]{2,128}$/;
 
@@ -213,7 +218,7 @@ export async function createNearOrder(input: CreateOrderInput) {
   const originAsset = (input.originAsset || "").trim();
   if (!ASSET_RE.test(originAsset)) {
     throw new NearOrderError(
-      "originAsset must be a 1Click asset id, e.g. `nep141:wrap.near` (NEAR) — list: https://1click.chaindefuser.com/v0/tokens",
+      "originAsset must be a 1Click asset id, e.g. `nep141:wrap.near` (NEAR) or `nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` (USDC on NEAR) — list: https://1click.chaindefuser.com/v0/tokens",
       400,
     );
   }

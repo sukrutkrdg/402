@@ -35,7 +35,8 @@ export function GET() {
       url: `${site}/api/credits/near/quote`,
       body: {
         tier: "one of the tiers above, e.g. \"5\"",
-        originAsset: "1Click asset id you pay with, e.g. \"nep141:wrap.near\" — full list: https://1click.chaindefuser.com/v0/tokens",
+        originAsset: "1Click asset id you pay with, e.g. \"nep141:wrap.near\" (NEAR) — full list: https://1click.chaindefuser.com/v0/tokens",
+        cheapest: "USDC on NEAR (\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\") — stablecoin to stablecoin, no price exposure during the swap",
         refundTo: "your address/account on the origin chain, where 1Click refunds a swap that does not complete",
         depositType: "optional: ORIGIN_CHAIN (default, send on-chain) or INTENTS (you already hold a balance inside NEAR Intents)",
       },

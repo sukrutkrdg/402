@@ -63,6 +63,7 @@ import {
   nearRailLedger,
   _resetAssetCache,
   NearOrderError,
+  ASSET_RE,
 } from "@/lib/near-intents";
 
 type Json = Record<string, unknown>;
@@ -156,6 +157,25 @@ describe("createNearOrder", () => {
     await expect(createNearOrder({ tier: "5", originAsset: "nep141:wrap.near", refundTo: "" })).rejects.toThrow(/refundTo/);
     expect(lastQuoteBody).toBeNull();
   });
+});
+
+describe("ASSET_RE", () => {
+  // Real ids from 1Click's /v0/tokens (2026-09-26). The first version of the
+  // pattern had no underscore and no `1cs_v1` prefix, so it turned away every
+  // HOT-bridged asset (BNB, OP, AVAX, TON…) and every 1cs_v1 id.
+  it.each([
+    "nep141:wrap.near",
+    "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "nep245:v2_1.omni.hot.tg:56_11111111111111111111",
+    "nep245:v2_1.omni.hot.tg:1117_",
+    "1cs_v1:btc:native:coin",
+    "1cs_v1:hypercore:erc20:0xb88339CB7199b77E23DB6E890353E22632Ba630f",
+  ])("accepts %s", (id) => expect(ASSET_RE.test(id)).toBe(true));
+
+  it.each(["wNEAR", "USDC", "erc20:0xabc", "nep141:", "nep141:a b"])("rejects %s", (id) =>
+    expect(ASSET_RE.test(id)).toBe(false),
+  );
 });
 
 describe("checkNearOrder", () => {
