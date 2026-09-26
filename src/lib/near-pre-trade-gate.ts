@@ -54,7 +54,7 @@ export async function nearPreTradeGate(params: Record<string, string>) {
   };
 
   if (safety.verdict === "STOP") {
-    return { ...base, verdict, reasons, route: null };
+    return { ...base, verdict, reasons, route: null, holders: null };
   }
 
   // Started now, awaited last: the indexer call overlaps the round-trip quotes.

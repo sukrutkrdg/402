@@ -133,6 +133,13 @@ interface NearSwapBook {
   estFeeRecentUsd: number;
   earned: { balances: { token: string; symbol: string; amount: string; usd: number | null }[]; totalUsd: number } | null;
   recent: { t: string; dep: string; from: string; to: string; usd: number | null; status: string }[];
+  base?: {
+    feeBps: number;
+    quotes: number;
+    quotedUsd: number;
+    feeIfAllSentUsd: number;
+    recent: { t: string; sell: string; buy: string; amount: string; usd: number | null; feeBps: number }[];
+  } | null;
 }
 /** Credit packs bought from NEAR through NEAR Intents (src/lib/near-intents.ts). */
 interface NearLedger {
@@ -841,6 +848,49 @@ export default function Stats() {
 
           {/* NEAR swaps: the distribution fee is the only revenue here that grows with
               volume instead of calls. "Earned" is read on-chain from the fee account. */}
+          {/* Base swaps (0x): the fee lands in the fee wallet inside each swap tx, so this
+              counts quotes and what they would earn; the wallet's USDC history is the truth. */}
+          {usage.nearSwaps?.base && (usage.nearSwaps.base.feeBps > 0 || usage.nearSwaps.base.quotes > 0) && (
+            <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="pill">🔁 Base swaps</span>
+                <span className="text-[10px] text-gray-500">
+                  {usage.nearSwaps.base.feeBps > 0
+                    ? `fee ${usage.nearSwaps.base.feeBps} bps, paid to your wallet inside each swap (0x takes its own on top)`
+                    : "integrator fee is off — set BASE_SWAP_FEE_BPS"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div>
+                  <div className="label">Swaps quoted</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.nearSwaps.base.quotes}</div>
+                </div>
+                <div>
+                  <div className="label">Stablecoin volume quoted</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">${usage.nearSwaps.base.quotedUsd.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="label">Fee if all were sent</div>
+                  <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">${usage.nearSwaps.base.feeIfAllSentUsd.toFixed(4)}</div>
+                  <div className="text-[10px] text-gray-500">real fees: the fee wallet&apos;s USDC history on BaseScan</div>
+                </div>
+              </div>
+              {usage.nearSwaps.base.recent.length > 0 && (
+                <div className="mt-4 flex flex-col gap-1">
+                  <div className="label">Latest Base quotes</div>
+                  {usage.nearSwaps.base.recent.map((r, i) => (
+                    <div key={`${r.t}-${i}`} className="flex flex-wrap items-center gap-x-3 text-[11px] text-gray-400">
+                      <span className="font-mono text-gray-300">{new Date(r.t).toLocaleString()}</span>
+                      <span>
+                        {r.amount} {r.sell} → {r.buy}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {usage.nearSwaps && (usage.nearSwaps.feeOn || usage.nearSwaps.quotes > 0) && (
             <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4">
               <div className="mb-3 flex flex-wrap items-baseline gap-2">
