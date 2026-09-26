@@ -1,31 +1,73 @@
 {
-  "name": "x402-bazaar-eliza",
+  "name": "@sukrutkrdg/plugin-x402-bazaar",
   "version": "0.1.0",
   "description": "Check, then act — x402 Bazaar plugin for ElizaOS: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base (0x) executed from the agent's wallet, cross-chain swaps through NEAR Intents, and 150+ pay-per-call agent APIs.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
-  "files": ["dist", "README.md"],
-  "scripts": { "build": "tsc", "prepublishOnly": "tsc" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
   "license": "MIT",
   "homepage": "https://402.com.tr/agents",
-  "repository": { "type": "git", "url": "https://github.com/sukrutkrdg/402", "directory": "integrations/elizaos" },
-  "keywords": ["elizaos", "eliza", "plugin", "x402", "base", "near", "swap", "token-safety", "ai-agents"],
-  "peerDependencies": { "@elizaos/core": ">=1.6.0" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sukrutkrdg/402.git",
+    "directory": "integrations/elizaos"
+  },
+  "keywords": [
+    "elizaos",
+    "eliza",
+    "plugin",
+    "x402",
+    "base",
+    "near",
+    "swap",
+    "token-safety",
+    "ai-agents"
+  ],
+  "peerDependencies": {
+    "@elizaos/core": ">=1.6.0"
+  },
   "dependencies": {
     "@x402/evm": "^2.16.0",
     "@x402/extensions": "^2.16.0",
     "@x402/fetch": "^2.16.0",
     "viem": "^2.21.0"
   },
-  "devDependencies": { "@elizaos/core": "^1.7.2", "typescript": "^5.6.0" },
+  "devDependencies": {
+    "@elizaos/core": "^1.7.2",
+    "typescript": "^5.6.0"
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "X402_CREDIT_TOKEN": { "type": "string", "description": "Prepaid credit token (ck_…) from https://402.com.tr/credits — pays calls with one header" },
-      "EVM_PRIVATE_KEY": { "type": "string", "description": "Base wallet key: pays per call over x402 without a credit token, and signs swaps" },
-      "X402_BAZAAR_URL": { "type": "string", "description": "Optional API base URL (default https://402.com.tr)" }
+      "X402_CREDIT_TOKEN": {
+        "type": "string",
+        "description": "Prepaid credit token (ck_…) from https://402.com.tr/credits — pays calls with one header"
+      },
+      "EVM_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Base wallet key: pays per call over x402 without a credit token, and signs swaps"
+      },
+      "X402_BAZAAR_URL": {
+        "type": "string",
+        "description": "Optional API base URL (default https://402.com.tr)"
+      }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
