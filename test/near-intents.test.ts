@@ -39,6 +39,17 @@ const { store, kvMock, mintMock } = vi.hoisted(() => {
       store.set(k, JSON.stringify([v, ...JSON.parse(store.get(k) ?? "[]")]));
     }),
     kvLRange: vi.fn(async (k: string) => JSON.parse(store.get(k) ?? "[]") as string[]),
+    kvSAdd: vi.fn(async (k: string, m: string) => {
+      const set = new Set<string>(JSON.parse(store.get(k) ?? "[]"));
+      set.add(m);
+      store.set(k, JSON.stringify([...set]));
+    }),
+    kvSRem: vi.fn(async (k: string, m: string) => {
+      const set = new Set<string>(JSON.parse(store.get(k) ?? "[]"));
+      set.delete(m);
+      store.set(k, JSON.stringify([...set]));
+    }),
+    kvSMembers: vi.fn(async (k: string) => JSON.parse(store.get(k) ?? "[]") as string[]),
     kvIncr: vi.fn(async () => 1),
   };
   let n = 0;
@@ -66,6 +77,7 @@ import {
   createNearOrder,
   checkNearOrder,
   nearRailLedger,
+  nearOpenOrders,
   _resetAssetCache,
   NearOrderError,
   ASSET_RE,
@@ -192,6 +204,37 @@ describe("NEAR-rail specifics", () => {
     expect(r.settlement).toEqual([{ hash: "0xabc", explorerUrl: "https://basescan.org/tx/0xabc" }]);
     const again = (await checkNearOrder(o.orderId, o.orderSecret)) as { security: string };
     expect(again.security).toMatch(/x-order-secret/);
+  });
+});
+
+describe("nearOpenOrders — paid but never claimed", () => {
+  it("reports an order 1Click settled that nobody claimed, and keeps it open", async () => {
+    const o = await order();
+    statusReply = { status: "SUCCESS", ...matchingEcho() };
+    const r = await nearOpenOrders();
+    expect(r?.unclaimed).toEqual([expect.objectContaining({ orderId: o.orderId, tier: "5", usd: 5 })]);
+    expect(r?.unclaimedUsd).toBe(5);
+    expect(mintMock).not.toHaveBeenCalled(); // the owner's view never mints on the buyer's behalf
+    // once the buyer claims it, it leaves the open list
+    await checkNearOrder(o.orderId, o.orderSecret);
+    expect((await nearOpenOrders())?.unclaimed).toEqual([]);
+  });
+
+  it("counts an unpaid order as in flight, and drops refunded ones", async () => {
+    await order();
+    statusReply = { status: "PENDING_DEPOSIT", ...matchingEcho() };
+    expect(await nearOpenOrders()).toMatchObject({ unclaimed: [], inFlight: 1 });
+    statusReply = { status: "REFUNDED", ...matchingEcho() };
+    expect(await nearOpenOrders()).toMatchObject({ unclaimed: [], inFlight: 0 });
+    statusReply = { status: "SUCCESS", ...matchingEcho() };
+    expect((await nearOpenOrders())?.unclaimed).toEqual([]); // pruned: not asked again
+  });
+
+  it("drops an order whose record has expired", async () => {
+    const o = await order();
+    store.delete(`near:order:${o.orderId}`);
+    statusReply = { status: "SUCCESS", ...matchingEcho() };
+    expect(await nearOpenOrders()).toMatchObject({ unclaimed: [], inFlight: 0 });
   });
 });
 

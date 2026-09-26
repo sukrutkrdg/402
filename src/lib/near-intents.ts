@@ -39,7 +39,7 @@
 
 import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber, kvLPush, kvLRange } from "./kv";
+import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber, kvLPush, kvLRange, kvSAdd, kvSRem, kvSMembers } from "./kv";
 import { CREDIT_TIERS, mintCredits } from "./credits";
 import { USDC_BASE, getConfig } from "./config";
 
@@ -69,6 +69,8 @@ export const NEAR_LEDGER = {
   paidCents: "credits:rail:near:paidCents",
   /** Newest-first list of sales (capped at 50) for the /stats panel. */
   recent: "credits:rail:near:recent",
+  /** Orders not yet minted, refunded or abandoned — what /stats reconciles against 1Click. */
+  open: "credits:rail:near:open",
 } as const;
 
 export function nearCreditsEnabled(): boolean {
@@ -315,6 +317,7 @@ export async function createNearOrder(input: CreateOrderInput) {
     );
   }
   await kvIncrBy(NEAR_LEDGER.quotes, 1).catch(() => {});
+  await kvSAdd(NEAR_LEDGER.open, orderId).catch(() => {});
 
   return {
     orderId,
@@ -395,6 +398,7 @@ export async function checkNearOrder(orderId: string, secret: string) {
   const s = await oneClick<StatusResponse>(`/v0/status?${q}`);
 
   if (s.status !== "SUCCESS") {
+    if (s.status === "REFUNDED" || s.status === "FAILED") await kvSRem(NEAR_LEDGER.open, orderId).catch(() => {});
     return {
       status: s.status,
       updatedAt: s.updatedAt,
@@ -443,7 +447,11 @@ export async function checkNearOrder(orderId: string, secret: string) {
     // The token is in THIS response only; a later poll will not find it.
     console.error(`[near-credits] order ${orderId}: minted but the sealed token was not stored`);
   }
-  await Promise.all([kvIncrBy(NEAR_LEDGER.packs, 1), kvIncrBy(NEAR_LEDGER.paidCents, receivedCents)]).catch(() => {});
+  await Promise.all([
+    kvIncrBy(NEAR_LEDGER.packs, 1),
+    kvIncrBy(NEAR_LEDGER.paidCents, receivedCents),
+    kvSRem(NEAR_LEDGER.open, orderId),
+  ]).catch(() => {});
   // Each sale, for the owner's /stats panel — the demand signal the NEAR plan
   // waits on. Inside the mint lock, so one row per order. Best-effort: the
   // counters above are the books; this is the list you read them by.
@@ -465,6 +473,72 @@ export async function checkNearOrder(orderId: string, secret: string) {
     security: NEAR_SECURITY,
     settlement: withExplorer(s.swapDetails?.destinationChainTxHashes),
   };
+}
+
+/** How long an order with no deposit is kept open before it counts as abandoned. */
+const ABANDONED_AFTER_MS = 4 * 24 * 60 * 60 * 1000; // 1Click's deposit window is ~3 days
+const MAX_OPEN_CHECKED = 30;
+
+export interface UnclaimedOrder {
+  orderId: string;
+  tier: string;
+  usd: number;
+  createdAt: string;
+  /** After this the order record expires and the buyer can no longer claim the token. */
+  claimableUntil: string;
+}
+
+/**
+ * Reconcile open orders against 1Click for the owner's panel.
+ *
+ * The case this exists for: a buyer deposits, the swap settles and the USDC
+ * reaches us, but nobody ever polls the status endpoint — so no token is minted
+ * and nothing in the books shows the sale. We cannot mint on their behalf (the
+ * token is sealed under their order secret, which we never store), but the
+ * owner should see money that arrived for credit not yet handed out.
+ *
+ * Also prunes the index: minted, refunded, expired and abandoned orders leave it.
+ */
+export async function nearOpenOrders(): Promise<{ unclaimed: UnclaimedOrder[]; unclaimedUsd: number; inFlight: number } | null> {
+  if (!kvConfigured()) return null;
+  const ids = (await kvSMembers(NEAR_LEDGER.open)).slice(0, MAX_OPEN_CHECKED);
+  const unclaimed: UnclaimedOrder[] = [];
+  let inFlight = 0;
+  await Promise.all(
+    ids.map(async (id) => {
+      const raw = await kvGet(orderKey(id));
+      const rec = raw ? (JSON.parse(raw) as NearOrderRecord) : null;
+      if (!rec || rec.sealedToken) {
+        await kvSRem(NEAR_LEDGER.open, id); // expired, or minted
+        return;
+      }
+      let status: string;
+      try {
+        const q = new URLSearchParams({ depositAddress: rec.depositAddress });
+        if (rec.depositMemo) q.set("depositMemo", rec.depositMemo);
+        status = (await oneClick<StatusResponse>(`/v0/status?${q}`)).status;
+      } catch {
+        inFlight++; // 1Click unreachable: leave it for the next look
+        return;
+      }
+      const age = Date.now() - Date.parse(rec.createdAt);
+      if (status === "SUCCESS") {
+        unclaimed.push({
+          orderId: id,
+          tier: rec.tier,
+          usd: +(Number(rec.amountOut) / 1_000_000).toFixed(2),
+          createdAt: rec.createdAt,
+          claimableUntil: new Date(Date.parse(rec.createdAt) + ORDER_TTL * 1000).toISOString(),
+        });
+      } else if (status === "REFUNDED" || status === "FAILED" || (status === "PENDING_DEPOSIT" && age > ABANDONED_AFTER_MS)) {
+        await kvSRem(NEAR_LEDGER.open, id);
+      } else {
+        inFlight++;
+      }
+    }),
+  );
+  unclaimed.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return { unclaimed, unclaimedUsd: +unclaimed.reduce((a, o) => a + o.usd, 0).toFixed(2), inFlight };
 }
 
 /** Owner-facing numbers for this rail. Null when there is no durable store. */
