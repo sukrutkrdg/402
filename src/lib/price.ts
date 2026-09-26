@@ -21,3 +21,17 @@ export function priceCents(price: string): number {
   if (usd <= 0) return 0;
   return Math.max(1, Math.ceil(usd * 100));
 }
+
+/**
+ * Service price string → mills (tenths of a cent): "$0.002" → 2, "$0.03" → 30.
+ *
+ * The prepaid rail meters in mills so a $0.002 call costs $0.002 of credit rather
+ * than the 1¢ floor above: sub-cent debits accumulate in a per-token remainder
+ * and whole cents leave the balance as they add up (credits.ts debitCreditMills).
+ * Floor of one mill, for the same reason priceCents has a floor of one cent.
+ */
+export function priceMills(price: string): number {
+  const usd = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
+  if (usd <= 0) return 0;
+  return Math.max(1, Math.round(usd * 1000));
+}

@@ -35,6 +35,7 @@ import {
   kvSMembers,
   kvExpire,
   kvPipeline,
+  kvEval,
 } from "./kv";
 
 /** Prepaid packs: pay `usd`, receive `credits` (a small bonus rewards prepaying). */
@@ -429,4 +430,112 @@ export async function creditStatus(token: string): Promise<{ cents: number; expi
   const res = await kvPipeline([["ttl", key]]);
   const ttl = Number((res?.[0] as { result?: unknown } | undefined)?.result ?? res?.[0] ?? -1);
   return { cents, expiresInDays: Number.isFinite(ttl) && ttl > 0 ? Math.ceil(ttl / 86400) : null };
+}
+
+
+// ─── Sub-cent metering ──────────────────────────────────────────────────────
+//
+// The balance is whole cents and stays that way: every existing reader, the 402
+// hint and the books keep working. A service priced below a cent (or at a
+// fraction of one) adds its price in mills to a per-token remainder; whole cents
+// leave the balance only as the remainder reaches ten. Five $0.002 calls cost
+// one cent, not five. Both scripts run inside Redis, so a debit and its
+// remainder can never be applied halfway, and the refund is guarded so a retry
+// can never apply it twice.
+
+const fracKeyFor = (token: string) => `${keyFor(token)}:mills`;
+
+/** KEYS: balance, remainder. ARGV: mills. → [cents taken | -1 insufficient | -2 unknown, balance cents, remainder mills] */
+export const DEBIT_MILLS_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return {-2, 0, 0} end
+local bal = tonumber(raw)
+local frac = tonumber(redis.call('GET', KEYS[2]) or '0')
+local owed = frac + tonumber(ARGV[1])
+if bal * 10 < owed then return {-1, bal, frac} end
+local cents = math.floor(owed / 10)
+local rest = owed - cents * 10
+if cents > 0 then bal = redis.call('DECRBY', KEYS[1], cents) end
+local pttl = redis.call('PTTL', KEYS[1])
+if rest > 0 then
+  if pttl > 0 then redis.call('SET', KEYS[2], rest, 'PX', pttl) else redis.call('SET', KEYS[2], rest) end
+else
+  redis.call('DEL', KEYS[2])
+end
+return {cents, bal, rest}
+`;
+
+/** KEYS: balance, remainder, guard. ARGV: mills. → [cents returned] or [-9] when already applied. */
+export const REFUND_MILLS_LUA = `
+if not redis.call('SET', KEYS[3], '1', 'NX', 'EX', 86400) then return {-9} end
+local frac = tonumber(redis.call('GET', KEYS[2]) or '0') - tonumber(ARGV[1])
+local cents = 0
+while frac < 0 do
+  frac = frac + 10
+  cents = cents + 1
+end
+if cents > 0 then redis.call('INCRBY', KEYS[1], cents) end
+local pttl = redis.call('PTTL', KEYS[1])
+if frac > 0 then
+  if pttl > 0 then redis.call('SET', KEYS[2], frac, 'PX', pttl) else redis.call('SET', KEYS[2], frac) end
+else
+  redis.call('DEL', KEYS[2])
+end
+return {cents}
+`;
+
+export interface MillsDebit {
+  ok: boolean;
+  /** Spendable balance after the debit, in mills (cents × 10 minus the owed remainder). */
+  remainingMills: number;
+  reason?: "no_kv" | "bad_token" | "insufficient";
+  balanceMills?: number;
+}
+
+/**
+ * Debit a price given in mills. Whole-cent prices take the ordinary cent path
+ * unchanged; only a price with a fractional cent goes through the remainder.
+ */
+export async function debitCreditMills(token: string, mills: number): Promise<MillsDebit> {
+  if (mills % 10 === 0) {
+    const d = await debitCredit(token, mills / 10);
+    return d.ok
+      ? { ok: true, remainingMills: d.remaining * 10 - (await fracOf(token)) }
+      : { ok: false, remainingMills: 0, reason: d.reason, balanceMills: (d.balance ?? 0) * 10 };
+  }
+  if (!kvConfigured()) return { ok: false, remainingMills: 0, reason: "no_kv" };
+  const t = (token || "").trim();
+  if (!/^ck_[0-9a-f]{36}$/.test(t)) return { ok: false, remainingMills: 0, reason: "bad_token" };
+  const r = await kvEval<number[]>(DEBIT_MILLS_LUA, [keyFor(t), fracKeyFor(t)], [mills]);
+  if (!Array.isArray(r)) return { ok: false, remainingMills: 0, reason: "no_kv" };
+  const [cents, bal, rest] = r.map(Number);
+  if (cents < 0) return { ok: false, remainingMills: 0, reason: "insufficient", balanceMills: Math.max(0, bal * 10 - rest) };
+  await Promise.all([kvIncrBy(LEDGER.spentCents, cents), kvIncrBy(LEDGER.spentCalls, 1)]).catch(() => {
+    /* the debit above is the money; this is only the books */
+  });
+  return { ok: true, remainingMills: bal * 10 - rest };
+}
+
+/** Undo a debitCreditMills exactly, at most once per call however often it is retried. */
+export async function refundCreditMills(token: string, mills: number): Promise<void> {
+  if (mills % 10 === 0) return refundCredit(token, mills / 10);
+  const t = (token || "").trim();
+  if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return;
+  const guard = `refund:${crypto.randomUUID()}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await kvEval<number[]>(REFUND_MILLS_LUA, [keyFor(t), fracKeyFor(t), guard], [mills]).catch(() => null);
+    if (Array.isArray(r)) {
+      const cents = Number(r[0]);
+      if (cents >= 0) await Promise.all([kvIncrBy(LEDGER.spentCents, -cents), kvIncrBy(LEDGER.spentCalls, -1)]).catch(() => {});
+      return; // applied now (cents ≥ 0) or proven already applied (-9)
+    }
+    await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
+  }
+  console.error(`[credits] sub-cent refund of ${mills} mills could not be confirmed for ${keyFor(t)}`);
+}
+
+async function fracOf(token: string): Promise<number> {
+  const t = (token || "").trim();
+  if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return 0;
+  return (await kvGetNumber(fracKeyFor(t)).catch(() => 0)) || 0;
 }

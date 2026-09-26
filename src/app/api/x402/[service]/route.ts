@@ -22,7 +22,7 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
-import { debitCredit, refundCredit, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle } from "@/lib/credits";
+import { debitCreditMills, refundCreditMills, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle } from "@/lib/credits";
 
 /**
  * Calls a minute a single prepaid token may make. Ten a second — comfortably
@@ -35,7 +35,7 @@ import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
-import { priceCents } from "@/lib/price";
+import { priceCents, priceMills } from "@/lib/price";
 import { recordExternalRevenue } from "@/lib/keepalive-economics";
 import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
@@ -345,12 +345,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // Credit payers get the same funnel prices as x402 payers: an unexpired
     // coupon (earned by paying the entry check on this token) discounts the AI
     // report here exactly as it discounts the x402 challenge.
-    const cents = priceCents(await effectivePriceFor(service, req));
+    // Metered in mills (tenths of a cent) so a $0.002 call costs $0.002, not the 1¢ floor.
+    const mills = priceMills(await effectivePriceFor(service, req));
     // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
     // one step, so two concurrent calls can't each pass a cheap pre-check and get a
     // free call on the race. An underfunded/unknown token is refunded inside
     // debitCredit and reported here.
-    const debit = await debitCredit(creditToken, cents);
+    const debit = await debitCreditMills(creditToken, mills);
     if (!debit.ok) {
       // This is a price wall too — log it as a challenge so the funnel counts
       // credit-exhausted callers, not just x402 walk-aways.
@@ -359,8 +360,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         {
           error: debit.reason === "insufficient" ? "Insufficient credits" : "Invalid or unusable credit token",
           service: service.id,
-          priceUsd: +(cents / 100).toFixed(2),
-          balanceUsd: +((debit.balance ?? 0) / 100).toFixed(2),
+          priceUsd: +(mills / 1000).toFixed(3),
+          balanceUsd: +((debit.balanceMills ?? 0) / 1000).toFixed(3),
           topUp: "Buy more at /api/x402/buy-credits (tier=0.25|1|5|20), or omit x-credit-token to pay per-call via x402.",
         },
         { status: 402 },
@@ -371,7 +372,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       const p = paramsFrom(req, service);
       data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
-      await refundCredit(creditToken, cents); // charged but never delivered → give it back
+      await refundCreditMills(creditToken, mills); // charged but never delivered → give it back
       return handlerErrorResponse(err, service.id);
     }
     await saveSample(service.id, data);
@@ -382,8 +383,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // because our core data feed was unavailable — is delivered but NOT billed.
     // Give the debit back and tell the caller via `x-refunded`.
     const refunded = isRefundable(data);
-    if (refunded) await refundCredit(creditToken, cents);
-    const remaining = refunded ? debit.remaining + cents : debit.remaining;
+    if (refunded) await refundCreditMills(creditToken, mills);
+    const remainingMills = refunded ? debit.remainingMills + mills : debit.remainingMills;
     return NextResponse.json(
       withRelated({
         service: service.id,
@@ -392,11 +393,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         paidVia: refunded ? "credits-refunded" : "credits",
         // What we actually took, not what the price string says. They differ for
         // sub-cent services, and the buyer should see that rather than discover it.
-        chargedUsd: refunded ? 0 : +(cents / 100).toFixed(3),
-        creditBalanceUsd: +(remaining / 100).toFixed(2),
+        chargedUsd: refunded ? 0 : +(mills / 1000).toFixed(3),
+        creditBalanceUsd: +(remainingMills / 1000).toFixed(3),
         ...(refunded ? { refunded: true, refundReason: "Refusal (core data feed unavailable) — not billed per this check's refundRule." } : {}),
       }, service.id),
-      { headers: { "x-credit-balance": String(remaining), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },
+      { headers: { "x-credit-balance": String(Math.floor(remainingMills / 10)), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },
     );
   }
 
