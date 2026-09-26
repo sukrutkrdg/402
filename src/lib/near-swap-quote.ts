@@ -83,7 +83,7 @@ export async function dryQuote(from: IntentsToken, to: IntentsToken, amountBase:
       recipient: "intents.near",
       recipientType: "INTENTS",
       deadline: new Date(Date.now() + 10 * 60_000).toISOString(),
-      referral: "402bazaar",
+      referral: "402comtr",
       quoteWaitingTimeMs: 3000,
     }),
     signal: AbortSignal.timeout(15_000),
