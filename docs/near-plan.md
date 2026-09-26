@@ -176,8 +176,7 @@ doğrulanmalı; gerekirse ortamın ağ izinlerine bu adresler eklenmeli:
 - [ ] `https://market.near.ai/skill.md`: güncel API, kayıt, teklif, teslim, çekim
       uç noktaları ve pazar ücreti.
 - [x] Base USDC 1Click listesinde var: `nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, 6 ondalık (2026-09-26, kullanıcı doğruladı).
-- [ ] 1Click API: anahtar gerekiyor mu, minimum tutar, ücret, Base USDC
-      (`0x833589fC…2913`) hedef olarak destekleniyor mu (`GET /v0/tokens`).
+- [ ] 1Click API: anahtar gerekiyor mu, minimum tutar ve ücret ne (ilk gerçek $0.25'lik teklifte görülür).
 - [ ] x402 spesifikasyonundaki NEAR Intents önerilerinin durumu
       ([#2102](https://github.com/x402-foundation/x402/pull/2102),
       [#3370](https://github.com/x402-foundation/x402/pull/3370)). Birleştirilmişse Faz 1
