@@ -37,4 +37,11 @@ describe("timed + readHealth", () => {
     const h = (await readHealth(1)).services.find((s) => s.service === "svc-a")!;
     expect(h).toMatchObject({ calls: 4, ok: 2, input: 1, fail: 1, successPct: 66.7, p50: "<0.5s", lastDay: { calls: 4, fail: 1 } });
   });
+
+  it("an answer refused because a feed was down counts as a failure, not a success", async () => {
+    await timed("svc-b", async () => ({ receipt: { refundable: true } }));
+    await timed("svc-b", async () => ({ receipt: { refundable: false } }));
+    const h = (await readHealth(1)).services.find((s) => s.service === "svc-b")!;
+    expect(h).toMatchObject({ ok: 1, fail: 1 });
+  });
 });

@@ -404,7 +404,8 @@ export async function kvHIncrBy(key: string, field: string, by = 1, ttlSeconds?:
 export async function kvHGetAll(key: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   if (kvConfigured()) {
-    const flat = (await cmd<string[]>(["HGETALL", key])) ?? [];
+    const flat = await cmdRead<string[]>(["HGETALL", key]);
+    if (flat === null) throw new Error(`KV read failed (HGETALL ${key})`);
     for (let i = 0; i + 1 < flat.length; i += 2) out[String(flat[i])] = Number(flat[i + 1]) || 0;
     return out;
   }

@@ -13,7 +13,9 @@
  */
 
 import "server-only";
+import { after } from "next/server";
 import { kvHIncrBy, kvHGetAll, ttlDue, kvExpire } from "./kv";
+import { isRefundable } from "./envelope";
 
 /** The HTTP status a handler error deserves: the caller's input (400), an upstream (502), or ours (500). */
 export function errorStatus(message: string): 400 | 502 | 500 {
@@ -54,16 +56,30 @@ export async function recordOutcome(service: string, outcome: Outcome, ms: numbe
   }
 }
 
+/**
+ * Record after the response is sent when the runtime allows it, so a slow KV
+ * never delays a paid answer; inline otherwise (tests, scripts).
+ */
+function recordLater(service: string, outcome: Outcome, ms: number): Promise<void> {
+  try {
+    after(() => recordOutcome(service, outcome, ms));
+    return Promise.resolve();
+  } catch {
+    return recordOutcome(service, outcome, ms);
+  }
+}
+
 /** Run a service handler, recording how it went. Rethrows unchanged. */
 export async function timed<T>(service: string, run: () => Promise<T>): Promise<T> {
   const t = Date.now();
   try {
     const out = await run();
-    await recordOutcome(service, "ok", Date.now() - t);
+    // A refusal (core feed down, not billed) answered, but the service did not work.
+    await recordLater(service, isRefundable(out) ? "fail" : "ok", Date.now() - t);
     return out;
   } catch (e) {
     const status = errorStatus(e instanceof Error ? e.message : "");
-    await recordOutcome(service, status === 400 ? "input" : "fail", Date.now() - t);
+    await recordLater(service, status === 400 ? "input" : "fail", Date.now() - t);
     throw e;
   }
 }
@@ -97,7 +113,9 @@ function percentile(counts: Record<string, number>, q: number): string | null {
 export async function readHealth(days = 7): Promise<{ from: string; to: string; services: ServiceHealth[] }> {
   const now = new Date();
   const keys = Array.from({ length: days }, (_, i) => dayKey(new Date(now.getTime() - i * 86400_000)));
-  const maps = await Promise.all(keys.map((k) => kvHGetAll(k).catch(() => ({}) as Record<string, number>)));
+  // A failed read throws rather than reading as "no calls": the page is ISR, and
+  // an empty week cached for five minutes would claim every endpoint went quiet.
+  const maps = await Promise.all(keys.map((k) => kvHGetAll(k)));
 
   const acc = new Map<string, { ok: number; input: number; fail: number; lat: Record<string, number>; day: { calls: number; fail: number } }>();
   maps.forEach((m, i) => {

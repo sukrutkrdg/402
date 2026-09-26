@@ -9,7 +9,7 @@ import { SERVICES } from "@/lib/services";
 
 export const metadata = {
   title: "Status — x402 Bazaar",
-  description: "Live reliability of every x402 Bazaar endpoint over the last 7 days: calls, success rate and latency, measured on real calls.",
+  description: "Live reliability of every x402 Bazaar endpoint over the last 7 days: calls, success rate and latency, measured on the calls themselves.",
 };
 
 export const revalidate = 300;
@@ -33,8 +33,9 @@ export default async function StatusPage() {
         <span className="pill w-fit">📈 Status</span>
         <h1 className="text-3xl font-bold tracking-tight">How every endpoint behaved this week</h1>
         <p className="max-w-3xl text-sm leading-relaxed text-gray-400">
-          Measured on every real call, not synthetic pings. Success counts our own failures only — a request refused for bad
-          input is the caller&apos;s. Failed calls are never charged. Refreshed every 5 minutes; machine-readable at{" "}
+          Measured on every call that runs a service, including our own daily check-calls that keep each endpoint listed.
+          Success counts our own failures only — a request refused for bad input is the caller&apos;s; an answer we had to
+          refuse because a data feed was down counts as a failure. Failed calls are never charged. Refreshed every 5 minutes; machine-readable at{" "}
           <a className="text-sky-400 hover:underline" href="/api/status">/api/status</a>.
         </p>
       </section>
