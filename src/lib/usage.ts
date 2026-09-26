@@ -107,20 +107,31 @@ export async function logUsage(
       // the recent list on roughly one call in ten — the list overshoots 500 by
       // a handful at most, and its only reader asks for the first 500.
       const expire = (key: string): (string | number)[][] => (ttlDue(key, DAY_KEY_TTL) ? [["EXPIRE", key, DAY_KEY_TTL]] : []);
+      // A crawler reading a price and leaving is the largest traffic class and
+      // the least informative one. It still counts — every counter below is
+      // incremented, so call totals and challenge→paid conversion are exact —
+      // but it is kept out of "sources today" and the recent feed, where it was
+      // mostly noise, at a saving of 2–4 Upstash commands per probe.
+      // USAGE_SLIM_BOT_CHALLENGES=false restores the full record.
+      const slim = challenge && kind === "bot" && process.env.USAGE_SLIM_BOT_CHALLENGES !== "false";
       const cmds: (string | number)[][] = [
         ["INCR", `usage:total:${serviceId}`],
         ["INCR", "usage:calls:total"],
         ["INCR", `usage:day:${d}`],
         ...expire(`usage:day:${d}`),
-        ["SADD", `usage:src:${d}`, source],
-        ...expire(`usage:src:${d}`),
-        ["LPUSH", "usage:recent", entry],
-        ...(Math.random() < 0.1 ? [["LTRIM", "usage:recent", 0, 499]] : []),
+        ...(slim
+          ? []
+          : [
+              ["SADD", `usage:src:${d}`, source],
+              ...expire(`usage:src:${d}`),
+              ["LPUSH", "usage:recent", entry],
+              ...(Math.random() < 0.1 ? [["LTRIM", "usage:recent", 0, 499]] : []),
+            ]),
       ];
       if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ...expire(`usage:paidday:${d}`));
       if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source], ...expire(`usage:intsrc:${d}`));
       if (preview) cmds.push(["INCR", `usage:preview:${serviceId}`]);
-      if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source], ...expire(`usage:botsrc:${d}`));
+      if (kind === "bot" && !slim) cmds.push(["SADD", `usage:botsrc:${d}`, source], ...expire(`usage:botsrc:${d}`));
       if (challenge) cmds.push(["INCR", `usage:challenge:${serviceId}`]);
       // firstsvc answers "what pulled this wallet in"; payersvc answers "what does
       // it actually buy" — a one-off taster and a returning customer look
