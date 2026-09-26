@@ -284,6 +284,17 @@ Birleştirilen PR'lar (hepsi `main`'de, Vercel'de canlı):
 | #5 | KV yazma hatasının nedenini yanıtta gösterme |
 | #6 | Upstash'in HTTP 200 + `error` yanıtını hata sayma; istek başına KV komutlarını azaltma |
 | #7 | `/credits` sayfasında "Pay from NEAR", katalog, OpenAPI, README; `.near` ek koruması |
+| #8, #9 | Devir notları (`CLAUDE.md`), NEAR pazarı API bulguları |
+| #10 | MCP tanıtım metnine NEAR ile kredi; pazara giriş yolu: bağlayıcı kataloğu |
+| #11, #12 | NEAR satışları `/stats`'ta ayrı panelde (Telegram bildirimi sahibi istemediği için kaldırıldı) |
+| #13 | MCP kayıtları (server card, manifest, npm paketi 0.2.8) NEAR ile ödemeyi anlatıyor |
+| #14 | Ödenmiş ama teslim alınmamış NEAR siparişleri `/stats`'ta |
+| #15 | Bot 402 kayıtları hafifletildi (`USAGE_SLIM_BOT_CHALLENGES`) |
+| #16, #17 | `near-token-safety` servisi; sahip ve duraklatma kontrolü, açıklama 499 sınırında |
+
+npm: `x402-bazaar-mcp@0.2.8` sahibi tarafından yayınlandı (2026-09-26). Pazar bağlayıcı başvurusu Telegram'dan
+gönderildi, cevap bekleniyor. `near-token-safety` canlıda ilk çağrıda USDt için GO döndü (anahtar yok);
+sahip kontrolünden sonra tekrar denenecek.
 
 Ortam ve işletme:
 
