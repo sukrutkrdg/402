@@ -20,6 +20,7 @@ import { nearTokenSafety } from "./near-token-safety";
 import { nearAccount } from "./near-account";
 import { nearTransferPreflight } from "./near-transfer-preflight";
 import { nearSwapQuote } from "./near-swap-quote";
+import { nearPreTradeGate } from "./near-pre-trade-gate";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1347,6 +1348,21 @@ export const SERVICES: ServiceDef[] = [
       { name: "amount", label: "Amount of the paying asset", placeholder: "100", required: true },
     ],
     handler: nearSwapQuote,
+  },
+  {
+    id: "near-pre-trade-gate",
+    name: "NEAR Pre-Trade Gate",
+    tagline: "One call before buying a NEAR token — GO / HOLD / STOP",
+    description:
+      "The call to make before buying a NEP-141 token: who controls it (full-access keys, owner, pause — as near-token-safety) and whether you can get back out, tested as a round trip through NEAR Intents at your trade size: buy with USDC, sell straight back, measure the loss. Over 15% lost or no route is STOP or HOLD. One verdict with both quotes. size is in USD (default 100).",
+    price: "$0.05",
+    icon: "🚦",
+    category: "Onchain",
+    params: [
+      { name: "token", label: "NEAR token contract account", placeholder: "usdt.tether-token.near", required: true },
+      { name: "size", label: "Trade size in USD (optional, default 100)", placeholder: "100" },
+    ],
+    handler: nearPreTradeGate,
   },
   {
     id: "encode-selector",
