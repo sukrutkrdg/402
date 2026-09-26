@@ -284,7 +284,7 @@ export async function createNearOrder(input: CreateOrderInput) {
       recipient: payTo,
       recipientType: "DESTINATION_CHAIN",
       deadline: new Date(Date.now() + DEADLINE_MS).toISOString(),
-      referral: "402bazaar",
+      referral: "402comtr",
       quoteWaitingTimeMs: 3000,
     }),
   });

@@ -118,7 +118,7 @@ export async function nearSwap(params: Record<string, string>) {
       recipient,
       recipientType: "DESTINATION_CHAIN",
       deadline,
-      referral: "402bazaar",
+      referral: "402comtr",
       quoteWaitingTimeMs: 3000,
       ...(fee ? { appFees: [{ recipient: fee.recipient, fee: fee.bps }] } : {}),
     }),
