@@ -21,7 +21,7 @@ import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
-import { kvGet, kvSet, kvDel, kvIncrBy, kvSetNx } from "@/lib/kv";
+import { kvGet, kvSet, kvDel, kvIncrBy, kvSetNx, kvEval, kvConfigured } from "@/lib/kv";
 import { debitCreditMills, refundCreditMills, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle, bookCreditSale, voidCredits } from "@/lib/credits";
 
 /**
@@ -152,13 +152,32 @@ async function effectivePriceFor(
     try {
       const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
       if (/^0x[0-9a-f]{40}$/.test(addr) && (await kvGet(`coupon:${srcHash(clientIp(req))}:${addr}`))) {
-        return "$0.05";
+        return COUPON_PRICE;
       }
     } catch {
       /* fall back to full price */
     }
   }
   return service.price;
+}
+
+const COUPON_PRICE = "$0.05";
+
+/**
+ * Take the AI-report coupon for this caller and token, once. Reading it only at
+ * pricing time let several concurrent calls all see it and all pay the discount;
+ * the atomic DEL means exactly one of them gets it.
+ */
+async function claimCoupon(req: NextRequest, service: NonNullable<ReturnType<typeof getService>>): Promise<{ claimed: boolean; key: string }> {
+  const addr = String(paramsFrom(req, service).address ?? "").toLowerCase();
+  const key = `coupon:${srcHash(clientIp(req))}:${addr}`;
+  if (!kvConfigured()) {
+    const had = Boolean(await kvGet(key));
+    if (had) await kvDel(key);
+    return { claimed: had, key };
+  }
+  const n = await kvEval<number>("return redis.call('DEL', KEYS[1])", [key], []);
+  return { claimed: n === 1, key };
 }
 
 /**
@@ -355,7 +374,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // coupon (earned by paying the entry check on this token) discounts the AI
     // report here exactly as it discounts the x402 challenge.
     // Metered in mills (tenths of a cent) so a $0.002 call costs $0.002, not the 1¢ floor.
-    const mills = priceMills(await effectivePriceFor(service, req));
+    let price = await effectivePriceFor(service, req);
+    // The discount belongs to one call: claim it now, or pay full price.
+    const coupon = service.id === "ai-token-report" && price === COUPON_PRICE ? await claimCoupon(req, service) : null;
+    if (coupon && !coupon.claimed) price = service.price;
+    const mills = priceMills(price);
     // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
     // one step, so two concurrent calls can't each pass a cheap pre-check and get a
     // free call on the race. An underfunded/unknown token is refunded inside
@@ -371,6 +394,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       }
     }
     if (!debit.ok) {
+      if (coupon?.claimed) await kvSet(coupon.key, "1", 3600).catch(() => {}); // nothing was bought
       // This is a price wall too — log it as a challenge so the funnel counts
       // credit-exhausted callers, not just x402 walk-aways.
       await logUsage(service.id, false, srcHash(clientIp(req)), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, true);
@@ -391,6 +415,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
       await refundCreditMills(creditToken, mills); // charged but never delivered → give it back
+      if (coupon?.claimed) await kvSet(coupon.key, "1", 3600).catch(() => {}); // and the discount with it
       return handlerErrorResponse(err, service.id);
     }
     await saveSample(service.id, data);
@@ -402,6 +427,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // Give the debit back and tell the caller via `x-refunded`.
     const refunded = isRefundable(data);
     if (refunded) await refundCreditMills(creditToken, mills);
+    if (refunded && coupon?.claimed) await kvSet(coupon.key, "1", 3600).catch(() => {});
     const remainingMills = refunded ? debit.remainingMills + mills : debit.remainingMills;
     return NextResponse.json(
       withRelated({
@@ -534,8 +560,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // data error (e.g. a token with no DEX pairs) escaped to the outer catch and
   // surfaced as a misleading blanket 503 "payment failed".
   // Set by the handler when buy-credits mints a balance; settled or voided after withX402 answers.
+  // The coupon this call claimed, given back if the payment does not settle.
+  const couponHeld: { key: string | null } = { key: null };
   const mint: { pending: { token: string; payer: string | null | undefined; tier: string } | null } = { pending: null };
   const handler = async (request: NextRequest) => {
+    // A payment signed at the coupon price is only good while the coupon is
+    // unused: concurrent copies find it gone and are refused before settlement.
+    if (service.id === "ai-token-report" && (await effectivePriceFor(service, request)) === COUPON_PRICE) {
+      const coupon = await claimCoupon(request, service);
+      if (coupon.claimed) couponHeld.key = coupon.key;
+      else {
+        return NextResponse.json(
+          { error: "This discount was already used by another call — not charged. Request again for the current price.", service: service.id },
+          { status: 409 },
+        );
+      }
+    }
     let data: unknown;
     try {
       const p = paramsFrom(request, service);
@@ -742,11 +782,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       res = await guarded(req);
     } catch (err) {
       if (mint.pending) await voidCredits(mint.pending.token).catch(() => {});
+      if (couponHeld.key) await kvSet(couponHeld.key, "1", 3600).catch(() => {});
       if (replayKey) await kvDel(replayKey).catch(() => {});
       throw err;
     }
     if (replayKey && res.status >= 400) await kvDel(replayKey).catch(() => {});
     if (mint.pending) await settleCreditPurchase(mint.pending, res.status < 400);
+    if (couponHeld.key && res.status >= 400) await kvSet(couponHeld.key, "1", 3600).catch(() => {});
     // Telemetry: a 402 means the caller was shown the price and (usually) walked
     // away — log it so we can measure challenge→paid conversion per service.
     if (res.status === 402) {

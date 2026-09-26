@@ -30,7 +30,10 @@ describe("one price, both rails", () => {
     // The regression in one line: `priceCents(service.price)` ignores every
     // per-request rule.
     // Metered in mills since sub-cent debits; still that function's answer.
-    expect(code).toMatch(/const mills = priceMills\(await effectivePriceFor\(service, req\)\)/);
+    // The only departure is a coupon another call already claimed, which falls back to full price.
+    expect(code).toMatch(/let price = await effectivePriceFor\(service, req\);/);
+    expect(code).toMatch(/if \(coupon && !coupon\.claimed\) price = service\.price;/);
+    expect(code).toMatch(/const mills = priceMills\(price\)/);
     expect(code, "the bare declared price must not be debited directly").not.toMatch(
       /(let|const) (cents|mills) = price(Cents|Mills)\(service\.price\)/,
     );
