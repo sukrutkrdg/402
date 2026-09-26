@@ -16,7 +16,7 @@
  */
 
 import "server-only";
-import { intentsTokens, parseUnits } from "./near-rpc";
+import { intentsTokens, parseUnits, formatUnits } from "./near-rpc";
 import { resolveAsset } from "./near-swap-quote";
 import { nearTokenSafety } from "./near-token-safety";
 
@@ -146,7 +146,7 @@ export async function nearSwap(params: Record<string, string>) {
     amountInUsd: num(q.amountInUsd),
     amountOut: q.amountOutFormatted,
     amountOutUsd: num(q.amountOutUsd),
-    minAmountOut: q.minAmountOut,
+    minAmountOut: formatUnits(String(q.minAmountOut), to.decimals),
     recipient,
     refundTo,
     timeEstimateSec: num(q.timeEstimate),
