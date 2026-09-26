@@ -239,6 +239,7 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "ens-resolve": { query: "vitalik.eth" },
   "near-token-safety": { token: "usdt.tether-token.near" },
   "near-account": { account: "tether.multisafe.near" },
+  "near-transfer-preflight": { token: "usdt.tether-token.near", to: "tether.multisafe.near" },
   "base-tx": { hash: TX },
   "base-receipt": { hash: TX },
   "tx-decode": { hash: TX },

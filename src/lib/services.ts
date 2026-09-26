@@ -18,6 +18,7 @@ import { contractAbi, decodeSelector, encodeSelector } from "./onchain-extra3";
 import { basenameResolve, ensResolve, basenameProfile } from "./basename";
 import { nearTokenSafety } from "./near-token-safety";
 import { nearAccount } from "./near-account";
+import { nearTransferPreflight } from "./near-transfer-preflight";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1312,6 +1313,23 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "account", label: "NEAR account", placeholder: "alice.near", required: true }],
     handler: nearAccount,
+  },
+  {
+    id: "near-transfer-preflight",
+    name: "NEAR Transfer Preflight",
+    tagline: "Will this NEAR token transfer go through? GO / HOLD / STOP",
+    description:
+      "Before sending a NEP-141 token on NEAR: is the token real and not paused, does the receiver exist, and is it registered on the token — the storage_deposit step whose absence fails a transfer. If not, says the exact fix and its NEAR cost. With from and amount, also checks the sender holds enough. Catches sending to the token contract itself. Live from the NEAR RPC.",
+    price: "$0.01",
+    icon: "Ⓝ",
+    category: "Onchain",
+    params: [
+      { name: "token", label: "NEAR token contract account", placeholder: "usdt.tether-token.near", required: true },
+      { name: "to", label: "Receiver NEAR account", placeholder: "alice.near", required: true },
+      { name: "from", label: "Sender NEAR account (optional)", placeholder: "bob.near" },
+      { name: "amount", label: "Amount in token units (optional)", placeholder: "25" },
+    ],
+    handler: nearTransferPreflight,
   },
   {
     id: "encode-selector",
