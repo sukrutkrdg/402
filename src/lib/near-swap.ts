@@ -62,6 +62,9 @@ export async function nearSwap(params: Record<string, string>) {
   const refundTo = (params.refundTo || params.refund_to || "").trim();
   if (!ADDRESS_RE.test(recipient)) throw new Error("recipient is required: the address on the destination chain that receives the output");
   if (!ADDRESS_RE.test(refundTo)) throw new Error("refundTo is required: your address on the origin chain, refunded if the swap cannot complete");
+  // INTENTS: the agent already holds funds inside NEAR Intents and moves them to the deposit
+  // account there; refunds go back inside Intents too. Default: a deposit on the origin chain.
+  const via = (params.depositType || "").toUpperCase() === "INTENTS" ? "INTENTS" : "ORIGIN_CHAIN";
   const slippage = params.slippage ? Number(params.slippage) : 100;
   if (!Number.isInteger(slippage) || slippage < 1 || slippage > 1000) throw new Error("slippage is in basis points: 1–1000 (default 100 = 1%)");
 
@@ -110,11 +113,11 @@ export async function nearSwap(params: Record<string, string>) {
       swapType: "EXACT_INPUT",
       slippageTolerance: slippage,
       originAsset: from.assetId,
-      depositType: "ORIGIN_CHAIN",
+      depositType: via,
       destinationAsset: to.assetId,
       amount,
       refundTo,
-      refundType: "ORIGIN_CHAIN",
+      refundType: via,
       recipient,
       recipientType: "DESTINATION_CHAIN",
       deadline,
@@ -137,7 +140,7 @@ export async function nearSwap(params: Record<string, string>) {
     deposit: {
       address: q.depositAddress,
       memo: q.depositMemo ?? null,
-      chain: from.blockchain,
+      chain: via === "INTENTS" ? "near-intents (inside)" : from.blockchain,
       asset: from.symbol,
       amount: q.amountInFormatted,
       amountBaseUnits: q.amountIn,
@@ -157,6 +160,9 @@ export async function nearSwap(params: Record<string, string>) {
       `Send exactly ${q.amountInFormatted} ${from.symbol} on ${from.blockchain} to ${q.depositAddress}${q.depositMemo ? ` with memo ${q.depositMemo}` : ""} before ${q.deadline ?? deadline}.`,
       `Track it: GET /api/x402/near-swap-status?depositAddress=${q.depositAddress}`,
       "If the deposit is late, short, or the price moves beyond slippage, 1Click refunds to refundTo.",
+      ...(via === "ORIGIN_CHAIN" && from.blockchain === "near" && /^[0-9a-f]{64}$/.test(q.depositAddress)
+        ? ["The deposit address is a fresh implicit account. If a wallet refuses with \"account does not exist\", send it 0.01 NEAR first to create it, then the token."]
+        : []),
     ],
   };
 }
