@@ -78,6 +78,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "ens-resolve": ["ens", "name-resolution", "chain-read", "primitive"],
   "near-token-safety": ["near", "nep-141", "token-safety", "upgradeability", "chain-read"],
   "near-account": ["near", "account", "access-keys", "wallet-intel", "chain-read"],
+  "near-transfer-preflight": ["near", "nep-141", "transfer", "storage-deposit", "preflight"],
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
 };

@@ -59,7 +59,7 @@ async function findOwner(token: string): Promise<{ owner: string; method: string
 }
 
 /** true/false from the first pause view that answers with a boolean; null when none does. */
-async function findPaused(token: string): Promise<{ paused: boolean; method: string } | null> {
+export async function findPaused(token: string): Promise<{ paused: boolean; method: string } | null> {
   const answers = await Promise.all(PAUSE_VIEWS.map((m) => viewCall<unknown>(token, m).catch(() => null)));
   for (let i = 0; i < PAUSE_VIEWS.length; i++) {
     if (typeof answers[i] === "boolean") return { paused: answers[i] as boolean, method: PAUSE_VIEWS[i] };
