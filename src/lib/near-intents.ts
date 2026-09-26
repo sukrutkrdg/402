@@ -42,6 +42,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEq
 import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber } from "./kv";
 import { CREDIT_TIERS, mintCredits } from "./credits";
 import { USDC_BASE, getConfig } from "./config";
+import { notifyOwner } from "./alert-owner";
 
 export const ONECLICK_BASE = "https://1click.chaindefuser.com";
 
@@ -442,6 +443,13 @@ export async function checkNearOrder(orderId: string, secret: string) {
     console.error(`[near-credits] order ${orderId}: minted but the sealed token was not stored`);
   }
   await Promise.all([kvIncrBy(NEAR_LEDGER.packs, 1), kvIncrBy(NEAR_LEDGER.paidCents, receivedCents)]).catch(() => {});
+  // Every NEAR sale is news while the rail is new — this is the demand signal
+  // the whole plan waits on. Inside the mint lock, so it fires once per order.
+  const tx = s.swapDetails?.destinationChainTxHashes?.[0]?.hash;
+  await notifyOwner(
+    `NEAR Intents credit sale: $${(receivedCents / 100).toFixed(2)} → $${(pack.credits / 100).toFixed(2)} of credit (order ${orderId})` +
+      (tx ? `\nhttps://basescan.org/tx/${tx}` : ""),
+  );
 
   return {
     status: "SUCCESS" as const,
