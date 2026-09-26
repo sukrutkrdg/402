@@ -115,7 +115,9 @@ export async function readHealth(days = 7): Promise<{ from: string; to: string; 
   const keys = Array.from({ length: days }, (_, i) => dayKey(new Date(now.getTime() - i * 86400_000)));
   // A failed read throws rather than reading as "no calls": the page is ISR, and
   // an empty week cached for five minutes would claim every endpoint went quiet.
-  const maps = await Promise.all(keys.map((k) => kvHGetAll(k)));
+  // At build time there is no previous page to keep, and a KV blip must not fail the deploy.
+  const building = process.env.NEXT_PHASE === "phase-production-build";
+  const maps = await Promise.all(keys.map((k) => kvHGetAll(k).catch((e) => (building ? ({} as Record<string, number>) : Promise.reject(e)))));
 
   const acc = new Map<string, { ok: number; input: number; fail: number; lat: Record<string, number>; day: { calls: number; fail: number } }>();
   maps.forEach((m, i) => {
