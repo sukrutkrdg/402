@@ -10,6 +10,7 @@
 
 import { mcpToolList } from "@/lib/mcp-tools";
 import { getSiteUrl } from "@/lib/config";
+import { nearCreditHint } from "@/lib/near-funding";
 
 export const dynamic = "force-dynamic";
 
@@ -52,12 +53,14 @@ export function GET() {
             type: "string",
             title: "Prepaid credit token (recommended)",
             description:
-              "A ck_… token minted by one x402 settlement on buy-credits. Sent as the x-credit-token header; each call debits the prepaid balance with no wallet and no signature per call. Leave blank to stay on the free tier: 1 call/day/service, then a preview.",
+              "A ck_… token minted by one x402 settlement on buy-credits. Sent as the x-credit-token header; each call debits the prepaid balance with no wallet and no signature per call. Leave blank to stay on the free tier: 1 call/day/service, then a preview." +
+              nearCreditHint(getSiteUrl()),
           },
         },
       },
       instructions:
-        "Pay-per-call Base onchain-safety, wallet-intel & AI tools. Free tier: 1 call/day/service then a preview. For unlimited paid calls set X402_CREDIT_TOKEN (prepaid, no wallet) or AGENT_PRIVATE_KEY. Install: npx -y x402-bazaar-mcp.",
+        "Pay-per-call Base onchain-safety, wallet-intel & AI tools. Free tier: 1 call/day/service then a preview. For unlimited paid calls set X402_CREDIT_TOKEN (prepaid, no wallet) or AGENT_PRIVATE_KEY. Install: npx -y x402-bazaar-mcp." +
+        nearCreditHint(getSiteUrl()),
       tools,
       _meta: {
         npm: "https://www.npmjs.com/package/x402-bazaar-mcp",

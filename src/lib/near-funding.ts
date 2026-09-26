@@ -28,6 +28,17 @@ export function nearFunding(site: string) {
   };
 }
 
+/**
+ * One sentence for surfaces that tell an agent how to get a credit token (MCP
+ * server card, manifests): where to buy it when your money is on NEAR. Empty
+ * when the rail is off, so no surface advertises a path that 404s.
+ */
+export function nearCreditHint(site: string): string {
+  return nearCreditsOn()
+    ? ` No USDC on Base? Buy the token with USDC, USDT or NEAR on NEAR via NEAR Intents at ${site}/credits (agents: POST ${site}/api/credits/near/quote).`
+    : "";
+}
+
 /** Plain-text block for llms.txt. */
 export function nearFundingLines(site: string): string[] {
   const f = nearFunding(site);

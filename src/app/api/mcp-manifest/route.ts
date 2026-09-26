@@ -4,6 +4,7 @@
  */
 
 import { getSiteUrl } from "@/lib/config";
+import { nearCreditHint } from "@/lib/near-funding";
 import { SERVICES } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export function GET() {
   return Response.json({
     name: "x402-bazaar-mcp",
     description:
-      `MCP server exposing x402 Bazaar's ${toolCount} onchain safety, wallet-intel, web, business and AI tools on Base. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.`,
+      `MCP server exposing x402 Bazaar's ${toolCount} onchain safety, wallet-intel, web, business and AI tools on Base. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.${nearCreditHint(SITE)}`,
     version: "0.2.3",
     registry: "io.github.sukrutkrdg/x402-bazaar-mcp",
     npm: "https://www.npmjs.com/package/x402-bazaar-mcp",
@@ -24,7 +25,7 @@ export function GET() {
     install: { command: "npx", args: ["-y", "x402-bazaar-mcp"], env: ["X402_CREDIT_TOKEN", "AGENT_PRIVATE_KEY"] },
     // Hosted / no-install: connect over the network (Streamable HTTP). Pass a
     // prepaid credit token via the `x-credit-token` header for unlimited calls.
-    remote: { transport: "streamable-http", url: `${SITE}/api/mcp`, auth: { header: "x-credit-token", note: "prepaid credit token (ck_…) from buy-credits — optional; without it you get 1 free call/day/tool (the server requests it with the x-402-free header)" } },
+    remote: { transport: "streamable-http", url: `${SITE}/api/mcp`, auth: { header: "x-credit-token", note: `prepaid credit token (ck_…) from buy-credits — optional; without it you get 1 free call/day/tool (the server requests it with the x-402-free header).${nearCreditHint(SITE)}` } },
     serverCard: `${SITE}/.well-known/mcp/server-card.json`,
     catalog: `${SITE}/.well-known/x402`,
     homepage: SITE,

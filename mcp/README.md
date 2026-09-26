@@ -76,6 +76,12 @@ which returns a `ck_…` token. Set it as `X402_CREDIT_TOKEN` and every later ca
 just draws down the balance — no private key ever touches this config again.
 Tiers: $0.25 starter, $1, $5 (+10%), $20 (+20%).
 
+**Paying from NEAR?** The same credit token can be bought with USDC, USDT or NEAR on
+NEAR (or any asset NEAR Intents routes) — in the browser at
+[402.com.tr/credits](https://402.com.tr/credits), or headlessly with
+`POST https://402.com.tr/api/credits/near/quote`. NEAR Intents swaps it to USDC on Base;
+no Base wallet needed.
+
 ---
 
 ## Requirements
