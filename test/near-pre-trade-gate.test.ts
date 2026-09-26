@@ -1,12 +1,28 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { nearPreTradeGate } from "@/lib/near-pre-trade-gate";
 import { _resetNearCaches, type IntentsToken } from "@/lib/near-rpc";
+import { _resetNearblocksCache } from "@/lib/nearblocks";
 import { stubNear, CODE, type NearWorld } from "./stubs/near-stub";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   _resetNearCaches();
+  _resetNearblocksCache();
 });
+
+/** stubNear plus NearBlocks answers for the holder list. */
+function withHolders(holders: { account: string; amount: string }[]) {
+  const rpc = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<Response>;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/holders/count")) return new Response(JSON.stringify({ holders: [{ count: "900" }] }));
+      if (u.includes("/holders")) return new Response(JSON.stringify({ holders }));
+      return rpc(u, init);
+    }),
+  );
+}
 
 const USDC = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
 const TOKENS: IntentsToken[] = [
@@ -33,6 +49,26 @@ function world(backUsd: number | "refuse", extra: Partial<NearWorld> = {}): Near
 }
 
 describe("nearPreTradeGate", () => {
+  it("HOLD when a few plain accounts hold most of the circulating supply", async () => {
+    stubNear(world(98, { accounts: { "meme.near": { code_hash: CODE }, "whale.near": {}, "bob.near": {} } }));
+    withHolders([
+      { account: "whale.near", amount: "800" },
+      { account: "bob.near", amount: "50" },
+    ]);
+    const r = await nearPreTradeGate({ token: "meme.near" });
+    expect(r.verdict).toBe("HOLD");
+    expect(r.holders).toMatchObject({ concentration: "HIGH", top1AccountPctOfCirculating: 80 });
+    expect(r.reasons.join(" ")).toMatch(/Concentrated: .*whale\.near/);
+  });
+
+  it("an unreadable holder list does not change the verdict, and says so", async () => {
+    stubNear(world(98));
+    const r = await nearPreTradeGate({ token: "meme.near" });
+    expect(r.verdict).toBe("GO");
+    expect(r.holders).toBeNull();
+    expect(r.reasons.join(" ")).toMatch(/Holder concentration not checked/);
+  });
+
   it("GO when the token is locked and the round trip is cheap", async () => {
     stubNear(world(98));
     const r = await nearPreTradeGate({ token: "meme.near" });

@@ -1379,7 +1379,7 @@ export const SERVICES: ServiceDef[] = [
     name: "NEAR Pre-Trade Gate",
     tagline: "One call before buying a NEAR token — GO / HOLD / STOP",
     description:
-      "The call to make before buying a NEP-141 token: who controls it (full-access keys, owner, pause — as near-token-safety) and whether you can get back out, tested as a round trip through NEAR Intents at your trade size: buy with USDC, sell straight back, measure the loss. Over 15% lost or no route is STOP or HOLD. One verdict with both quotes. size is in USD (default 100).",
+      "The call to make before buying a NEP-141 token: who controls it (keys, owner, pause), whether you can get back out — a USDC round trip through NEAR Intents at your trade size, loss measured — and whether a few accounts hold most of the circulating supply. Over 15% lost or no route is STOP or HOLD; HIGH concentration is HOLD. One verdict with the quotes. size is in USD (default 100).",
     price: "$0.05",
     icon: "🚦",
     category: "NEAR",
