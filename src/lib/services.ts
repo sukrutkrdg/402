@@ -1428,6 +1428,7 @@ export const SERVICES: ServiceDef[] = [
       { name: "recipient", label: "Receiving address on the destination chain", placeholder: "alice.near", required: true },
       { name: "refundTo", label: "Your address on the origin chain (refunds)", placeholder: "alice.near", required: true },
       { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
+      { name: "depositType", label: "INTENTS to pay from a NEAR Intents balance (optional)", placeholder: "ORIGIN_CHAIN" },
     ],
     handler: nearSwap,
   },

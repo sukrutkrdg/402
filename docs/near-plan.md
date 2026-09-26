@@ -354,3 +354,8 @@ NEAR'da gelirin %85'i NEAR Intents ücretlerinden (toplam $20 milyar+ hacim). Da
   formülüyle (volatility_ratio, extra_decimals); fiyatlar NEAR Intents'ten. Formül kaynağı: burrowHQ/burrow-sdk-python.
 - Sahibinin yapacakları: Partner Dashboard'dan 1Click anahtarı → `NEAR_INTENTS_JWT`; komisyon hesabı →
   `NEAR_INTENTS_FEE_RECIPIENT`; oran → `NEAR_INTENTS_FEE_BPS` (öneri 20).
+
+Canlı swap testi (2026-09-26): 5 USDC → 1,029 NEAR, SUCCESS, ~25 sn. Meteor, 1Click'in yeni (implicit)
+yatırma hesabına "account does not exist" diyerek göndermedi; önce 0,01 NEAR gönderilince geçti.
+`near-swap` artık bunu yanıtta söylüyor ve `depositType=INTENTS` ile Intents bakiyesinden ödemeyi destekliyor.
+Not: kredi ödemesi en az 1 sent keser ($0.002'lik servisler krediyle $0.01).

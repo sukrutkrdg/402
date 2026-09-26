@@ -64,6 +64,19 @@ describe("nearSwap", () => {
     await expect(nearSwap({ from: "USDC", to: "NEAR", amount: "0.01", recipient: "alice.near", refundTo: "alice.near" })).rejects.toThrow(/Amount is too low — not charged/);
   });
 
+  it("can take the deposit inside NEAR Intents", async () => {
+    let sent: Record<string, unknown> = {};
+    stubNear({ tokens: TOKENS, quote: (b) => ((sent = b), QUOTE) });
+    await nearSwap({ from: "USDC", to: "NEAR", amount: "100", recipient: "alice.near", refundTo: "alice.near", depositType: "intents" });
+    expect(sent).toMatchObject({ depositType: "INTENTS", refundType: "INTENTS", recipientType: "DESTINATION_CHAIN" });
+  });
+
+  it("warns that a fresh implicit deposit account may need 0.01 NEAR first", async () => {
+    stubNear({ tokens: TOKENS, quote: () => ({ ...QUOTE, quote: { ...QUOTE.quote, depositAddress: "d".repeat(64) } }) });
+    const r = await nearSwap({ from: "USDC", to: "NEAR", amount: "100", recipient: "alice.near", refundTo: "alice.near" });
+    expect(r.next.join(" ")).toMatch(/0\.01 NEAR first/);
+  });
+
   it("requires recipient and refundTo", async () => {
     await expect(nearSwap({ from: "USDC", to: "NEAR", amount: "1", refundTo: "a.near" })).rejects.toThrow(/recipient/);
     await expect(nearSwap({ from: "USDC", to: "NEAR", amount: "1", recipient: "a.near" })).rejects.toThrow(/refundTo/);
