@@ -42,7 +42,7 @@ describe("nearTokenHolders", () => {
       totalSupply: "1000",
       holderCount: 1000,
       concentration: "HIGH",
-      shares: { top1Pct: 60, top10Pct: 70, top1AccountPct: 60 },
+      shares: { top1Pct: 60, top10Pct: 70, top1AccountPctOfCirculating: 60 },
       holders: [
         { rank: 1, account: "whale.near", type: "account", balance: "600", sharePct: 60 },
         { rank: 2, account: "bob.near", balance: "100", sharePct: 10 },
@@ -62,6 +62,20 @@ describe("nearTokenHolders", () => {
     expect(r.concentration).toBe("LOW");
     expect(r.holders[0]).toMatchObject({ type: "contract", sharePct: 70 });
     expect(r.signals.join(" ")).toMatch(/largest holder is a contract/);
+  });
+
+  it("an issuer treasury is not a whale: concentration is over circulating supply", async () => {
+    world([
+      { account: "tok-treasury.near", amount: "90000" },
+      { account: "bob.near", amount: "1000" },
+      { account: "carol.near", amount: "1000" },
+    ]);
+    const r = await nearTokenHolders({ token: "tok.near" });
+    expect(r.holders[0]).toMatchObject({ type: "treasury", sharePct: 90 });
+    expect(r.circulatingSupply).toBe("100");
+    expect(r.shares).toMatchObject({ top1Pct: 90, top1AccountPctOfCirculating: 10, top10AccountsPctOfCirculating: 20 });
+    expect(r.concentration).toBe("LOW");
+    expect(r.signals.join(" ")).toMatch(/treasury: unissued stock/);
   });
 
   it("refuses EVM addresses and non-tokens", async () => {
