@@ -38,7 +38,7 @@ describe("nearSwap", () => {
     const r = await nearSwap({ from: "USDC", to: "NEAR", amount: "100", recipient: "alice.near", refundTo: "alice.near" });
     expect(sent).toMatchObject({ dry: false, swapType: "EXACT_INPUT", originAsset: "nep141:usdc.near", destinationAsset: "nep141:wrap.near", amount: "100000000", recipientType: "DESTINATION_CHAIN", refundType: "ORIGIN_CHAIN" });
     expect(sent.appFees).toBeUndefined();
-    expect(r).toMatchObject({ deposit: { address: "dep123.near", amount: "100", asset: "USDC" }, amountOut: "19.9", distributionFeeBps: 0 });
+    expect(r).toMatchObject({ deposit: { address: "dep123.near", amount: "100", asset: "USDC" }, amountOut: "19.9", minAmountOut: "19.7", distributionFeeBps: 0 });
     expect(r.next[1]).toContain("near-swap-status?depositAddress=dep123.near");
   });
 
