@@ -240,6 +240,7 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "near-token-safety": { token: "usdt.tether-token.near" },
   "near-account": { account: "tether.multisafe.near" },
   "near-transfer-preflight": { token: "usdt.tether-token.near", to: "tether.multisafe.near" },
+  "near-swap-quote": { from: "USDC", to: "NEAR", amount: "100" },
   "base-tx": { hash: TX },
   "base-receipt": { hash: TX },
   "tx-decode": { hash: TX },
