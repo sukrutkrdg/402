@@ -23,8 +23,22 @@ AI reports. Every paid API in the [x402 Bazaar](https://402.com.tr) catalog,
 exposed as a callable tool (Cursor, Cline, Windsurf, VS Code, Coinbase AgentKit,
 desktop assistants and custom agents).
 
-**Bind these first:** `pre_trade_gate` (any token), `b20_gate` (Base-native B20
-tokens), `sign_guard` (before signing a tx).
+**Bind these first:** `pre_trade_gate` (any Base token), `near_pre_trade_gate`
+(NEAR tokens), `b20_gate` (Base-native B20 tokens), `sign_guard` (before signing
+a tx).
+
+**Then act — swap at the best price, after the check:**
+
+- `base_swap` — on Base, routed by 0x across Uniswap, Aerodrome, Balancer, Curve
+  and more. Returns the route, minimum out, every fee, and a ready-to-sign
+  transaction for your agent's own wallet. Buying an unknown token runs a
+  sellability check first and refuses a honeypot.
+- `near_swap` — across chains (NEAR, Base, Ethereum, Solana, Bitcoin…) through
+  NEAR Intents. Returns a one-time deposit address; the output goes to your
+  recipient or is refunded. Buying a NEAR token runs `near_token_safety` first.
+  Track it with `near_swap_status`.
+
+Funds never pass through this server or ours.
 
 **No wallet needed to start.** Run it with no key, no token and no config at all
 and it uses the **free tier** — one free call/day on each service that offers
