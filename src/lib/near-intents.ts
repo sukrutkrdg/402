@@ -39,10 +39,9 @@
 
 import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber } from "./kv";
+import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber, kvLPush, kvLRange } from "./kv";
 import { CREDIT_TIERS, mintCredits } from "./credits";
 import { USDC_BASE, getConfig } from "./config";
-import { notifyOwner } from "./alert-owner";
 
 export const ONECLICK_BASE = "https://1click.chaindefuser.com";
 
@@ -68,6 +67,8 @@ export const NEAR_LEDGER = {
   quotes: "credits:rail:near:quotes",
   packs: "credits:rail:near:packs",
   paidCents: "credits:rail:near:paidCents",
+  /** Newest-first list of sales (capped at 50) for the /stats panel. */
+  recent: "credits:rail:near:recent",
 } as const;
 
 export function nearCreditsEnabled(): boolean {
@@ -443,13 +444,20 @@ export async function checkNearOrder(orderId: string, secret: string) {
     console.error(`[near-credits] order ${orderId}: minted but the sealed token was not stored`);
   }
   await Promise.all([kvIncrBy(NEAR_LEDGER.packs, 1), kvIncrBy(NEAR_LEDGER.paidCents, receivedCents)]).catch(() => {});
-  // Every NEAR sale is news while the rail is new — this is the demand signal
-  // the whole plan waits on. Inside the mint lock, so it fires once per order.
-  const tx = s.swapDetails?.destinationChainTxHashes?.[0]?.hash;
-  await notifyOwner(
-    `NEAR Intents credit sale: $${(receivedCents / 100).toFixed(2)} → $${(pack.credits / 100).toFixed(2)} of credit (order ${orderId})` +
-      (tx ? `\nhttps://basescan.org/tx/${tx}` : ""),
-  );
+  // Each sale, for the owner's /stats panel — the demand signal the NEAR plan
+  // waits on. Inside the mint lock, so one row per order. Best-effort: the
+  // counters above are the books; this is the list you read them by.
+  await kvLPush(
+    NEAR_LEDGER.recent,
+    JSON.stringify({
+      t: new Date().toISOString(),
+      usd: +(receivedCents / 100).toFixed(2),
+      creditsUsd: +(pack.credits / 100).toFixed(2),
+      tx: s.swapDetails?.destinationChainTxHashes?.[0]?.hash ?? null,
+      orderId,
+    }),
+    50,
+  ).catch(() => {});
 
   return {
     status: "SUCCESS" as const,
@@ -462,11 +470,19 @@ export async function checkNearOrder(orderId: string, secret: string) {
 /** Owner-facing numbers for this rail. Null when there is no durable store. */
 export async function nearRailLedger() {
   if (!kvConfigured()) return null;
-  const [quotes, packs, paidCents] = await Promise.all([
+  const [quotes, packs, paidCents, recentRaw] = await Promise.all([
     kvGetNumber(NEAR_LEDGER.quotes),
     kvGetNumber(NEAR_LEDGER.packs),
     kvGetNumber(NEAR_LEDGER.paidCents),
+    kvLRange(NEAR_LEDGER.recent, 0, 19),
   ]);
+  const recent = recentRaw.flatMap((r) => {
+    try {
+      return [JSON.parse(r) as { t: string; usd: number; creditsUsd: number; tx: string | null; orderId: string }];
+    } catch {
+      return [];
+    }
+  });
   return {
     enabled: nearCreditsEnabled(),
     quotes,
@@ -474,5 +490,7 @@ export async function nearRailLedger() {
     paidUsd: +(paidCents / 100).toFixed(2),
     /** Quotes that turned into a paid pack — the conversion this rail lives or dies by. */
     conversionPct: quotes > 0 ? +((packs / quotes) * 100).toFixed(1) : 0,
+    /** Latest sales, newest first. Sales before this list existed are counted above but not listed. */
+    recent,
   };
 }

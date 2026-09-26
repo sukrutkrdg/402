@@ -113,21 +113,6 @@ export async function alertOwner(kind: AlertKind, text: string): Promise<AlertOu
   }
 }
 
-/**
- * Tell the owner about a single event, every time it happens.
- *
- * alertOwner is for conditions (announce once, stay quiet until cleared), so a
- * second sale would be swallowed as "already announced". A sale is an event:
- * each one is news. Never throws — a notice must not affect the thing it reports.
- */
-export async function notifyOwner(text: string): Promise<{ ok: boolean; reason?: string }> {
-  try {
-    return await sendTelegram(`💰 402.com.tr\n\n${text}`);
-  } catch {
-    return { ok: false, reason: "notify failed" };
-  }
-}
-
 /** Announce that `kind` is over, but only if it was ever announced. */
 export async function clearAlert(kind: AlertKind, text: string): Promise<AlertOutcome> {
   try {

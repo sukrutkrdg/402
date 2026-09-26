@@ -63,7 +63,7 @@ testler geçiyor.
 
 ### Faz 1 — NEAR Intents ile kredi satın alma (≈1 hafta)
 
-**Durum: canlıda (`ENABLE_NEAR_CREDITS=true`).** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts`. Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. Her satışta sahibine Telegram bildirimi gider (`notifyOwner`; `TELEGRAM_BOT_TOKEN` ve `OWNER_TELEGRAM_CHAT_ID` gerekli). İnsanlar için `/credits` sayfasında "Pay from NEAR" bölümü (`NearCreditsClient.tsx`).
+**Durum: canlıda (`ENABLE_NEAR_CREDITS=true`).** `src/lib/near-intents.ts`, `src/app/api/credits/near/{quote,status}`, `test/near-intents.test.ts`. Kayıp yanıt sorununu çözmek için basılan token, sipariş gizli anahtarından türetilen bir anahtarla şifrelenip saklanıyor; aynı gizli anahtarla tekrar sorgulayan aynı token'ı geri alıyor. Sayaçlar `/api/usage` içinde `nearCredits` alanında. `/stats` ekranında ayrı bir **NEAR** paneli var: teklif, satılan paket, toplam tutar, dönüşüm oranı ve son satışlar (Basescan linkli). Sahibi Telegram bildirimi istemiyor. İnsanlar için `/credits` sayfasında "Pay from NEAR" bölümü (`NearCreditsClient.tsx`).
 
 **İlk canlı satış (2026-09-26):** $0.25 paket, NEAR üzerindeki USDC ile (0.255004 USDC gönderildi), 1Click takası Base'de `0x6c66b2df…0089704` ile `PAY_TO_ADDRESS`'e ulaştı, token basıldı, para cüzdanda ve `/stats`'ta görüldü.
 

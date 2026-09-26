@@ -116,6 +116,16 @@ interface Usage {
   youSource?: string;
   ownerSources?: string[];
   credits?: CreditsLedger | null;
+  nearCredits?: NearLedger | null;
+}
+/** Credit packs bought from NEAR through NEAR Intents (src/lib/near-intents.ts). */
+interface NearLedger {
+  enabled: boolean;
+  quotes: number;
+  packsSold: number;
+  paidUsd: number;
+  conversionPct: number;
+  recent?: { t: string; usd: number; creditsUsd: number; tx: string | null; orderId: string }[];
 }
 /**
  * The prepaid rail's own books. Kept out of the revenue figures above on
@@ -721,6 +731,65 @@ export default function Stats() {
                   <div className="text-[10px] text-gray-500">paid for, not yet used — owed as service</div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* NEAR: packs bought with NEAR-side funds via NEAR Intents. These packs are
+              also inside the prepaid totals above; this panel says which of them
+              came from NEAR — the demand signal the NEAR plan waits on. */}
+          {usage.nearCredits && (usage.nearCredits.enabled || usage.nearCredits.quotes > 0) && (
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4">
+              <div className="mb-3 flex items-baseline gap-2">
+                <span className="pill">Ⓝ NEAR</span>
+                <span className="text-[10px] text-gray-500">
+                  credit packs paid from NEAR via NEAR Intents — settled to you as USDC on Base
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <div className="label">Packs sold</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.nearCredits.packsSold}</div>
+                </div>
+                <div>
+                  <div className="label">Received</div>
+                  <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">
+                    ${usage.nearCredits.paidUsd.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-gray-500">USDC on Base</div>
+                </div>
+                <div>
+                  <div className="label">Quotes</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.nearCredits.quotes}</div>
+                  <div className="text-[10px] text-gray-500">deposit addresses handed out</div>
+                </div>
+                <div>
+                  <div className="label">Conversion</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.nearCredits.conversionPct}%</div>
+                  <div className="text-[10px] text-gray-500">quotes that became a paid pack</div>
+                </div>
+              </div>
+              {usage.nearCredits.recent && usage.nearCredits.recent.length > 0 && (
+                <div className="mt-4 flex flex-col gap-1">
+                  <div className="label">Latest NEAR sales</div>
+                  {usage.nearCredits.recent.map((r) => (
+                    <div key={r.orderId} className="flex flex-wrap items-center gap-x-3 text-[11px] text-gray-400">
+                      <span className="font-mono text-gray-300">{new Date(r.t).toLocaleString()}</span>
+                      <span className="font-mono text-emerald-300">${r.usd.toFixed(2)}</span>
+                      <span>→ ${r.creditsUsd.toFixed(2)} credit</span>
+                      {r.tx && (
+                        <a
+                          className="text-sky-400 hover:underline"
+                          href={`https://basescan.org/tx/${r.tx}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          tx ↗
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
