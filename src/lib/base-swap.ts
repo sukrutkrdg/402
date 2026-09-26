@@ -162,8 +162,8 @@ export async function baseSwap(params: Record<string, string>) {
     fees: {
       integratorFeeBps: fee?.bps ?? 0,
       integratorFee: q.fees?.integratorFee ? `${fmt(q.fees.integratorFee.amount, feeDec)} ${feeSym}` : null,
-      zeroExFee: q.fees?.zeroExFee ? q.fees.zeroExFee.amount : null,
-      networkFeeWei: q.totalNetworkFee ?? null,
+      zeroExFee: q.fees?.zeroExFee ? `${fmt(q.fees.zeroExFee.amount, q.fees.zeroExFee.token.toLowerCase() === buy.address.toLowerCase() ? buy.decimals : sell.decimals)} ${q.fees.zeroExFee.token.toLowerCase() === buy.address.toLowerCase() ? buy.symbol : sell.symbol}` : null,
+      networkFeeEth: q.totalNetworkFee ? formatUnits(BigInt(q.totalNetworkFee), 18) : null,
     },
     needsApproval: allowance ? { token: sell.address, spender: allowance.spender } : null,
     insufficientBalance: Boolean(short),

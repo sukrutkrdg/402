@@ -14,7 +14,8 @@ const QUOTE = {
   sellAmount: "10000000",
   transaction: { to: "0xallowanceholder", data: "0xdeadbeef", value: "0", gas: "200000" },
   issues: { allowance: { actual: "0", spender: "0x0000000000001fF3684f28c67538d4D072C22734" }, balance: null },
-  fees: { integratorFee: { amount: "20000", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }, zeroExFee: null },
+  fees: { integratorFee: { amount: "20000", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }, zeroExFee: { amount: "15000", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" } },
+  totalNetworkFee: "2894596101887",
   route: { fills: [{ source: "Uniswap_V3", proportionBps: "7000" }, { source: "Aerodrome", proportionBps: "3000" }] },
 };
 
@@ -43,7 +44,7 @@ describe("baseSwap", () => {
     });
     expect(r).toMatchObject({
       buy: { symbol: "ETH", amount: "0.003", minAmount: "0.00297" },
-      fees: { integratorFeeBps: 20, integratorFee: "0.02 USDC" },
+      fees: { integratorFeeBps: 20, integratorFee: "0.02 USDC", zeroExFee: "0.015 USDC", networkFeeEth: "0.000002894596101887" },
       needsApproval: { spender: "0x0000000000001fF3684f28c67538d4D072C22734" },
       transaction: { chainId: 8453, to: "0xallowanceholder", data: "0xdeadbeef" },
       route: [{ source: "Uniswap_V3", sharePct: 70 }, { source: "Aerodrome", sharePct: 30 }],
