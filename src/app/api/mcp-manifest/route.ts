@@ -17,7 +17,7 @@ export function GET() {
   return Response.json({
     name: "x402-bazaar-mcp",
     description:
-      `MCP server exposing x402 Bazaar's ${toolCount} onchain safety, wallet-intel, web, business and AI tools for Base and NEAR. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.${nearCreditHint(SITE)}`,
+      `MCP server exposing x402 Bazaar's ${toolCount} tools for agents on Base and NEAR: check a token before trading (GO/HOLD/STOP), then swap at the best price — on Base via 0x, across chains via NEAR Intents — plus wallet intel, lending health, web and AI reads. Zero-config free tier (1 call/day/service, then a preview); pay for unlimited with a prepaid credit token (X402_CREDIT_TOKEN — no wallet) or a wallet key (AGENT_PRIVATE_KEY). No API keys.${nearCreditHint(SITE)}`,
     version: "0.2.3",
     registry: "io.github.sukrutkrdg/x402-bazaar-mcp",
     npm: "https://www.npmjs.com/package/x402-bazaar-mcp",

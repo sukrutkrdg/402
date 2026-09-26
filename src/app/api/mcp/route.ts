@@ -87,7 +87,7 @@ async function handle(rpc: RpcReq, creditToken: string): Promise<object | null> 
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER,
         instructions:
-          "x402 Bazaar tools: onchain safety, wallet/account intelligence, lending and AI reads on Base, paid per call over x402. Configure an x-credit-token header (buy once via buy-credits, no wallet) for unlimited calls; otherwise 1 free call/day per tool." +
+          "x402 Bazaar — check, then act, for agents on Base and NEAR. Before buying a token: pre_trade_gate (Base) or near_pre_trade_gate (NEAR) → GO/HOLD/STOP. Then swap: base_swap (best DEX price on Base, returns a ready-to-sign transaction) or near_swap (any chain via NEAR Intents, returns a deposit address); funds never pass through this server. Plus wallet/account intelligence, B20 token controls, lending health, web and AI reads. Paid per call over x402. Configure an x-credit-token header (buy once via buy-credits, no wallet) for unlimited calls; otherwise 1 free call/day per tool." +
           // Agents reaching us through the NEAR agent market hold USDC or NEAR on
           // NEAR, not USDC on Base — tell them the credit token is buyable there.
           (nearCreditsOn()
