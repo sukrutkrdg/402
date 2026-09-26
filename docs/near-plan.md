@@ -211,6 +211,15 @@ anahtarları sohbette açığa çıktı. **Kullanılmayacaklar.**
 
 ### Faz 3 — Koşullu: NEAR'a özel servisler ya da NEAR ödeme ağı
 
+**Durum (2026-09-26): ilk servis eklendi.** Sahibi talep verisi beklemeden ilk NEAR'a özel servisi istedi:
+`near-token-safety` ($0.02, `src/lib/near-token-safety.ts`). Bir NEP-141 tokenının sözleşmesini kimin
+değiştirebileceğine bakıyor: tam yetkili anahtar varsa HOLD (anahtar sahibi yeni kod yükleyebilir), yoksa
+GO ("kilitli", sözleşmenin kendi yönetici fonksiyonları hariç), sözleşme yoksa ya da NEP-141 değilse STOP.
+Metadata, toplam arz ve NEAR Intents'te işlem görüp görmediği (fiyatıyla) da dönüyor. Kaynaklar ücretsiz:
+NEAR RPC (FastNEAR, yedek olarak near.org; `NEAR_RPC_URL` ile değiştirilebilir) ve 1Click token listesi.
+Bu geliştirme ortamı NEAR'a erişemediği için yalnızca RPC yanıt biçimlerini taklit eden testlerle doğrulandı;
+**ilk canlı çağrı sahibi tarafından kontrol edilmeli.** Diğer NEAR servisleri talebe göre eklenecek.
+
 Bu faz ancak Faz 1 ve Faz 2'nin sayıları gerçek talep gösterirse açılır. Olası adımlar:
 NEAR zincirindeki tokenlar (NEP-141) için güvenlik servisleri, ya da ayrı bir uç noktada
 (asla mevcut `accepts[]` içinde değil) NEAR üzerinde doğrudan ödeme alma.
