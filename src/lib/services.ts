@@ -1293,7 +1293,7 @@ export const SERVICES: ServiceDef[] = [
     name: "NEAR Token Safety",
     tagline: "Who can change a NEAR token's contract? GO / HOLD / STOP",
     description:
-      "Before an agent takes a NEP-141 token on NEAR: is a contract deployed, does it answer ft_metadata, and — the question that matters — how many full-access keys can redeploy it (new code can rewrite balances, block transfers or mint), and whether the contract names an owner or has a pause switch — issued tokens like USDt keep control through owner methods, not keys. No key and no owner → GO; upgradeable by key or owner-controlled → HOLD; paused, no contract or not NEP-141 → STOP. Also returns name, symbol, decimals, total supply, and whether NEAR Intents routes the token, with its price. Read live from the NEAR RPC.",
+      "Before an agent takes a NEP-141 token on NEAR: who can change it? Counts full-access keys that can redeploy the contract, and asks the contract for an owner and a pause switch — issued tokens like USDt keep control through owner methods, not keys. No key and no owner → GO; key- or owner-controlled → HOLD; paused, no contract or not NEP-141 → STOP. Plus name, symbol, supply, and NEAR Intents liquidity and price. Live from the NEAR RPC.",
     price: "$0.02",
     icon: "Ⓝ",
     category: "Onchain",
