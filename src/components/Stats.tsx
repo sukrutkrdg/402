@@ -126,6 +126,12 @@ interface NearLedger {
   paidUsd: number;
   conversionPct: number;
   recent?: { t: string; usd: number; creditsUsd: number; tx: string | null; orderId: string }[];
+  /** Orders paid at 1Click whose token nobody has claimed yet. */
+  open?: {
+    unclaimed: { orderId: string; tier: string; usd: number; createdAt: string; claimableUntil: string }[];
+    unclaimedUsd: number;
+    inFlight: number;
+  } | null;
 }
 /**
  * The prepaid rail's own books. Kept out of the revenue figures above on
@@ -768,6 +774,30 @@ export default function Stats() {
                   <div className="text-[10px] text-gray-500">quotes that became a paid pack</div>
                 </div>
               </div>
+              {usage.nearCredits.open && usage.nearCredits.open.unclaimed.length > 0 && (
+                <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] text-amber-200">
+                  <div className="font-semibold">
+                    Paid, not yet claimed: {usage.nearCredits.open.unclaimed.length} order
+                    {usage.nearCredits.open.unclaimed.length === 1 ? "" : "s"} · ${usage.nearCredits.open.unclaimedUsd.toFixed(2)}
+                  </div>
+                  <div className="mt-1 text-amber-200/80">
+                    The swap settled and the USDC reached you, but the buyer never fetched their credit token, so no
+                    pack is booked above. They can still claim it with their order secret until the date shown.
+                  </div>
+                  {usage.nearCredits.open.unclaimed.map((o) => (
+                    <div key={o.orderId} className="mt-1 font-mono">
+                      ${o.usd.toFixed(2)} · order {o.orderId} · paid {new Date(o.createdAt).toLocaleDateString()} ·
+                      claimable until {new Date(o.claimableUntil).toLocaleDateString()}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {usage.nearCredits.open && usage.nearCredits.open.inFlight > 0 && (
+                <div className="mt-2 text-[10px] text-gray-500">
+                  {usage.nearCredits.open.inFlight} order{usage.nearCredits.open.inFlight === 1 ? "" : "s"} awaiting deposit or
+                  settling
+                </div>
+              )}
               {usage.nearCredits.recent && usage.nearCredits.recent.length > 0 && (
                 <div className="mt-4 flex flex-col gap-1">
                   <div className="label">Latest NEAR sales</div>

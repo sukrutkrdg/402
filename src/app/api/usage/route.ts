@@ -8,7 +8,7 @@ import { SERVICES } from "@/lib/services";
 import { safeEqual } from "@/lib/secure";
 import { clientIp } from "@/lib/rate-limit";
 import { creditsLedger } from "@/lib/credits";
-import { nearRailLedger } from "@/lib/near-intents";
+import { nearRailLedger, nearOpenOrders } from "@/lib/near-intents";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // headroom for the per-service KV reads
@@ -70,7 +70,10 @@ export async function GET(req: NextRequest) {
   const credits = await creditsLedger();
   // The NEAR Intents rail's own books (quotes → packs), so its conversion is
   // visible on its own rather than folded into the credit totals above.
-  const nearCredits = await nearRailLedger();
+  // Plus orders paid at 1Click but never claimed — money that arrived for credit
+  // nobody has picked up. Asks 1Click about each open order, so it is cached.
+  const nearLedger = await nearRailLedger();
+  const nearCredits = nearLedger ? { ...nearLedger, open: await cachedNearOpenOrders() } : null;
 
   return NextResponse.json({
     ...data,
@@ -82,4 +85,14 @@ export async function GET(req: NextRequest) {
     per,
     recent: data.recent.map((r) => ({ ...r, name: nameById[r.s] ?? r.s })),
   });
+}
+
+// One 1Click round trip per open order is fine for an owner page, not for every
+// auto-refresh of it: reuse a result for five minutes per instance.
+let openCache: { at: number; v: Awaited<ReturnType<typeof nearOpenOrders>> } | null = null;
+async function cachedNearOpenOrders() {
+  if (openCache && Date.now() - openCache.at < 300_000) return openCache.v;
+  const v = await nearOpenOrders().catch(() => null);
+  openCache = { at: Date.now(), v };
+  return v;
 }
