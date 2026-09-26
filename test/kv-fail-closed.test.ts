@@ -93,3 +93,47 @@ describe("KV outage → fail closed", () => {
     expect((await rateLimit.rateLimitKv(key, 2, 60)).ok).toBe(false);
   });
 });
+
+describe("KV rate-limited → an error body with HTTP 200 is a failure, not an empty value", () => {
+  // Upstash answered a rate-limited database with HTTP 200 and
+  // {"error":"Your database has been temporarily rate-limited, …"}. Reading the
+  // status alone made every write look successful and every read look empty.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function rateLimitedKv() {
+    vi.resetModules();
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://kv.test.invalid");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "test-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: "Your database has been temporarily rate-limited" }), { status: 200 })),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    return await import("@/lib/kv");
+  }
+
+  it("counters return null so money and quota guards fail closed", async () => {
+    const kv = await rateLimitedKv();
+    expect(await kv.kvIncrBy("k", 1)).toBeNull();
+    expect(await kv.kvDecrBy("k", 1)).toBeNull();
+    expect(await kv.kvIncr("k")).toBeNull();
+  });
+
+  it("a reservation is not granted", async () => {
+    const kv = await rateLimitedKv();
+    expect(await kv.kvSetNx("k", 60)).toBe(false);
+  });
+
+  it("the free tier is denied as degraded, not as spent", async () => {
+    await rateLimitedKv();
+    process.env.FREE_TIER_DAILY = "1";
+    const freeTier = await import("@/lib/free-tier");
+    const r = await freeTier.consumeFree(`ip-${Math.random()}`);
+    expect(r.allowed).toBe(false);
+    expect(r.degraded).toBe(true);
+  });
+});

@@ -94,9 +94,11 @@ export async function saveSample(serviceId: string, data: unknown): Promise<void
 
 // Process-local micro-cache so loadSample (hit on every request that builds a
 // route config, for both the 402 shop window and the discovery output.example)
-// doesn't add a KV round-trip to the hot path. Short TTL — a stale sample is fine.
+// doesn't add a KV round-trip to the hot path. A stale sample is fine — it is a
+// shop-window example, and it only changes when a paid call replaces it — so
+// the window is ten minutes: one GET per service per instance, not per minute.
 const mem = new Map<string, { at: number; v: Record<string, unknown> | null }>();
-const MEM_TTL_MS = 60_000;
+const MEM_TTL_MS = 600_000;
 
 /** The cached sample for a service, or null when none has been captured yet. */
 export async function loadSample(serviceId: string): Promise<Record<string, unknown> | null> {

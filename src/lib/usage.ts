@@ -9,7 +9,7 @@
 
 import "server-only";
 import { createHash } from "node:crypto";
-import { kvIncr, kvGetNumber, kvGetNumberStable, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured, kvHIncrBy, kvHGetAll } from "./kv";
+import { kvIncr, kvGetNumber, kvGetNumberStable, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured, kvHIncrBy, kvHGetAll, ttlDue } from "./kv";
 
 const day = () => new Date().toISOString().slice(0, 10);
 
@@ -100,20 +100,27 @@ export async function logUsage(
     if (kvConfigured()) {
       // One REST round trip instead of ~7 — analytics shouldn't dominate the
       // request's KV budget or latency.
+      //
+      // Upstash bills (and rate-limits) per COMMAND, not per round trip, so the
+      // bookkeeping commands are sent only when due: EXPIRE on a date-stamped
+      // key once per instance per half-TTL (ttlDue), and the LTRIM that caps
+      // the recent list on roughly one call in ten — the list overshoots 500 by
+      // a handful at most, and its only reader asks for the first 500.
+      const expire = (key: string): (string | number)[][] => (ttlDue(key, DAY_KEY_TTL) ? [["EXPIRE", key, DAY_KEY_TTL]] : []);
       const cmds: (string | number)[][] = [
         ["INCR", `usage:total:${serviceId}`],
         ["INCR", "usage:calls:total"],
         ["INCR", `usage:day:${d}`],
-        ["EXPIRE", `usage:day:${d}`, DAY_KEY_TTL],
+        ...expire(`usage:day:${d}`),
         ["SADD", `usage:src:${d}`, source],
-        ["EXPIRE", `usage:src:${d}`, DAY_KEY_TTL],
+        ...expire(`usage:src:${d}`),
         ["LPUSH", "usage:recent", entry],
-        ["LTRIM", "usage:recent", 0, 499],
+        ...(Math.random() < 0.1 ? [["LTRIM", "usage:recent", 0, 499]] : []),
       ];
-      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ["EXPIRE", `usage:paidday:${d}`, DAY_KEY_TTL]);
-      if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source], ["EXPIRE", `usage:intsrc:${d}`, DAY_KEY_TTL]);
+      if (paid) cmds.push(["INCR", `usage:paid:${serviceId}`], ["INCR", "usage:paid:total"], ["INCR", `usage:paidday:${d}`], ...expire(`usage:paidday:${d}`));
+      if (internal) cmds.push(["INCR", `usage:internal:${serviceId}`], ["SADD", `usage:intsrc:${d}`, source], ...expire(`usage:intsrc:${d}`));
       if (preview) cmds.push(["INCR", `usage:preview:${serviceId}`]);
-      if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source], ["EXPIRE", `usage:botsrc:${d}`, DAY_KEY_TTL]);
+      if (kind === "bot") cmds.push(["SADD", `usage:botsrc:${d}`, source], ...expire(`usage:botsrc:${d}`));
       if (challenge) cmds.push(["INCR", `usage:challenge:${serviceId}`]);
       // firstsvc answers "what pulled this wallet in"; payersvc answers "what does
       // it actually buy" — a one-off taster and a returning customer look
@@ -121,7 +128,7 @@ export async function logUsage(
       if (payer)
         cmds.push(
           ["SADD", `usage:payers:${d}`, payer],
-          ["EXPIRE", `usage:payers:${d}`, DAY_KEY_TTL],
+          ...expire(`usage:payers:${d}`),
           ["SETNX", `usage:firstsvc:${payer}`, serviceId],
           ["EXPIRE", `usage:firstsvc:${payer}`, 60 * 60 * 24 * 60],
           ["HINCRBY", `usage:payersvc:${payer}`, serviceId, 1],
