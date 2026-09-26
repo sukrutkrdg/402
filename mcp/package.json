@@ -1,8 +1,8 @@
 {
   "name": "x402-bazaar-mcp",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "mcpName": "io.github.sukrutkrdg/x402-bazaar-mcp",
-  "description": "HTTP APIs for agents with no API key and no wallet to start: live web search, batch page reading, any page to schema-enforced JSON, token-safety and pre-trade gates, wallet + approval audits, OFAC screening and AI reports. Free call per service per day; prepaid credit token or per-call USDC over x402 after that.",
+  "description": "HTTP APIs for agents with no API key and no wallet to start: live web search, batch page reading, any page to schema-enforced JSON, token-safety and pre-trade gates, wallet + approval audits, OFAC screening and AI reports. Free call per service per day; prepaid credit token (buyable with USDC on Base or from NEAR) or per-call USDC over x402 after that.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -43,7 +43,9 @@
     "pre-trade",
     "onchain-safety",
     "sanctions",
-    "wallet-intel"
+    "wallet-intel",
+    "near",
+    "near-intents"
   ],
   "repository": {
     "type": "git",

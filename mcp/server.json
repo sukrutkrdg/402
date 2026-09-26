@@ -6,19 +6,19 @@
     "url": "https://github.com/sukrutkrdg/x402-bazaar-mcp",
     "source": "github"
   },
-  "version": "0.2.7",
+  "version": "0.2.8",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "x402-bazaar-mcp",
-      "version": "0.2.7",
+      "version": "0.2.8",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
           "name": "X402_CREDIT_TOKEN",
-          "description": "Prepaid credit token (ck_…) from the buy-credits service. Sent as the x-credit-token header; each call debits your balance. No wallet or signing needed. Recommended paid mode.",
+          "description": "Prepaid credit token (ck_…) from the buy-credits service. Sent as the x-credit-token header; each call debits your balance. No wallet or signing needed. Recommended paid mode. Buyable with USDC on Base, or with USDC/USDT/NEAR on NEAR at https://402.com.tr/credits.",
           "isRequired": false,
           "isSecret": true,
           "format": "string"

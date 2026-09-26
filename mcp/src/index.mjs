@@ -243,10 +243,10 @@ function registerService(service) {
     if (response.status === 402) {
       const hint =
         MODE === "credits"
-          ? "Prepaid credits exhausted or invalid — top up with the buy_credits tool, or set a funded X402_CREDIT_TOKEN."
+          ? "Prepaid credits exhausted or invalid — top up with the buy_credits tool, or set a funded X402_CREDIT_TOKEN. No USDC on Base? Buy the credit token with USDC, USDT or NEAR on NEAR via NEAR Intents at https://402.com.tr/credits."
           : MODE === "wallet"
             ? "Wallet could not settle the payment — check the AGENT_PRIVATE_KEY wallet's USDC balance on Base."
-            : "This call needs payment (free daily quota used, or a paid-only service). Set X402_CREDIT_TOKEN (recommended — buy once, no wallet) or AGENT_PRIVATE_KEY.";
+            : "This call needs payment (free daily quota used, or a paid-only service). Set X402_CREDIT_TOKEN (recommended — buy once, no wallet) or AGENT_PRIVATE_KEY. No USDC on Base? Buy the credit token with USDC, USDT or NEAR on NEAR via NEAR Intents at https://402.com.tr/credits.";
       text = `${text}\n\n[x402-bazaar-mcp] 402 Payment Required — ${hint}`;
     }
 
