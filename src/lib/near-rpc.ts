@@ -24,6 +24,9 @@ export const EMPTY_CODE_HASH = "11111111111111111111111111111111";
 
 export type RpcResult<T> = { ok: true; value: T } | { ok: false; unknownAccount: boolean; message: string };
 
+/** RPC error causes that describe the node, not the account or contract. */
+const TRANSIENT = /^(INTERNAL_ERROR|TIMEOUT_ERROR|NO_SYNCED_BLOCKS|UNAVAILABLE_SHARD|UNKNOWN_BLOCK|GARBAGE_COLLECTED_BLOCK)$/;
+
 export async function rpcQuery<T>(params: Record<string, unknown>): Promise<RpcResult<T>> {
   let last = "no RPC reachable";
   for (const url of RPCS()) {
@@ -44,6 +47,13 @@ export async function rpcQuery<T>(params: Record<string, unknown>): Promise<RpcR
       };
       if (j.error) {
         const name = j.error.cause?.name ?? "";
+        // A node that is behind, overloaded or rate-limiting says nothing about the
+        // contract: ask the next one. Treating it as an answer made viewCall return
+        // null ("no such method") for an outage, and that null became a charged verdict.
+        if (TRANSIENT.test(name) || (!name && /rate|limit|timeout|internal|unavailable/i.test(j.error.message ?? ""))) {
+          last = `${url} ${name || j.error.message}`;
+          continue;
+        }
         return {
           ok: false,
           unknownAccount: name === "UNKNOWN_ACCOUNT" || /does not exist/i.test(j.error.data ?? ""),
@@ -97,6 +107,7 @@ export async function intentsTokens(): Promise<IntentsToken[] | null> {
     const res = await fetch("https://1click.chaindefuser.com/v0/tokens", { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
     const v = (await res.json()) as IntentsToken[];
+    if (!Array.isArray(v)) return null; // an error body must not be cached as "no tokens" for five minutes
     tokenCache = { at: Date.now(), v };
     return v;
   } catch {
@@ -175,7 +186,7 @@ async function archival<T>(method: string, params: Record<string, unknown>): Pro
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: "402", method, params }),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(6_000),
       });
       if (!res.ok) {
         last = `${url} HTTP ${res.status}`;

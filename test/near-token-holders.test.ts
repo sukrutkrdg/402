@@ -78,6 +78,16 @@ describe("nearTokenHolders", () => {
     expect(r.signals.join(" ")).toMatch(/treasury: unissued stock/);
   });
 
+  it("a whale cannot hide by naming itself a treasury", async () => {
+    world([
+      { account: "whale-treasury.near", amount: "90000" },
+      { account: "bob.near", amount: "1000" },
+    ]);
+    const r = await nearTokenHolders({ token: "tok.near" });
+    expect(r.holders[0]).toMatchObject({ type: "account" });
+    expect(r.concentration).toBe("HIGH");
+  });
+
   it("refuses EVM addresses and non-tokens", async () => {
     world([]);
     await expect(nearTokenHolders({ token: "0x" + "a".repeat(40) })).rejects.toThrow(/EVM address/);

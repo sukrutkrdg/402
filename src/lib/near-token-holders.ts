@@ -55,13 +55,28 @@ export async function nearTokenHolders(params: Record<string, string>) {
     .filter((h): h is { account: string; amount: bigint } => h.amount !== null && h.amount > 0n);
   const holderCount = cnt?.holders?.[0]?.count !== undefined ? Number(cnt.holders[0].count) : null;
 
-  // Which of the top holders are contracts: one view_account each.
-  const codes = await Promise.all(
-    raw.map(async (h) => {
-      const a = await rpcQuery<{ code_hash: string }>({ request_type: "view_account", account_id: h.account });
-      return a.ok ? a.value.code_hash !== EMPTY_CODE_HASH : null;
-    }),
-  );
+  // Which of the top holders are contracts: one view_account each, a few at a
+  // time — 25 at once gets a public RPC to rate-limit us.
+  const codes: (boolean | null)[] = [];
+  for (let i = 0; i < raw.length; i += 5) {
+    codes.push(
+      ...(await Promise.all(
+        raw.slice(i, i + 5).map(async (h) => {
+          const a = await rpcQuery<{ code_hash: string }>({ request_type: "view_account", account_id: h.account }).catch(() => null);
+          return a?.ok ? a.value.code_hash !== EMPTY_CODE_HASH : null;
+        }),
+      )),
+    );
+  }
+  // A name is only a treasury if it also carries the issuer's own name (tether-
+  // treasury.near for usdt.tether-token.near): anyone can register
+  // "treasury-x.near", and a whale that names itself a reserve must not vanish
+  // from the concentration maths.
+  const GENERIC = /^(near|tg|token|tokens|ft|factory|bridge|contract|v\d+|app|io|finance)$/;
+  const stems = token
+    .split(/[.\-_]/)
+    .filter((w) => w.length >= 3 && !GENERIC.test(w));
+  const underIssuer = (a: string) => a.split(/[.\-_]/).some((w) => stems.includes(w));
   const labelled = raw.map((h, i) => ({
     ...h,
     type:
@@ -69,7 +84,7 @@ export async function nearTokenHolders(params: Record<string, string>) {
         ? ("token-contract" as const)
         : codes[i]
           ? ("contract" as const)
-          : TREASURY_RE.test(h.account)
+          : TREASURY_RE.test(h.account) && underIssuer(h.account)
             ? ("treasury" as const)
             : ("account" as const),
   }));

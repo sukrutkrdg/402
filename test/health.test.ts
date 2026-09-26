@@ -18,6 +18,14 @@ describe("errorStatus", () => {
     expect(errorStatus("connect ECONNREFUSED 1.2.3.4:443")).toBe(502);
     expect(errorStatus("Provide a valid 0x… address")).toBe(400);
   });
+
+  it("classifies the NEAR and swap services' own wording", () => {
+    expect(errorStatus("from and to are the same asset")).toBe(400);
+    expect(errorStatus("slippage is in basis points: 1–1000 (default 100 = 1%)")).toBe(400);
+    expect(errorStatus("That is an EVM address. For a Base token use token-risk")).toBe(400);
+    expect(errorStatus("NEAR RPC error (TIMEOUT_ERROR) — not charged, retry shortly")).toBe(502);
+    expect(errorStatus("NEAR indexer (NearBlocks) error 500 — not charged, retry shortly")).toBe(502);
+  });
 });
 
 describe("timed + readHealth", () => {

@@ -66,29 +66,34 @@ export interface QuoteResult {
 export async function dryQuote(from: IntentsToken, to: IntentsToken, amountBase: string): Promise<QuoteResult> {
   const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
   if (process.env.NEAR_INTENTS_JWT) headers.authorization = `Bearer ${process.env.NEAR_INTENTS_JWT}`;
-  const res = await fetch(`${ONECLICK}/v0/quote`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      dry: true,
-      swapType: "EXACT_INPUT",
-      slippageTolerance: 100,
-      originAsset: from.assetId,
-      destinationAsset: to.assetId,
-      amount: amountBase,
-      // A dry quote hands out no deposit address; these only have to be valid.
-      depositType: "INTENTS",
-      refundTo: "intents.near",
-      refundType: "INTENTS",
-      recipient: "intents.near",
-      recipientType: "INTENTS",
-      deadline: new Date(Date.now() + 10 * 60_000).toISOString(),
-      referral: "402comtr",
-      quoteWaitingTimeMs: 3000,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const text = await res.text();
+  let res: Response;
+  try {
+    res = await fetch(`${ONECLICK}/v0/quote`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        dry: true,
+        swapType: "EXACT_INPUT",
+        slippageTolerance: 100,
+        originAsset: from.assetId,
+        destinationAsset: to.assetId,
+        amount: amountBase,
+        // A dry quote hands out no deposit address; these only have to be valid.
+        depositType: "INTENTS",
+        refundTo: "intents.near",
+        refundType: "INTENTS",
+        recipient: "intents.near",
+        recipientType: "INTENTS",
+        deadline: new Date(Date.now() + 10 * 60_000).toISOString(),
+        referral: "402comtr",
+        quoteWaitingTimeMs: 3000,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error("NEAR Intents unreachable — not charged, retry shortly");
+  }
+  const text = await res.text().catch(() => "");
   let j: { message?: string; quote?: Record<string, string | number | undefined> } = {};
   try {
     j = JSON.parse(text);
@@ -98,7 +103,9 @@ export async function dryQuote(from: IntentsToken, to: IntentsToken, amountBase:
   if (!res.ok || !j.quote) {
     const msg = j.message || text.slice(0, 200) || res.statusText;
     // 4xx: the pair or amount (too small, no route) — the caller can change it.
-    throw new Error(res.status >= 400 && res.status < 500 ? `No quote: ${msg}` : `NEAR Intents unavailable (${res.status}) — not charged, retry shortly`);
+    // 401/403/429 are about us (key, quota), not the pair: an outage, not an answer.
+    const ours = res.status === 401 || res.status === 403 || res.status === 429;
+    throw new Error(res.status >= 400 && res.status < 500 && !ours ? `No quote: ${msg}` : `NEAR Intents unavailable (${res.status}) — not charged, retry shortly`);
   }
   const q = j.quote;
   const num = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));

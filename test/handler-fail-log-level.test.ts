@@ -59,7 +59,7 @@ describe("handler failures are logged at the level they deserve", () => {
     // The 400 branch is what makes "no LP data" a caller error in the first
     // place; if it ever became a 500 the log level would follow it wrongly.
     const health = readFileSync(new URL("../src/lib/health.ts", import.meta.url), "utf8");
-    const mapping = health.slice(health.indexOf("export function errorStatus("), health.indexOf("export function errorStatus(") + 900);
+    const mapping = health.slice(health.indexOf("export function errorStatus("), health.indexOf("export function errorStatus(") + 1600);
     expect(mapping).toMatch(/no \.\*data/);
     expect(mapping).toMatch(/return 400/);
     expect(mapping).toMatch(/return 502/);

@@ -121,6 +121,12 @@ export async function nearLendingHealth(params: Record<string, string>) {
   if (unpricedColl.length && !unpricedDebt.length)
     reasons.push(`Collateral not priced (counted as zero, so health is understated): ${unpricedColl.join(", ")}.`);
   if (lpKeys.length) reasons.push(`${lpKeys.length} LP-collateral position(s) not valued here: ${lpKeys.join(", ")}.`);
+  // With collateral left out, the measured health is only a floor: it can say
+  // "safe", but not "about to be liquidated". A STOP built on a floor is a guess.
+  if (verdict === "STOP" && (unpricedColl.length || lpKeys.length)) {
+    verdict = "HOLD";
+    reasons.push("Health above is a lower bound (some collateral is not valued), so this is HOLD, not STOP — check the position in the Rhea app.");
+  }
 
   return {
     chain: "near" as const,

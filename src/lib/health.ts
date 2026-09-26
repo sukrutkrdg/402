@@ -23,9 +23,9 @@ export function errorStatus(message: string): 400 | 502 | 500 {
   // Word boundaries matter: "provide" must not catch "data provider unavailable"
   // (an upstream outage), and "refused:" is our own prefix for a refused trade,
   // not ECONNREFUSED.
-  if (/\bprovide\b|missing|\bvalid\b|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price|^refused:/.test(m))
+  if (/\bprovide\b|missing|\bvalid\b|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price|^refused:|\bis the\b|is how many|is in basis points|same (token|asset)|evm address|not an? |^no swap:|^(from|to): |unknown order/.test(m))
     return 400;
-  if (/unavailable|unreachable|failed|responded \d|timeout|fetch|rate limit|econn|enotfound|socket/.test(m)) return 502;
+  if (/unavailable|unreachable|failed|responded \d|timeout|fetch|rate limit|econn|enotfound|socket|retry shortly|retry in a minute|did not return|could not measure|unreadable/.test(m)) return 502;
   return 500;
 }
 
