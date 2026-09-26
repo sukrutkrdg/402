@@ -45,6 +45,29 @@ describe("nearLendingHealth", () => {
     expect(r.healthPct).toBeLessThan(110);
   });
 
+  it("ignores zero-balance entries and prices bridged ERC-20s by their Ethereum address", async () => {
+    stubNear({
+      tokens: [...TOKENS, { assetId: "nep141:eth-usdt", decimals: 6, blockchain: "eth", symbol: "USDT", price: 1, contractAddress: "0xDAC17F958D2EE523A2206206994597C13D831EC7" }],
+      views: {
+        "contract.main.burrow.near.get_assets_paged_detailed": [...ASSETS, { token_id: "dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near", config: { volatility_ratio: 9500, extra_decimals: 12 } }],
+        "contract.main.burrow.near.get_account_all_positions": {
+          positions: {
+            REGULAR: {
+              collateral: [{ token_id: "wrap.near", balance: E(1000, 24) }],
+              borrowed: [
+                { token_id: "dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near", balance: E(500, 18) },
+                { token_id: "usn", balance: "0" },
+              ],
+            },
+          },
+        },
+      },
+    });
+    const r = await nearLendingHealth({ account: "alice.near" });
+    expect(r).toMatchObject({ verdict: "GO", healthPct: 228, borrowedUsd: 500 });
+    expect(r.borrowed).toHaveLength(1);
+  });
+
   it("no account means nothing to liquidate", async () => {
     world(null);
     expect(await nearLendingHealth({ account: "bob.near" })).toMatchObject({ hasPosition: false, verdict: "GO" });

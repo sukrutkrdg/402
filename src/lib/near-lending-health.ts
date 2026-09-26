@@ -52,10 +52,21 @@ export async function nearLendingHealth(params: Record<string, string>) {
   }
 
   const cfg = new Map(assets.map((a) => [a.token_id, a.config]));
+  // Rainbow-bridged ERC-20s live on NEAR as <eth address>.factory.bridge.near; NEAR Intents
+  // lists them under their Ethereum address, same token, same decimals.
+  const priceEntry = (id: string) => {
+    const direct = findNearToken(tokens, id);
+    if (direct && typeof direct.price === "number" && direct.price > 0) return direct;
+    const eth = /^([0-9a-f]{40})\.factory\.bridge\.near$/.exec(id);
+    return eth ? tokens.find((t) => t.blockchain === "eth" && (t.contractAddress ?? "").toLowerCase() === `0x${eth[1]}` && typeof t.price === "number" && t.price > 0) : undefined;
+  };
+  // The contract keeps zero-balance entries for assets once used; they are not positions.
+  const live = (xs: Bal[] | undefined) => (xs ?? []).filter((b) => /^\d+$/.test(String(b.balance)) && BigInt(b.balance) > 0n);
+
   const unpriced = new Set<string>();
   const value = (b: Bal) => {
     const c = cfg.get(b.token_id);
-    const t = findNearToken(tokens, b.token_id);
+    const t = priceEntry(b.token_id);
     if (!c || !t || typeof t.price !== "number" || t.price <= 0) {
       unpriced.add(b.token_id);
       return null;
@@ -67,25 +78,28 @@ export async function nearLendingHealth(params: Record<string, string>) {
   const positions = all.positions ?? {};
   const regular = positions.REGULAR ?? { collateral: [], borrowed: [] };
   const lpKeys = Object.keys(positions).filter((k) => k !== "REGULAR");
-  const collateral = (regular.collateral ?? []).map(value);
-  const borrowed = (regular.borrowed ?? []).map(value);
-  const supplied = (all.supplied ?? []).map(value).filter(Boolean);
+  const liveColl = live(regular.collateral);
+  const liveDebt = live(regular.borrowed);
+  const collateral = liveColl.map(value);
+  const borrowed = liveDebt.map(value);
+  const unpricedDebt = liveDebt.filter((b) => unpriced.has(b.token_id)).map((b) => b.token_id);
+  const unpricedColl = liveColl.filter((b) => unpriced.has(b.token_id)).map((b) => b.token_id);
+  const supplied = live(all.supplied).map(value).filter(Boolean);
 
   const adjColl = collateral.reduce((s, v) => s + (v ? v.usd * v.ratio : 0), 0);
   const adjDebt = borrowed.reduce((s, v) => s + (v ? v.usd / v.ratio : 0), 0);
   const debtUsd = borrowed.reduce((s, v) => s + (v?.usd ?? 0), 0);
   const collUsd = collateral.reduce((s, v) => s + (v?.usd ?? 0), 0);
-  const debtUnpriced = (regular.borrowed ?? []).some((b) => unpriced.has(b.token_id));
 
   const reasons: string[] = [];
   let verdict: Verdict = "GO";
   let healthPct: number | null = null;
   let dropToLiquidationPct: number | null = null;
-  if (!(regular.borrowed ?? []).length) {
+  if (!liveDebt.length) {
     reasons.push("Nothing borrowed in the regular position — it cannot be liquidated.");
-  } else if (debtUnpriced) {
+  } else if (unpricedDebt.length) {
     verdict = "HOLD";
-    reasons.push(`Could not price borrowed ${[...unpriced].join(", ")}, so health is not measured.`);
+    reasons.push(`Could not price borrowed ${unpricedDebt.join(", ")}, so health is not measured.`);
   } else {
     healthPct = adjDebt > 0 ? +((adjColl / adjDebt) * 100).toFixed(2) : null;
     if (healthPct !== null) {
@@ -104,7 +118,8 @@ export async function nearLendingHealth(params: Record<string, string>) {
       }
     }
   }
-  if (unpriced.size && !debtUnpriced) reasons.push(`Collateral not priced (counted as zero, so health is understated): ${[...unpriced].join(", ")}.`);
+  if (unpricedColl.length && !unpricedDebt.length)
+    reasons.push(`Collateral not priced (counted as zero, so health is understated): ${unpricedColl.join(", ")}.`);
   if (lpKeys.length) reasons.push(`${lpKeys.length} LP-collateral position(s) not valued here: ${lpKeys.join(", ")}.`);
 
   return {
