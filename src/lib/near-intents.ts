@@ -39,7 +39,7 @@
 
 import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { kvConfigured, kvGet, kvSet, kvSetNx, kvDel, kvIncrBy, kvGetNumber } from "./kv";
+import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber } from "./kv";
 import { CREDIT_TIERS, mintCredits } from "./credits";
 import { USDC_BASE, getConfig } from "./config";
 
@@ -279,9 +279,10 @@ export async function createNearOrder(input: CreateOrderInput) {
     secretHash: hashSecret(orderSecret),
     createdAt: new Date().toISOString(),
   };
-  await kvSet(orderKey(orderId), JSON.stringify(record), ORDER_TTL);
-  // Confirm the write: an order we cannot read back is a deposit we cannot credit.
-  if (!(await kvGet(orderKey(orderId)))) {
+  // Confirm the write from SET's own reply — not by reading it back, which a
+  // replica can answer before it has the key (see kvSetChecked). An order we
+  // did not store is a deposit we could not credit, so refuse to hand it out.
+  if (!(await kvSetChecked(orderKey(orderId), JSON.stringify(record), ORDER_TTL))) {
     throw new NearOrderError("Credits unavailable: order could not be stored — nothing was charged, retry shortly", 503);
   }
   await kvIncrBy(NEAR_LEDGER.quotes, 1).catch(() => {});
@@ -409,8 +410,7 @@ export async function checkNearOrder(orderId: string, secret: string) {
     throw new NearOrderError(`Swap settled but minting failed — poll again shortly (${(err as Error).message})`, 503);
   }
   rec.sealedToken = seal(minted.creditToken, secret);
-  await kvSet(orderKey(orderId), JSON.stringify(rec), ORDER_TTL);
-  if (!(await kvGet(orderKey(orderId)))?.includes(rec.sealedToken)) {
+  if (!(await kvSetChecked(orderKey(orderId), JSON.stringify(rec), ORDER_TTL))) {
     // The token is in THIS response only; a later poll will not find it.
     console.error(`[near-credits] order ${orderId}: minted but the sealed token was not stored`);
   }
