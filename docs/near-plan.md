@@ -1,6 +1,6 @@
 # NEAR ekosistemi iş planı
 
-> Durum: Faz 0 ve Faz 1 **canlıda**, ilk NEAR satışı 2026-09-26 · Faz 2 doğrulama bekliyor · sahibi: sukrutkrdg
+> Durum: Faz 0 ve Faz 1 **canlıda**, ilk NEAR satışı 2026-09-26 · Faz 2: yeni pazarın API'si bulundu, tasarım bekliyor · sahibi: sukrutkrdg
 > Bu belge hem iş planı hem geliştirme yol haritasıdır. Claude ile yapılan her
 > geliştirme oturumu buradan başlar; bir faz bittiğinde "Durum" satırı güncellenir.
 
@@ -111,43 +111,52 @@ varlığıyla kredi paketi alabilmesi.
 **Bitti sayılır:** Gerçek bir 1Click takasıyla $0.25'lik paket alınmış, `ck_` token bir
 servis çağrısında harcanmış, `creditsLedger` bunu NEAR kanalında göstermiş.
 
-### Faz 2 — NEAR AI Agent Market çalışanı (≈2–3 hafta, önce dry-run)
+### Faz 2 — NEAR AI Agent Market'te satıcı olmak (tasarım aşaması)
 
-**Durum: başlanmadı.** Pazarın API'si (`market.near.ai/skill.md`) bu geliştirme ortamından okunamadı. Doğrulanmamış uç noktalara kod yazılmadı.
+**Durum: API bulundu, tasarım bekliyor. Kod yazılmadı.**
 
-**Amaç:** market.near.ai'deki ilanlara teklif vermek ve işi kendi servislerimizle yapıp
-NEAR kazanmak. Pazar 2026 Eylül itibarıyla servis kataloğundan **ajan kiralama modeline**
-geçmiş durumda (ilan, teklif, teslim, ödeme), bu yüzden katalog kaydı yetmiyor; teklif
-veren bir ajan gerekiyor.
+**2026-09-26'da öğrenilenler:**
 
-**Akış (cron, örneğin 10 dakikada bir):**
+- `market.near.ai` = **yeni** pazar ("agent.market", JavaScript'le çalışan bir site). API'si `/v1/*`
+  altında ve giriş istiyor (`GET /v1/jobs?...` → `unauthorized`). `market.near.ai/skill.md`
+  diye bir belge **yok**, site sayfası dönüyor.
+- `market-legacy.near.ai` = **eski** pazar, arşivleniyor. `skill.md` belgesi (v0.3.0) orada duruyor:
+  kayıt, ilan, teklif, emanet (escrow), teslim, çekim, hizmet kaydı (`/v1/services`, `invoke`,
+  `match`). **Bunun üzerine kod yazma.**
+- Yeni pazarın OpenAPI tanımı: `https://market.near.ai/openapi.json` (giriş istemiyor). Uç nokta
+  listesi `docs/near-market/paths.txt` dosyasında. Tam dosya, sahibinin bilgisayarından
+  `docs/near-market/openapi.json` olarak eklenecek (bu geliştirme ortamı market.near.ai'ye
+  erişemiyor).
+- **Yeni pazarda `/.well-known/x402` var**, yani x402 kullanıyor, bizimle aynı protokol. Ajanlar için
+  **fiyat planları** (`/v1/agents/{id}/pricing-plans`, `/v1/pricing-plans/{id}`), hesap altında
+  **listelenmiş ajanlar ve beceriler** (`/v1/accounts/{id}/listed-agents`, `/skills`), iş panosu,
+  teklif ve teslim (`/v1/jobs/board`, `/v1/jobs/{id}/bids`, `/v1/assignments/{id}/submit`) ve USD
+  ödeme (`/v1/wallet/fiat/payout/*`) var.
 
-1. Açık ilanları etiketlere göre listele: `token-safety`, `wallet-screening`, `ofac`,
-   `base`, `due-diligence`.
-2. Claude ile her ilanı sınıflandır: **tamamen** bizim servislerimizle otomatik
-   yapılabilir mi? Hangi servisler gerekir, maliyeti ne olur? İnsan emeği gerektiren,
-   belirsiz ya da Base dışı ilanlar elenir.
-3. Uygun ilana teklif ver. Fiyat = iç servis maliyeti + Claude maliyeti + marj. Teslim
-   süresi (ETA) gerçekçi tutulur.
-4. İş verilince servisler **içeriden** çağrılır (x402 ödemesi yapılmaz, ek maliyet
-   sıfıra yakın). Rapor `402.com.tr/r/<id>` adresinde yayınlanır ve SHA-256 hash'iyle
-   teslim edilir. Karar makbuzundaki `inputHash` ve `policyVersion` alanları
-   (`docs/decision-receipt.md`) teslimin doğrulanabilirliğini zaten sağlıyor.
-5. Kazanç NEAR olarak gelir, periyodik olarak çekilir ve Intents ile Base USDC'ye
-   çevrilir.
+**Yeni hedef (tasarımı doğrulanacak):** Teklif yarışı yerine x402 Bazaar'ı yeni pazarda **sabit
+fiyatlı bir satıcı ajan** olarak listelemek. Fiyat planları bizim servis fiyatlarımızdan üretilir,
+iş geldiğinde servisler içeriden çağrılır. Pazar x402 destekliyorsa, ödemenin doğrudan mevcut
+`/api/x402/*` uçlarımıza gelmesi mümkün olabilir; en az kodla en çok kazanç bu olur.
 
-**Koruma önlemleri:**
+**İlk oturumda yapılacaklar (sırayla):**
 
-- `NEAR_MARKET_MODE=dry-run`: ilk 2 hafta teklif **verilmez**, sadece "verseydik ne
-  teklif ederdik" günlüğe yazılır. Bu günlük gözden geçirilmeden canlıya geçilmez.
-- Aynı anda en fazla N aktif iş, günlük teklif tavanı.
-- Anlaşmazlığa (dispute) düşen her iş için bildirim (`src/lib/alert-owner.ts`).
-- Yeni dosyalar: `src/lib/near-market.ts`, `src/app/api/cron/near-market/route.ts`,
-  `test/near-market.test.ts`. Env: `ENABLE_NEAR_MARKET`, `NEAR_MARKET_MODE`,
-  `AGENT_MARKET_API_KEY`.
+1. `docs/near-market/openapi.json` dosyasını oku. Şunların şemalarını çıkar:
+   `POST /v1/agents/register`, pricing-plans uçları, `listed-agents`, `skills`, `jobs/board`,
+   `assignments/{id}/submit`, `/.well-known/x402`, `/v1/platform/config`.
+2. Pazarın x402'yi nasıl kullandığını belirle: pazar **alıcı** olarak mı ödüyor (bize x402
+   ödemesi yapar), yoksa sadece kendi ücretini mi alıyor?
+3. Kayıt akışını belirle: hesap (`/v1/auth/signup`) mı gerekiyor, ajan kaydı yeterli mi,
+   builder agreement (`/v1/legal/builder-agreement`) kabulü mü gerekiyor?
+4. Sonucu bu bölüme yaz, sahibine sade dille özetle, onay almadan kod yazma.
 
-**Bitti sayılır:** Dry-run günlüğü incelenmiş, canlıda en az bir iş kazanılıp teslim
-edilmiş, ödeme alınmış ve anlaşmazlık çıkmamış.
+**Koruma önlemleri (değişmedi):** `ENABLE_NEAR_MARKET` bayrağı; ilk 2 hafta
+`NEAR_MARKET_MODE=dry-run` (hiçbir teklif ya da listeleme canlıya gitmez, sadece günlüğe yazılır);
+aynı anda en fazla N aktif iş; anlaşmazlıkta `alert-owner` bildirimi. Pazarda hesap, ajan ya da
+listeleme oluşturan her komut **önceden sahibine söylenir**.
+
+**Eski pazarda kazara açılan hesaplar:** Boş bir kayıt denemesi (`POST /v1/agents/register -d "{}"`)
+market-legacy'de iki isimsiz ajan açtı (`036f54c9-…`, `0b14c779-…`). İçlerinde para yok, API
+anahtarları sohbette açığa çıktı. **Kullanılmayacaklar.**
 
 ### Faz 3 — Koşullu: NEAR'a özel servisler ya da NEAR ödeme ağı
 
@@ -181,8 +190,9 @@ Bu geliştirme ortamından `market.near.ai`, `near.ai` ve `1click.chaindefuser.c
 adreslerine erişilemedi (ağ politikası engelliyor). Aşağıdakiler ilk oturumda
 doğrulanmalı; gerekirse ortamın ağ izinlerine bu adresler eklenmeli:
 
-- [ ] `https://market.near.ai/skill.md`: güncel API, kayıt, teklif, teslim, çekim
-      uç noktaları ve pazar ücreti.
+- [x] Pazar API'si: `market.near.ai/skill.md` yok. Yeni pazarın tanımı `market.near.ai/openapi.json`,
+      eski pazarın belgesi `market-legacy.near.ai/skill.md` (bkz. Faz 2).
+- [ ] Yeni pazarın ücreti ve kuralları: `GET https://market.near.ai/v1/platform/config`.
 - [x] Base USDC 1Click listesinde var: `nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, 6 ondalık (2026-09-26, kullanıcı doğruladı).
 - [ ] 1Click API: anahtar gerekiyor mu, minimum tutar ve ücret ne (ilk gerçek $0.25'lik teklifte görülür).
 - [ ] x402 spesifikasyonundaki NEAR Intents önerilerinin durumu
@@ -195,10 +205,34 @@ doğrulanmalı; gerekirse ortamın ağ izinlerine bu adresler eklenmeli:
 
 Her oturum bu dosyayı okuyarak başlar ve bir fazın bir parçasını bitirir:
 
-1. `Faz 0'ı uygula` → llms, agent-card, /agents, SKILL.md ve `ref=near` sayacı.
-2. `Faz 1 için 1Click API'yi doğrula` → 7. bölümdeki kontrol listesi.
-3. `Faz 1'i uygula` → `near-intents.ts`, iki rota, testler, kayıt sayaçları.
-4. `Faz 2'yi dry-run modunda uygula` → market istemcisi, sınıflandırıcı, cron.
-5. Ölçütler (6. bölüm) karşılandıkça bir sonraki faz.
+1. ~~Faz 0~~ ve ~~Faz 1~~: bitti, canlıda.
+2. **Sıradaki:** "docs/near-plan.md'yi oku, Faz 2'nin 'İlk oturumda yapılacaklar' listesini yap."
+3. Faz 2 tasarımı sahibi tarafından onaylanınca dry-run modunda uygula.
+4. Ölçütler (6. bölüm) karşılandıkça bir sonraki faz.
 
 Her adımda `npm run typecheck`, `npm test` ve `npm run build` temiz olmadan push yok.
+
+## 9. Oturum geçmişi (2026-09-26, Claude Code web oturumu)
+
+Birleştirilen PR'lar (hepsi `main`'de, Vercel'de canlı):
+
+| PR | Ne |
+|---|---|
+| #3 | Faz 0 (NEAR keşif yüzeyleri) + Faz 1 (NEAR Intents kredi yolu) |
+| #4 | Sipariş yazımını geri okumak yerine SET'in `OK` yanıtıyla doğrulama |
+| #5 | KV yazma hatasının nedenini yanıtta gösterme |
+| #6 | Upstash'in HTTP 200 + `error` yanıtını hata sayma; istek başına KV komutlarını azaltma |
+| #7 | `/credits` sayfasında "Pay from NEAR", katalog, OpenAPI, README; `.near` ek koruması |
+
+Ortam ve işletme:
+
+- Vercel: `ENABLE_NEAR_CREDITS=true`. `NEAR_INTENTS_JWT` boş (1Click ek ücret alıyor olabilir).
+- Upstash: ücretsiz plan aşılmıştı ("temporarily rate-limited"), **Pay as You Go**'ya geçildi.
+  Komut sayısını ve faturayı birkaç gün sonra kontrol et. Yüksekse sıradaki kaldıraç: bot kaynaklı
+  402 kayıtlarını hafifletmek (dönüşüm istatistiklerini etkiler, sahibinin kararı).
+- İlk NEAR satışı: bkz. Faz 1 durumu. Para cüzdana ve `/stats`'a ulaştı.
+- Bu web oturumu 402.com.tr, market.near.ai, near.ai ve 1click.chaindefuser.com adreslerine
+  erişemiyordu; canlı testleri sahibi kendi bilgisayarından yaptı. Terminaldeki Claude bu
+  adreslere erişebilir.
+- Test takımında `counterparty.test.ts` (5) ve `domain-check.test.ts` (4) canlı internet testleri;
+  ağı kısıtlı ortamda başarısız olmaları normal.
