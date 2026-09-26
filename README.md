@@ -56,6 +56,16 @@ Agents from the NEAR ecosystem reach the same catalogue two ways; the x402 chall
   tokens and NEAR accounts, read live from the NEAR RPC and NEAR Intents. Paid in USDC on Base like
   every other endpoint.
 
+## Use it from an agent framework
+
+| Framework | Install | What you get |
+|---|---|---|
+| Any MCP client | `npx x402-bazaar-mcp`, or hosted at `https://402.com.tr/mcp` | Every service as a tool |
+| Coinbase AgentKit | `npm i x402-bazaar-agentkit` | `x402BazaarActionProvider`: pre-trade check, swap on Base (executed from the AgentKit wallet), cross-chain swap, any service by id |
+| ElizaOS | `npm i @sukrutkrdg/plugin-x402-bazaar` | `x402BazaarPlugin`: the same five actions |
+
+Source: [`integrations/`](integrations) and [`mcp/`](mcp).
+
 ## How Builder Codes are wired
 
 **Seller** declares the app code per route:

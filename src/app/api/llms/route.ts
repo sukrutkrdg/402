@@ -32,6 +32,7 @@ export function GET() {
     ...nearFundingLines(site),
     "",
     "## Discovery",
+    "- Agent frameworks: Coinbase AgentKit — `npm i x402-bazaar-agentkit` (x402BazaarActionProvider); ElizaOS — `npm i @sukrutkrdg/plugin-x402-bazaar` (x402BazaarPlugin). Both: pre-trade check, swap on Base, cross-chain swap, any service by id.",
     `- Reliability: ${site}/api/status — per-endpoint success rate and latency over the last 7 days, measured on real calls.`,
     `- Machine-readable catalog (JSON): ${site}/.well-known/x402`,
     `- OpenAPI spec: ${site}/openapi.json`,
