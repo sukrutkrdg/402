@@ -35,7 +35,7 @@ import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
-import { priceCents, priceMills } from "@/lib/price";
+import { priceMills } from "@/lib/price";
 import { recordExternalRevenue } from "@/lib/keepalive-economics";
 import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
@@ -651,7 +651,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     try {
       const ourBuyer = getBuyerAddress()?.toLowerCase();
       if (payer && payer.toLowerCase() !== ourBuyer) {
-        await recordExternalRevenue(priceCents(await effectivePriceFor(service, request)));
+        await recordExternalRevenue(priceMills(await effectivePriceFor(service, request)));
       }
     } catch {
       /* the answer is the point; the ledger is an optimisation */

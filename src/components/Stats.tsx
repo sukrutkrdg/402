@@ -407,7 +407,7 @@ export default function Stats() {
               </div>
               <div>
                 <span className="font-mono text-2xl font-bold text-emerald-300">
-                  ${data.keepalive.externalUsd.toFixed(2)}
+                  ${data.keepalive.externalUsd.toFixed(3)}
                 </span>
                 <span className="ml-1 text-[11px] text-gray-500">
                   from outside · {data.keepalive.externalCalls} call

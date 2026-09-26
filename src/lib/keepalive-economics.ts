@@ -74,7 +74,10 @@ const KEY = {
    * Counting it where it happens makes both sides cumulative and both sides
    * start at the same moment.
    */
+  /** Up to 2026-09-26, in whole cents (a $0.002 sale was booked as 1¢). Read, no longer written. */
   external: "external:revenue:cents",
+  /** From then on, in mills: a $0.002 sale is 2. */
+  externalMills: "external:revenue:mills",
   externalCalls: "external:calls",
 } as const;
 
@@ -84,11 +87,11 @@ const KEY = {
  * Called from the x402 paid path, which knows the payer address, so "not us" is
  * decided from who actually signed rather than inferred from a total.
  */
-export async function recordExternalRevenue(cents: number): Promise<void> {
-  if (!kvConfigured() || !Number.isFinite(cents) || cents <= 0) return;
+export async function recordExternalRevenue(mills: number): Promise<void> {
+  if (!kvConfigured() || !Number.isFinite(mills) || mills <= 0) return;
   try {
     if (!(await kvGet(KEY.since))) await kvSet(KEY.since, new Date().toISOString());
-    await Promise.all([kvIncrBy(KEY.external, Math.round(cents)), kvIncrBy(KEY.externalCalls, 1)]);
+    await Promise.all([kvIncrBy(KEY.externalMills, Math.round(mills)), kvIncrBy(KEY.externalCalls, 1)]);
   } catch {
     /* the settlement is the point; this is only the books */
   }
@@ -142,12 +145,13 @@ export interface KeepaliveEconomics {
  */
 export async function keepaliveEconomics(): Promise<KeepaliveEconomics | null> {
   if (!kvConfigured()) return null;
-  const [since, spentRaw, callsRaw, extRaw, extCallsRaw] = await Promise.all([
+  const [since, spentRaw, callsRaw, extRaw, extCallsRaw, extMillsRaw] = await Promise.all([
     kvGet(KEY.since),
     kvGet(KEY.spent),
     kvGet(KEY.calls),
     kvGet(KEY.external),
     kvGet(KEY.externalCalls),
+    kvGet(KEY.externalMills),
   ]);
   const spentCents = Number(spentRaw ?? 0) || 0;
   const settlements = Number(callsRaw ?? 0) || 0;
@@ -160,7 +164,7 @@ export async function keepaliveEconomics(): Promise<KeepaliveEconomics | null> {
 
   // Counted, not derived. Our own settlements never enter this number in the
   // first place, so there is nothing to subtract and no window to mismatch.
-  const externalUsd = +((Number(extRaw ?? 0) || 0) / 100).toFixed(2);
+  const externalUsd = +((Number(extRaw ?? 0) || 0) / 100 + (Number(extMillsRaw ?? 0) || 0) / 1000).toFixed(3);
   const externalCalls = Number(extCallsRaw ?? 0) || 0;
   const perDay = (n: number) => (days > 0 ? +(n / days).toFixed(3) : 0);
   const externalVsCirculated = circulatedUsd > 0 ? +(externalUsd / circulatedUsd).toFixed(2) : null;

@@ -104,9 +104,9 @@ describe("keepalive economics", () => {
     expect(e.externalUsd, "outside demand stands on its own").toBe(0.7);
   });
 
-  it("books an outside settlement against the external counter only", async () => {
-    await recordExternalRevenue(3);
-    expect(kvMock.kvIncrBy).toHaveBeenCalledWith("external:revenue:cents", 3);
+  it("books an outside settlement against the external counter only, in mills", async () => {
+    await recordExternalRevenue(2); // a $0.002 call is 2 mills, not a 1¢ floor
+    expect(kvMock.kvIncrBy).toHaveBeenCalledWith("external:revenue:mills", 2);
     expect(kvMock.kvIncrBy).toHaveBeenCalledWith("external:calls", 1);
     expect(kvMock.kvIncrBy).not.toHaveBeenCalledWith("keepalive:spent:cents", expect.anything());
   });
@@ -160,5 +160,11 @@ describe("keepalive economics", () => {
   it("says nothing rather than zero when there is no ledger", async () => {
     kvMock.kvConfigured.mockReturnValue(false);
     expect(await keepaliveEconomics()).toBeNull();
+  });
+
+  it("adds the old cent history and the new mills together", async () => {
+    const at: Record<string, string> = { "keepalive:since": new Date(Date.now() - 86_400_000).toISOString(), "external:revenue:cents": "70", "external:revenue:mills": "4" };
+    kvMock.kvGet.mockImplementation(async (k: string) => at[k] ?? null);
+    expect((await keepaliveEconomics())!.externalUsd).toBe(0.704);
   });
 });
