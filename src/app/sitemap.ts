@@ -8,6 +8,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: site, lastModified: now, priority: 1 },
     { url: `${site}/agents`, lastModified: now, priority: 0.9 },
     { url: `${site}/stocks`, lastModified: now, priority: 0.9 },
+    { url: `${site}/near`, lastModified: now, priority: 0.9 },
     // A fixed historical record rather than a live page, and the one thing here
     // worth citing: the first corporate action on a Coinbase tokenized equity,
     // with the block numbers to check it.

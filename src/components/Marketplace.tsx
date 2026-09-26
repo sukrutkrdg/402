@@ -432,6 +432,9 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             <a href="/agents" className="btn-ghost">
               For agents &amp; API →
             </a>
+            <a href="/near" className="btn-ghost !border-teal-500/40 !text-teal-200">
+              Ⓝ On NEAR →
+            </a>
             <a href="/dashboard" className="btn-ghost">
               Attribution →
             </a>

@@ -112,6 +112,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 📊 Tokenized stocks
               </Link>
               <Link
+                href="/near"
+                className="shrink-0 rounded-lg px-3 py-1.5 font-medium text-teal-300 hover:bg-white/5 hover:text-teal-200"
+              >
+                Ⓝ NEAR
+              </Link>
+              <Link
                 href="/dashboard"
                 className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white"
               >
