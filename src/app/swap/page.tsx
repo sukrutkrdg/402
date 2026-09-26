@@ -1,9 +1,9 @@
-import SwapClient from "./SwapClient";
+import SwapTabs from "./SwapTabs";
 
 export const metadata = {
   title: "Swap — x402 Bazaar",
   description:
-    "Swap between NEAR, Base, Ethereum, Solana, Bitcoin and more through NEAR Intents. Send from your own wallet to a one-time deposit address; nothing to connect, nothing held by us.",
+    "Swap across NEAR, Base, Ethereum, Solana, Bitcoin and more through NEAR Intents, or on Base at the best DEX price with the route shown before you sign. Funds never pass through us.",
 };
 
 export default function SwapPage() {
@@ -11,15 +11,15 @@ export default function SwapPage() {
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-2">
         <span className="pill w-fit">🔁 Swap</span>
-        <h1 className="text-3xl font-bold tracking-tight">Swap across chains</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Swap — across chains or on Base</h1>
         <p className="max-w-3xl text-sm leading-relaxed text-gray-400">
-          NEAR, Base, Ethereum, Solana, Bitcoin and more, through NEAR Intents. Get a one-time deposit address, send from
-          your own wallet, and the output arrives at your address — usually within a minute. Funds go straight to NEAR
-          Intents, never through us; if the swap cannot complete, they are refunded to you. Buying a NEAR token runs our
-          token-safety check first.
+          Across chains — NEAR, Base, Ethereum, Solana, Bitcoin and more — through NEAR Intents: get a one-time deposit
+          address, send from your own wallet, and the output arrives at your address, usually within a minute. On Base,
+          connect a wallet and swap at the best price across Base DEXes, with the route shown before you sign. Funds never
+          pass through us. Buying an unknown token runs our safety check first.
         </p>
       </section>
-      <SwapClient />
+      <SwapTabs />
       <p className="text-xs text-gray-500">
         Agents: the same swap is <code className="codechip">GET /api/x402/near-swap</code> (cross-chain) and{" "}
         <code className="codechip">GET /api/x402/base-swap</code> (on Base, ready-to-sign transaction).

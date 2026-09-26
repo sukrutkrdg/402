@@ -370,3 +370,6 @@ Not: kredi ödemesi en az 1 sent keser ($0.002'lik servisler krediyle $0.01).
 - `/swap` sayfası: insanlar için NEAR Intents swap'ı (yatırma adresi akışı, cüzdan bağlamak yok),
   `/api/swap/quote` ve `/api/swap/status` ücretsiz, IP başına sınırlı. Gelir swap komisyonundan.
 - Düzeltme: NEAR servis sayısı 12 (daha önce yanlışlıkla 14 denmişti).
+- /swap sayfasına "On Base" sekmesi: cüzdan bağla → rota önizleme (hangi DEX, yüzde kaç) → tam tutar kadar
+  approve → imzala → BaseScan. `/api/swap/base-quote` ücretsiz, IP başına sınırlı. NEAR sekmesinde rota notu
+  (solver'lar yarışır). Canlı: base-swap 10 USDC→ETH teklifi LunarBase %100, bizim pay 0.02 USDC, 0x payı %0,15.

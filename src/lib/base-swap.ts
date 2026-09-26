@@ -156,7 +156,7 @@ export async function baseSwap(params: Record<string, string>) {
     chain: "base" as const,
     checkedAt: new Date().toISOString(),
     router: "0x Swap API (AllowanceHolder)",
-    sell: { symbol: sell.symbol, address: sell.address, amount: formatUnits(sellAmount, sell.decimals) },
+    sell: { symbol: sell.symbol, address: sell.address, amount: formatUnits(sellAmount, sell.decimals), amountBaseUnits: sellAmount.toString() },
     buy: { symbol: buy.symbol, address: buy.address, amount: fmt(q.buyAmount, buy.decimals), minAmount: fmt(q.minBuyAmount, buy.decimals) },
     route: (q.route?.fills ?? []).map((f) => ({ source: f.source, sharePct: Number(f.proportionBps) / 100 })),
     fees: {

@@ -165,6 +165,9 @@ export default function SwapClient() {
           on {quote.to.chain}
           {quote.amountOutUsd !== null ? ` (≈ $${quote.amountOutUsd.toFixed(2)})` : ""}, at least {Number(quote.minAmountOut).toPrecision(6)}.
         </div>
+        <div className="text-xs text-gray-400">
+          Route: NEAR Intents — market makers compete to fill this swap; the best offer wins and is locked in this quote.
+        </div>
         <Copy label="Deposit address" value={quote.deposit.address} />
         {quote.deposit.memo && <Copy label="Memo (required)" value={quote.deposit.memo} />}
         <ul className="list-disc pl-5 text-xs text-gray-400">
