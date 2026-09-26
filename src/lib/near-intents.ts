@@ -282,8 +282,13 @@ export async function createNearOrder(input: CreateOrderInput) {
   // Confirm the write from SET's own reply — not by reading it back, which a
   // replica can answer before it has the key (see kvSetChecked). An order we
   // did not store is a deposit we could not credit, so refuse to hand it out.
-  if (!(await kvSetChecked(orderKey(orderId), JSON.stringify(record), ORDER_TTL))) {
-    throw new NearOrderError("Credits unavailable: order could not be stored — nothing was charged, retry shortly", 503);
+  const stored = await kvSetChecked(orderKey(orderId), JSON.stringify(record), ORDER_TTL);
+  if (!stored.ok) {
+    console.error(`[near-credits] order ${orderId} not stored: ${stored.detail}`);
+    throw new NearOrderError(
+      `Credits unavailable: order could not be stored — nothing was charged, retry shortly (${stored.detail})`,
+      503,
+    );
   }
   await kvIncrBy(NEAR_LEDGER.quotes, 1).catch(() => {});
 
@@ -410,7 +415,7 @@ export async function checkNearOrder(orderId: string, secret: string) {
     throw new NearOrderError(`Swap settled but minting failed — poll again shortly (${(err as Error).message})`, 503);
   }
   rec.sealedToken = seal(minted.creditToken, secret);
-  if (!(await kvSetChecked(orderKey(orderId), JSON.stringify(rec), ORDER_TTL))) {
+  if (!(await kvSetChecked(orderKey(orderId), JSON.stringify(rec), ORDER_TTL)).ok) {
     // The token is in THIS response only; a later poll will not find it.
     console.error(`[near-credits] order ${orderId}: minted but the sealed token was not stored`);
   }
