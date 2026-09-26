@@ -17,6 +17,7 @@ import { registerAlert } from "./alerts";
 import { contractAbi, decodeSelector, encodeSelector } from "./onchain-extra3";
 import { basenameResolve, ensResolve, basenameProfile } from "./basename";
 import { nearTokenSafety } from "./near-token-safety";
+import { nearAccount } from "./near-account";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1299,6 +1300,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "token", label: "NEAR token contract account", placeholder: "usdt.tether-token.near", required: true }],
     handler: nearTokenSafety,
+  },
+  {
+    id: "near-account",
+    name: "NEAR Account Check",
+    tagline: "What is this NEAR account, and who controls it?",
+    description:
+      "Before an agent pays or trusts a NEAR account: does it exist, what kind is it (named, implicit, 0x), how much NEAR it holds (available, staked, locked for storage), whether it is a contract or a NEP-141 token, and who controls it — full-access keys that can do anything, and function-call keys limited to one contract. Flags a wallet held by one key, a contract replaceable by key, and an account no one can sign for. Live from the NEAR RPC.",
+    price: "$0.01",
+    icon: "Ⓝ",
+    category: "Onchain",
+    params: [{ name: "account", label: "NEAR account", placeholder: "alice.near", required: true }],
+    handler: nearAccount,
   },
   {
     id: "encode-selector",

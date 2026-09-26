@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { nearTokenSafety, NEAR_ACCOUNT_RE } from "@/lib/near-token-safety";
+import { _resetNearCaches } from "@/lib/near-rpc";
 
 /**
  * The verdict turns on one thing: who can replace the contract. These pin each
@@ -54,7 +55,10 @@ function stub(w: World) {
 const TOKEN = { amount: "5000000000000000000000000", code_hash: CODE, storage_usage: 1234 };
 const META = { spec: "ft-1.0.0", name: "Tether USD", symbol: "USDt", decimals: 6 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  _resetNearCaches();
+});
 
 describe("nearTokenSafety", () => {
   it("HOLD when full-access keys can redeploy the contract", async () => {
