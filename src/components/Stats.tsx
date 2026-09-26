@@ -117,6 +117,22 @@ interface Usage {
   ownerSources?: string[];
   credits?: CreditsLedger | null;
   nearCredits?: NearLedger | null;
+  nearSwaps?: NearSwapBook | null;
+}
+/** Swaps routed through near-swap and the distribution fee they earn (src/lib/near-swap-ledger.ts). */
+interface NearSwapBook {
+  feeOn: boolean;
+  feeBps: number;
+  userPaysPct: number;
+  weKeepPct: number;
+  recipient: string | null;
+  quotes: number;
+  quotedUsd: number;
+  completedRecent: number;
+  completedRecentUsd: number;
+  estFeeRecentUsd: number;
+  earned: { balances: { token: string; symbol: string; amount: string; usd: number | null }[]; totalUsd: number } | null;
+  recent: { t: string; dep: string; from: string; to: string; usd: number | null; status: string }[];
 }
 /** Credit packs bought from NEAR through NEAR Intents (src/lib/near-intents.ts). */
 interface NearLedger {
@@ -816,6 +832,67 @@ export default function Stats() {
                           tx ↗
                         </a>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* NEAR swaps: the distribution fee is the only revenue here that grows with
+              volume instead of calls. "Earned" is read on-chain from the fee account. */}
+          {usage.nearSwaps && (usage.nearSwaps.feeOn || usage.nearSwaps.quotes > 0) && (
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="pill">🔁 NEAR swaps</span>
+                <span className="text-[10px] text-gray-500">
+                  {usage.nearSwaps.feeOn
+                    ? `fee ${usage.nearSwaps.feeBps} bps: the swapper pays ${usage.nearSwaps.userPaysPct}%, you keep ${usage.nearSwaps.weKeepPct}% (1Click keeps half)`
+                    : "distribution fee is off — set NEAR_INTENTS_FEE_RECIPIENT and NEAR_INTENTS_FEE_BPS"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <div className="label">Earned</div>
+                  <div className="mt-1 font-mono text-2xl font-bold text-emerald-300">
+                    {usage.nearSwaps.earned ? `$${usage.nearSwaps.earned.totalUsd.toFixed(4)}` : "—"}
+                  </div>
+                  <div className="text-[10px] text-gray-500">in your NEAR Intents balance</div>
+                </div>
+                <div>
+                  <div className="label">Swaps quoted</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.nearSwaps.quotes}</div>
+                  <div className="text-[10px] text-gray-500">${usage.nearSwaps.quotedUsd.toFixed(2)} offered</div>
+                </div>
+                <div>
+                  <div className="label">Completed (recent)</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">{usage.nearSwaps.completedRecent}</div>
+                  <div className="text-[10px] text-gray-500">${usage.nearSwaps.completedRecentUsd.toFixed(2)} volume</div>
+                </div>
+                <div>
+                  <div className="label">Fee on those</div>
+                  <div className="mt-1 font-mono text-2xl font-bold">${usage.nearSwaps.estFeeRecentUsd.toFixed(4)}</div>
+                  <div className="text-[10px] text-gray-500">your share, estimated</div>
+                </div>
+              </div>
+              {usage.nearSwaps.earned && usage.nearSwaps.earned.balances.length > 0 && (
+                <div className="mt-3 text-[11px] text-gray-400">
+                  Held for you in NEAR Intents:{" "}
+                  {usage.nearSwaps.earned.balances.map((b) => `${b.amount} ${b.symbol}`).join(" · ")} — withdraw at
+                  near-intents.org with the fee account's wallet.
+                </div>
+              )}
+              {usage.nearSwaps.recent.length > 0 && (
+                <div className="mt-4 flex flex-col gap-1">
+                  <div className="label">Latest swaps</div>
+                  {usage.nearSwaps.recent.map((r) => (
+                    <div key={r.dep} className="flex flex-wrap items-center gap-x-3 text-[11px] text-gray-400">
+                      <span className="font-mono text-gray-300">{new Date(r.t).toLocaleString()}</span>
+                      <span>
+                        {r.from} → {r.to}
+                      </span>
+                      <span className="font-mono">{r.usd !== null ? `$${r.usd.toFixed(2)}` : ""}</span>
+                      <span className={r.status === "SUCCESS" ? "text-emerald-300" : "text-gray-500"}>{r.status}</span>
                     </div>
                   ))}
                 </div>

@@ -132,6 +132,12 @@ export async function nearSwap(params: Record<string, string>) {
   }
 
   const num = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
+  // Book it for /stats — except the daily discovery probe, which quotes to intents.near and never deposits.
+  if (!(recipient === "intents.near" && refundTo === "intents.near")) {
+    await import("./near-swap-ledger")
+      .then((m) => m.recordSwapQuote({ t: new Date().toISOString(), dep: q.depositAddress!, memo: q.depositMemo ?? null, from: from.symbol, to: to.symbol, usd: num(q.amountInUsd) }))
+      .catch(() => {});
+  }
   return {
     chain: "near-intents" as const,
     checkedAt: new Date().toISOString(),

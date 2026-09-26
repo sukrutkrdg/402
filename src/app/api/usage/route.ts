@@ -9,6 +9,7 @@ import { safeEqual } from "@/lib/secure";
 import { clientIp } from "@/lib/rate-limit";
 import { creditsLedger } from "@/lib/credits";
 import { nearRailLedger, nearOpenOrders } from "@/lib/near-intents";
+import { nearSwapBook } from "@/lib/near-swap-ledger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // headroom for the per-service KV reads
@@ -82,6 +83,7 @@ export async function GET(req: NextRequest) {
     totalRevenue,
     credits,
     nearCredits,
+    nearSwaps: await cachedNearSwapBook(),
     per,
     recent: data.recent.map((r) => ({ ...r, name: nameById[r.s] ?? r.s })),
   });
@@ -94,5 +96,14 @@ async function cachedNearOpenOrders() {
   if (openCache && Date.now() - openCache.at < 300_000) return openCache.v;
   const v = await nearOpenOrders().catch(() => null);
   openCache = { at: Date.now(), v };
+  return v;
+}
+
+// Same reasoning: one 1Click status call per recent swap plus on-chain reads.
+let swapCache: { at: number; v: Awaited<ReturnType<typeof nearSwapBook>> | null } | null = null;
+async function cachedNearSwapBook() {
+  if (swapCache && Date.now() - swapCache.at < 300_000) return swapCache.v;
+  const v = await nearSwapBook().catch(() => null);
+  swapCache = { at: Date.now(), v };
   return v;
 }
