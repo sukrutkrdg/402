@@ -111,6 +111,41 @@ function formatUnits(raw: string, decimals: number): string {
   return frac ? `${int}.${frac.slice(0, 6)}` : int;
 }
 
+/**
+ * No access key does not mean no one is in charge. A NEP-141 issuer usually
+ * keeps power through the contract's own methods — an owner who can upgrade,
+ * pause, blacklist or mint (Tether's USDt on NEAR has no keys at all, and is
+ * still an issuer-controlled token). We cannot read the source, but the common
+ * owner and pause views answer to a plain view call, so we ask for them.
+ */
+const OWNER_VIEWS = ["get_owner", "owner", "get_owner_id", "owner_id", "get_contract_owner", "contract_owner"];
+const PAUSE_VIEWS = ["is_paused", "paused", "get_paused"];
+
+/** First owner view that answers with an account id, and which method said so. */
+async function findOwner(token: string): Promise<{ owner: string; method: string } | null> {
+  const answers = await Promise.all(OWNER_VIEWS.map((m) => viewCall<unknown>(token, m).catch(() => null)));
+  for (let i = 0; i < OWNER_VIEWS.length; i++) {
+    const a = answers[i];
+    const id =
+      typeof a === "string"
+        ? a
+        : a && typeof a === "object"
+          ? ((a as Record<string, unknown>).owner_id ?? (a as Record<string, unknown>).owner)
+          : null;
+    if (typeof id === "string" && NEAR_ACCOUNT_RE.test(id)) return { owner: id, method: OWNER_VIEWS[i] };
+  }
+  return null;
+}
+
+/** true/false from the first pause view that answers with a boolean; null when none does. */
+async function findPaused(token: string): Promise<{ paused: boolean; method: string } | null> {
+  const answers = await Promise.all(PAUSE_VIEWS.map((m) => viewCall<unknown>(token, m).catch(() => null)));
+  for (let i = 0; i < PAUSE_VIEWS.length; i++) {
+    if (typeof answers[i] === "boolean") return { paused: answers[i] as boolean, method: PAUSE_VIEWS[i] };
+  }
+  return null;
+}
+
 type Verdict = "GO" | "HOLD" | "STOP";
 
 export async function nearTokenSafety(params: Record<string, string>) {
@@ -153,7 +188,7 @@ export async function nearTokenSafety(params: Record<string, string>) {
     };
   }
 
-  const [keys, metadata, supply, listing] = await Promise.all([
+  const [keys, metadata, supply, listing, owner, pause] = await Promise.all([
     rpcQuery<{ keys: { public_key: string; access_key: { permission: unknown } }[] }>({
       request_type: "view_access_key_list",
       account_id: token,
@@ -161,6 +196,8 @@ export async function nearTokenSafety(params: Record<string, string>) {
     viewCall<{ spec?: string; name?: string; symbol?: string; decimals?: number; icon?: string | null }>(token, "ft_metadata"),
     viewCall<string>(token, "ft_total_supply"),
     nearIntentsListing(token),
+    findOwner(token),
+    findPaused(token),
   ]);
 
   if (!metadata || typeof metadata.decimals !== "number") {
@@ -179,7 +216,10 @@ export async function nearTokenSafety(params: Record<string, string>) {
 
   const reasons: string[] = [];
   let verdict: Verdict;
-  if (!keys.ok) {
+  if (pause?.paused) {
+    verdict = "STOP";
+    reasons.push(`Paused: ${pause.method}() returns true — transfers are halted by the contract right now.`);
+  } else if (!keys.ok) {
     verdict = "HOLD";
     reasons.push("Could not read the account's access keys, so who can replace the contract is unknown.");
   } else if (fullAccess > 0) {
@@ -187,12 +227,18 @@ export async function nearTokenSafety(params: Record<string, string>) {
     reasons.push(
       `Upgradeable by key: ${fullAccess} full-access key${fullAccess === 1 ? "" : "s"} can redeploy this contract — new code could change balances, block transfers or mint. Common for real tokens; it means trusting whoever holds ${fullAccess === 1 ? "that key" : "those keys"}.`,
     );
+  } else if (owner) {
+    verdict = "HOLD";
+    reasons.push(
+      `Owner-controlled: no full-access key, but ${owner.method}() names an owner, ${owner.owner}. Owner-only methods commonly include upgrading the code, pausing, blacklisting holders or minting — normal for an issued asset (a stablecoin, say), but it is trust in that owner, not in fixed code.`,
+    );
   } else {
     verdict = "GO";
     reasons.push(
-      "Locked: no full-access key, so the code can only change through the contract's own methods. Those may still include an owner-controlled upgrade or admin function; this check does not read the contract's source.",
+      "Locked: no full-access key, and none of the common owner views answer. The code can only change through the contract's own methods; an admin function under an unusual name would not be seen, since this check does not read the contract's source.",
     );
   }
+  if (pause && !pause.paused) reasons.push(`Not paused (${pause.method}() is false) — but a pause switch exists.`);
   if (listing?.listed) reasons.push("Routed by NEAR Intents — there is a swap path in and out.");
   else if (listing && !listing.listed) reasons.push("Not routed by NEAR Intents — liquidity may be thin or absent.");
 
@@ -206,6 +252,10 @@ export async function nearTokenSafety(params: Record<string, string>) {
       fullAccessKeys: keys.ok ? fullAccess : null,
       functionCallKeys: keys.ok ? functionCall : null,
       upgradeableByKey: keys.ok ? fullAccess > 0 : null,
+      owner: owner?.owner ?? null,
+      ownerMethod: owner?.method ?? null,
+      /** null = no common pause view answered; true/false = what it said. */
+      paused: pause ? pause.paused : null,
     },
     market: { nearIntents: listing },
     verdict,
