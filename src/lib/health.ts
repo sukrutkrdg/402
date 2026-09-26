@@ -20,9 +20,12 @@ export function errorStatus(message: string): 400 | 502 | 500 {
   const m = message.toLowerCase();
   // "must be", "too large/long", "choose one of", "not a" and "unsupported" are
   // the caller's input talking: retrying the same input can only fail again.
-  if (/provide|missing|valid|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price|refused/.test(m))
+  // Word boundaries matter: "provide" must not catch "data provider unavailable"
+  // (an upstream outage), and "refused:" is our own prefix for a refused trade,
+  // not ECONNREFUSED.
+  if (/\bprovide\b|missing|\bvalid\b|invalid|required|must be|too (large|long|many)|choose one of|unsupported|not a |no .*found|no .*data|no .*available|no price|^refused:/.test(m))
     return 400;
-  if (/unavailable|unreachable|failed|responded \d|timeout|fetch|rate limit/.test(m)) return 502;
+  if (/unavailable|unreachable|failed|responded \d|timeout|fetch|rate limit|econn|enotfound|socket/.test(m)) return 502;
   return 500;
 }
 

@@ -10,6 +10,14 @@ describe("errorStatus", () => {
     expect(errorStatus("NEAR indexer (NearBlocks) rate limit — not charged")).toBe(502);
     expect(errorStatus("Cannot read properties of undefined")).toBe(500);
   });
+
+  it("does not blame the caller for a provider outage or a refused connection", () => {
+    // "provide" once matched "provider", so an outage showed as the caller's input and vanished from /status.
+    expect(errorStatus("Transfer history unavailable (data provider) — try again shortly")).toBe(502);
+    expect(errorStatus("Liquidity data provider unavailable — try again shortly")).toBe(502);
+    expect(errorStatus("connect ECONNREFUSED 1.2.3.4:443")).toBe(502);
+    expect(errorStatus("Provide a valid 0x… address")).toBe(400);
+  });
 });
 
 describe("timed + readHealth", () => {

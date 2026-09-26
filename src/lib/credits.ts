@@ -130,7 +130,33 @@ export async function buyCredits(params: Record<string, string>) {
   const tier = (params.tier || DEFAULT_TIER).trim();
   const pack = CREDIT_TIERS[tier];
   if (!pack) throw new Error(`Invalid tier — choose one of: ${Object.keys(CREDIT_TIERS).join(", ")}`);
-  return mintCredits(pack.credits, pack.usd);
+  // Not booked here: this runs BEFORE x402 settles the payment. The route books
+  // the sale (bookCreditSale) once settlement succeeds, and voids the balance
+  // (voidCredits) when it does not — see the buy-credits block in the route.
+  return mintCredits(pack.credits, pack.usd, false);
+}
+
+/** Book a pack sale in the ledger. Called only after the payment has settled. */
+export async function bookCreditSale(tier: string): Promise<void> {
+  const pack = CREDIT_TIERS[(tier || DEFAULT_TIER).trim()];
+  if (!pack) return;
+  await Promise.all([
+    kvIncrBy(LEDGER.packs, 1),
+    kvIncrBy(LEDGER.paidCents, Math.round(pack.usd * 100)),
+    kvIncrBy(LEDGER.mintedCents, pack.credits),
+  ]).catch(() => {
+    /* the balance is the money; this is only the books */
+  });
+}
+
+/**
+ * Remove a balance minted for a payment that then failed to settle. Without
+ * this, one signed authorization sent N times in parallel mints N balances —
+ * one settles, the rest stay spendable in KV.
+ */
+export async function voidCredits(token: string): Promise<void> {
+  if (!kvConfigured() || !token) return;
+  await kvDel(keyFor(token));
 }
 
 /**

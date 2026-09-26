@@ -34,7 +34,7 @@ const { kvMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/kv", () => kvMock);
 
-import { buyCredits, debitCredit, creditsLedger, recoverCredits } from "@/lib/credits";
+import { buyCredits, bookCreditSale, voidCredits, debitCredit, creditsLedger, recoverCredits } from "@/lib/credits";
 
 const incrementsTo = (key: string) =>
   kvMock.kvIncrBy.mock.calls.filter((c: unknown[]) => String(c[0]) === key).map((c: unknown[]) => Number(c[1]));
@@ -48,8 +48,25 @@ describe("credits ledger", () => {
     kvMock.kvDel.mockResolvedValue(undefined);
   });
 
-  it("books a sale with what was paid and what was issued, which differ on bonus tiers", async () => {
+  /**
+   * buy-credits runs BEFORE x402 settles. Booking there counted every failed or
+   * replayed payment as a sale, so the handler only mints; the route books the
+   * sale once the settlement succeeded, and voids the balance when it did not.
+   */
+  it("does not book a sale when minting, only once settled", async () => {
     await buyCredits({ tier: "5" });
+    expect(incrementsTo("credits:packs"), "not settled yet").toEqual([]);
+    expect(incrementsTo("credits:paid:cents")).toEqual([]);
+  });
+
+  it("voids an unsettled balance by deleting its key", async () => {
+    const { creditToken } = await buyCredits({ tier: "1" });
+    await voidCredits(creditToken);
+    expect(kvMock.kvDel).toHaveBeenCalledWith(expect.stringMatching(/^credit:[0-9a-f]{24}$/));
+  });
+
+  it("books a sale with what was paid and what was issued, which differ on bonus tiers", async () => {
+    await bookCreditSale("5");
     expect(incrementsTo("credits:packs")).toEqual([1]);
     expect(incrementsTo("credits:paid:cents"), "what the customer paid").toEqual([500]);
     expect(incrementsTo("credits:minted:cents"), "what they can spend, incl. the +10%").toEqual([550]);

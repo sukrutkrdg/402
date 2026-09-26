@@ -9,7 +9,7 @@
  */
 
 import { timed, errorStatus } from "@/lib/health";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { withX402, type RouteConfig } from "@x402/next";
 import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/builder-code";
@@ -21,8 +21,8 @@ import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
-import { kvGet, kvSet, kvDel, kvIncrBy } from "@/lib/kv";
-import { debitCreditMills, refundCreditMills, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle } from "@/lib/credits";
+import { kvGet, kvSet, kvDel, kvIncrBy, kvSetNx } from "@/lib/kv";
+import { debitCreditMills, refundCreditMills, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle, bookCreditSale, voidCredits } from "@/lib/credits";
 
 /**
  * Calls a minute a single prepaid token may make. Ten a second — comfortably
@@ -515,6 +515,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // NOT settle — the buyer is never charged for an error). Without this, any
   // data error (e.g. a token with no DEX pairs) escaped to the outer catch and
   // surfaced as a misleading blanket 503 "payment failed".
+  // Set by the handler when buy-credits mints a balance; settled or voided after withX402 answers.
+  const mint: { pending: { token: string; payer: string | null | undefined; tier: string } | null } = { pending: null };
   const handler = async (request: NextRequest) => {
     let data: unknown;
     try {
@@ -596,17 +598,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     } catch {
       /* the answer is the point; the ledger is an optimisation */
     }
-    // buy-credits settles at the CHOSEN tier, not the listed price — record the
-    // real cents so the revenue dashboard doesn't count every pack as $5.
+    // buy-credits: the balance was minted above, but the payment has NOT settled
+    // yet — withX402 settles on this response. Booking the sale and linking the
+    // token to the paying wallet therefore wait for the settlement outcome (see
+    // settleCreditPurchase below the withX402 call); here we only remember what
+    // was minted.
     if (service.id === "buy-credits") {
-      const cents = Math.round((parseFloat(tierPrice(paramsFrom(request, service).tier || "").replace(/[^0-9.]/g, "")) || 0) * 100);
-      if (cents > 0) await kvIncrBy("usage:revenue-cents:buy-credits", cents);
-      // Index the balance against the wallet that paid. The token is shown once
-      // and only its hash is stored, so without this a buyer who didn't copy it
-      // has paid for something unusable with no way back. /api/credits/recover
-      // turns this index into a door that only that wallet can open.
       const minted = (data as { creditToken?: unknown })?.creditToken;
-      if (payer && typeof minted === "string") await linkCreditOwner(payer, minted);
+      if (typeof minted === "string") mint.pending = { token: minted, payer, tier: paramsFrom(request, service).tier || "" };
       // Tell the buyer whether recovery is actually armed for them. Silence here
       // is what made a broken index look like a working feature: the promise
       // "you can recover this with your wallet" is only true if we managed to
@@ -708,7 +707,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // request clears the shared supported-kinds map mid-flight and 503s any
     // concurrent call. See src/lib/x402-server.ts.
     const guarded = withX402(handler, routeConfig, server, undefined, undefined, false);
-    const res = await guarded(req);
+    // One signed authorization, one purchase. The handler runs BEFORE settlement,
+    // so the same payment sent N times in parallel would otherwise run the mint N
+    // times while only one settles. Held for the duration of the call and kept
+    // only if the payment settled, so an honest retry after a failure still works.
+    // Fails closed: without KV the mint itself cannot happen either.
+    const replayKey =
+      service.id === "buy-credits" && hasPayment
+        ? `x402:auth:${createHash("sha256").update(req.headers.get("payment-signature") || req.headers.get("x-payment") || "").digest("hex").slice(0, 32)}`
+        : null;
+    if (replayKey && !(await kvSetNx(replayKey, 900))) {
+      return NextResponse.json({ error: "This payment is already being processed or was already used." }, { status: 409 });
+    }
+    let res: Response;
+    try {
+      res = await guarded(req);
+    } catch (err) {
+      if (mint.pending) await voidCredits(mint.pending.token).catch(() => {});
+      if (replayKey) await kvDel(replayKey).catch(() => {});
+      throw err;
+    }
+    if (replayKey && res.status >= 400) await kvDel(replayKey).catch(() => {});
+    if (mint.pending) await settleCreditPurchase(mint.pending, res.status < 400);
     // Telemetry: a 402 means the caller was shown the price and (usually) walked
     // away — log it so we can measure challenge→paid conversion per service.
     if (res.status === 402) {
@@ -788,6 +808,29 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   } catch (err) {
     const message = err instanceof Error ? err.message : "Server misconfigured";
     return NextResponse.json({ error: message }, { status: 503 });
+  }
+}
+
+/**
+ * Finish a credit purchase once withX402 has answered. Settled: book the sale
+ * at the chosen tier and index the token against the paying wallet, so
+ * /api/credits/recover can find it. Not settled: delete the balance — the buyer
+ * never received the token (the settlement failure replaced the body), and an
+ * unpaid balance must not be spendable or recoverable.
+ */
+async function settleCreditPurchase(m: { token: string; payer: string | null | undefined; tier: string }, settled: boolean) {
+  try {
+    if (!settled) {
+      await voidCredits(m.token);
+      return;
+    }
+    await bookCreditSale(m.tier);
+    // Real cents, not the listed $5, so the revenue dashboard is right.
+    const cents = Math.round((parseFloat(tierPrice(m.tier).replace(/[^0-9.]/g, "")) || 0) * 100);
+    if (cents > 0) await kvIncrBy("usage:revenue-cents:buy-credits", cents);
+    if (m.payer) await linkCreditOwner(m.payer, m.token);
+  } catch (err) {
+    console.error(`[buy-credits] post-settlement bookkeeping failed (settled=${settled}): ${err instanceof Error ? err.message : err}`);
   }
 }
 
