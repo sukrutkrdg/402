@@ -54,6 +54,8 @@ export const BASE_USDC_ASSET_FALLBACK = `nep141:base-${USDC_BASE.toLowerCase()}.
 
 /** Orders outlive the quote deadline so a slow swap can still be claimed. */
 const ORDER_TTL = 60 * 60 * 24 * 14;
+/** How long a mint may take before another poll may try: long enough for one mint, short enough not to strand a paid order. */
+const MINT_LOCK_SECONDS = 120;
 /** How long the agent has to deposit before 1Click refunds it. */
 const DEADLINE_MS = 60 * 60 * 1000;
 /** Slippage on the INPUT side (EXACT_OUTPUT); the excess is refunded by 1Click. */
@@ -417,8 +419,10 @@ export async function checkNearOrder(orderId: string, secret: string) {
     throw new NearOrderError("Swap does not match this order — not credited. Contact support with your orderId.", 409);
   }
 
-  // One mint per order, however many polls race here.
-  const won = await kvSetNx(mintLockKey(orderId), ORDER_TTL);
+  // One mint per order, however many polls race here. Short at first, so a
+  // function that dies before minting does not leave a paid order answering
+  // PROCESSING for two weeks; extended to the order's life once minted.
+  const won = await kvSetNx(mintLockKey(orderId), MINT_LOCK_SECONDS);
   if (!won) {
     return {
       status: "PROCESSING" as const,
@@ -442,15 +446,19 @@ export async function checkNearOrder(orderId: string, secret: string) {
     await kvDel(mintLockKey(orderId));
     throw new NearOrderError(`Swap settled but minting failed — poll again shortly (${(err as Error).message})`, 503);
   }
+  // Minted: from here the lock must outlive the order, or a later poll mints again.
+  await kvSetChecked(mintLockKey(orderId), "1", ORDER_TTL).catch(() => {});
   rec.sealedToken = seal(minted.creditToken, secret);
-  if (!(await kvSetChecked(orderKey(orderId), JSON.stringify(rec), ORDER_TTL)).ok) {
-    // The token is in THIS response only; a later poll will not find it.
+  const stored = (await kvSetChecked(orderKey(orderId), JSON.stringify(rec), ORDER_TTL)).ok;
+  if (!stored) {
+    // The token is in THIS response only; a later poll will not find it. The
+    // order stays on the open list so the owner's reconciliation still sees it.
     console.error(`[near-credits] order ${orderId}: minted but the sealed token was not stored`);
   }
   await Promise.all([
     kvIncrBy(NEAR_LEDGER.packs, 1),
     kvIncrBy(NEAR_LEDGER.paidCents, receivedCents),
-    kvSRem(NEAR_LEDGER.open, orderId),
+    ...(stored ? [kvSRem(NEAR_LEDGER.open, orderId)] : []),
   ]).catch(() => {});
   // Each sale, for the owner's /stats panel — the demand signal the NEAR plan
   // waits on. Inside the mint lock, so one row per order. Best-effort: the
