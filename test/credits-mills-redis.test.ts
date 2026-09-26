@@ -83,4 +83,17 @@ describe.skipIf(!HAVE)("sub-cent credit scripts, in real Redis", () => {
     expect(evalLua(DEBIT_MILLS_LUA, ["credit:nobody", "credit:nobody:mills"], [2])[0]).toBe(-2);
     expect(get("credit:nobody")).toBeNull();
   });
+
+  it("a whole-cent price honours an owed remainder instead of going negative", () => {
+    cli("SET", B, "1", "EX", "1000");
+    cli("SET", F, "8"); // 10 − 8 = 2 mills spendable
+    expect(evalLua(DEBIT_MILLS_LUA, [B, F], [10])[0]).toBe(-1);
+    expect(get(B)).toBe(1);
+  });
+
+  it("a refund after the balance expired does not bring it back without an expiry", () => {
+    cli("DEL", B, F);
+    expect(evalLua(REFUND_MILLS_LUA, [B, F, "refund:c"], [30])).toEqual([0]);
+    expect(get(B)).toBeNull();
+  });
 });

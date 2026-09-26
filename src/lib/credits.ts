@@ -439,7 +439,8 @@ export async function stuckRefunds(): Promise<{ count: number; cents: number; it
 export async function creditBalance(token: string): Promise<number> {
   const t = (token || "").trim();
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return 0;
-  return await kvGetNumber(keyFor(t));
+  const cents = await kvGetNumber(keyFor(t));
+  return cents > 0 ? cents - Math.ceil((await fracOf(t)) / 10) : cents;
 }
 
 /**
@@ -451,7 +452,8 @@ export async function creditStatus(token: string): Promise<{ cents: number; expi
   const t = (token || "").trim();
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return { cents: 0, expiresInDays: null };
   const key = keyFor(t);
-  const cents = await kvGetNumber(key);
+  // What can still be spent: the owed sub-cent remainder is already used.
+  const cents = (await kvGetNumber(key)) - Math.ceil((await fracOf(t)) / 10);
   if (cents <= 0) return { cents: 0, expiresInDays: null };
   const res = await kvPipeline([["ttl", key]]);
   const ttl = Number((res?.[0] as { result?: unknown } | undefined)?.result ?? res?.[0] ?? -1);
@@ -494,6 +496,7 @@ return {cents, bal, rest}
 /** KEYS: balance, remainder, guard. ARGV: mills. → [cents returned] or [-9] when already applied. */
 export const REFUND_MILLS_LUA = `
 if not redis.call('SET', KEYS[3], '1', 'NX', 'EX', 86400) then return {-9} end
+if redis.call('EXISTS', KEYS[1]) == 0 then return {0} end
 local frac = tonumber(redis.call('GET', KEYS[2]) or '0') - tonumber(ARGV[1])
 local cents = 0
 while frac < 0 do
@@ -519,22 +522,19 @@ export interface MillsDebit {
 }
 
 /**
- * Debit a price given in mills. Whole-cent prices take the ordinary cent path
- * unchanged; only a price with a fractional cent goes through the remainder.
+ * Debit a price given in mills. Every price goes through the one script, whole
+ * cents included: a whole-cent DECRBY ignored an owed remainder, so a balance
+ * that covered the price but not the remainder went negative. One EVAL is also
+ * one command, where DECRBY plus reading the remainder was two.
  */
 export async function debitCreditMills(token: string, mills: number): Promise<MillsDebit> {
-  if (mills % 10 === 0) {
-    const d = await debitCredit(token, mills / 10);
-    return d.ok
-      ? { ok: true, remainingMills: d.remaining * 10 - (await fracOf(token)) }
-      : { ok: false, remainingMills: 0, reason: d.reason, balanceMills: (d.balance ?? 0) * 10 };
-  }
   if (!kvConfigured()) return { ok: false, remainingMills: 0, reason: "no_kv" };
   const t = (token || "").trim();
   if (!/^ck_[0-9a-f]{36}$/.test(t)) return { ok: false, remainingMills: 0, reason: "bad_token" };
   const r = await kvEval<number[]>(DEBIT_MILLS_LUA, [keyFor(t), fracKeyFor(t)], [mills]);
   if (!Array.isArray(r)) return { ok: false, remainingMills: 0, reason: "no_kv" };
   const [cents, bal, rest] = r.map(Number);
+  if (cents === -2) return { ok: false, remainingMills: 0, reason: "bad_token", balanceMills: 0 };
   if (cents < 0) return { ok: false, remainingMills: 0, reason: "insufficient", balanceMills: Math.max(0, bal * 10 - rest) };
   await Promise.all([kvIncrBy(LEDGER.spentCents, cents), kvIncrBy(LEDGER.spentCalls, 1)]).catch(() => {
     /* the debit above is the money; this is only the books */
@@ -544,7 +544,6 @@ export async function debitCreditMills(token: string, mills: number): Promise<Mi
 
 /** Undo a debitCreditMills exactly, at most once per call however often it is retried. */
 export async function refundCreditMills(token: string, mills: number): Promise<void> {
-  if (mills % 10 === 0) return refundCredit(token, mills / 10);
   const t = (token || "").trim();
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return;
   const guard = `refund:${crypto.randomUUID()}`;
@@ -557,7 +556,13 @@ export async function refundCreditMills(token: string, mills: number): Promise<v
     }
     await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
   }
-  console.error(`[credits] sub-cent refund of ${mills} mills could not be confirmed for ${keyFor(t)}`);
+  console.error(`[credits] refund of ${mills} mills could not be confirmed for ${keyFor(t)}`);
+  // Same place refundCredit writes it, so an owed refund has somewhere to be seen.
+  try {
+    await kvLPush("credits:refunds:stuck", JSON.stringify({ token: keyFor(t), cents: mills / 10, mills, at: new Date().toISOString() }), 500);
+  } catch {
+    /* nothing left to try */
+  }
 }
 
 async function fracOf(token: string): Promise<number> {

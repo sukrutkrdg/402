@@ -51,11 +51,11 @@ describe("debitCreditMills", () => {
     expect(await debitCreditMills(T, 5)).toMatchObject({ ok: false, reason: "insufficient", balanceMills: 0 });
   });
 
-  it("a whole-cent price keeps the ordinary cent path", async () => {
-    kv.kvDecrBy.mockResolvedValueOnce(97);
+  it("a whole-cent price goes through the same script, so an owed remainder is honoured", async () => {
+    kv.kvEval.mockResolvedValueOnce([3, 97, 0]);
     expect(await debitCreditMills(T, 30)).toEqual({ ok: true, remainingMills: 970 });
-    expect(kv.kvDecrBy).toHaveBeenCalledWith(expect.any(String), 3);
-    expect(kv.kvEval).not.toHaveBeenCalled();
+    expect(kv.kvEval).toHaveBeenCalledWith(DEBIT_MILLS_LUA, expect.any(Array), [30]);
+    expect(kv.kvDecrBy).not.toHaveBeenCalled();
   });
 
   it("a bad token never reaches KV", async () => {

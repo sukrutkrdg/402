@@ -300,6 +300,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
    */
   const presented = req.headers.get("x-credit-token") || "";
   const prepaid = isCreditTokenShape(presented);
+  // Rotating made-up tokens would give each request its own prepaid ceiling.
+  // An IP that keeps presenting unknown tokens is refused here, before any KV.
+  const blockedUntil = badTokenBlock.get(clientIp(req)) ?? 0;
+  if (prepaid && blockedUntil > Date.now()) {
+    return NextResponse.json(
+      { error: "Too many unknown credit tokens — retry later" },
+      { status: 429, headers: { "retry-after": String(Math.ceil((blockedUntil - Date.now()) / 1000)) } },
+    );
+  }
   const rl = prepaid
     ? await rateLimitKv(`x402:ck:${creditHandle(presented)}`, PREPAID_PER_MINUTE, 60)
     : await rateLimitKv(`x402:${clientIp(req)}`, 60, 60);
@@ -352,6 +361,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // free call on the race. An underfunded/unknown token is refunded inside
     // debitCredit and reported here.
     const debit = await debitCreditMills(creditToken, mills);
+    if (!debit.ok && debit.reason === "bad_token") {
+      // Unknown token: counted per IP, so rotating tokens meets the same wall as no token.
+      const ip = clientIp(req);
+      const bad = await rateLimitKv(`x402:badck:${ip}`, BAD_TOKENS_PER_MINUTE, 60);
+      if (!bad.ok) {
+        badTokenBlock.set(ip, Date.now() + bad.retryAfterMs);
+        if (badTokenBlock.size > 5000) badTokenBlock.clear();
+      }
+    }
     if (!debit.ok) {
       // This is a price wall too — log it as a challenge so the funnel counts
       // credit-exhausted callers, not just x402 walk-aways.
@@ -810,6 +828,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     return NextResponse.json({ error: message }, { status: 503 });
   }
 }
+
+/** Unknown credit tokens an IP may present per minute before it is blocked for the rest of the window. */
+const BAD_TOKENS_PER_MINUTE = 20;
+/** Per instance, so a blocked IP costs no KV command at all. */
+const badTokenBlock = new Map<string, number>();
 
 /**
  * Finish a credit purchase once withX402 has answered. Settled: book the sale
