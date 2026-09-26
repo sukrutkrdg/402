@@ -22,6 +22,8 @@ import { nearTransferPreflight } from "./near-transfer-preflight";
 import { nearSwapQuote } from "./near-swap-quote";
 import { nearPreTradeGate } from "./near-pre-trade-gate";
 import { nearPortfolio } from "./near-portfolio";
+import { nearWalletActivity } from "./near-wallet-activity";
+import { nearTokenHolders } from "./near-token-holders";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1376,6 +1378,36 @@ export const SERVICES: ServiceDef[] = [
     category: "NEAR",
     params: [{ name: "account", label: "NEAR account", placeholder: "alice.near", required: true }],
     handler: nearPortfolio,
+  },
+  {
+    id: "near-wallet-activity",
+    name: "NEAR Wallet Activity",
+    tagline: "What has this NEAR account been doing?",
+    description:
+      "Recent history of a NEAR account, summed up: transactions signed and received, failures, NEAR sent and received, token flows in and out per token, the contracts it calls most, who it deals with most, and signals (inactive, failing, receive-only). One-line summary plus the last 10 transactions. Reads the NearBlocks indexer; limit sets how many recent transactions (default 25).",
+    price: "$0.02",
+    icon: "Ⓝ",
+    category: "NEAR",
+    params: [
+      { name: "account", label: "NEAR account", placeholder: "alice.near", required: true },
+      { name: "limit", label: "Recent transactions to read (optional, 5-50)", placeholder: "25" },
+    ],
+    handler: nearWalletActivity,
+  },
+  {
+    id: "near-token-holders",
+    name: "NEAR Token Holders",
+    tagline: "Who holds this NEAR token, and how concentrated is it?",
+    description:
+      "Top holders of a NEP-141 token on NEAR with each one's share of total supply, labelled as the token itself, a contract (pool, bridge, custodian) or a plain account, so a pool is not mistaken for a whale. Holder count, top-1 and top-10 shares, and a LOW / MEDIUM / HIGH concentration over plain accounts. Supply from the NEAR RPC, holders from NearBlocks.",
+    price: "$0.02",
+    icon: "Ⓝ",
+    category: "NEAR",
+    params: [
+      { name: "token", label: "NEAR token contract account", placeholder: "usdt.tether-token.near", required: true },
+      { name: "top", label: "Holders to list (optional, 1-25)", placeholder: "10" },
+    ],
+    handler: nearTokenHolders,
   },
   {
     id: "encode-selector",

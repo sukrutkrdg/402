@@ -44,12 +44,14 @@ const PAIRS: Record<string, string[]> = {
   "b20-safety": ["b20-gate", "b20-policy-watch"],
   // NEAR: a caller asking about a NEAR token or account wants the next NEAR
   // step, not the Base toolkit that shares its category.
-  "near-token-safety": ["near-pre-trade-gate", "near-transfer-preflight", "near-swap-quote"],
+  "near-token-safety": ["near-pre-trade-gate", "near-token-holders", "near-transfer-preflight"],
   "near-pre-trade-gate": ["near-swap-quote", "near-transfer-preflight", "near-portfolio"],
   "near-transfer-preflight": ["near-account", "near-token-safety", "near-swap-quote"],
   "near-swap-quote": ["near-pre-trade-gate", "near-token-safety", "near-transfer-preflight"],
-  "near-account": ["near-portfolio", "near-transfer-preflight", "near-token-safety"],
-  "near-portfolio": ["near-account", "near-pre-trade-gate", "near-swap-quote"],
+  "near-account": ["near-wallet-activity", "near-portfolio", "near-transfer-preflight"],
+  "near-portfolio": ["near-account", "near-wallet-activity", "near-pre-trade-gate"],
+  "near-wallet-activity": ["near-account", "near-portfolio", "near-transfer-preflight"],
+  "near-token-holders": ["near-pre-trade-gate", "near-token-safety", "near-swap-quote"],
 };
 
 /** NEAR-native services: suggestions stay on NEAR, and the (EVM-side) file tools are not appended. */

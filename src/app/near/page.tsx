@@ -30,6 +30,8 @@ const NEAR_ORDER = [
   "near-swap-quote",
   "near-account",
   "near-portfolio",
+  "near-wallet-activity",
+  "near-token-holders",
 ];
 
 const EXAMPLES: Record<string, string> = {
@@ -39,6 +41,8 @@ const EXAMPLES: Record<string, string> = {
   "near-swap-quote": "from=USDC&to=NEAR&amount=100",
   "near-account": "account=tether.multisafe.near",
   "near-portfolio": "account=tether.multisafe.near",
+  "near-wallet-activity": "account=tether.multisafe.near",
+  "near-token-holders": "token=usdt.tether-token.near",
 };
 
 function fmtPrice(p: number): string {
