@@ -160,6 +160,37 @@ describe("createNearOrder", () => {
   });
 });
 
+describe("NEAR-rail specifics", () => {
+  it("refuses a 64-hex implicit account with .near appended, naming the right form", async () => {
+    const hex = "ee1f134939cb9ae3f330c2c5d92cf101edeaa8464f0bb848c98f3a5912ecfdaf";
+    await expect(
+      createNearOrder({ tier: "5", originAsset: "nep141:wrap.near", refundTo: `${hex}.near` }),
+    ).rejects.toThrow(new RegExp(`use "${hex}"`));
+    expect(lastQuoteBody).toBeNull();
+    // named accounts and bare implicit accounts are fine
+    await createNearOrder({ tier: "5", originAsset: "nep141:wrap.near", refundTo: hex });
+    await createNearOrder({ tier: "5", originAsset: "nep141:wrap.near", refundTo: "alice.near" });
+  });
+
+  it("points a NEAR buyer at re-polling for recovery, and links the Base settlement", async () => {
+    const o = await order();
+    statusReply = {
+      status: "SUCCESS",
+      ...matchingEcho(),
+      swapDetails: { destinationChainTxHashes: [{ hash: "0xabc", explorerUrl: "" }] },
+    };
+    const r = (await checkNearOrder(o.orderId, o.orderSecret)) as {
+      security: string;
+      settlement: { hash: string; explorerUrl: string }[];
+    };
+    expect(r.security).toMatch(/x-order-secret/);
+    expect(r.security).not.toMatch(/recover/);
+    expect(r.settlement).toEqual([{ hash: "0xabc", explorerUrl: "https://basescan.org/tx/0xabc" }]);
+    const again = (await checkNearOrder(o.orderId, o.orderSecret)) as { security: string };
+    expect(again.security).toMatch(/x-order-secret/);
+  });
+});
+
 describe("ASSET_RE", () => {
   // Real ids from 1Click's /v0/tokens (2026-09-26). The first version of the
   // pattern had no underscore and no `1cs_v1` prefix, so it turned away every
