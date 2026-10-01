@@ -45,7 +45,14 @@ import "server-only";
 import { createPublicClient, getAddress } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
-import { TOKENIZED_STOCKS, WAD, type TokenizedStock } from "./tokenized-stocks";
+import {
+  TOKENIZED_STOCKS,
+  WAD,
+  readScheduledMultiplier,
+  describeScheduledMultiplier,
+  type TokenizedStock,
+  type ScheduledMultiplier,
+} from "./tokenized-stocks";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
@@ -90,6 +97,12 @@ export interface StockPosition {
   entitledShares: number;
   /** True when the two differ, i.e. a corporate action has been applied. */
   adjusted: boolean;
+  /**
+   * A pending ERC-8056 multiplier change on THIS holding (Cobalt), read before it
+   * takes effect — a split/accrual queued for a future block that will rescale
+   * entitledShares when it lands. Present only when one is actually scheduled.
+   */
+  scheduledChange?: { pending: string; effectiveAt: number | null; effectiveAtIso: string | null; pendingRatio: number | null; summary: string | null };
 }
 
 export async function stockPosition(params: Record<string, string>) {
@@ -134,6 +147,16 @@ export async function stockPosition(params: Record<string, string>) {
       continue;
     }
 
+    // Cobalt: a change queued for this holding, read before it rescales the
+    // entitlement. A failed read degrades to "none" inside readScheduledMultiplier
+    // and simply omits the field — it never invents a pending split.
+    let scheduled: ScheduledMultiplier = { pending: null, effectiveAt: null, status: "none" };
+    try {
+      scheduled = await readScheduledMultiplier(s.token, mult);
+    } catch {
+      /* leave as none — a missing schedule read must not block the position */
+    }
+
     const entitledRaw = entitledRawFrom(raw, mult);
     positions.push({
       symbol: s.sym,
@@ -145,11 +168,23 @@ export async function stockPosition(params: Record<string, string>) {
       multiplierRatio: Number((mult * 1_000_000n) / WAD) / 1_000_000,
       entitledShares: toShares(entitledRaw),
       adjusted: mult !== WAD,
+      ...(scheduled.status === "scheduled"
+        ? {
+            scheduledChange: {
+              pending: scheduled.pending as string,
+              effectiveAt: scheduled.effectiveAt,
+              effectiveAtIso: scheduled.effectiveAt ? new Date(scheduled.effectiveAt * 1000).toISOString() : null,
+              pendingRatio: scheduled.pending ? Number((BigInt(scheduled.pending) * 1_000_000n) / WAD) / 1_000_000 : null,
+              summary: describeScheduledMultiplier(mult.toString(), scheduled),
+            },
+          }
+        : {}),
     });
     await sleep(120);
   }
 
   const adjusted = positions.filter((p) => p.adjusted);
+  const queued = positions.filter((p) => p.scheduledChange);
   const degraded = unreadable.length > 0;
 
   return {
@@ -161,6 +196,12 @@ export async function stockPosition(params: Record<string, string>) {
     // be read as an inventory.
     ...(degraded ? { degraded: true, unreadable } : { degraded: false }),
     adjustedCount: adjusted.length,
+    ...(queued.length
+      ? {
+          scheduledCount: queued.length,
+          scheduledChanges: queued.map((p) => ({ symbol: p.symbol, ...p.scheduledChange })),
+        }
+      : {}),
     /**
      * What a caller must not assume is included. This is published on every
      * response, not only when something is missing, because a total that looks
@@ -179,9 +220,12 @@ export async function stockPosition(params: Record<string, string>) {
         "Wallet-held balances only. If this wallet has supplied these tokens to a pool, a vault or a lending market, that exposure is NOT in the figures above and the totals are a floor, not a position.",
     },
     finding:
-      adjusted.length > 0
+      (adjusted.length > 0
         ? `${adjusted.length} of ${positions.length} holding(s) carry a multiplier other than 1.0, so balanceOf under- or over-states the entitlement. Use entitledShares.`
-        : "Every multiplier reads 1.0, so reportedShares and entitledShares agree today. They stop agreeing the moment a corporate action fires, and balanceOf will not move when it does.",
+        : "Every multiplier reads 1.0, so reportedShares and entitledShares agree today. They stop agreeing the moment a corporate action fires, and balanceOf will not move when it does.") +
+      (queued.length
+        ? ` ${queued.length} holding(s) have a corporate action SCHEDULED (Cobalt ERC-8056): ${queued.map((p) => `${p.symbol} ${p.scheduledChange?.summary ?? "pending"}`).join("; ")} — read before it lands, so entitledShares will move then.`
+        : ""),
     note:
       "B20 Asset tokens do NOT apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0 → 2.0 and holder balances read identically before and after. Coinbase settles splits and dividend adjustments on tokenized equities through that multiplier, so entitledShares is the share count and rawBalance is what an unadjusted integrator would show. Not financial advice.",
     checkedAt: new Date().toISOString(),

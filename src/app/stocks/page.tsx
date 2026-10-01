@@ -154,6 +154,18 @@ export default async function StocksPage() {
         )}
 
         <p className="text-xs leading-relaxed text-gray-400">{board.finding}</p>
+
+        {/* Cobalt (ERC-8056) made a pending multiplier change readable before it
+            lands — newUIMultiplier()/effectiveAt(). When one is queued it shows
+            here, caught while it is still cancelable rather than after the fact. */}
+        {board.rows.some((r) => r.scheduled.status === "scheduled") ? (
+          <div className="card flex flex-col gap-1 border-amber-500/40 bg-amber-500/10 p-4">
+            <div className="text-sm font-semibold text-amber-200">⏳ Scheduled corporate action — read before it lands</div>
+            <p className="text-xs leading-relaxed text-gray-300">{board.scheduledActions}</p>
+          </div>
+        ) : (
+          <p className="text-xs leading-relaxed text-gray-500">{board.scheduledActions}</p>
+        )}
       </section>
 
       <section className="card flex flex-col gap-3 border-base-blue/30 bg-base-blue/10 p-5">

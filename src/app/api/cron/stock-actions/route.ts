@@ -67,7 +67,15 @@ import { safeEqual } from "@/lib/secure";
 import { kvGet, kvSet } from "@/lib/kv";
 import { alertOwner } from "@/lib/alert-owner";
 import { cdpSql } from "@/lib/covalent";
-import { readMultipliers, describeMultiplierChange, TOKENIZED_STOCKS, readTransferPolicy } from "@/lib/tokenized-stocks";
+import {
+  readMultipliers,
+  describeMultiplierChange,
+  TOKENIZED_STOCKS,
+  readTransferPolicy,
+  readScheduledMultiplier,
+  describeScheduledMultiplier,
+  type ScheduledMultiplier,
+} from "@/lib/tokenized-stocks";
 import { recognisedEquityIssuance } from "@/lib/b20-safety";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +85,8 @@ export const maxDuration = 60;
 const KEY = (sym: string) => `stock:mult:${sym}`;
 /** How many 8-decimal B20s existed last time we looked — roster drift detector. */
 const ROSTER_KEY = "stock:roster:candidates";
+/** Last-seen ERC-8056 schedule fingerprint per stock — `${pending}@${effectiveAt}` or "none". */
+const SCHED_KEY = (sym: string) => `stock:sched:${sym}`;
 
 interface Change {
   sym: string;
@@ -84,8 +94,83 @@ interface Change {
   from: string;
   to: string;
   effect: string;
+  /**
+   * "scheduled" when we had read this exact pending value via ERC-8056 before it
+   * landed; "emergency" when the move appeared with no schedule on record. This
+   * is the classification the watcher deferred until Cobalt made a schedule
+   * readable — now decided from evidence (our own prior read), not guessed.
+   */
+  kind: "scheduled" | "emergency";
   txHash?: string;
   at?: string;
+}
+
+/** A schedule fingerprint that survives a KV round-trip and compares by value. */
+function schedFingerprint(sm: ScheduledMultiplier): string {
+  return sm.status === "scheduled" && sm.pending !== null && sm.effectiveAt !== null
+    ? `${sm.pending}@${sm.effectiveAt}`
+    : "none";
+}
+
+/**
+ * Watch the ERC-8056 scheduled-multiplier surface Cobalt added.
+ *
+ * Two forward-looking facts the plain multiplier watch cannot give, because it
+ * only sees a value AFTER it moves:
+ *
+ *   - newly queued  — a split/accrual is scheduled for a future block and is
+ *     still cancelable. Announcing it is the option this whole cron exists to
+ *     hold, moved earlier in time: nobody has to wait for the move to land.
+ *   - cancelled     — a schedule that was on record is gone AND the multiplier
+ *     did not move to it, so it was pulled rather than applied. ("Applied" is
+ *     left to the multiplier watch, which reports the actual move.)
+ *
+ * Same discipline as the rest of this file: an "unknown" read (the selectors
+ * revert on a pre-Cobalt / non-Asset token, or the RPC failed) is counted and
+ * skipped, never written as a baseline and never alerted on; first sight seeds
+ * silently so a deploy does not page thirteen times.
+ */
+async function scheduleWatch(
+  schedules: Map<string, ScheduledMultiplier>,
+  multBySym: Map<string, string>,
+): Promise<{ newly: string[]; cancelled: string[]; seeded: number; unread: number }> {
+  const newly: string[] = [];
+  const cancelled: string[] = [];
+  let seeded = 0;
+  let unread = 0;
+
+  for (const [sym, sm] of schedules) {
+    if (sm.status === "unknown") {
+      unread++;
+      continue; // unknown ≠ "nothing scheduled" — leave the baseline, say nothing
+    }
+    const now = schedFingerprint(sm);
+    const prev = await kvGet(SCHED_KEY(sym));
+    if (prev === null) {
+      await kvSet(SCHED_KEY(sym), now);
+      seeded++;
+      continue;
+    }
+    if (prev === now) continue;
+
+    if (now !== "none") {
+      // Newly scheduled or rescheduled — pre-announce it.
+      const desc = describeScheduledMultiplier(multBySym.get(sym) ?? null, sm);
+      newly.push(`${sym} ${desc ?? `has a multiplier change queued (${now})`}`);
+    } else {
+      // Was scheduled, now gone. Took effect (multiplier reached the pending
+      // value) → the multiplier watch owns it, say nothing. Otherwise cancelled.
+      const pendingP = prev.split("@")[0];
+      if (multBySym.get(sym) !== pendingP) {
+        cancelled.push(
+          `${sym}: a scheduled multiplier change (${prev}) is no longer queued and the multiplier did not move to it — it was CANCELLED before taking effect.`,
+        );
+      }
+    }
+    await kvSet(SCHED_KEY(sym), now);
+  }
+
+  return { newly, cancelled, seeded, unread };
 }
 
 /**
@@ -242,6 +327,23 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Current multiplier per stock, and the ERC-8056 schedule read beside it. The
+  // schedule pass runs here, before the change loop, so a detected move can be
+  // classified against the schedule we recorded LAST run (read below from KV)
+  // while scheduleWatch persists this run's schedule afterwards.
+  const multBySym = new Map<string, string>();
+  for (const r of reads) if (r.multiplier !== null) multBySym.set(r.sym, r.multiplier);
+
+  const schedules = new Map<string, ScheduledMultiplier>();
+  for (const r of reads) {
+    if (r.multiplier === null) continue; // no current value to reject a no-op schedule against
+    try {
+      schedules.set(r.sym, await readScheduledMultiplier(r.token, BigInt(r.multiplier)));
+    } catch {
+      schedules.set(r.sym, { pending: null, effectiveAt: null, status: "unknown" });
+    }
+  }
+
   const changes: Change[] = [];
   let seeded = 0;
 
@@ -263,13 +365,20 @@ export async function GET(req: NextRequest) {
     } catch {
       effect = "changed (previous value unparseable)";
     }
+    // Classify from evidence, not a guess: this move is SCHEDULED iff last run we
+    // had recorded a pending ERC-8056 value equal to where it just landed.
+    // Otherwise it appeared with no schedule on record — an emergency update.
+    const prevSched = await kvGet(SCHED_KEY(r.sym));
+    const kind: "scheduled" | "emergency" =
+      prevSched && prevSched !== "none" && prevSched.split("@")[0] === r.multiplier ? "scheduled" : "emergency";
     const evidence = await findEvidence(r.token);
-    changes.push({ sym: r.sym, token: r.token, from: prev, to: r.multiplier, effect, ...evidence });
+    changes.push({ sym: r.sym, token: r.token, from: prev, to: r.multiplier, effect, kind, ...evidence });
     await kvSet(KEY(r.sym), r.multiplier);
   }
 
   const drift = await rosterDrift().catch(() => null);
   const policy = await policyWatch().catch(() => ({ changes: [], seeded: 0, unread: 0 }));
+  const schedule = await scheduleWatch(schedules, multBySym).catch(() => ({ newly: [], cancelled: [], seeded: 0, unread: 0 }));
 
   if (policy.changes.length > 0) {
     await alertOwner(
@@ -278,6 +387,18 @@ export async function GET(req: NextRequest) {
         `Until now the registry authorised an address with no relationship to the issuer — never KYC'd, never a holder — so these tokens transferred freely and anything could hold them. ` +
         `If that has tightened, every pool, vault, lending market and agent position built on the permissive behaviour is affected, and nothing about the token address or its ABI changed to signal it. ` +
         `Check /stocks and the board JSON before telling anyone these still move freely.`,
+    );
+  }
+
+  // Forward-looking: a split/accrual queued for a future block, caught while it
+  // is still pending and cancelable — the first time this watcher can speak
+  // before a move instead of after it (Cobalt ERC-8056).
+  if (schedule.newly.length > 0 || schedule.cancelled.length > 0) {
+    await alertOwner(
+      "stock-schedule",
+      `SCHEDULED multiplier change on Base's tokenized equities (ERC-8056, read before it lands).\n\n` +
+        [...schedule.newly.map((s) => `QUEUED — ${s}`), ...schedule.cancelled].join("\n\n") +
+        `\n\nA multiplier is a unit change, not a price change: when it takes effect, positions are redenominated and every cached balance for these tokens goes stale at once — and every large holder is a contract. This is the pending read, so there is time to prepare before the effective block.`,
     );
   }
 
@@ -294,6 +415,13 @@ export async function GET(req: NextRequest) {
         ...(policy.unread ? { unread: policy.unread } : {}),
         changes: policy.changes,
       },
+      schedule: {
+        watched: schedules.size - schedule.unread,
+        ...(schedule.seeded ? { seeded: schedule.seeded } : {}),
+        ...(schedule.unread ? { unread: schedule.unread } : {}),
+        newly: schedule.newly,
+        cancelled: schedule.cancelled,
+      },
       // Stated plainly so the value is legible even on the quiet days, which so
       // far is all of them.
       note:
@@ -301,23 +429,35 @@ export async function GET(req: NextRequest) {
         // 2026-09-14. A quiet run means nothing moved SINCE the last one, which
         // is all this comparison can honestly say.
         "No multiplier moved since the last run." +
-        (policy.changes.length === 0 ? " Transfer policy unchanged: an unrelated address is still authorised to send and receive." : ""),
+        (policy.changes.length === 0 ? " Transfer policy unchanged: an unrelated address is still authorised to send and receive." : "") +
+        (schedule.newly.length > 0
+          ? ` But a change is QUEUED ahead of time (ERC-8056): ${schedule.newly.join("; ")}.`
+          : schedule.cancelled.length > 0
+            ? ` A previously queued change was cancelled: ${schedule.cancelled.join("; ")}.`
+            : ""),
       checkedAt: new Date().toISOString(),
     });
   }
 
   const lines = changes.map(
     (c) =>
-      `${c.sym} multiplier ${c.from} → ${c.to}: ${c.effect}.` +
+      `${c.sym} multiplier ${c.from} → ${c.to} [${c.kind.toUpperCase()}]: ${c.effect}.` +
       (c.txHash ? ` tx ${c.txHash}${c.at ? ` at ${c.at}` : ""}` : " (no MultiplierUpdated row found yet — the indexer may lag the RPC)"),
   );
 
+  // The classification the watcher deferred is now decided per change: SCHEDULED
+  // if we had read its pending ERC-8056 value beforehand, EMERGENCY if it landed
+  // with none on record. An emergency move on an equity is the louder finding.
+  const anyEmergency = changes.some((c) => c.kind === "emergency");
+
   const alert = await alertOwner(
     "stock-actions",
-    `FIRST CORPORATE ACTION on Base's tokenized equities.\n\n${lines.join("\n\n")}\n\n` +
+    `CORPORATE ACTION on Base's tokenized equities.\n\n${lines.join("\n\n")}\n\n` +
       `A multiplier is a unit change, not a price change: positions are redenominated, not revalued. ` +
       `Anything holding a cached balance for these tokens is now wrong, and every large holder is a contract. ` +
-      `This is also the sample that was missing — the scheduled-vs-emergency classification can be written against it now.`,
+      (anyEmergency
+        ? `At least one of these is an EMERGENCY update — it landed with no ERC-8056 schedule read beforehand, so there was no window to prepare.`
+        : `Each was SCHEDULED: its pending value was read before it took effect, so this is the anticipated landing of a queued change.`),
   );
 
   return NextResponse.json({
@@ -327,6 +467,11 @@ export async function GET(req: NextRequest) {
     ...(unreadable.length ? { unreadableCount: unreadable.length } : {}),
     ...(drift ? { rosterDrift: drift } : {}),
     policy: { changes: policy.changes, ...(policy.unread ? { unread: policy.unread } : {}) },
+    schedule: {
+      ...(schedule.unread ? { unread: schedule.unread } : {}),
+      newly: schedule.newly,
+      cancelled: schedule.cancelled,
+    },
     alert,
     checkedAt: new Date().toISOString(),
   });

@@ -55,6 +55,11 @@ export const ALERT_KINDS = [
   // moving at all — and it breaks integrations built on today's permissiveness
   // without changing anything about the token itself.
   "stock-policy",
+  // A multiplier change read from the ERC-8056 schedule BEFORE it takes effect
+  // (Cobalt). Separate from stock-actions because it is forward-looking: the
+  // change is still pending and cancelable, so the response is to prepare rather
+  // than to react to a move that has already redenominated every position.
+  "stock-schedule",
   // The edge refusing library clients, or a published hostname not reaching the
   // origin. Separate from "surfaces" because it is checked daily rather than
   // weekly, and because the fix is never in this repository.
