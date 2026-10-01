@@ -98,6 +98,155 @@ export interface MultiplierRead {
 }
 
 /**
+ * Cobalt's ERC-8056 scheduled-multiplier surface.
+ *
+ * The announcement the watcher below was built around deferred one thing: it
+ * could see a multiplier MOVE but not tell a scheduled corporate action from an
+ * emergency one, because no sample and no readable schedule existed. Cobalt
+ * (live 2026-10-01) aligns the B20 Asset multiplier with ERC-8056 and adds the
+ * part that was missing — a PENDING change can now be read before it lands:
+ *
+ *   newUIMultiplier()  – the multiplier that is scheduled but not yet effective
+ *   effectiveAt()      – the unix second at which it becomes effective
+ *
+ * This closes the gap in both directions. We can now ANNOUNCE a split before it
+ * happens (effectiveAt in the future ⇒ a cancelable, scheduled change is queued),
+ * and when a move does land we can call it SCHEDULED if we had read its pending
+ * value beforehand, or EMERGENCY if it appeared with no prior schedule.
+ *
+ * Same discipline as everything else here: a revert on these selectors is an
+ * ANSWER — the token has not adopted the ERC-8056 scheduled surface (a pre-Cobalt
+ * or non-Asset token) — not a failure, and it maps to "none"/"unknown" so it can
+ * never manufacture a scheduled-action alert. A value only counts as scheduled
+ * when effectiveAt is set, in the future, and newUIMultiplier actually differs.
+ */
+const SCHEDULED_ABI = [
+  { type: "function", name: "newUIMultiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "effectiveAt", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+] as const;
+
+export interface ScheduledMultiplier {
+  /** Pending multiplier as a decimal WAD string, or null when none/unread. */
+  pending: string | null;
+  /** Unix seconds the pending multiplier becomes effective, or null. */
+  effectiveAt: number | null;
+  /**
+   * "none"      – nothing scheduled (effectiveAt=0, or a pending equal to current).
+   * "scheduled" – a different multiplier is queued for a future time (cancelable).
+   * "unknown"   – the ERC-8056 scheduled selectors could not be read (reverts on a
+   *               pre-Cobalt / non-Asset token, or an RPC failure). Never alerted on.
+   */
+  status: "none" | "scheduled" | "unknown";
+}
+
+/**
+ * The scheduled/emergency distinction, isolated so it can be tested without a
+ * chain and so a future edit has one place to get it wrong rather than three.
+ *
+ * `pending`/`effectiveAt` are the raw ERC-8056 reads (null = the selector
+ * reverted or the RPC failed); `current` is the live multiplier(); `nowSec` is
+ * the wall clock. A scheduled change is only asserted when effectiveAt is set,
+ * still in the future, and the pending value genuinely differs from current —
+ * so a zeroed slot, a stale past schedule, or a no-op can never read as queued.
+ */
+export function classifyScheduledMultiplier(
+  pending: bigint | null,
+  effectiveAt: bigint | null,
+  current: bigint | null,
+  nowSec: number,
+): "none" | "scheduled" | "unknown" {
+  if (effectiveAt === null) return "unknown"; // couldn't read the schedule leg
+  if (effectiveAt === 0n) return "none"; // slot unset — nothing queued
+  if (Number(effectiveAt) <= nowSec) return "none"; // already effective/stale — the plain multiplier watch owns it
+  if (pending === null) return "unknown"; // time is set but we couldn't read the value
+  if (current !== null && pending === current) return "none"; // a no-op schedule
+  return "scheduled";
+}
+
+/**
+ * Read a token's pending ERC-8056 multiplier change, if any. `current` is the
+ * live multiplier() the caller already read, used to reject no-op schedules.
+ */
+export async function readScheduledMultiplier(
+  token: string,
+  current: bigint | null,
+): Promise<ScheduledMultiplier> {
+  const addr = getAddress(token);
+  const read = async (fn: "newUIMultiplier" | "effectiveAt") => {
+    try {
+      return (await client.readContract({ address: addr, abi: SCHEDULED_ABI, functionName: fn })) as bigint;
+    } catch {
+      return null;
+    }
+  };
+  const effectiveAt = await read("effectiveAt");
+  await new Promise((r) => setTimeout(r, 90));
+  const pending = await read("newUIMultiplier");
+  const status = classifyScheduledMultiplier(pending, effectiveAt, current, Math.floor(Date.now() / 1000));
+  return {
+    pending: status === "scheduled" && pending !== null ? pending.toString() : null,
+    effectiveAt: status === "scheduled" && effectiveAt !== null ? Number(effectiveAt) : null,
+    status,
+  };
+}
+
+/**
+ * Describe a queued change the way an operator needs to hear it: the unit effect
+ * (reusing describeMultiplierChange) plus WHEN it lands, stated as a date so a
+ * raw unix second never ends up in an alert.
+ */
+export function describeScheduledMultiplier(current: string | null, s: ScheduledMultiplier): string | null {
+  if (s.status !== "scheduled" || s.pending === null || s.effectiveAt === null) return null;
+  const when = new Date(s.effectiveAt * 1000).toISOString();
+  let effect = "a multiplier change";
+  try {
+    if (current !== null) effect = describeMultiplierChange(BigInt(current), BigInt(s.pending));
+  } catch {
+    /* fall back to the generic phrasing */
+  }
+  return `scheduled for ${when}: ${effect}. It is pending and cancelable until then; raw balances and transfers are unaffected.`;
+}
+
+/**
+ * What a change between two schedule fingerprints means — isolated and pure so a
+ * watcher can act and a test can pin it without a chain or KV.
+ *
+ * A fingerprint is `${pending}@${effectiveAt}` (both decimal) or "none". The one
+ * thing this exists to get right: when a schedule DISAPPEARS, that is "cancelled"
+ * ONLY if it was pulled before its effective time. Once effectiveAt has passed,
+ * the schedule clears because it APPLIED (or is about to, and this read simply
+ * beat the move) — classifyScheduledMultiplier flips to "none" the instant the
+ * time passes, so keying "cancelled" off the disappearance alone fires a false
+ * alert in exactly that window. The multiplier watch reports the real move, so
+ * an applied/ambiguous clear stays silent here.
+ *
+ *   "seed"       caller's first sight (prev unknown) — handled by the caller
+ *   "unchanged"  identical fingerprint
+ *   "scheduled"  newly queued or rescheduled (now points at a future change)
+ *   "cancelled"  a future schedule was removed BEFORE its effective time
+ *   "applied"    a schedule cleared at/after its time (the move is the event)
+ */
+export function scheduleTransition(
+  prev: string,
+  now: string,
+  currentMultiplier: string | undefined,
+  nowSec: number,
+): "unchanged" | "scheduled" | "cancelled" | "applied" {
+  if (prev === now) return "unchanged";
+  if (now !== "none") return "scheduled";
+  // now === "none": the schedule is gone. Took effect, or was cancelled.
+  const [pendingP, effAtStr] = prev.split("@");
+  // The multiplier already reads the pending value → it applied, unambiguously.
+  if (currentMultiplier !== undefined && currentMultiplier === pendingP) return "applied";
+  const prevEffAt = Number(effAtStr);
+  // Removed while still in the future → a genuine cancellation.
+  if (Number.isFinite(prevEffAt) && prevEffAt > nowSec) return "cancelled";
+  // Effective time already passed (or unparseable): treat as applied/lag, never
+  // a false cancel. The multiplier watch owns the actual move.
+  return "applied";
+}
+
+/**
  * Read multiplier() for every stock, sequentially.
  *
  * Base's public RPC rate-limits parallel eth_calls, and this runs unattended, so
@@ -251,6 +400,8 @@ export interface StockBoardRow {
   issued: boolean | null;
   /** Who may send and receive this token today — see readTransferPolicy. */
   policy: TransferPolicyRead;
+  /** A pending ERC-8056 multiplier change, if one is queued (Cobalt). */
+  scheduled: ScheduledMultiplier;
 }
 
 /**
@@ -270,6 +421,7 @@ export async function readStockBoard(): Promise<{
   degraded: boolean;
   transferPolicy: string;
   finding: string;
+  scheduledActions: string;
   note: string;
 }> {
   const rows: StockBoardRow[] = [];
@@ -290,6 +442,8 @@ export async function readStockBoard(): Promise<{
     await new Promise((r) => setTimeout(r, 90));
     const policy = await readTransferPolicy(addr);
     await new Promise((r) => setTimeout(r, 90));
+    const scheduled = await readScheduledMultiplier(addr, mult);
+    await new Promise((r) => setTimeout(r, 90));
 
     rows.push({
       sym: s.sym,
@@ -302,6 +456,7 @@ export async function readStockBoard(): Promise<{
       transferPaused: paused,
       issued: supply === null ? null : supply > 0n,
       policy,
+      scheduled,
     });
   }
 
@@ -337,6 +492,18 @@ export async function readStockBoard(): Promise<{
           // 2026-09-14 and this sentence would have gone on denying it. All this
           // branch can say is what it just read.
           "Every multiplier currently reads 1.0. That is a statement about right now, not a history: GOOGLc moved on 2026-09-14 and its balanceOf did not, which is what happens to a naive reader every time one of these moves.",
+    // Pending ERC-8056 changes, read before they land (Cobalt). Stated only when
+    // one is actually queued — a revert on the scheduled selectors (pre-Cobalt /
+    // non-Asset) reads as "none" and never fabricates a forward-looking claim.
+    scheduledActions: (() => {
+      const queued = rows.filter((r) => r.scheduled.status === "scheduled");
+      if (queued.length === 0) {
+        return "No scheduled multiplier change is queued on any of these right now. Cobalt makes a pending split/accrual readable (newUIMultiplier/effectiveAt) before it takes effect; this says there is nothing waiting as of this read.";
+      }
+      return queued
+        .map((r) => `${r.sym} (${r.ticker}): ${describeScheduledMultiplier(r.multiplier, r.scheduled)}`)
+        .join(" ");
+    })(),
     note:
       "B20 Asset tokens do not apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0 to 2.0 and holder balances read identically before and after. This board is free; per-wallet answers are the paid stock-position endpoint. Not financial advice.",
   };

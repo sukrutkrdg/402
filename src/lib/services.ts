@@ -28,6 +28,7 @@ import { nearSwap, nearSwapStatus } from "./near-swap";
 import { nearStakingYields } from "./near-staking-yields";
 import { nearLendingHealth } from "./near-lending-health";
 import { baseSwap } from "./base-swap";
+import { baseSwapValidity } from "./base-swap-validity";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1070,6 +1071,33 @@ export const SERVICES: ServiceDef[] = [
       { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
     ],
     handler: baseSwap,
+  },
+  {
+    id: "base-swap-validity",
+    name: "Base Swap — Conditional",
+    tagline: "A swap that lands only when your conditions hold (Cobalt validity tx)",
+    description:
+      "The base-swap 0x trade wrapped in a Cobalt validity transaction: Base holds your signed tx dormant until your conditions hold, then includes it — a good-till-block/conditional order, no limit-order contract, nobody holding the trade. We never hold funds or keys; you sign and submit to Base's sequencer. Conditions: beforeBlock (a deadline), fromBlock, flashblockIndex, minNativeBalanceWei, or a caller-supplied storage predicate for price. At least one required.",
+    price: "$0.02",
+    icon: "⏱️",
+    category: "Onchain",
+    params: [
+      { name: "sell", label: "Token you sell", placeholder: "USDC", required: true },
+      { name: "buy", label: "Token you buy", placeholder: "ETH", required: true },
+      { name: "amount", label: "Amount you sell", placeholder: "100", required: true },
+      { name: "taker", label: "Your wallet (signs the swap)", placeholder: "0x…", required: true },
+      { name: "beforeBlock", label: "Deadline: before this block (recommended)", placeholder: "e.g. 1157000" },
+      { name: "fromBlock", label: "Earliest block (optional)", placeholder: "e.g. 1156000" },
+      { name: "flashblockIndex", label: "Flashblock index (optional)", placeholder: "0" },
+      { name: "minNativeBalanceWei", label: "Min taker ETH balance in wei (optional)", placeholder: "0x…" },
+      { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
+      { name: "storageAddress", label: "Advanced: pool/token for a storage condition", placeholder: "0x…" },
+      { name: "storageSlot", label: "Advanced: storage slot (hex)", placeholder: "0x…" },
+      { name: "storageOp", label: "Advanced: operator (< <= = != > >=)", placeholder: ">=" },
+      { name: "storageValue", label: "Advanced: compare value (hex)", placeholder: "0x…" },
+      { name: "storageMask", label: "Advanced: mask (hex, optional)", placeholder: "0x…" },
+    ],
+    handler: baseSwapValidity,
   },
   {
     id: "swap-route",
