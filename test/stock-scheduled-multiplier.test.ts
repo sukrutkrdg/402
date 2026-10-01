@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { classifyScheduledMultiplier, describeScheduledMultiplier } from "@/lib/tokenized-stocks";
+import { classifyScheduledMultiplier, describeScheduledMultiplier, scheduleTransition } from "@/lib/tokenized-stocks";
 
 const WAD = 10n ** 18n;
 const NOW = 1_800_000_000; // a fixed wall clock for the tests
@@ -46,6 +46,16 @@ describe("ERC-8056 scheduled multiplier classification", () => {
     expect(classifyScheduledMultiplier(2n * WAD, FUTURE, WAD, NOW)).toBe("scheduled");
   });
 
+  it("effectiveAt exactly equal to now is already effective, not pending (the <= boundary)", () => {
+    expect(classifyScheduledMultiplier(2n * WAD, BigInt(NOW), WAD, NOW)).toBe("none");
+  });
+
+  it("a future change is scheduled even when the current multiplier could not be read", () => {
+    // current=null must NOT be swallowed as a no-op: the conjunct `current !== null`
+    // is load-bearing, or an unreadable current would hide a real scheduled split.
+    expect(classifyScheduledMultiplier(2n * WAD, FUTURE, null, NOW)).toBe("scheduled");
+  });
+
   it("describes only a genuinely scheduled change, and says when and what", () => {
     const desc = describeScheduledMultiplier(WAD.toString(), {
       pending: (2n * WAD).toString(),
@@ -60,5 +70,33 @@ describe("ERC-8056 scheduled multiplier classification", () => {
   it("returns null for anything not scheduled, so a caller cannot print a non-event", () => {
     expect(describeScheduledMultiplier(WAD.toString(), { pending: null, effectiveAt: null, status: "none" })).toBeNull();
     expect(describeScheduledMultiplier(WAD.toString(), { pending: null, effectiveAt: null, status: "unknown" })).toBeNull();
+  });
+});
+
+describe("schedule transition (applied vs cancelled)", () => {
+  // Fingerprints are `${pending}@${effectiveAt}` (decimal) or "none".
+  const future = `${2n * WAD}@${NOW + 86_400}`;
+  const past = `${2n * WAD}@${NOW - 86_400}`;
+
+  it("an identical fingerprint is unchanged", () => {
+    expect(scheduleTransition(future, future, WAD.toString(), NOW)).toBe("unchanged");
+  });
+
+  it("a fingerprint that now points at a future change is newly scheduled", () => {
+    expect(scheduleTransition("none", future, WAD.toString(), NOW)).toBe("scheduled");
+  });
+
+  it("a future schedule removed BEFORE its effective time is cancelled", () => {
+    expect(scheduleTransition(future, "none", WAD.toString(), NOW)).toBe("cancelled");
+  });
+
+  it("the bug it guards: a schedule cleared AT/AFTER its time is applied, never a false cancel", () => {
+    // effectiveAt has passed and this read beat the on-chain move (multiplier
+    // still old) — must be "applied", not "cancelled".
+    expect(scheduleTransition(past, "none", WAD.toString(), NOW)).toBe("applied");
+  });
+
+  it("a schedule whose pending value the multiplier has reached is applied", () => {
+    expect(scheduleTransition(future, "none", (2n * WAD).toString(), NOW)).toBe("applied");
   });
 });

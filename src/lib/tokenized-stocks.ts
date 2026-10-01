@@ -208,6 +208,45 @@ export function describeScheduledMultiplier(current: string | null, s: Scheduled
 }
 
 /**
+ * What a change between two schedule fingerprints means — isolated and pure so a
+ * watcher can act and a test can pin it without a chain or KV.
+ *
+ * A fingerprint is `${pending}@${effectiveAt}` (both decimal) or "none". The one
+ * thing this exists to get right: when a schedule DISAPPEARS, that is "cancelled"
+ * ONLY if it was pulled before its effective time. Once effectiveAt has passed,
+ * the schedule clears because it APPLIED (or is about to, and this read simply
+ * beat the move) — classifyScheduledMultiplier flips to "none" the instant the
+ * time passes, so keying "cancelled" off the disappearance alone fires a false
+ * alert in exactly that window. The multiplier watch reports the real move, so
+ * an applied/ambiguous clear stays silent here.
+ *
+ *   "seed"       caller's first sight (prev unknown) — handled by the caller
+ *   "unchanged"  identical fingerprint
+ *   "scheduled"  newly queued or rescheduled (now points at a future change)
+ *   "cancelled"  a future schedule was removed BEFORE its effective time
+ *   "applied"    a schedule cleared at/after its time (the move is the event)
+ */
+export function scheduleTransition(
+  prev: string,
+  now: string,
+  currentMultiplier: string | undefined,
+  nowSec: number,
+): "unchanged" | "scheduled" | "cancelled" | "applied" {
+  if (prev === now) return "unchanged";
+  if (now !== "none") return "scheduled";
+  // now === "none": the schedule is gone. Took effect, or was cancelled.
+  const [pendingP, effAtStr] = prev.split("@");
+  // The multiplier already reads the pending value → it applied, unambiguously.
+  if (currentMultiplier !== undefined && currentMultiplier === pendingP) return "applied";
+  const prevEffAt = Number(effAtStr);
+  // Removed while still in the future → a genuine cancellation.
+  if (Number.isFinite(prevEffAt) && prevEffAt > nowSec) return "cancelled";
+  // Effective time already passed (or unparseable): treat as applied/lag, never
+  // a false cancel. The multiplier watch owns the actual move.
+  return "applied";
+}
+
+/**
  * Read multiplier() for every stock, sequentially.
  *
  * Base's public RPC rate-limits parallel eth_calls, and this runs unattended, so

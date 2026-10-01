@@ -121,7 +121,7 @@ export function buildValidityPredicates(params: Record<string, string>): Predica
   // Advanced, caller-supplied storage predicate — the "price ≥ X" path, expressed
   // against a slot the caller knows. All or nothing: address+slot+op+value, with
   // an optional mask. We validate the shape; we do not interpret the slot.
-  if (params.storageAddress || params.storageSlot || params.storageValue || params.storageOp) {
+  if (params.storageAddress || params.storageSlot || params.storageValue || params.storageOp || params.storageMask) {
     const p: Record<string, string> = {
       address: asAddress(params.storageAddress, "storageAddress"),
       slot: asHexBlob(params.storageSlot, "storageSlot"),

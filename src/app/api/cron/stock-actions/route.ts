@@ -74,6 +74,7 @@ import {
   readTransferPolicy,
   readScheduledMultiplier,
   describeScheduledMultiplier,
+  scheduleTransition,
   type ScheduledMultiplier,
 } from "@/lib/tokenized-stocks";
 import { recognisedEquityIssuance } from "@/lib/b20-safety";
@@ -151,22 +152,21 @@ async function scheduleWatch(
       seeded++;
       continue;
     }
-    if (prev === now) continue;
 
-    if (now !== "none") {
-      // Newly scheduled or rescheduled — pre-announce it.
+    // scheduleTransition decides applied-vs-cancelled correctly: a schedule that
+    // cleared at/after its effective time APPLIED (the multiplier watch reports
+    // the move) and must not be mislabelled CANCELLED just because this read beat
+    // the move. Only a schedule pulled while still in the future is a cancel.
+    const transition = scheduleTransition(prev, now, multBySym.get(sym), Math.floor(Date.now() / 1000));
+    if (transition === "scheduled") {
       const desc = describeScheduledMultiplier(multBySym.get(sym) ?? null, sm);
       newly.push(`${sym} ${desc ?? `has a multiplier change queued (${now})`}`);
-    } else {
-      // Was scheduled, now gone. Took effect (multiplier reached the pending
-      // value) → the multiplier watch owns it, say nothing. Otherwise cancelled.
-      const pendingP = prev.split("@")[0];
-      if (multBySym.get(sym) !== pendingP) {
-        cancelled.push(
-          `${sym}: a scheduled multiplier change (${prev}) is no longer queued and the multiplier did not move to it — it was CANCELLED before taking effect.`,
-        );
-      }
+    } else if (transition === "cancelled") {
+      cancelled.push(
+        `${sym}: a scheduled multiplier change (${prev}) was pulled before its effective time — CANCELLED, not applied.`,
+      );
     }
+    // "applied" / "unchanged" → silent: the multiplier watch owns an actual move.
     await kvSet(SCHED_KEY(sym), now);
   }
 

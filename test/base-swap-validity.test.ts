@@ -50,8 +50,26 @@ describe("validity predicate builder", () => {
     ]);
   });
 
+  it("honours a custom operator on the flashblock index", () => {
+    expect(buildValidityPredicates({ flashblockIndex: "3", flashblockIndexOp: "<=" })).toEqual([
+      { type: "flashblock_index", params: { op: "<=", value: "0x3" } },
+    ]);
+  });
+
   it("refuses a 'conditional' swap with no condition at all", () => {
     expect(() => buildValidityPredicates({})).toThrow(/at least one condition/i);
+  });
+
+  it("treats a lone storageMask as an incomplete storage predicate, not a no-op", () => {
+    // All-or-nothing: a mask with no slot/address/op/value must error on the
+    // missing field, not silently vanish and report "no condition".
+    expect(() => buildValidityPredicates({ storageMask: "0xff" })).toThrow(/storageAddress/i);
+  });
+
+  it("rejects a storage predicate missing its operator", () => {
+    expect(() =>
+      buildValidityPredicates({ storageAddress: "0x8ba1f109551bd432803012645ac136ddd64dba72", storageSlot: "0x8", storageValue: "0x2a" }),
+    ).toThrow(/operator|< <= =/i);
   });
 
   it("rejects an operator outside the whitelist", () => {
@@ -65,5 +83,13 @@ describe("validity predicate builder", () => {
   it("rejects a non-integer quantity and a negative one", () => {
     expect(() => toHexQuantity("12.5", "beforeBlock")).toThrow(/non-negative integer/i);
     expect(() => toHexQuantity("-1", "beforeBlock")).toThrow(/non-negative/i);
+  });
+
+  it("encodes zero as 0x0 and requires a value", () => {
+    expect(toHexQuantity("0", "x")).toBe("0x0");
+    expect(toHexQuantity("0x0", "x")).toBe("0x0");
+    expect(() => toHexQuantity("", "x")).toThrow(/required/i);
+    expect(() => toHexQuantity(undefined, "x")).toThrow(/required/i);
+    expect(() => toHexQuantity("   ", "x")).toThrow(/required/i);
   });
 });
