@@ -1,2 +1,5 @@
 node_modules/
 *.log
+
+# local agent registry export — contains account IDs, never push
+agents.json
