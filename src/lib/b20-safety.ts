@@ -15,6 +15,11 @@ import { decisionReceipt } from "./envelope";
 import { createPublicClient, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
 import { baseTransport } from "./base-transport";
 import { base } from "viem/chains";
+// Generic ERC-8056 scheduled-multiplier reader, Cobalt. Lives in tokenized-stocks
+// (where it was first needed) and is pool-agnostic; imported here so EVERY B20
+// Asset — not just the thirteen equities — can surface a pending split/accrual.
+// One-way edge: tokenized-stocks does not import this module, so no cycle.
+import { readScheduledMultiplier, describeScheduledMultiplier } from "./tokenized-stocks";
 
 // Fixed B20 precompile addresses (same on every network).
 export const B20_FACTORY = "0xB20f000000000000000000000000000000000000" as const;
@@ -369,6 +374,67 @@ const ISSUER_ADMIN_ABI = [
 ] as const;
 
 /**
+ * Cobalt Composite Policies, read for transparency rather than for the verdict.
+ *
+ * A policy can now be a UNION (OR) or INTERSECT (AND) of simple ALLOWLIST/
+ * BLOCKLIST child policies — an issuer reusing, say, a KYC allowlist AND a
+ * sanctions blocklist without copying either list. The thing that makes this a
+ * non-event for every check in this file: `isAuthorized(policyId, account)`
+ * evaluates the whole tree internally and never reverts, so a GO/HOLD/STOP that
+ * resolves authorization is already correct on a composite gate. Verified on
+ * chain 2026-10-01: policy id 5 (Coinbase's tokenized stocks) is simple today —
+ * compositePolicyChildIds(5) returns [] — and isAuthorized answered as before.
+ *
+ * What a composite DOES change is explanation. "Your address is authorized" now
+ * may mean "authorized by the AND/OR of several lists", and a due-diligence
+ * caller should be able to see that shape. So this reads the child ids and
+ * surfaces them; it does not re-derive any verdict from them.
+ *
+ * compositePolicyChildIds returns [] for a simple policy, so a non-empty array is
+ * the composite tell. There is NO on-chain getter for UNION-vs-INTERSECT that we
+ * could confirm on mainnet (policyType/getPolicyType both revert), so the AND/OR
+ * relation is deliberately left unlabelled rather than guessed — the same
+ * discipline the rest of this file keeps about facts it cannot read.
+ */
+const COMPOSITE_ABI = [
+  { type: "function", name: "compositePolicyChildIds", stateMutability: "view", inputs: [{ type: "uint64" }], outputs: [{ type: "uint64[]" }] },
+] as const;
+
+export interface PolicyComposition {
+  composite: boolean;
+  /** Child policy ids when composite; empty for a simple policy. */
+  childIds: string[];
+}
+
+/**
+ * Is `policyId` a composite, and of which children? Returns null when the read
+ * could not be completed (RPC) — structure is then UNKNOWN, never asserted as
+ * simple, matching how the rest of this file treats a failed read.
+ */
+export async function readPolicyComposition(policyId: bigint): Promise<PolicyComposition | null> {
+  if (policyId === 0n) return { composite: false, childIds: [] }; // unset slot → always-allow, not a composite
+  const children = await withRetry<readonly bigint[] | null>(
+    () =>
+      client.readContract({
+        address: B20_POLICY_REGISTRY,
+        abi: COMPOSITE_ABI,
+        functionName: "compositePolicyChildIds",
+        args: [policyId],
+      }) as Promise<readonly bigint[]>,
+    null,
+    true, // soft: an RPC failure returns null → we omit the detail, never claim "simple"
+  );
+  if (children === null) return null; // unknown — do not assert structure either way
+  return { composite: children.length > 0, childIds: children.map((c) => c.toString()) };
+}
+
+/** One sentence on a composite gate, for a response note. */
+export function describeComposite(c: PolicyComposition | null): string | null {
+  if (c === null || !c.composite) return null;
+  return `This gate is a COMPOSITE of ${c.childIds.length} child policies (ids ${c.childIds.join(", ")}) combined with AND/OR logic — e.g. a KYC allowlist and a sanctions blocklist reused by reference. isAuthorized() resolves the whole tree, so the verdict above already accounts for it; the structure is shown so "authorized" is legible as the combination it is.`;
+}
+
+/**
  * Who administers this token's transfer policy, and whether we have seen them
  * before. Read only for tokens wearing an equity ticker — the one case where the
  * answer changes what a caller should do.
@@ -558,18 +624,30 @@ export async function b20Info(params: Record<string, string>) {
   await sleep(120);
   const totalSupply = await withRetry<bigint>(() => client.readContract({ address: addr, abi: B20_ABI, functionName: "totalSupply" }) as Promise<bigint>, 0n, true);
 
+  // Cobalt: is the transfer gate a composite (AND/OR of child lists)? Structural
+  // detail only — read when a sender policy is actually set, degrading to null
+  // (omitted) rather than asserting "simple" on a failed read.
+  await sleep(120);
+  const composition = s.senderPolicyId > 0n ? await readPolicyComposition(s.senderPolicyId) : { composite: false, childIds: [] };
+
   return {
     address, isB20: true, name, symbol: s.symbol, variant: s.variant, decimals,
     totalSupply: totalSupply.toString(),
     supplyCapped: s.supplyCapped,
     supplyCap: s.supplyCapped ? s.supplyCap.toString() : "uncapped",
-    policies: { senderPolicyId: s.senderPolicyId.toString(), transferGated: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated },
+    policies: {
+      senderPolicyId: s.senderPolicyId.toString(), transferGated: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated,
+      // null = couldn't read the structure (not "simple"); otherwise composite + children.
+      ...(composition === null ? { senderPolicyComposite: null } : composition.composite ? { senderPolicyComposite: true, senderPolicyChildIds: composition.childIds } : { senderPolicyComposite: false }),
+    },
     paused: s.paused,
     rebase: s.rebase,
     ...(s.degraded ? { degraded: true } : {}),
     note: s.degraded
       ? "⚠️ PARTIAL: a policy/pause precompile read failed (RPC) — the policies/paused fields may understate gating. Re-check before relying on this. For a risk verdict use b20-safety."
-      : "B20 (Base-native) token profile read from the precompile. For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.",
+      : describeComposite(composition)
+        ? `B20 (Base-native) token profile read from the precompile. ${describeComposite(composition)} For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.`
+        : "B20 (Base-native) token profile read from the precompile. For a risk verdict use b20-safety; to check if YOUR wallet is blocked use b20-freeze-check.",
     checkedAt: new Date().toISOString(),
   };
 }
@@ -695,15 +773,23 @@ export async function b20FreezeCheck(params: Record<string, string>) {
     };
   }
 
+  // Cobalt: isAuthorized above already resolved any composite tree, so the
+  // verdict is correct either way — this only labels the gate's structure so an
+  // "authorized"/"blocked" answer is legible as the AND/OR of lists it may be.
+  await sleep(120);
+  const composition = await readPolicyComposition(senderPol);
+  const compositeNote = describeComposite(composition);
+
   return {
     token, wallet, isB20: true, gated: true, senderPolicyId: senderPol.toString(), authorized,
+    ...(composition === null ? {} : composition.composite ? { senderPolicyComposite: true, senderPolicyChildIds: composition.childIds } : { senderPolicyComposite: false }),
     seizeExposure: seize.status,
     ...(seize.policyId ? { seizeHolderPolicyId: seize.policyId } : {}),
     // Transfer-blocked is the louder finding, but an authorized wallet is not
     // clear while the seize surface is armed against it.
     verdict: !authorized ? "BLOCKED" : seize.status === "seizable" ? "SEIZABLE" : seize.status === "unknown" ? "unknown" : "clear",
     ...(authorized && seize.status === "unknown" ? { degraded: true } : {}),
-    note: !authorized
+    note: (!authorized
       ? seize.status === "seizable"
         ? "⚠️ Your wallet is NOT authorized under this token's sender policy — you cannot transfer, the issuer can burnBlocked() (BURN) your balance, and you are also unprotected under the seize policy, so seizeWithMemo() can reassign it instead. Exit if you can."
         : "⚠️ Your wallet is NOT authorized under this token's sender policy — you cannot transfer, and the issuer can burnBlocked() (SEIZE) your balance. Exit if you can."
@@ -711,7 +797,8 @@ export async function b20FreezeCheck(params: Record<string, string>) {
         ? "⚠️ You are authorized to TRANSFER, but you are NOT protected under this token's seize policy — the issuer can call seizeWithMemo() and reassign your balance to an address of their choosing. Being able to transfer is not the same as being safe: seize bypasses the transfer policies entirely."
         : seize.status === "unknown"
           ? "⚠️ You are authorized to transfer, but this token has an armed seize policy and the Policy Registry read for it failed (RPC) — your exposure to seizeWithMemo() is UNKNOWN, not clear. Re-check before trusting it."
-          : "Your wallet is currently authorized to transfer under this token's sender policy, and is not exposed to the seize policy. (Issuer can change either policy at any time — re-check before large positions.)",
+          : "Your wallet is currently authorized to transfer under this token's sender policy, and is not exposed to the seize policy. (Issuer can change either policy at any time — re-check before large positions.)")
+      + (compositeNote ? ` ${compositeNote}` : ""),
     checkedAt: new Date().toISOString(),
   };
 }
@@ -739,12 +826,32 @@ export async function b20Rebase(params: Record<string, string>) {
   }
 
   const ratio = Number((mult * 10000n) / WAD) / 10000; // multiplier relative to 1.0
+
+  // Cobalt: is a change already SCHEDULED? A rebase that is queued for a future
+  // block (and still cancelable) is readable before it lands — the warning a
+  // holder actually wants, rather than finding out when their balance rescales.
+  const scheduled = await readScheduledMultiplier(addr, mult);
+  const schedDesc = describeScheduledMultiplier(mult.toString(), scheduled);
+
+  const baseNote =
+    ratio === 1
+      ? "Asset variant, multiplier at baseline (1.0) — no active rebase right now, but the issuer can change it (your balance can be scaled up/down)."
+      : `Asset variant with an active rebase multiplier (${ratio}× baseline) — your on-chain balance is scaled by this factor and the issuer can change it.`;
+
   return {
     address, isB20: true, variant: "asset", rebase: true,
     multiplier: mult.toString(), ratioToBase: ratio,
-    note: ratio === 1
-      ? "Asset variant, multiplier at baseline (1.0) — no active rebase right now, but the issuer can change it (your balance can be scaled up/down)."
-      : `Asset variant with an active rebase multiplier (${ratio}× baseline) — your on-chain balance is scaled by this factor and the issuer can change it.`,
+    ...(scheduled.status === "scheduled"
+      ? {
+          scheduledChange: {
+            pending: scheduled.pending,
+            effectiveAt: scheduled.effectiveAt,
+            effectiveAtIso: scheduled.effectiveAt ? new Date(scheduled.effectiveAt * 1000).toISOString() : null,
+            pendingRatio: scheduled.pending ? Number((BigInt(scheduled.pending) * 10000n) / WAD) / 10000 : null,
+          },
+        }
+      : {}),
+    note: schedDesc ? `${baseNote} A change is ${schedDesc}` : baseNote,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -819,11 +926,18 @@ export async function b20Gate(params: Record<string, string>) {
     if (fc.verdict === "BLOCKED") { observedRisks.push("YOUR wallet is ALREADY blocked/seizable on this token"); stop = true; }
   }
 
+  // Cobalt: when the token is transfer-gated, label whether that gate is a
+  // composite (AND/OR of lists). The verdict already accounts for it — the
+  // policy checks above resolve through isAuthorized — this is transparency.
+  const composition = s.transferGated ? await readPolicyComposition(s.senderPolicyId) : null;
+  const compositeNote = describeComposite(composition);
+
   const decision = stop ? "STOP" : hold ? "HOLD" : "GO";
   return {
     address, isB20: true, variant: s.variant, symbol: s.symbol,
     wallet: validAddr(wallet) ? wallet : null, walletStatus, decision,
     powers: { seizable: s.canSeize, freezable: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
+    ...(composition === null ? {} : composition.composite ? { senderPolicyComposite: true, senderPolicyChildIds: composition.childIds } : { senderPolicyComposite: false }),
     observedRisks,
     receipt: {
       checked: address, decision, at: new Date().toISOString(), endpoint: "b20-gate", observedRisks,
@@ -835,7 +949,7 @@ export async function b20Gate(params: Record<string, string>) {
       decision === "STOP" ? "Do not hold size — the issuer can freeze or seize your balance at the protocol level."
         : decision === "HOLD" ? "Tradeable with caution — the issuer retains B20 control powers; size down."
           : "No high-control B20 powers detected — behaves close to a plain token.",
-    note: "B20-specific pre-trade gate: seize (burnBlocked) + freeze (Policy Registry) + rebase + pause + uncapped mint, collapsed to one verdict. Pass wallet= to also check if YOUR address is already blocked. Not financial advice.",
+    note: "B20-specific pre-trade gate: seize (burnBlocked) + freeze (Policy Registry) + rebase + pause + uncapped mint, collapsed to one verdict. Pass wallet= to also check if YOUR address is already blocked. Not financial advice." + (compositeNote ? ` ${compositeNote}` : ""),
     checkedAt: new Date().toISOString(),
   };
 }
@@ -911,6 +1025,12 @@ export async function b20TransferPreflight(params: Record<string, string>) {
   if (unknownLegs.length) { observedRisks.push(`could not confirm the ${unknownLegs.join(" + ")} authorization this call`); hold = true; }
   if (pids.executor !== 0n && !validAddr(executor)) { observedRisks.push("this token gates the EXECUTOR too — pass executor= (the transferFrom operator) to fully clear a delegated transfer"); hold = true; }
 
+  // Cobalt: label whether the sender gate is a composite (AND/OR of lists). One
+  // extra read on the primary leg only — this is a per-transfer hot path — and
+  // the verdict already resolved it through isAuthorized; this is transparency.
+  const composition = pids.sender !== 0n ? await readPolicyComposition(pids.sender) : null;
+  const compositeNote = describeComposite(composition);
+
   const decision = stop ? "STOP" : hold ? "HOLD" : "GO";
   return {
     address, isB20: true, variant: s.variant, symbol: s.symbol,
@@ -918,6 +1038,7 @@ export async function b20TransferPreflight(params: Record<string, string>) {
     decision, // GO | HOLD | STOP — would this exact transfer clear now?
     pausedNow: s.paused.transfer,
     legs, // per-policy leg: which party, policy type, authorized true/false/null
+    ...(composition === null ? {} : composition.composite ? { senderPolicyComposite: true, senderPolicyChildIds: composition.childIds } : { senderPolicyComposite: false }),
     observedRisks,
     receipt: {
       checked: `${short(from)}→${short(to)} · ${s.symbol ?? short(address)}`,
@@ -930,7 +1051,7 @@ export async function b20TransferPreflight(params: Record<string, string>) {
       decision === "STOP" ? "Do NOT submit — this transfer will revert (or the sender is seizable). Resolve the blocked leg first."
         : decision === "HOLD" ? "Likely clears, but at least one leg couldn't be fully verified — re-check right before submitting."
           : "All policy legs authorized and transfers active — this exact transfer should clear now. Re-check just before submit (policies can change any block).",
-    note: "Per-transfer B20 rail check: resolves sender/receiver/executor policies against the actual parties + live pause state for THIS transfer. State can change block to block — call immediately before submitting. Not financial advice.",
+    note: "Per-transfer B20 rail check: resolves sender/receiver/executor policies against the actual parties + live pause state for THIS transfer. State can change block to block — call immediately before submitting. Not financial advice." + (compositeNote ? ` ${compositeNote}` : ""),
     checkedAt: new Date().toISOString(),
   };
 }
