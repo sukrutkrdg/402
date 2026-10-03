@@ -48,7 +48,7 @@ import { baseTransport } from "./base-transport";
 import {
   TOKENIZED_STOCKS,
   WAD,
-  readScheduledMultiplier,
+  readSchedules,
   describeScheduledMultiplier,
   type TokenizedStock,
   type ScheduledMultiplier,
@@ -60,6 +60,24 @@ const ABI = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "multiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
 ] as const;
+
+// Batched reads — the roster is 80+ tokens, so a per-token sequential loop would
+// make this paid call take most of a minute. allowFailure keeps the "null on
+// failure, never 0" rule the entitlement math depends on.
+type MCR = { status: "success"; result: unknown } | { status: "failure"; error: Error };
+async function mc(contracts: readonly unknown[], chunk = 50): Promise<MCR[]> {
+  const out: MCR[] = [];
+  for (let i = 0; i < contracts.length; i += chunk) {
+    const slice = contracts.slice(i, i + chunk);
+    try {
+      out.push(...((await client.multicall({ contracts: slice as never, allowFailure: true })) as unknown as MCR[]));
+    } catch {
+      for (let k = 0; k < slice.length; k++) out.push({ status: "failure", error: new Error("multicall chunk unavailable") });
+    }
+  }
+  return out;
+}
+const mcv = <T>(r: MCR | undefined): T | null => (r && r.status === "success" ? (r.result as T) : null);
 
 /** Every tokenized equity carries 8 decimals. Read, not assumed — the 18-decimal
  *  default would misreport every balance by ten orders of magnitude. */
@@ -113,50 +131,36 @@ export async function stockPosition(params: Record<string, string>) {
   const positions: StockPosition[] = [];
   const unreadable: string[] = [];
 
-  for (const s of TOKENIZED_STOCKS as readonly TokenizedStock[]) {
-    let raw: bigint | null = null;
-    let mult: bigint | null = null;
-    try {
-      raw = (await client.readContract({ address: getAddress(s.token), abi: ABI, functionName: "balanceOf", args: [w] })) as bigint;
-    } catch {
-      raw = null;
-    }
-    // A balance we could not read is not a zero balance. Anything else would
-    // report "you hold nothing" on an RPC hiccup, which is the single most
-    // damaging wrong answer this endpoint could give.
-    if (raw === null) {
-      unreadable.push(s.sym);
-      await sleep(100);
-      continue;
-    }
-    if (raw === 0n) {
-      await sleep(100);
-      continue;
-    }
-    try {
-      mult = (await client.readContract({ address: getAddress(s.token), abi: ABI, functionName: "multiplier" })) as bigint;
-    } catch {
-      mult = null;
-    }
-    // Held, but the multiplier is unknown — so the entitlement is unknown. Report
-    // the holding as unreadable rather than silently applying 1.0, which would
-    // be indistinguishable from a confirmed no-corporate-action answer.
-    if (mult === null || mult === 0n) {
-      unreadable.push(s.sym);
-      await sleep(100);
-      continue;
-    }
+  // One multicall for balanceOf(wallet)+multiplier across the whole roster.
+  const stocks = TOKENIZED_STOCKS as readonly TokenizedStock[];
+  const contracts: unknown[] = [];
+  for (const s of stocks) {
+    const address = getAddress(s.token);
+    contracts.push({ address, abi: ABI, functionName: "balanceOf", args: [w] });
+    contracts.push({ address, abi: ABI, functionName: "multiplier" });
+  }
+  const res = await mc(contracts);
 
-    // Cobalt: a change queued for this holding, read before it rescales the
-    // entitlement. A failed read degrades to "none" inside readScheduledMultiplier
-    // and simply omits the field — it never invents a pending split.
-    let scheduled: ScheduledMultiplier = { pending: null, effectiveAt: null, status: "none" };
-    try {
-      scheduled = await readScheduledMultiplier(s.token, mult);
-    } catch {
-      /* leave as none — a missing schedule read must not block the position */
-    }
+  // Decide held vs unreadable. A read that FAILED is not a zero balance
+  // (unknown ≠ "holds nothing"); a held token whose multiplier is unknown is
+  // unreadable, never silently 1.0 — the two most damaging wrong answers here.
+  const held: Array<{ s: TokenizedStock; raw: bigint; mult: bigint }> = [];
+  stocks.forEach((s, i) => {
+    const raw = mcv<bigint>(res[i * 2]);
+    if (raw === null) { unreadable.push(s.sym); return; }
+    if (raw === 0n) return; // not held
+    const mult = mcv<bigint>(res[i * 2 + 1]);
+    if (mult === null || mult === 0n) { unreadable.push(s.sym); return; }
+    held.push({ s, raw, mult });
+  });
 
+  // Cobalt: a pending change on each held token, read before it rescales the
+  // entitlement — batched, and only for what is held.
+  const curBySym = new Map<string, bigint | null>(held.map((h) => [h.s.sym, h.mult]));
+  const schedules = held.length ? await readSchedules(held.map((h) => h.s), curBySym) : new Map<string, ScheduledMultiplier>();
+
+  for (const { s, raw, mult } of held) {
+    const scheduled: ScheduledMultiplier = schedules.get(s.sym) ?? { pending: null, effectiveAt: null, status: "none" };
     const entitledRaw = entitledRawFrom(raw, mult);
     positions.push({
       symbol: s.sym,
@@ -180,7 +184,6 @@ export async function stockPosition(params: Record<string, string>) {
           }
         : {}),
     });
-    await sleep(120);
   }
 
   const adjusted = positions.filter((p) => p.adjusted);
@@ -230,8 +233,4 @@ export async function stockPosition(params: Record<string, string>) {
       "B20 Asset tokens do NOT apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0 → 2.0 and holder balances read identically before and after. Coinbase settles splits and dividend adjustments on tokenized equities through that multiplier, so entitledShares is the share count and rawBalance is what an unadjusted integrator would show. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
 }
