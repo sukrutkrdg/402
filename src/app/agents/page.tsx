@@ -265,7 +265,7 @@ const s = await (await fetch(
           suite), <code className="codechip">sign_guard</code> (before signing a tx).
         </p>
         <p className="text-xs text-gray-500">
-          Holding tokenized equities? <code className="codechip">b20_safety</code> covers all 13 of
+          Holding tokenized equities? <code className="codechip">b20_safety</code> covers every one of
           Coinbase&apos;s on Base and answers &ldquo;is this the real one&rdquo; from the
           transfer-policy administrator on chain instead of a hardcoded address list — a lookalike
           can copy the ticker, the name and a <code className="codechip">0xb200…</code> vanity

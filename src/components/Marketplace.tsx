@@ -389,7 +389,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             We check any token, tell you <strong className="text-amber-200">exactly when</strong> it
             turned seizable — and B20 Guard catches the moment it happens, sub-second. Coinbase&apos;s
             tokenized stocks are B20 too: we cover{" "}
-            <strong className="text-amber-200">all 13</strong> by reading the transfer-policy admin
+            <strong className="text-amber-200">all of them</strong> by reading the transfer-policy admin
             on chain rather than a list, so a lookalike wearing the ticker cannot pass and a newly
             issued one is recognised on day one.
           </span>
