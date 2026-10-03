@@ -81,8 +81,11 @@ import {
 import { recognisedEquityIssuance } from "@/lib/b20-safety";
 
 export const dynamic = "force-dynamic";
-// Thirteen sequential eth_calls plus one optional SQL lookup.
-export const maxDuration = 60;
+// Chain reads are batched (multicall) across the 80+ token roster, but the KV
+// bookkeeping (baseline GET/SET for the multiplier, policy and schedule watches)
+// is still one round trip per token, so the ceiling is raised to give the daily
+// run headroom — especially the first run after a deploy, when every key seeds.
+export const maxDuration = 300;
 
 const KEY = (sym: string) => `stock:mult:${sym}`;
 /** How many 8-decimal B20s existed last time we looked — roster drift detector. */

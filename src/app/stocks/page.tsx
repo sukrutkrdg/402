@@ -19,7 +19,7 @@ import { readStockBoard } from "@/lib/tokenized-stocks";
 export const metadata = {
   title: "Tokenized Stocks on Base — x402 Bazaar",
   description:
-    "All 13 of Coinbase's tokenized equities on Base: live multiplier, supply and issuance status, and why balanceOf is not the share count.",
+    "Every one of Coinbase's tokenized equities on Base: live multiplier, supply and issuance status, and why balanceOf is not the share count.",
 };
 
 // The facts move on the order of weeks; a multiplier change is caught by a cron,
