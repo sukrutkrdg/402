@@ -71,11 +71,12 @@ import {
   readMultipliers,
   describeMultiplierChange,
   TOKENIZED_STOCKS,
-  readTransferPolicy,
-  readScheduledMultiplier,
+  readTransferPolicies,
+  readSchedules,
   describeScheduledMultiplier,
   scheduleTransition,
   type ScheduledMultiplier,
+  type TransferPolicyRead,
 } from "@/lib/tokenized-stocks";
 import { recognisedEquityIssuance } from "@/lib/b20-safety";
 
@@ -218,13 +219,13 @@ const POLICY_KEY = (sym: string) => `stock:policy:${sym}`;
  * as a baseline (unknown is not unchanged), and first sight seeds silently
  * rather than alerting thirteen times on first deploy.
  */
-async function policyWatch(): Promise<{ changes: string[]; seeded: number; unread: number }> {
+async function policyWatch(policies: Map<string, TransferPolicyRead>): Promise<{ changes: string[]; seeded: number; unread: number }> {
   const changes: string[] = [];
   let seeded = 0;
   let unread = 0;
 
   for (const s of TOKENIZED_STOCKS) {
-    const p = await readTransferPolicy(s.token);
+    const p = policies.get(s.sym) ?? { senderPolicyId: null, receiverPolicyId: null, canaryMaySend: null, canaryMayReceive: null };
     // Any failed leg makes the whole row untrustworthy: a null canary answer
     // beside a real policy id could be read as "not authorised", which is the
     // false alarm this watch exists to avoid.
@@ -332,17 +333,18 @@ export async function GET(req: NextRequest) {
   // classified against the schedule we recorded LAST run (read below from KV)
   // while scheduleWatch persists this run's schedule afterwards.
   const multBySym = new Map<string, string>();
-  for (const r of reads) if (r.multiplier !== null) multBySym.set(r.sym, r.multiplier);
-
-  const schedules = new Map<string, ScheduledMultiplier>();
+  const curBySym = new Map<string, bigint | null>();
   for (const r of reads) {
-    if (r.multiplier === null) continue; // no current value to reject a no-op schedule against
-    try {
-      schedules.set(r.sym, await readScheduledMultiplier(r.token, BigInt(r.multiplier)));
-    } catch {
-      schedules.set(r.sym, { pending: null, effectiveAt: null, status: "unknown" });
+    if (r.multiplier !== null) {
+      multBySym.set(r.sym, r.multiplier);
+      curBySym.set(r.sym, BigInt(r.multiplier));
     }
   }
+
+  // Batched ERC-8056 schedule read across the roster (one multicall's worth of
+  // newUIMultiplier+effectiveAt per token), instead of a per-token loop that
+  // would blow the cron's 60s budget at 80+ tokens.
+  const schedules = await readSchedules(TOKENIZED_STOCKS, curBySym);
 
   const changes: Change[] = [];
   let seeded = 0;
@@ -377,7 +379,8 @@ export async function GET(req: NextRequest) {
   }
 
   const drift = await rosterDrift().catch(() => null);
-  const policy = await policyWatch().catch(() => ({ changes: [], seeded: 0, unread: 0 }));
+  const policies = await readTransferPolicies(TOKENIZED_STOCKS).catch(() => new Map());
+  const policy = await policyWatch(policies).catch(() => ({ changes: [], seeded: 0, unread: 0 }));
   const schedule = await scheduleWatch(schedules, multBySym).catch(() => ({ newly: [], cancelled: [], seeded: 0, unread: 0 }));
 
   if (policy.changes.length > 0) {

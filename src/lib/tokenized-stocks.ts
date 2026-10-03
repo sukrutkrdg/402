@@ -61,21 +61,99 @@ export interface TokenizedStock {
   token: `0x${string}`;
 }
 
-/** Discovered from chain 2026-09-03; all thirteen share policy id 5. */
+/**
+ * Discovered from chain by the operator anchor, refreshed 2026-10-03: every
+ * 8-decimal B20Created token whose TRANSFER_SENDER_POLICY is administered by
+ * STOCK_POLICY_ADMIN. 82 confirmed, all on policy id 5. The roster grew from the
+ * original 13 (2026-09-03) as Coinbase issued more — the membership test needs
+ * no edit to RECOGNISE a new one (b20-safety does that live), but this list
+ * drives the /stocks board, the watcher and stock-position, so it is kept in
+ * sync here. The operator also deploys `tDUMMY*` test assets under the same admin
+ * ("Dummy Test Asset N"); those are NOT equities and are deliberately excluded.
+ */
 export const TOKENIZED_STOCKS: readonly TokenizedStock[] = [
   { sym: "AAPLc", ticker: "AAPL", name: "Apple Inc.", token: "0xb200000000000000000000c2e324d24d7eecd1fb" },
+  { sym: "AEOc", ticker: "AEO", name: "American Eagle Outfitters, Inc.", token: "0xb2000000000000000000006064f8ec027f042294" },
+  { sym: "AMCc", ticker: "AMC", name: "AMC Entertainment Holdings, Inc.", token: "0xb200000000000000000000cd7e6b8042cb7c2bb5" },
+  { sym: "AMDc", ticker: "AMD", name: "Advanced Micro Devices, Inc.", token: "0xb2000000000000000000000d8ce462e99ee7a47b" },
   { sym: "AMZNc", ticker: "AMZN", name: "Amazon.com Inc.", token: "0xb200000000000000000000d9192b6b456483c2e8" },
+  { sym: "ASTSc", ticker: "ASTS", name: "AST SpaceMobile, Inc.", token: "0xb200000000000000000000b1a29cf17a1819288a" },
+  { sym: "AVGOc", ticker: "AVGO", name: "Broadcom Inc.", token: "0xb200000000000000000000fc737aea6196ab5a4c" },
+  { sym: "AXONc", ticker: "AXON", name: "Axon Enterprise, Inc.", token: "0xb2000000000000000000004cc3e96ceb78541d33" },
+  { sym: "BEc", ticker: "BE", name: "Bloom Energy Corporation", token: "0xb20000000000000000000016f9dfe862feba122b" },
+  { sym: "BIRDc", ticker: "BIRD", name: "Smartbird, Inc.", token: "0xb200000000000000000000535fe96f18204bfd96" },
+  { sym: "BJc", ticker: "BJ", name: "BJ's Wholesale Club Holdings, Inc.", token: "0xb200000000000000000000082f7fea8f2ee8f438" },
+  { sym: "BMNRc", ticker: "BMNR", name: "BitMine Immersion Technologies, Inc.", token: "0xb200000000000000000000ea2df44a307cab279c" },
+  { sym: "BYNDc", ticker: "BYND", name: "Beyond Meat, Inc.", token: "0xb200000000000000000000801830b13b8e493423" },
+  { sym: "CAKEc", ticker: "CAKE", name: "Cheesecake Factory Inc", token: "0xb200000000000000000000f215e4c890cfb7176b" },
+  { sym: "CELHc", ticker: "CELH", name: "Celsius Holdings, Inc.", token: "0xb2000000000000000000004161b4168d03841511" },
+  { sym: "CIFRc", ticker: "CIFR", name: "Cipher Digital Inc.", token: "0xb200000000000000000000690275843b6e246286" },
+  { sym: "CLSKc", ticker: "CLSK", name: "CleanSpark, Inc.", token: "0xb200000000000000000000fa63cfff5c794dbb95" },
   { sym: "COINc", ticker: "COIN", name: "Coinbase Global Inc.", token: "0xb200000000000000000000c85a31389d71f3ecfb" },
   { sym: "CRCLc", ticker: "CRCL", name: "Circle Internet Group Inc.", token: "0xb20000000000000000000019f6e7c675b73c2e4d" },
+  { sym: "CROXc", ticker: "CROX", name: "Crocs, Inc.", token: "0xb200000000000000000000431a5c1e48e3b1d130" },
+  { sym: "CRWVc", ticker: "CRWV", name: "CoreWeave, Inc.", token: "0xb200000000000000000000f111184a74720787e6" },
+  { sym: "DJTc", ticker: "DJT", name: "Trump Media & Technology Group Corp.", token: "0xb200000000000000000000428e3a3eebbb20692b" },
+  { sym: "DKNGc", ticker: "DKNG", name: "DraftKings Inc.", token: "0xb2000000000000000000009b870441031d4d8a41" },
+  { sym: "DUOLc", ticker: "DUOL", name: "Duolingo, Inc.", token: "0xb200000000000000000000a613d12deafbbb1db7" },
+  { sym: "EATc", ticker: "EAT", name: "Brinker International, Inc.", token: "0xb200000000000000000000808e9cca9ed8e4da61" },
+  { sym: "ELFc", ticker: "ELF", name: "e.l.f. Beauty, Inc.", token: "0xb2000000000000000000006b7f6966ee0453e251" },
+  { sym: "GMEc", ticker: "GME", name: "GameStop Corp.", token: "0xb2000000000000000000007790ed6e48e06ed935" },
   { sym: "GOOGLc", ticker: "GOOGL", name: "Alphabet Inc.", token: "0xb2000000000000000000002d0ba3164cc74f58b7" },
+  { sym: "GPROc", ticker: "GPRO", name: "GoPro, Inc.", token: "0xb200000000000000000000f0e13d9c1cdfd211c8" },
+  { sym: "HIMSc", ticker: "HIMS", name: "Hims & Hers Health, Inc.", token: "0xb20000000000000000000043a599976181bcf336" },
+  { sym: "HPQc", ticker: "HPQ", name: "HP Inc.", token: "0xb2000000000000000000009a3602cf5d020afa98" },
+  { sym: "HTZc", ticker: "HTZ", name: "Hertz Global Holdings, Inc.", token: "0xb2000000000000000000002601c5c94f435da168" },
+  { sym: "HUTc", ticker: "HUT", name: "Hut 8 Corp.", token: "0xb2000000000000000000006ee1c139a723872e09" },
   { sym: "INTCc", ticker: "INTC", name: "Intel Corporation", token: "0xb2000000000000000000004aff16039ba04bdfbc" },
+  { sym: "IONQc", ticker: "IONQ", name: "IonQ, Inc.", token: "0xb20000000000000000000058f143099d5f79b0ec" },
+  { sym: "KSSc", ticker: "KSS", name: "Kohl's Corporation", token: "0xb200000000000000000000105a1f43ff3605c5de" },
+  { sym: "LCIDc", ticker: "LCID", name: "Lucid Group, Inc.", token: "0xb20000000000000000000081050ac3d4395df527" },
+  { sym: "LLYc", ticker: "LLY", name: "Eli Lilly & Co", token: "0xb200000000000000000000f1a0f91e34892e4718" },
+  { sym: "LUVc", ticker: "LUV", name: "Southwest Airlines Company", token: "0xb200000000000000000000d5c0393796e92fcab0" },
+  { sym: "LYVc", ticker: "LYV", name: "Live Nation Entertainment, Inc.", token: "0xb2000000000000000000001347ccd9e83d5bf3e0" },
+  { sym: "MARAc", ticker: "MARA", name: "MARA Holdings, Inc.", token: "0xb200000000000000000000a310e034e09186fb2d" },
   { sym: "METAc", ticker: "META", name: "Meta Platforms Inc.", token: "0xb2000000000000000000008bc8786b856e61707c" },
+  { sym: "MRNAc", ticker: "MRNA", name: "Moderna, Inc.", token: "0xb200000000000000000000e215e9b76ecba02468" },
+  { sym: "MRVLc", ticker: "MRVL", name: "Marvell Technology, Inc.", token: "0xb200000000000000000000ec3c4c7395cc609813" },
   { sym: "MSFTc", ticker: "MSFT", name: "Microsoft Corporation", token: "0xb200000000000000000000ab99cfa739e253872b" },
   { sym: "MSTRc", ticker: "MSTR", name: "Strategy Inc.", token: "0xb2000000000000000000004884b426556b92883d" },
+  { sym: "MTCHc", ticker: "MTCH", name: "Match Group, Inc.", token: "0xb200000000000000000000441ec9266133f611ef" },
+  { sym: "MUc", ticker: "MU", name: "Micron Technology Inc.", token: "0xb200000000000000000000fd2f87532b90095211" },
+  { sym: "NFLXc", ticker: "NFLX", name: "Netflix Inc", token: "0xb20000000000000000000058b8c947e44011dfe6" },
+  { sym: "NVAXc", ticker: "NVAX", name: "Novavax Inc", token: "0xb200000000000000000000c597c476fcf9aed3a8" },
   { sym: "NVDAc", ticker: "NVDA", name: "NVIDIA Corporation", token: "0xb20000000000000000000078ee7ce2fe4908108c" },
+  { sym: "OKLOc", ticker: "OKLO", name: "Oklo Inc.", token: "0xb2000000000000000000009188edfd2fcc8cc81e" },
+  { sym: "OPENc", ticker: "OPEN", name: "Opendoor Technologies Inc.", token: "0xb200000000000000000000259694b27bf052e7d7" },
+  { sym: "ORCLc", ticker: "ORCL", name: "Oracle Corporation", token: "0xb200000000000000000000347afba223d7b6b63c" },
+  { sym: "OURAc", ticker: "OURA", name: "Oura Inc.", token: "0xb2000000000000000000008536298e05fdfb65f4" },
+  { sym: "PFEc", ticker: "PFE", name: "Pfizer Inc", token: "0xb20000000000000000000018fe7ec7d6dfeeb528" },
+  { sym: "PLTRc", ticker: "PLTR", name: "Palantir Technologies Inc.", token: "0xb2000000000000000000007d16372840df4dabbe" },
+  { sym: "PMc", ticker: "PM", name: "Philip Morris International Inc.", token: "0xb2000000000000000000008fc2a8c23cf5937b66" },
+  { sym: "PTONc", ticker: "PTON", name: "Peloton Interactive, Inc.", token: "0xb2000000000000000000009272a491812842aa84" },
+  { sym: "PYPLc", ticker: "PYPL", name: "PayPal Holdings, Inc.", token: "0xb200000000000000000000450ad3abe5d4846c6e" },
+  { sym: "QUBTc", ticker: "QUBT", name: "Quantum Computing Inc.", token: "0xb200000000000000000000ca425ab42e07c35bc3" },
+  { sym: "RBLXc", ticker: "RBLX", name: "Roblox Corporation", token: "0xb2000000000000000000005bd7ae89b9e6189bb5" },
+  { sym: "RDDTc", ticker: "RDDT", name: "Reddit, Inc.", token: "0xb20000000000000000000066242d4067724cb7a1" },
+  { sym: "RGTIc", ticker: "RGTI", name: "Rigetti Computing, Inc.", token: "0xb200000000000000000000c22fff2785bb27b39a" },
+  { sym: "RIOTc", ticker: "RIOT", name: "Riot Platforms, Inc.", token: "0xb200000000000000000000bd0c7627b663c581a6" },
+  { sym: "RIVNc", ticker: "RIVN", name: "Rivian Automotive, Inc.", token: "0xb2000000000000000000003e4249c65bd6c037d9" },
+  { sym: "RKTc", ticker: "RKT", name: "Rocket Companies, Inc.", token: "0xb200000000000000000000000d3176ee4af1102d" },
+  { sym: "SMRc", ticker: "SMR", name: "NuScale Power Corporation", token: "0xb200000000000000000000978546fe604b8dcbc6" },
   { sym: "SNDKc", ticker: "SNDK", name: "Sandisk Corporation", token: "0xb200000000000000000000397293cb8cda9a10c5" },
+  { sym: "SOUNc", ticker: "SOUN", name: "SoundHound AI, Inc.", token: "0xb2000000000000000000002137743d4a01fe4e88" },
   { sym: "SPCXc", ticker: "SPCX", name: "Space Exploration Technologies Corp.", token: "0xb2000000000000000000007b9fcbd005511acbd5" },
+  { sym: "TKOc", ticker: "TKO", name: "TKO Group Holdings, Inc.", token: "0xb200000000000000000000b8f841940325db6b2c" },
   { sym: "TSLAc", ticker: "TSLA", name: "Tesla Inc.", token: "0xb2000000000000000000001e800a7f5189430cd0" },
+  { sym: "TTWOc", ticker: "TTWO", name: "Take-Two Interactive Software, Inc.", token: "0xb200000000000000000000f720c26062bc3067da" },
+  { sym: "USDEc", ticker: "USDE", name: "StablecoinX Inc.", token: "0xb2000000000000000000009426b660396ebcf343" },
+  { sym: "VKTXc", ticker: "VKTX", name: "Viking Therapeutics, Inc.", token: "0xb200000000000000000000979ef4dd6a001b58b1" },
+  { sym: "VVVc", ticker: "VVV", name: "Valvoline Inc", token: "0xb200000000000000000000fec679b39992f67627" },
+  { sym: "WENc", ticker: "WEN", name: "Wendy's Co", token: "0xb20000000000000000000044e3cd7a0e1028e57a" },
+  { sym: "WINGc", ticker: "WING", name: "Wingstop Inc.", token: "0xb200000000000000000000281c973bf2555dd94b" },
+  { sym: "WULFc", ticker: "WULF", name: "TeraWulf Inc.", token: "0xb200000000000000000000432a1d2bd864acec82" },
+  { sym: "WWc", ticker: "WW", name: "WW International, Inc.", token: "0xb20000000000000000000089221e238277d52515" },
+  { sym: "XYZc", ticker: "XYZ", name: "Block, Inc.", token: "0xb20000000000000000000067c8c151f24e1c9924" },
 ] as const;
 
 /** Case-insensitive lookup, so a caller's checksummed address still matches. */
@@ -85,6 +163,31 @@ export function tokenizedStockFor(address: string): TokenizedStock | null {
 }
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
+
+/**
+ * One multicall per ~50 sub-calls (Multicall3 — a single eth_call each) instead
+ * of hundreds of sequential reads with sleeps. The roster grew from 13 to 80+,
+ * and the per-token loop that was fine for 13 would time out the /stocks page
+ * and the daily cron. allowFailure keeps this file's load-bearing semantics: a
+ * failed sub-call surfaces as a failure the caller maps to null (never 0),
+ * exactly as the sequential try/catch did, and a whole-chunk RPC error marks its
+ * calls failed too — a blip degrades to "unknown", never reads as a value.
+ */
+type MCResult = { status: "success"; result: unknown } | { status: "failure"; error: Error };
+async function multicallAll(contracts: readonly unknown[], chunk = 50): Promise<MCResult[]> {
+  const out: MCResult[] = [];
+  for (let i = 0; i < contracts.length; i += chunk) {
+    const slice = contracts.slice(i, i + chunk);
+    try {
+      const r = (await client.multicall({ contracts: slice as never, allowFailure: true })) as unknown as MCResult[];
+      out.push(...r);
+    } catch {
+      for (let k = 0; k < slice.length; k++) out.push({ status: "failure", error: new Error("multicall chunk unavailable") });
+    }
+  }
+  return out;
+}
+const mcVal = <T>(r: MCResult | undefined): T | null => (r && r.status === "success" ? (r.result as T) : null);
 
 const MULTIPLIER_ABI = [
   { type: "function", name: "multiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
@@ -247,34 +350,53 @@ export function scheduleTransition(
 }
 
 /**
- * Read multiplier() for every stock, sequentially.
+ * Read multiplier() for every stock in one batched multicall.
  *
- * Base's public RPC rate-limits parallel eth_calls, and this runs unattended, so
- * one at a time with a small gap. A failed read yields null rather than a
- * number — the caller has to be able to tell "unchanged" from "unknown", or a
- * network blip would be recorded as the new baseline and the real change that
- * follows it would never be reported.
+ * A failed read yields null rather than a number — the caller has to be able to
+ * tell "unchanged" from "unknown", or a network blip would be recorded as the
+ * new baseline and the real change that follows it would never be reported.
  */
 export async function readMultipliers(
   stocks: readonly TokenizedStock[] = TOKENIZED_STOCKS,
 ): Promise<MultiplierRead[]> {
-  const out: MultiplierRead[] = [];
+  const res = await multicallAll(stocks.map((s) => ({ address: getAddress(s.token), abi: MULTIPLIER_ABI, functionName: "multiplier" })));
+  return stocks.map((s, i) => {
+    const m = mcVal<bigint>(res[i]);
+    return { sym: s.sym, token: s.token, multiplier: m === null ? null : m.toString() };
+  });
+}
+
+/**
+ * Pending ERC-8056 schedule for every stock in two batched multicalls' worth of
+ * sub-calls (effectiveAt + newUIMultiplier per token). `currentBySym` carries the
+ * live multiplier() per symbol so a no-op schedule can be rejected. Returns a map
+ * keyed by symbol; the single-token readScheduledMultiplier above still serves
+ * one-off callers (b20-rebase), this is the roster-scale path.
+ */
+export async function readSchedules(
+  stocks: readonly TokenizedStock[],
+  currentBySym: Map<string, bigint | null>,
+): Promise<Map<string, ScheduledMultiplier>> {
+  const contracts: unknown[] = [];
   for (const s of stocks) {
-    let value: string | null = null;
-    try {
-      const m = (await client.readContract({
-        address: getAddress(s.token),
-        abi: MULTIPLIER_ABI,
-        functionName: "multiplier",
-      })) as bigint;
-      value = m.toString();
-    } catch {
-      value = null;
-    }
-    out.push({ sym: s.sym, token: s.token, multiplier: value });
-    await new Promise((r) => setTimeout(r, 120));
+    const address = getAddress(s.token);
+    contracts.push({ address, abi: SCHEDULED_ABI, functionName: "effectiveAt" });
+    contracts.push({ address, abi: SCHEDULED_ABI, functionName: "newUIMultiplier" });
   }
-  return out;
+  const res = await multicallAll(contracts);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const map = new Map<string, ScheduledMultiplier>();
+  stocks.forEach((s, i) => {
+    const effectiveAt = mcVal<bigint>(res[i * 2]);
+    const pending = mcVal<bigint>(res[i * 2 + 1]);
+    const status = classifyScheduledMultiplier(pending, effectiveAt, currentBySym.get(s.sym) ?? null, nowSec);
+    map.set(s.sym, {
+      pending: status === "scheduled" && pending !== null ? pending.toString() : null,
+      effectiveAt: status === "scheduled" && effectiveAt !== null ? Number(effectiveAt) : null,
+      status,
+    });
+  });
+  return map;
 }
 
 const BOARD_ABI = [
@@ -379,6 +501,61 @@ export async function readTransferPolicy(token: string): Promise<TransferPolicyR
   };
 }
 
+/**
+ * The same read as readTransferPolicy, batched across the whole roster: one
+ * multicall for the sender/receiver policy ids, then one for the canary's
+ * isAuthorized on the ids we could read. Same null-on-failure semantics (a failed
+ * id read is null, never 0; its auth leg is then null too).
+ */
+export async function readTransferPolicies(
+  stocks: readonly TokenizedStock[],
+): Promise<Map<string, TransferPolicyRead>> {
+  const idContracts: unknown[] = [];
+  for (const s of stocks) {
+    const address = getAddress(s.token);
+    idContracts.push({ address, abi: BOARD_ABI, functionName: "policyId", args: [TRANSFER_SENDER_POLICY] });
+    idContracts.push({ address, abi: BOARD_ABI, functionName: "policyId", args: [TRANSFER_RECEIVER_POLICY] });
+  }
+  const idRes = await multicallAll(idContracts);
+  const senderIds = stocks.map((_, i) => mcVal<bigint>(idRes[i * 2]));
+  const receiverIds = stocks.map((_, i) => mcVal<bigint>(idRes[i * 2 + 1]));
+
+  // Only ask the registry about ids we actually read (null = read failed → auth
+  // stays null). id 0 is kept: the registry treats it as always-allow and never
+  // reverts, matching the single-token path.
+  const authContracts: unknown[] = [];
+  const authSlots: Array<{ i: number; leg: "s" | "r" }> = [];
+  stocks.forEach((_, i) => {
+    if (senderIds[i] !== null) {
+      authContracts.push({ address: B20_POLICY_REGISTRY, abi: REGISTRY_ABI, functionName: "isAuthorized", args: [senderIds[i], CANARY] });
+      authSlots.push({ i, leg: "s" });
+    }
+    if (receiverIds[i] !== null) {
+      authContracts.push({ address: B20_POLICY_REGISTRY, abi: REGISTRY_ABI, functionName: "isAuthorized", args: [receiverIds[i], CANARY] });
+      authSlots.push({ i, leg: "r" });
+    }
+  });
+  const authRes = await multicallAll(authContracts);
+  const send: Array<boolean | null> = stocks.map(() => null);
+  const recv: Array<boolean | null> = stocks.map(() => null);
+  authSlots.forEach((slot, k) => {
+    const v = mcVal<boolean>(authRes[k]);
+    if (slot.leg === "s") send[slot.i] = v;
+    else recv[slot.i] = v;
+  });
+
+  const map = new Map<string, TransferPolicyRead>();
+  stocks.forEach((s, i) => {
+    map.set(s.sym, {
+      senderPolicyId: senderIds[i] === null ? null : (senderIds[i] as bigint).toString(),
+      receiverPolicyId: receiverIds[i] === null ? null : (receiverIds[i] as bigint).toString(),
+      canaryMaySend: send[i],
+      canaryMayReceive: recv[i],
+    });
+  });
+  return map;
+}
+
 /** Tokenized equities carry 8 decimals, not the 18 an ERC-20 reader would assume. */
 const SHARE_UNIT = 10n ** 8n;
 
@@ -424,28 +601,31 @@ export async function readStockBoard(): Promise<{
   scheduledActions: string;
   note: string;
 }> {
-  const rows: StockBoardRow[] = [];
+  // Batched: one multicall for multiplier/totalSupply/isPaused across the roster,
+  // then the transfer policies and schedules (each its own batched read) in
+  // parallel. The old per-token sequential loop with sleeps did ~9 RPCs × 80+
+  // tokens and would time the page out; this is a handful of eth_calls.
+  const coreContracts: unknown[] = [];
   for (const s of TOKENIZED_STOCKS) {
-    const addr = getAddress(s.token);
-    const read = async <T>(fn: "multiplier" | "totalSupply" | "isPaused", args?: readonly [number]) => {
-      try {
-        return (await client.readContract({ address: addr, abi: BOARD_ABI, functionName: fn, ...(args ? { args } : {}) })) as T;
-      } catch {
-        return null;
-      }
-    };
-    const mult = await read<bigint>("multiplier");
-    await new Promise((r) => setTimeout(r, 90));
-    const supply = await read<bigint>("totalSupply");
-    await new Promise((r) => setTimeout(r, 90));
-    const paused = await read<boolean>("isPaused", [0]);
-    await new Promise((r) => setTimeout(r, 90));
-    const policy = await readTransferPolicy(addr);
-    await new Promise((r) => setTimeout(r, 90));
-    const scheduled = await readScheduledMultiplier(addr, mult);
-    await new Promise((r) => setTimeout(r, 90));
+    const address = getAddress(s.token);
+    coreContracts.push({ address, abi: BOARD_ABI, functionName: "multiplier" });
+    coreContracts.push({ address, abi: BOARD_ABI, functionName: "totalSupply" });
+    coreContracts.push({ address, abi: BOARD_ABI, functionName: "isPaused", args: [0] });
+  }
+  const core = await multicallAll(coreContracts);
+  const multBySym = new Map<string, bigint | null>();
+  TOKENIZED_STOCKS.forEach((s, i) => multBySym.set(s.sym, mcVal<bigint>(core[i * 3])));
 
-    rows.push({
+  const [policies, schedules] = await Promise.all([
+    readTransferPolicies(TOKENIZED_STOCKS),
+    readSchedules(TOKENIZED_STOCKS, multBySym),
+  ]);
+
+  const rows: StockBoardRow[] = TOKENIZED_STOCKS.map((s, i) => {
+    const mult = mcVal<bigint>(core[i * 3]);
+    const supply = mcVal<bigint>(core[i * 3 + 1]);
+    const paused = mcVal<boolean>(core[i * 3 + 2]);
+    return {
       sym: s.sym,
       ticker: s.ticker,
       name: s.name,
@@ -455,10 +635,10 @@ export async function readStockBoard(): Promise<{
       multiplierRatio: mult === null ? null : Number((mult * 1_000_000n) / WAD) / 1_000_000,
       transferPaused: paused,
       issued: supply === null ? null : supply > 0n,
-      policy,
-      scheduled,
-    });
-  }
+      policy: policies.get(s.sym) as TransferPolicyRead,
+      scheduled: schedules.get(s.sym) as ScheduledMultiplier,
+    };
+  });
 
   const degraded = rows.some((r) => r.multiplier === null || r.supplyShares === null);
   const moved = rows.filter((r) => r.multiplierRatio !== null && r.multiplierRatio !== 1);

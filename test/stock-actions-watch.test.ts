@@ -20,8 +20,17 @@ import { ALERT_KINDS } from "@/lib/alert-owner";
  */
 
 describe("the roster", () => {
-  it("holds all thirteen stocks found on chain", () => {
-    expect(TOKENIZED_STOCKS).toHaveLength(13);
+  it("holds the full operator-anchored roster (82+ as of 2026-10-03), the original seed included, and no test tokens", () => {
+    // Grew from the original 13 as Coinbase issued more; membership is the policy
+    // admin, so the only lower bound worth pinning is "did not shrink below what
+    // we have verified on chain".
+    expect(TOKENIZED_STOCKS.length).toBeGreaterThanOrEqual(82);
+    for (const sym of ["AAPLc", "GOOGLc", "METAc", "NVDAc", "TSLAc", "MSTRc"]) {
+      expect(TOKENIZED_STOCKS.some((s) => s.sym === sym), sym).toBe(true);
+    }
+    // The same operator deploys tDUMMY* "Dummy Test Asset" tokens under this
+    // policy admin; they are not equities and must never be in the roster.
+    expect(TOKENIZED_STOCKS.some((s) => /dummy|test/i.test(s.sym) || /dummy|test/i.test(s.name))).toBe(false);
   });
 
   it("names each one as its ticker plus a c, which is how the issuer symbols them", () => {
@@ -36,8 +45,8 @@ describe("the roster", () => {
   });
 
   it("has no duplicate address or symbol", () => {
-    expect(new Set(TOKENIZED_STOCKS.map((s) => s.token)).size).toBe(13);
-    expect(new Set(TOKENIZED_STOCKS.map((s) => s.sym)).size).toBe(13);
+    expect(new Set(TOKENIZED_STOCKS.map((s) => s.token)).size).toBe(TOKENIZED_STOCKS.length);
+    expect(new Set(TOKENIZED_STOCKS.map((s) => s.sym)).size).toBe(TOKENIZED_STOCKS.length);
   });
 
   it("matches a checksummed address, since callers and explorers hand those over", () => {

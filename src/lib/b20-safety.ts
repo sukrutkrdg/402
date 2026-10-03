@@ -19,7 +19,7 @@ import { base } from "viem/chains";
 // (where it was first needed) and is pool-agnostic; imported here so EVERY B20
 // Asset — not just the thirteen equities — can surface a pending split/accrual.
 // One-way edge: tokenized-stocks does not import this module, so no cycle.
-import { readScheduledMultiplier, describeScheduledMultiplier } from "./tokenized-stocks";
+import { readScheduledMultiplier, describeScheduledMultiplier, TOKENIZED_STOCKS } from "./tokenized-stocks";
 
 // Fixed B20 precompile addresses (same on every network).
 export const B20_FACTORY = "0xB20f000000000000000000000000000000000000" as const;
@@ -302,12 +302,14 @@ const notB20 = (address: string) => ({
 });
 
 /**
- * The equity tickers Base documents as tokenized stocks. Used ONLY to notice
- * that a token is wearing one, never to assert that it is the real thing.
+ * The equity tickers Base's operator has tokenized — derived from the live
+ * roster so it never drifts. When TOKENIZED_STOCKS grows (it went 13 → 82 as
+ * Coinbase issued more), the impersonation heuristic covers the new tickers with
+ * no edit here. Used ONLY to notice that a token is WEARING one, never to assert
+ * it is the real thing: issuer recognition is the policy-admin anchor
+ * (recogniseIssuer), not this list.
  */
-const EQUITY_TICKERS = new Set([
-  "AAPL", "AMZN", "COIN", "CRCL", "GOOGL", "INTC", "META", "MSFT", "MSTR", "NVDA", "SNDK", "SPCX", "TSLA",
-]);
+const EQUITY_TICKERS = new Set(TOKENIZED_STOCKS.map((s) => s.ticker.toUpperCase()));
 
 /**
  * Does this symbol wear a major equity ticker?
