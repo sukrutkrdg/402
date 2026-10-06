@@ -47,6 +47,12 @@ export const ALERT_KINDS = [
   "ai-credits",
   "index-gap",
   "buyer-funds",
+  // The keepalive attempted settlements and NONE landed, while the wallet is
+  // funded and AI is answering — so buyer-funds and ai-credits are both clear and
+  // neither would fire. A settlement path that fails for any other reason
+  // (facilitator/CDP settle errors, every call 402-ing) otherwise decays
+  // discovery silently over 30 days behind a healthy-looking `refreshed: 0`.
+  "keepalive-settle",
   "surfaces",
   "stock-actions",
   // Who may send/receive the tokenized equities changed. Separate from
