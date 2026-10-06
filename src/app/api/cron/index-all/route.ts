@@ -320,6 +320,27 @@ Wallet: ${funds.address}`);
     }
   }
 
+  // Settlement-health self-check. The wallet is funded (buyer-funds would have
+  // fired otherwise) and AI is answering, yet we attempted settlements and NONE
+  // landed. buyer-funds and ai-credits are both clear, so neither would catch
+  // this — and `refreshed: 0` otherwise reads as a quiet, healthy morning while
+  // discovery decays over ~30 days. dryRun never settles, so it is exempt.
+  if (!dryRun) {
+    const walletFunded = !funds?.low;
+    if (attempts > 0 && refreshed === 0 && walletFunded && ai.ok) {
+      const failing = results
+        .filter((r) => (typeof r.status === "number" ? r.status >= 400 : /error|unavailable|40\d|50\d/i.test(String(r.status))))
+        .map((r) => `${r.service} (${r.status})`)
+        .slice(0, 10);
+      await alertOwner(
+        "keepalive-settle",
+        `The index refresh attempted ${attempts} settlement(s) and NONE succeeded, with the buyer wallet funded and AI answering. Discovery decays over ~30 days, so this is a silent outage behind a healthy-looking refreshed:0.\n\nFailing: ${failing.join(", ") || "see results"}`,
+      );
+    } else if (refreshed > 0) {
+      await clearAlert("keepalive-settle", `Keepalive settled ${refreshed} listing(s) again.`);
+    }
+  }
+
   return NextResponse.json({
     refreshed,
     staleFound: stale,
