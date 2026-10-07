@@ -235,6 +235,9 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // Same quote, plus a block deadline so the conditional example actually builds
   // a (non-empty) validity set. The tx is returned, never sent.
   "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "40000000" },
+  // A block deadline alone is a valid, runnable condition set; no signedTx so the
+  // envelope comes back with a placeholder. Nothing is sent.
+  "validity-build": { beforeBlock: "40000000" },
   "paymaster-check": { paymaster: PAYMASTER, days: "7" },
   "pair-info": { pair: PAIR },
   "nft-floor": { contract: NFT_COLLECTION },

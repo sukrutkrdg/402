@@ -29,6 +29,7 @@ import { nearStakingYields } from "./near-staking-yields";
 import { nearLendingHealth } from "./near-lending-health";
 import { baseSwap } from "./base-swap";
 import { baseSwapValidity } from "./base-swap-validity";
+import { validityBuild } from "./validity-tx";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1098,6 +1099,31 @@ export const SERVICES: ServiceDef[] = [
       { name: "storageMask", label: "Advanced: mask (hex, optional)", placeholder: "0x…" },
     ],
     handler: baseSwapValidity,
+  },
+  {
+    id: "validity-build",
+    name: "Validity Transaction Builder",
+    tagline: "Make any signed Base transaction conditional (Cobalt)",
+    description:
+      "Wrap ANY signed Base transaction (transfer, approve, contract call) in a Cobalt validity transaction: Base holds it dormant until your conditions hold, then includes it — a good-till-block/conditional order, no limit-order contract, nobody holding it. We validate the predicates and return the base_sendRawTransactionValidity request; we never touch funds or keys. Conditions: beforeBlock, fromBlock, flashblockIndex, minNativeBalanceWei, or a storage predicate for price. One required.",
+    price: "$0.01",
+    icon: "⏱️",
+    category: "Onchain",
+    params: [
+      { name: "beforeBlock", label: "Deadline: before this block (recommended)", placeholder: "e.g. 1157000" },
+      { name: "fromBlock", label: "Earliest block (optional)", placeholder: "e.g. 1156000" },
+      { name: "flashblockIndex", label: "Flashblock index (optional)", placeholder: "0" },
+      { name: "flashblockIndexOp", label: "Flashblock operator (optional, default =)", placeholder: "=" },
+      { name: "minNativeBalanceWei", label: "Min ETH balance floor, wei (optional)", placeholder: "0x…" },
+      { name: "balanceAddress", label: "Account for the balance floor (optional)", placeholder: "0x…" },
+      { name: "signedTx", label: "Your signed serialized tx (optional)", placeholder: "0x… (omit for a placeholder)" },
+      { name: "storageAddress", label: "Advanced: pool/token for a storage condition", placeholder: "0x…" },
+      { name: "storageSlot", label: "Advanced: storage slot (hex)", placeholder: "0x…" },
+      { name: "storageOp", label: "Advanced: operator (< <= = != > >=)", placeholder: ">=" },
+      { name: "storageValue", label: "Advanced: compare value (hex)", placeholder: "0x…" },
+      { name: "storageMask", label: "Advanced: mask (hex, optional)", placeholder: "0x…" },
+    ],
+    handler: validityBuild,
   },
   {
     id: "swap-route",

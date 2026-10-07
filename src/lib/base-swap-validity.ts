@@ -47,6 +47,11 @@ interface Predicate {
 /** Base mainnet sequencer RPC — the endpoint that accepts the validity method. */
 const DEFAULT_SEQUENCER = "https://mainnet-sequencer.base.org";
 
+/** The sequencer endpoint a validity transaction is submitted to (env override). */
+export function sequencerEndpoint(): string {
+  return (process.env.BASE_SEQUENCER_RPC || DEFAULT_SEQUENCER).trim();
+}
+
 /**
  * A non-negative integer (block number, flashblock index, wei) as a Base
  * predicate value: a 0x-prefixed, minimal hex QUANTITY. Accepts decimal or hex
@@ -146,7 +151,7 @@ export async function baseSwapValidity(params: Record<string, string>) {
   const validity = buildValidityPredicates(params);
 
   const swap = await baseSwap(params);
-  const endpoint = (process.env.BASE_SEQUENCER_RPC || DEFAULT_SEQUENCER).trim();
+  const endpoint = sequencerEndpoint();
 
   const rpcRequest = {
     jsonrpc: "2.0",
