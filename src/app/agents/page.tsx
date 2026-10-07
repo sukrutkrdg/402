@@ -298,6 +298,13 @@ const s = await (await fetch(
               drain surface in one verdict: 7702 delegation, Base Account spend permissions, and
               ERC-20 approvals.
             </li>
+            <li>
+              <code className="codechip">know-your-agent</code> — the identity half: Coinbase
+              verification, Basename and track record into one recognised/named/anonymous verdict.{" "}
+              <code className="codechip">mev-guard</code> scores a swap's sandwich exposure and returns
+              a protected-execution plan; <code className="codechip">x402-market-intel</code> reads the
+              Bazaar's own demand (30-day calls/payers) for any capability.
+            </li>
           </ul>
         </div>
         <p className="text-xs text-gray-500">
