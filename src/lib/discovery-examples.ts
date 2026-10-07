@@ -242,6 +242,11 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.
   "agent-pay-gate": { to: WALLET, usd: "100" },
+  // An active wallet with real USDC history / a drain surface to scan.
+  "agent-reputation": { wallet: WALLET2 },
+  "wallet-drain-watch": { wallet: WALLET },
+  // A real NEAR account to screen before paying.
+  "near-agent-gate": { to: "tether.multisafe.near", token: "usdt.tether-token.near", amount: "100" },
   // stablecoin-peg: all stables by default; corporate-actions: whole roster.
   // Both take only optional params, so no override is needed — left to defaults.
   "paymaster-check": { paymaster: PAYMASTER, days: "7" },
