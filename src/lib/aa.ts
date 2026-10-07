@@ -31,8 +31,9 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 /**
  * EIP-8130 — the account class this file cannot see.
  *
- * Cobalt puts account abstraction in the protocol. An 8130 account sends an
- * ORDINARY transaction (type `0x79` = 121), validated against onchain config;
+ * The Denim upgrade (native smart accounts, ~Oct 2026 — NOT Cobalt, which was
+ * validity transactions + B20) puts account abstraction in the protocol. An 8130
+ * account sends an ORDINARY transaction (type `0x79` = 121), validated against onchain config;
  * there is no EntryPoint, no bundler, and no UserOperationEvent. Sponsorship is
  * a FIELD on the transaction — `tx.payer` names the account covering gas, with
  * `payerAuth` carrying its authorisation — and there is no paymaster contract

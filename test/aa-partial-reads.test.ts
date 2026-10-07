@@ -91,8 +91,9 @@ describe("paymasterAudit", () => {
 /**
  * EIP-8130 is not a degraded read — it is a blind spot.
  *
- * Cobalt accounts send ordinary type-0x79 transactions and name their gas payer
- * in a transaction field. No EntryPoint, no UserOperationEvent, and no paymaster
+ * EIP-8130 accounts send ordinary type-0x79 transactions and name their gas payer
+ * in a transaction field (native smart accounts, a Denim-era feature — not Cobalt).
+ * No EntryPoint, no UserOperationEvent, and no paymaster
  * contract at all. Everything in aa.ts queries UserOperationEvents, so those
  * accounts are invisible to it however well the queries run. The failure this
  * guards is answering "not a smart account, likely a plain EOA" about an address
@@ -102,7 +103,7 @@ describe("EIP-8130 coverage", () => {
   it("probes for the native-AA transaction type rather than assuming a date", () => {
     // Measured on vibenet, where 8130 is live: type 0x79 = 121. Base mainnet
     // serves types 0, 1, 2, 4 and 126 today, so the probe reads false — and it
-    // will flip on its own the day Cobalt activates, with no redeploy.
+    // will flip on its own the day native smart accounts (Denim) activate, with no redeploy.
     expect(src).toMatch(/NATIVE_AA_TX_TYPE = 121/);
     expect(src).toMatch(/FROM base\.transactions WHERE type = \$\{NATIVE_AA_TX_TYPE\}/);
   });
