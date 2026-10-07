@@ -1,9 +1,11 @@
 # x402 Bazaar — Pay-per-call API marketplace for agents on Base & NEAR
 
 A **live pay-per-call API marketplace** on **Base mainnet**, with NEAR-native checks and payment from **NEAR** — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
-161 public services as of 2026-09-10 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
-a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 13 of Coinbase's
-tokenized equities, wallet intelligence, OFAC screening, AI-written reports — sold to AI agents and humans over
+180 public services as of 2026-10-07 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
+a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 82 of Coinbase's
+tokenized equities, Cobalt coverage (validity/conditional swaps, composite policies, scheduled
+multiplier), x402 agent-trust checks (seller/pre-pay screening), stablecoin-peg monitoring, wallet
+intelligence, OFAC screening, AI-written reports — sold to AI agents and humans over
 [**x402**](https://docs.cdp.coinbase.com/x402), settled in USDC via the Coinbase CDP facilitator,
 with onchain attribution via [**Builder Codes**](https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes)
 (ERC-8021 Schema 2). Listed in the CDP x402 discovery index; consumable via MCP
@@ -27,8 +29,9 @@ One Next.js app plays all three roles in the x402 flow:
 - **Tokenized equities**: Coinbase's tokenized stocks are B20 Asset tokens, so the same reads cover
   them. `b20_safety` tells a real issuance apart from a token merely wearing an equity ticker, by
   checking who administers the transfer policy on chain — not by consulting a list of addresses.
-  That recognises all 13 (AAPLc, AMZNc, COINc, CRCLc, GOOGLc, INTCc, METAc, MSFTc, MSTRc, NVDAc,
-  SNDKc, SPCXc, TSLAc) with no per-token configuration, and a 14th the day it is issued. It also
+  That recognises all 82 of them (AAPLc, AMZNc, GOOGLc, METAc, NVDAc, TSLAc, MSTRc, COINc … the
+  roster grew from the original 13 as Coinbase issued more) with no per-token configuration, and the
+  next the day it is issued — the operator anchor needs no list. It also
   reports holder-eligibility gating and gated mint as the regulated shape they are, rather than
   scoring a compliant issuer as dangerous. A daily watcher records corporate actions, and caught the
   first one any of them has ever had: on 14 September 2026 GOOGLc's multiplier moved
