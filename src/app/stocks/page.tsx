@@ -219,9 +219,9 @@ export default async function StocksPage() {
         <h2 className="text-lg font-semibold text-gray-200">What this page is not</h2>
         <p className="text-xs leading-relaxed text-gray-400">
           It is every tokenized equity <strong className="text-gray-200">Coinbase</strong> has
-          issued on Base, and it is complete: as of 2026-09-10 there are 91 B20 tokens carrying 8
-          decimals and only these {board.count} are equities — the rest are test tokens with random
-          symbols. It is <strong className="text-gray-200">not</strong> every tokenized stock on
+          issued on Base, and it is complete: of the many 8-decimal B20 tokens on Base, only these{" "}
+          {board.count} are administered by Coinbase&apos;s tokenized-stock operator — the rest are
+          test tokens and other issuers&apos; assets. It is <strong className="text-gray-200">not</strong> every tokenized stock on
           Base. Other issuers are here too, and they are built differently: Bitwise&apos;s{" "}
           <code className="codechip">Mag7X</code> and xStocks&apos;{" "}
           <code className="codechip">AAPLx</code> are plain ERC-20 with 18 decimals and no{" "}

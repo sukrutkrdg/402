@@ -68,8 +68,10 @@ async function readAave(): Promise<Venue> {
 async function readMoonwell(): Promise<Venue> {
   try {
     const r = (await client.readContract({ address: getAddress(MOONWELL_USDC), abi: MOONWELL_ABI, functionName: "supplyRatePerTimestamp" })) as bigint;
-    // per-second, 1e18-scaled → simple APR × seconds/year.
-    const aprPct = Number((r * 1_000_000n) / WAD) / 1_000_000 * SECONDS_PER_YEAR * 100;
+    // per-second, 1e18-scaled. Annualize INSIDE the BigInt math before dividing by
+    // WAD: the per-second rate is ~1e-9, so dividing first truncates it to 0. Scale
+    // by 1e6 for two decimals of APR precision.
+    const aprPct = Number((r * BigInt(SECONDS_PER_YEAR) * 1_000_000n) / WAD) / 1_000_000 * 100;
     return { protocol: "Moonwell", market: "USDC", aprPct: +aprPct.toFixed(2) };
   } catch {
     return { protocol: "Moonwell", market: "USDC", aprPct: null };
