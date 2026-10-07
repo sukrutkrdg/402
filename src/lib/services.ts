@@ -30,6 +30,10 @@ import { nearLendingHealth } from "./near-lending-health";
 import { baseSwap } from "./base-swap";
 import { baseSwapValidity } from "./base-swap-validity";
 import { validityBuild } from "./validity-tx";
+import { x402SellerCheck } from "./x402-seller";
+import { agentPayGate } from "./agent-pay-gate";
+import { stablecoinPeg } from "./stablecoin-peg";
+import { corporateActions } from "./corporate-actions";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1124,6 +1128,64 @@ export const SERVICES: ServiceDef[] = [
       { name: "storageMask", label: "Advanced: mask (hex, optional)", placeholder: "0x…" },
     ],
     handler: validityBuild,
+  },
+  {
+    id: "x402-seller-check",
+    name: "x402 Seller Check",
+    tagline: "Before your agent pays an x402 endpoint — is the seller real?",
+    description:
+      "x402 proves payment, not trust: an agent handed a URL pays blind, and the payee may be a real service or a burner that takes the USDC and vanishes. Give a url and/or a payTo wallet and get GO/WARN/STOP: is the URL a well-formed 402 resource, does its price match, and is the seller wallet sanctioned, a fresh throwaway, or paying a different address than you expected. Screens the PAYMENT side the protocol drops — not a guarantee the service returns good data.",
+    price: "$0.02",
+    icon: "🛡️",
+    category: "Onchain",
+    params: [
+      { name: "url", label: "x402 endpoint URL", placeholder: "https://…/api/x402/…" },
+      { name: "payTo", label: "Seller wallet (optional if url given)", placeholder: "0x…" },
+    ],
+    handler: x402SellerCheck,
+  },
+  {
+    id: "agent-pay-gate",
+    name: "Agent Pay Gate",
+    tagline: "I'm about to pay 0x… $X — go? (amount-aware recipient screen)",
+    description:
+      "A pre-payment gate for an agent about to send USDC. Screens the recipient (OFAC sanctions, Coinbase/Basename identity, wallet vs contract, fresh-address age) and escalates a fresh or anonymous recipient to STOP once the amount is material — a few cents to a new address is sampling, real size to one is the drain to avoid. Pass usd= for amount-aware guidance. One verdict (GO/REVIEW/STOP). Identity is not intent; not financial advice.",
+    price: "$0.01",
+    icon: "🚦",
+    category: "Onchain",
+    params: [
+      { name: "to", label: "Address you are about to pay", placeholder: "0x…", required: true },
+      { name: "usd", label: "Amount in USD (optional, sharpens the verdict)", placeholder: "100" },
+    ],
+    handler: agentPayGate,
+  },
+  {
+    id: "stablecoin-peg",
+    name: "Stablecoin Peg Monitor",
+    tagline: "Are the dollars you're holding still worth a dollar?",
+    description:
+      "Live DEX price vs the $1.00 peg for major USD-pegged stablecoins on Base (USDC, USDT, DAI, USDbC). A depeg is silent — balanceOf doesn't change, only what it's worth does — so an agent parked in stables reprices everything off a stale $1. Reports per-coin deviation in basis points and a healthy/watch/depeg status, worst-case across the set. A feed outage reads as 'unknown', never a healthy peg. Pass symbol= for one coin. Not financial advice.",
+    price: "$0.01",
+    icon: "⚖️",
+    category: "Markets",
+    params: [
+      { name: "symbol", label: "One stablecoin (optional, default all)", placeholder: "USDC" },
+    ],
+    handler: stablecoinPeg,
+  },
+  {
+    id: "corporate-actions",
+    name: "Tokenized Stock Corporate Actions",
+    tagline: "Upcoming splits/accruals on Base's tokenized equities, before they land",
+    description:
+      "A split, reverse split or dividend adjustment on a B20 tokenized equity is settled by moving the multiplier — and balanceOf does NOT change when it fires, so an integrator reading it is silently wrong. Cobalt made the pending change readable, so this lists every scheduled multiplier action across the 80+ tokenized stocks with its effective time, and — with wallet= — which touch a position that wallet holds. Read live from the ERC-8056 schedule; nobody else publishes it. Not financial advice.",
+    price: "$0.02",
+    icon: "📅",
+    category: "Markets",
+    params: [
+      { name: "wallet", label: "Wallet to intersect with holdings (optional)", placeholder: "0x…" },
+    ],
+    handler: corporateActions,
   },
   {
     id: "swap-route",

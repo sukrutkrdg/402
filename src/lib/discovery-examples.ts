@@ -238,6 +238,12 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // A block deadline alone is a valid, runnable condition set; no signedTx so the
   // envelope comes back with a placeholder. Nothing is sent.
   "validity-build": { beforeBlock: "40000000" },
+  // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
+  "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
+  // An established wallet to screen before a (hypothetical) payment.
+  "agent-pay-gate": { to: WALLET, usd: "100" },
+  // stablecoin-peg: all stables by default; corporate-actions: whole roster.
+  // Both take only optional params, so no override is needed — left to defaults.
   "paymaster-check": { paymaster: PAYMASTER, days: "7" },
   "pair-info": { pair: PAIR },
   "nft-floor": { contract: NFT_COLLECTION },
