@@ -286,7 +286,17 @@ const s = await (await fetch(
             <li>
               <code className="codechip">agent-pay-gate</code> — before sending USDC to any address: an
               amount-aware recipient screen (OFAC, identity, fresh-address age); a throwaway address
-              receiving real size is a STOP.
+              receiving real size is a STOP. <code className="codechip">near-agent-gate</code> is the
+              NEAR counterpart.
+            </li>
+            <li>
+              <code className="codechip">agent-reputation</code> — the payer side: is a wallet a real
+              repeat customer or a one-shot sampler, from its USDC history.
+            </li>
+            <li>
+              <code className="codechip">wallet-drain-watch</code> — your own agent wallet's whole
+              drain surface in one verdict: 7702 delegation, Base Account spend permissions, and
+              ERC-20 approvals.
             </li>
           </ul>
         </div>

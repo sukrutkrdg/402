@@ -34,6 +34,10 @@ import { x402SellerCheck } from "./x402-seller";
 import { agentPayGate } from "./agent-pay-gate";
 import { stablecoinPeg } from "./stablecoin-peg";
 import { corporateActions } from "./corporate-actions";
+import { agentReputation } from "./agent-reputation";
+import { nearAgentGate } from "./near-agent-gate";
+import { walletDrainWatch } from "./wallet-drain-watch";
+import { rwaDividendFeed } from "./rwa-dividend-feed";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1186,6 +1190,59 @@ export const SERVICES: ServiceDef[] = [
       { name: "wallet", label: "Wallet to intersect with holdings (optional)", placeholder: "0x…" },
     ],
     handler: corporateActions,
+  },
+  {
+    id: "agent-reputation",
+    name: "Agent Reputation",
+    tagline: "Is this payer a real repeat customer, or a one-shot sampler?",
+    description:
+      "The payer-trust mirror of x402-seller-check. Reads a wallet's outgoing USDC payments on Base over 90 days: distinct sellers paid (breadth), total payments and USDC (depth), and whether it ever paid the same payee twice. Breadth with no depth in a short burst is the crawler/sampler pattern; a repeat or sustained payer is the opposite. Sees only Base USDC; absence reads as 'thin', never bad. Not financial advice.",
+    price: "$0.02",
+    icon: "🪪",
+    category: "Onchain",
+    params: [{ name: "wallet", label: "Agent/payer wallet", placeholder: "0x…", required: true }],
+    handler: agentReputation,
+  },
+  {
+    id: "wallet-drain-watch",
+    name: "Wallet Drain Watch",
+    tagline: "The three ways an agent wallet gets emptied, in one verdict",
+    description:
+      "One GO/REVIEW/STOP across every drain vector: EIP-7702 delegation (a hostile delegate is total takeover), Base Account spend permissions (unbounded, non-expiring pulls), and ERC-20 approvals (unlimited allowance to unknown spenders). Composes wallet-delegation + spend-audit + approval-advisor so an agent checks its whole surface in one call instead of three; drill into each vector for detail. A vector that could not be read is 'unknown', never clear. Not financial advice.",
+    price: "$0.03",
+    icon: "🩸",
+    category: "Onchain",
+    params: [{ name: "wallet", label: "Wallet to scan", placeholder: "0x…", required: true }],
+    handler: walletDrainWatch,
+  },
+  {
+    id: "near-agent-gate",
+    name: "NEAR Agent Pay Gate",
+    tagline: "Before you pay a NEAR account — will it clear, and is it safe?",
+    description:
+      "The NEAR counterpart of agent-pay-gate. Composes the recipient's account posture (does it exist, is it a contract, control flags) with the NEP-141 transfer preflight into one GO/HOLD/STOP before an agent sends. On NEAR a mistyped account is unrecoverable and a token transfer silently fails unless the recipient has storage_deposit — this catches both ahead of time. Pass token (+amount) for a token transfer, near= for native-amount sizing. Not financial advice.",
+    price: "$0.02",
+    icon: "🟢",
+    category: "NEAR",
+    params: [
+      { name: "to", label: "NEAR account you are about to pay", placeholder: "alice.near", required: true },
+      { name: "token", label: "NEP-141 token (optional)", placeholder: "usdt.tether-token.near" },
+      { name: "amount", label: "Token amount (optional)", placeholder: "100" },
+      { name: "near", label: "Native NEAR amount (optional, for sizing)", placeholder: "50" },
+    ],
+    handler: nearAgentGate,
+  },
+  {
+    id: "rwa-dividend-feed",
+    name: "Tokenized Stock Action Feed",
+    tagline: "Past + upcoming corporate actions across Base's tokenized equities",
+    description:
+      "The timeline corporate-actions doesn't give: PAST multiplier moves (splits, reverse splits, dividend accruals) from MultiplierUpdated events across the 80+ tokenized stocks, newest first — the record a cost-basis or NAV reconstruction needs — plus the queued ERC-8056 schedule, so one call gives history and what's next. A failed warehouse read reads as degraded, never 'none'. Not financial advice.",
+    price: "$0.02",
+    icon: "🗞️",
+    category: "Markets",
+    params: [{ name: "limit", label: "Max past events (optional, default 50)", placeholder: "50" }],
+    handler: rwaDividendFeed,
   },
   {
     id: "swap-route",
