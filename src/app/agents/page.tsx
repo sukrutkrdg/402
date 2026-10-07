@@ -35,13 +35,15 @@ export default function AgentsPage() {
   /** Counted, not typed. A number written into this sentence is the drift we
    *  keep finding on other surfaces, one edit later. */
   const b20Count = SERVICES.filter((s) => !s.hidden && s.category === "B20").length;
+  /** Total public services, counted not typed — the one number this page leads with. */
+  const serviceCount = SERVICES.filter((s) => !s.hidden).length;
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-2">
         <span className="pill w-fit">🤖 For agents & developers</span>
         <h1 className="text-3xl font-bold tracking-tight">Call these APIs from your agent</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
-          Every service here is a standard HTTP endpoint. No API keys, no sign-up, no subscription —
+          <strong className="text-gray-200">{serviceCount} services</strong>, each a standard HTTP endpoint. No API keys, no sign-up, no subscription —
           and <strong className="text-gray-200">no wallet needed to start</strong>:{" "}
           <strong className="text-gray-200">{freeTierCount} of them</strong> serve one free call a
           day if you ask for it with <code className="codechip">?free=1</code>, and a prepaid credit
@@ -260,10 +262,34 @@ const s = await (await fetch(
         </p>
         <p className="text-xs text-gray-500">
           Once bound, tell your agent to <strong className="text-gray-300">bind these first</strong>:{" "}
+          <code className="codechip">x402_seller_check</code> (before paying an endpoint),{" "}
+          <code className="codechip">agent_pay_gate</code> (before sending USDC),{" "}
           <code className="codechip">pre_trade_gate</code> (any token),{" "}
           <code className="codechip">b20_gate</code> (Base-native B20 tokens, one of a {b20Count}-tool
           suite), <code className="codechip">sign_guard</code> (before signing a tx).
         </p>
+        {/* The emerging gap the whole agentic-payments space has: x402 proves
+            payment, not trust. These two answer it, so they lead the page now. */}
+        <div className="card mt-1 flex flex-col gap-2 border-amber-500/30 bg-amber-500/5 p-4">
+          <div className="text-sm font-semibold text-amber-200">🛡️ Agent-payment trust — the half x402 drops</div>
+          <p className="text-xs leading-relaxed text-gray-300">
+            x402 proves a payment settled; it does not prove the payee is real. An agent handed a URL
+            pays blind, and the wallet on the other side may be a service or a burner that takes the
+            USDC and vanishes. Two checks close that gap:
+          </p>
+          <ul className="flex flex-col gap-1 text-xs leading-relaxed text-gray-300">
+            <li>
+              <code className="codechip">x402-seller-check</code> — before paying an endpoint: is the URL a
+              well-formed 402 resource, does the price match, is the <code className="codechip">payTo</code>{" "}
+              sanctioned, a fresh burner, or a mismatch vs what you expected. GO/WARN/STOP.
+            </li>
+            <li>
+              <code className="codechip">agent-pay-gate</code> — before sending USDC to any address: an
+              amount-aware recipient screen (OFAC, identity, fresh-address age); a throwaway address
+              receiving real size is a STOP.
+            </li>
+          </ul>
+        </div>
         <p className="text-xs text-gray-500">
           Holding tokenized equities? <code className="codechip">b20_safety</code> covers every one of
           Coinbase&apos;s on Base and answers &ldquo;is this the real one&rdquo; from the

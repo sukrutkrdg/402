@@ -13,7 +13,7 @@ written here would be wrong the next time a service is added.
 Protocol) server** that gives your agent the checks it needs before it touches a
 Base token — including a **30-tool [B20](https://402.com.tr) (Base-native token
 standard) suite** covering freeze/seize powers, policy changes, mint headroom
-and rebase history — which also covers all 13 of
+and rebase history — which also covers all 82 of
 Coinbase's tokenized equities, telling a real issuance apart from a token merely
 wearing an equity ticker by reading who administers the transfer policy on
 chain rather than by consulting a list of addresses, so a newly issued one is
