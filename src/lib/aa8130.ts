@@ -1,10 +1,18 @@
 /**
- * EIP-8130 Native AA — session-key / actor audit. PROTOTYPE (Vibenet).
+ * EIP-8130 Native AA — session-key / actor audit. PROTOTYPE until Denim lands.
  *
- * NOT REGISTERED in services.ts yet: EIP-8130 ships on Base mainnet with the
- * Cobalt upgrade (September 2026). Until then there is nothing to read on
- * mainnet — this targets Base Vibenet (the ephemeral devnet where 8130 is live
- * early) so we can register the paid service the week Cobalt activates.
+ * Flip to Base mainnet with three env vars, no code change: AA8130_RPC (mainnet
+ * RPC), AA8130_CHAIN_ID=8453, AA8130_CONFIG (the AccountConfiguration system
+ * contract once published). On mainnet the "prototype/Vibenet" framing drops
+ * automatically (see ON_MAINNET).
+ *
+ * NOT REGISTERED in services.ts yet: EIP-8130 native smart accounts did NOT ship
+ * with Cobalt (2026-10-01, which was validity transactions + B20). They are a
+ * Denim-era feature — Base's "Base Transactions" / native account abstraction,
+ * targeted for the Denim upgrade (~Oct 2026, date not confirmed). Until it is on
+ * mainnet there is nothing to read there — this targets Base Vibenet (the
+ * ephemeral devnet where 8130 is live early) so we can register the paid service
+ * the week Denim activates.
  *
  * What it reads (AccountConfiguration system contract, base/eip-8130):
  *  - ActorAuthorized / ActorRevoked event replay → every actor (session key /
@@ -24,15 +32,23 @@ import "server-only";
 import { createPublicClient, http, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
 import { finish } from "./envelope";
 
-const VIBENET_RPC = process.env.AA8130_RPC?.trim() || "https://rpc.vibes.base.org";
-const VIBENET_CHAIN = {
-  id: 84538453,
-  name: "Base Vibenet",
+// Target is env-driven so this flips to Base mainnet the day native smart
+// accounts (Denim) land, with NO code change: point AA8130_RPC at a mainnet RPC
+// and set AA8130_CHAIN_ID=8453 (and AA8130_CONFIG to the system-contract address
+// once it is published). Defaults to Vibenet, where 8130 is live early.
+const AA_RPC = process.env.AA8130_RPC?.trim() || "https://rpc.vibes.base.org";
+const AA_CHAIN_ID = Number(process.env.AA8130_CHAIN_ID) || 84538453; // vibenet default
+const AA_CHAIN_NAME = AA_CHAIN_ID === 8453 ? "Base" : AA_CHAIN_ID === 84538453 ? "Base Vibenet" : `chain ${AA_CHAIN_ID}`;
+const AA_CHAIN = {
+  id: AA_CHAIN_ID,
+  name: AA_CHAIN_NAME,
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [VIBENET_RPC] } },
+  rpcUrls: { default: { http: [AA_RPC] } },
 } as const;
+/** True once this is pointed at Base mainnet — used to drop the "prototype" framing. */
+const ON_MAINNET = AA_CHAIN_ID === 8453;
 
-const client = createPublicClient({ chain: VIBENET_CHAIN, transport: http(VIBENET_RPC, { timeout: 10_000 }) });
+const client = createPublicClient({ chain: AA_CHAIN, transport: http(AA_RPC, { timeout: 10_000 }) });
 
 const ACTOR_AUTHORIZED = parseAbiItem("event ActorAuthorized(address indexed account, bytes32 indexed actorId, bytes actorData)");
 const ACTOR_REVOKED = parseAbiItem("event ActorRevoked(address indexed account, bytes32 indexed actorId)");
@@ -92,7 +108,9 @@ export async function aa8130SessionKeyAudit(params: Record<string, string>) {
       network: "base-vibenet",
       account: acct,
       verdict: "no_8130_activity",
-      note: "No EIP-8130 AccountConfiguration activity discoverable on this Vibenet instance (it is ephemeral and resets). Set AA8130_CONFIG to pin the system contract address. On Base mainnet this surface activates with the Cobalt upgrade (Sept 2026).",
+      note: ON_MAINNET
+        ? "No EIP-8130 AccountConfiguration activity found for this account on Base mainnet. Set AA8130_CONFIG to pin the system-contract address if discovery is missing it."
+        : "No EIP-8130 AccountConfiguration activity discoverable on this Vibenet instance (it is ephemeral and resets). Set AA8130_CONFIG to pin the system contract address. On Base mainnet this surface activates with native smart accounts in the Denim upgrade (~Oct 2026) — it did NOT ship with Cobalt.",
     });
   }
 
@@ -161,6 +179,8 @@ export async function aa8130SessionKeyAudit(params: Record<string, string>) {
       : verdict === "bounded_actors"
         ? "Every active actor is policy-bound — permissions are scoped and revocable. Review the policy managers if any are unfamiliar."
         : "No active actors — nothing can act as this account through EIP-8130 right now.",
-    note: "PROTOTYPE (Vibenet): the EIP-8130 session-key/actor drain-surface audit — every actor authorized on the account (the native-AA sibling of spend permissions), whether each is policy-bounded, and the account's lock posture. Registers as a paid mainnet service when Cobalt activates. Not financial advice.",
+    note: ON_MAINNET
+      ? "EIP-8130 session-key/actor drain-surface audit — every actor authorized on the account (the native-AA sibling of spend permissions), whether each is policy-bounded, and the account's lock posture. Not financial advice."
+      : "PROTOTYPE (Vibenet): the EIP-8130 session-key/actor drain-surface audit — every actor authorized on the account (the native-AA sibling of spend permissions), whether each is policy-bounded, and the account's lock posture. Registers as a paid mainnet service when native smart accounts land in the Denim upgrade. Not financial advice.",
   });
 }
