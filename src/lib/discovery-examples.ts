@@ -253,6 +253,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "know-your-agent": { agent: WALLET },
   // A capability keyword to search the x402 index for.
   "x402-market-intel": { query: "token safety" },
+  // An idle balance to project yield on.
+  "yield-scout": { amount: "10000" },
   // stablecoin-peg: all stables by default; corporate-actions: whole roster.
   // Both take only optional params, so no override is needed — left to defaults.
   "paymaster-check": { paymaster: PAYMASTER, days: "7" },

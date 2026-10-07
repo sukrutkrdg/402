@@ -41,6 +41,7 @@ import { rwaDividendFeed } from "./rwa-dividend-feed";
 import { mevGuard } from "./mev-guard";
 import { knowYourAgent } from "./know-your-agent";
 import { x402MarketIntel } from "./x402-market-intel";
+import { yieldScout } from "./yield-scout";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1288,6 +1289,18 @@ export const SERVICES: ServiceDef[] = [
       { name: "payTo", label: "Scope to one seller wallet (optional)", placeholder: "0x…" },
     ],
     handler: x402MarketIntel,
+  },
+  {
+    id: "yield-scout",
+    name: "Idle USDC Yield Scout",
+    tagline: "Where should an agent's idle USDC sit on Base right now?",
+    description:
+      "Every pre-funded agent wallet carries idle USDC that earns nothing. This reads the live USDC supply rate across Base money markets (Aave v3, Moonwell) straight from each protocol — not a feed — and returns the best, with the annual yield on your balance so you can weigh moving against the gas. Rates are variable and change every block; a venue it could not read is excluded from 'best', never sent funds on an unconfirmed rate. Pass amount= for the yield projection. Not financial advice.",
+    price: "$0.01",
+    icon: "🌾",
+    category: "Lending",
+    params: [{ name: "amount", label: "Idle USDC balance (optional, for projection)", placeholder: "10000" }],
+    handler: yieldScout,
   },
   {
     id: "swap-route",
