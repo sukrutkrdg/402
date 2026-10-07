@@ -38,6 +38,9 @@ import { agentReputation } from "./agent-reputation";
 import { nearAgentGate } from "./near-agent-gate";
 import { walletDrainWatch } from "./wallet-drain-watch";
 import { rwaDividendFeed } from "./rwa-dividend-feed";
+import { mevGuard } from "./mev-guard";
+import { knowYourAgent } from "./know-your-agent";
+import { x402MarketIntel } from "./x402-market-intel";
 import { sanctionsCheck, complianceCheck, sanctionsBatch } from "./compliance";
 import { newTokens } from "./onchain-extra4";
 import { aiTokenReport, aiMarketBrief } from "./ai-report";
@@ -1243,6 +1246,48 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [{ name: "limit", label: "Max past events (optional, default 50)", placeholder: "50" }],
     handler: rwaDividendFeed,
+  },
+  {
+    id: "mev-guard",
+    name: "MEV / Sandwich Guard",
+    tagline: "How exposed is this swap to a sandwich — and how to land it safely",
+    description:
+      "Agents are the easiest MEV prey: predictable, public-mempool, a measured ~$50M/quarter tax. A sandwich only pays when a trade moves the pool enough to front-run (size vs pool depth). This returns an exposure read (low/elevated/high) and a protected-execution plan: a tight min-out, private/off-mempool inclusion (a Cobalt validity tx via validity-build), and splitting a large order into unattackable chunks. Pass tokenOut + amountUsd. Not financial advice.",
+    price: "$0.02",
+    icon: "🥪",
+    category: "Onchain",
+    params: [
+      { name: "tokenOut", label: "Token you want to buy", placeholder: "0x…", required: true },
+      { name: "amountUsd", label: "Trade size in USD", placeholder: "1000" },
+    ],
+    handler: mevGuard,
+  },
+  {
+    id: "know-your-agent",
+    name: "Know Your Agent (KYA)",
+    tagline: "Who is this agent wallet — the identity half of agent trust",
+    description:
+      "x402 proves payment; this answers whether the wallet should be recognised. Resolves a wallet's onchain identity — Coinbase verification (a KYC'd attestation), Basename, and an ERC-8004 registry entry when configured — and corroborates with its payment track record. One verdict: recognised / named / anonymous / unknown. The identity leg alongside x402-seller-check (endpoint) and agent-reputation (behaviour). Identity is not intent; a degraded read is 'unknown'. Not financial advice.",
+    price: "$0.02",
+    icon: "🪆",
+    category: "Onchain",
+    params: [{ name: "agent", label: "Agent wallet", placeholder: "0x…", required: true }],
+    handler: knowYourAgent,
+  },
+  {
+    id: "x402-market-intel",
+    name: "x402 Market Intelligence",
+    tagline: "What the Bazaar holds for a capability, and the real demand behind it",
+    description:
+      "Reads the CDP discovery index (the directory agents search) for a capability keyword and reports the competitive picture: how many indexed services match, distinct sellers, price range, networks, and the index's own 30-day demand metric — total calls and unique payers, real usage not a guess. For a builder choosing what to ship or an agent picking a provider. Pass payTo to scope to one seller. The index under-reports (partial), so counts are a floor. Not financial advice.",
+    price: "$0.02",
+    icon: "📈",
+    category: "Utility",
+    params: [
+      { name: "query", label: "Capability / keyword", placeholder: "token safety", required: true },
+      { name: "payTo", label: "Scope to one seller wallet (optional)", placeholder: "0x…" },
+    ],
+    handler: x402MarketIntel,
   },
   {
     id: "swap-route",

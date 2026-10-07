@@ -247,6 +247,12 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "wallet-drain-watch": { wallet: WALLET },
   // A real NEAR account to screen before paying.
   "near-agent-gate": { to: "tether.multisafe.near", token: "usdt.tether-token.near", amount: "100" },
+  // A real Base token + size for the sandwich/MEV read.
+  "mev-guard": { tokenOut: DEGEN, amountUsd: "5000" },
+  // An established wallet to resolve an identity for.
+  "know-your-agent": { agent: WALLET },
+  // A capability keyword to search the x402 index for.
+  "x402-market-intel": { query: "token safety" },
   // stablecoin-peg: all stables by default; corporate-actions: whole roster.
   // Both take only optional params, so no override is needed — left to defaults.
   "paymaster-check": { paymaster: PAYMASTER, days: "7" },
