@@ -399,7 +399,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Is this address safe to send, approve or sign to?",
     description:
       "🆕 Before your agent sends, approves or signs to an address: one GO/REVIEW/STOP verdict. Screens OFAC sanctions, Coinbase/Basename identity, wallet vs contract, how long the address has existed, and whether contract logic can be swapped AFTER you send. Every factor returns what it found and what it could not read — a check that did not run never reads as clean, so GO means everything material was actually screened. Not financial advice.",
-    price: "$0.01",
+    price: "$0.03",
     icon: "🛡️",
     category: "Onchain",
     params: [{ name: "address", label: "Address you are about to send to", placeholder: "0x… recipient", required: true }],
@@ -895,7 +895,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "How many shares does this wallet actually control?",
     description:
       "B20 Asset tokens do NOT apply multiplier() to balanceOf() — measured on chain: a multiplier moved 1.0→2.0 while holder balances read identically. Coinbase settles splits and dividend adjustments on its 13 tokenized equities through that multiplier, so reading balanceOf as a share count is wrong by exactly that factor the day one fires. Returns both numbers per holding: what an unadjusted integrator shows, and what is owed. Wallet balances only; LP/lending is declared excluded, never zeroed.",
-    price: "$0.03",
+    price: "$0.04",
     icon: "📊",
     category: "B20",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x… wallet", required: true }],
@@ -958,7 +958,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Will this tx succeed, what will it cost, is it a drain — before you sign",
     description:
       "Simulate an UNSIGNED transaction against live Base state before an agent signs: will it SUCCEED or revert (with the contract's own reason), the gas estimate and ETH cost, and — decoded from the calldata — whether it grants an approval, and whether that approval is UNLIMITED (approve/permit) or a setApprovalForAll, the classic drain vectors. Pass from, to, and optionally data (calldata) + value. The pre-execution check the agent-safety playbook says to run and block on. Not financial advice.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "🧪",
     category: "Onchain",
     params: [
@@ -1191,7 +1191,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Before your agent pays an x402 endpoint — is the seller real?",
     description:
       "x402 proves payment, not trust: an agent handed a URL pays blind, and the payee may be a real service or a burner that takes the USDC and vanishes. Give a url and/or a payTo wallet and get GO/WARN/STOP: is the URL a well-formed 402 resource, does its price match, and is the seller wallet sanctioned, a fresh throwaway, or paying a different address than you expected. Screens the PAYMENT side the protocol drops — not a guarantee the service returns good data.",
-    price: "$0.02",
+    price: "$0.04",
     icon: "🛡️",
     category: "Onchain",
     params: [
@@ -1235,7 +1235,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Upcoming splits/accruals on Base's tokenized equities, before they land",
     description:
       "A split, reverse split or dividend adjustment on a B20 tokenized equity is settled by moving the multiplier — and balanceOf does NOT change when it fires, so an integrator reading it is silently wrong. Cobalt made the pending change readable, so this lists every scheduled multiplier action across the 80+ tokenized stocks with its effective time, and — with wallet= — which touch a position that wallet holds. Read live from the ERC-8056 schedule; nobody else publishes it. Not financial advice.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "📅",
     category: "Markets",
     params: [
@@ -1249,7 +1249,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Is this payer a real repeat customer, or a one-shot sampler?",
     description:
       "The payer-trust mirror of x402-seller-check. Reads a wallet's outgoing USDC payments on Base over 90 days: distinct sellers paid (breadth), total payments and USDC (depth), and whether it ever paid the same payee twice. Breadth with no depth in a short burst is the crawler/sampler pattern; a repeat or sustained payer is the opposite. Sees only Base USDC; absence reads as 'thin', never bad. Not financial advice.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "🪪",
     category: "Onchain",
     params: [{ name: "wallet", label: "Agent/payer wallet", placeholder: "0x…", required: true }],
@@ -1261,7 +1261,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "The three ways an agent wallet gets emptied, in one verdict",
     description:
       "One GO/REVIEW/STOP across every drain vector: EIP-7702 delegation (a hostile delegate is total takeover), Base Account spend permissions (unbounded, non-expiring pulls), and ERC-20 approvals (unlimited allowance to unknown spenders). Composes wallet-delegation + spend-audit + approval-advisor so an agent checks its whole surface in one call instead of three; drill into each vector for detail. A vector that could not be read is 'unknown', never clear. Not financial advice.",
-    price: "$0.03",
+    price: "$0.06",
     icon: "🩸",
     category: "Onchain",
     params: [{ name: "wallet", label: "Wallet to scan", placeholder: "0x…", required: true }],
@@ -1290,7 +1290,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Past + upcoming corporate actions across Base's tokenized equities",
     description:
       "The timeline corporate-actions doesn't give: PAST multiplier moves (splits, reverse splits, dividend accruals) from MultiplierUpdated events across the 80+ tokenized stocks, newest first — the record a cost-basis or NAV reconstruction needs — plus the queued ERC-8056 schedule, so one call gives history and what's next. A failed warehouse read reads as degraded, never 'none'. Not financial advice.",
-    price: "$0.02",
+    price: "$0.03",
     icon: "🗞️",
     category: "Markets",
     params: [{ name: "limit", label: "Max past events (optional, default 50)", placeholder: "50" }],
@@ -1302,7 +1302,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "How exposed is this swap to a sandwich — and how to land it safely",
     description:
       "Agents are the easiest MEV prey: predictable, public-mempool, a measured ~$50M/quarter tax. A sandwich only pays when a trade moves the pool enough to front-run (size vs pool depth). This returns an exposure read (low/elevated/high) and a protected-execution plan: a tight min-out, private/off-mempool inclusion (a Cobalt validity tx via validity-build), and splitting a large order into unattackable chunks. Pass tokenOut + amountUsd. Not financial advice.",
-    price: "$0.02",
+    price: "$0.04",
     icon: "🥪",
     category: "Onchain",
     params: [
@@ -1317,7 +1317,7 @@ export const SERVICES: ServiceDef[] = [
     tagline: "Who is this agent wallet — the identity half of agent trust",
     description:
       "x402 proves payment; this answers whether the wallet should be recognised. Resolves a wallet's onchain identity — Coinbase verification (a KYC'd attestation), Basename, and an ERC-8004 registry entry when configured — and corroborates with its payment track record. One verdict: recognised / named / anonymous / unknown. The identity leg alongside x402-seller-check (endpoint) and agent-reputation (behaviour). Identity is not intent; a degraded read is 'unknown'. Not financial advice.",
-    price: "$0.02",
+    price: "$0.04",
     icon: "🪆",
     category: "Onchain",
     params: [{ name: "agent", label: "Agent wallet", placeholder: "0x…", required: true }],
