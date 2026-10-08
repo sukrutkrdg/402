@@ -19,6 +19,7 @@ import { cryptoMarkets, cryptoGlobal } from "./crypto-markets";
 import { fearGreed, cryptoTrending } from "./market-sentiment";
 import { fundTrace } from "./fund-trace";
 import { washTrading, launchSnipers, contractOwner } from "./onchain-forensics";
+import { holderOverlap, tokenAge } from "./token-cohort";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -440,6 +441,33 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
     handler: contractOwner,
+  },
+  {
+    id: "holder-overlap",
+    name: "Holder Overlap",
+    tagline: "Do two tokens share a holder base? (coordinated-network signal)",
+    description:
+      "Do two tokens share the same recent holders — the farm / sybil / coordinated-launch signal nobody else surfaces? Reads each token's recent recipients and returns the overlap as a share of the smaller set: independent (the few % unrelated tokens share via routers/power users), overlapping, or strongly_linked (a coordinated cohort — same farm, deployer community, or a sybil set rotating between them). Pass a= and b=. A signal, not proof. Not financial advice.",
+    price: "$0.05",
+    icon: "🔗",
+    category: "Onchain",
+    params: [
+      { name: "a", label: "Token A", placeholder: "0x… token", required: true },
+      { name: "b", label: "Token B", placeholder: "0x… token", required: true },
+    ],
+    handler: holderOverlap,
+  },
+  {
+    id: "token-age",
+    name: "Token Age",
+    tagline: "How old is this token? (new = higher rug risk)",
+    description:
+      "When was this token born — its earliest transfer on Base — and how old is it in days, with a verdict: brand_new (<1d), very_new (<7d, where most rugs happen), new (<30d), established, or mature. New is not bad, but age is a first-order risk input every agent should have before sizing. Pairs with launch-snipers and token-risk. Not a safety verdict on its own. Not financial advice.",
+    price: "$0.01",
+    icon: "🕰️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: tokenAge,
   },
   {
     id: "fresh-bridge",
