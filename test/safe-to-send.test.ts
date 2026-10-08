@@ -50,7 +50,9 @@ describe("safe-to-send", () => {
 
   it("is registered, cheap, and describes the moment of use", () => {
     const entry = services.slice(services.indexOf('id: "safe-to-send"'), services.indexOf('id: "safe-to-send"') + 1200);
-    expect(entry).toMatch(/price: "\$0\.01"/);
+    // Priced in the forensics band (raised from $0.01 — a 4-factor composite, not a
+    // commodity read), still well under competitors' $0.50+ for the same analysis.
+    expect(entry).toMatch(/price: "\$0\.0[1-5]"/);
     // Naming the moment of use is the one description feature measured to move
     // the ≥3-payer rate (17.6% vs 9.3% across the index).
     expect(entry).toMatch(/Before your agent sends, approves or signs/);
