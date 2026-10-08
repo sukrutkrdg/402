@@ -243,6 +243,10 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "token-age": { address: DEGEN },
   // Overlap between two real Base tokens.
   "holder-overlap": { a: DEGEN, b: USDC },
+  // Is this recipient a look-alike of a wallet's real counterparty?
+  "address-poisoning": { wallet: WALLET2, to: SPENDER },
+  // Does a wallet's USDC counterparty set touch an OFAC address?
+  "sanctioned-exposure": { wallet: WALLET2 },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",

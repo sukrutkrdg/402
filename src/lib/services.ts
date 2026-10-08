@@ -20,6 +20,7 @@ import { fearGreed, cryptoTrending } from "./market-sentiment";
 import { fundTrace } from "./fund-trace";
 import { washTrading, launchSnipers, contractOwner } from "./onchain-forensics";
 import { holderOverlap, tokenAge } from "./token-cohort";
+import { addressPoisoning, sanctionedExposure } from "./wallet-forensics";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -468,6 +469,36 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: tokenAge,
+  },
+  {
+    id: "address-poisoning",
+    name: "Address Poisoning Check",
+    tagline: "Is this recipient a look-alike trap? — before your agent pays",
+    description:
+      "The address-poisoning attack: a scammer sends dust from an address whose first/last characters match one you really use, hoping you copy-paste the poisoned one. An auto-paying agent is the perfect victim. This compares the recipient against the head/tail of addresses the wallet actually transacts with and flags a look-alike that is NOT a real counterparty. Pass wallet= (yours) and to= (the recipient). A heuristic — verify the full address regardless. Not financial advice.",
+    price: "$0.03",
+    icon: "🪤",
+    category: "Onchain",
+    params: [
+      { name: "wallet", label: "Your wallet (the sender)", placeholder: "0x… your wallet", required: true },
+      { name: "to", label: "Recipient you're about to pay", placeholder: "0x… recipient", required: true },
+    ],
+    handler: addressPoisoning,
+  },
+  {
+    id: "sanctioned-exposure",
+    name: "Sanctioned Exposure",
+    tagline: "Has this wallet dealt with an OFAC address? (taint by association)",
+    description:
+      "Not 'is this address sanctioned' (that's sanctions) but 'has it DEALT with one' — screens a wallet's USDC counterparties (both directions) against the OFAC SDN list. Taint by association: receiving from or routing through a wallet that transacts with sanctioned addresses carries sanctions risk. Returns the sanctioned counterparties found. Covers direct counterparties; pair with fund-trace for the multi-hop funding chain. Not financial advice.",
+    price: "$0.05",
+    icon: "🚫",
+    category: "Onchain",
+    params: [
+      { name: "wallet", label: "Wallet to screen", placeholder: "0x… wallet", required: true },
+      { name: "days", label: "Window days (default 90, max 365)", placeholder: "90" },
+    ],
+    handler: sanctionedExposure,
   },
   {
     id: "fresh-bridge",
