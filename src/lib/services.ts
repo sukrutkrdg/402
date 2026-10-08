@@ -22,6 +22,7 @@ import { washTrading, launchSnipers, contractOwner } from "./onchain-forensics";
 import { holderOverlap, tokenAge } from "./token-cohort";
 import { addressPoisoning, sanctionedExposure } from "./wallet-forensics";
 import { priceImpact } from "./price-impact";
+import { dumpRisk } from "./dump-risk";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -516,6 +517,18 @@ export const SERVICES: ServiceDef[] = [
       { name: "side", label: "buy or sell (default buy)", placeholder: "buy" },
     ],
     handler: priceImpact,
+  },
+  {
+    id: "dump-risk",
+    name: "Dump Risk (Exit Liquidity)",
+    tagline: "If the big holders sell, can liquidity absorb it?",
+    description:
+      "\"Top holder owns 18%\" is meaningless without the other half: 18% of what, against how deep a pool. This values the largest LIVE holders' bags (GoPlus %s × market cap; pools/locked/burn excluded) and dumps them through aggregate Base liquidity with the conservative constant-product model. Returns the price impact if the top holder — and the top 3 — exit, and a verdict from resilient to exit_trap (where their exit is your crater). Heuristic; a locked bag can unlock. Not financial advice.",
+    price: "$0.04",
+    icon: "🏃",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: dumpRisk,
   },
   {
     id: "fresh-bridge",
