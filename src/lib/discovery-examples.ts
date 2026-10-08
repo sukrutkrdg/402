@@ -222,6 +222,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "revoke-builder": { token: USDC, spender: SPENDER, wallet: WALLET },
   // Build an exact 100-USDC approval to the Aerodrome router — never unlimited.
   "safe-approve": { token: USDC, spender: SPENDER, amount: "100", owner: WALLET },
+  // Bridge 100 USDC Base → Arbitrum.
+  "bridge-route": { from: "base", to: "arbitrum", token: "USDC", amount: "100" },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
