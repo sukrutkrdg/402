@@ -2176,11 +2176,6 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: webSearch,
     noFreeTier: true, // every call spends an upstream credit — a free tier is a real cost
-    // Hidden 2026-10-08: same TAVILY_API_KEY dependency as web-extract, which is
-    // not provisioned in prod (only EXA_API_KEY is), so this would fail too. Set
-    // TAVILY_API_KEY in Vercel and remove this to re-list. The Exa-based
-    // exa-search / exa-contents below cover web search/read in the meantime.
-    hidden: true,
   },
   // Named for the engine, not the capability. Every Exa reseller that draws real
   // traffic carries `exa` in its path and the one that carries it best outsells
@@ -2250,10 +2245,6 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: webExtract,
     noFreeTier: true, // every call spends an upstream credit — a free tier is a real cost
-    // Hidden 2026-10-08: 100% failure in prod — the handler needs TAVILY_API_KEY,
-    // which is not provisioned (only EXA_API_KEY is). Agents were paying and
-    // getting an error. Set TAVILY_API_KEY in Vercel and remove this to re-list.
-    hidden: true,
   },
   {
     id: "sanctions-name",
