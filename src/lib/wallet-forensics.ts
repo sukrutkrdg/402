@@ -22,16 +22,25 @@ const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const TRANSFER = "Transfer(address,address,uint256)";
 const validAddr = (a?: string) => /^0x[0-9a-fA-F]{40}$/.test((a ?? "").trim());
 
-/** Distinct USDC counterparties of a wallet over `days`, both directions, capped. */
-async function counterparties(wallet: string, days: number, cap: number): Promise<string[] | null> {
+/**
+ * Distinct USDC counterparties of a wallet over `days`, both directions, capped.
+ * Tolerant: returns null only if BOTH directions are unreadable — a single side
+ * timing out (larger window → warehouse data-scan limit) degrades to partial
+ * coverage rather than failing a paid call. `partial` says which happened.
+ */
+async function counterparties(
+  wallet: string,
+  days: number,
+  cap: number,
+): Promise<{ list: string[]; partial: boolean } | null> {
   const [out, inc] = await Promise.all([
     cdpSql<{ cp?: string }>(`SELECT DISTINCT lower(toString(parameters['to'])) AS cp FROM base.events WHERE address='${USDC}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['from']))='${wallet}' AND block_timestamp > now() - INTERVAL ${days} DAY LIMIT ${cap}`),
     cdpSql<{ cp?: string }>(`SELECT DISTINCT lower(toString(parameters['from'])) AS cp FROM base.events WHERE address='${USDC}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['to']))='${wallet}' AND block_timestamp > now() - INTERVAL ${days} DAY LIMIT ${cap}`),
   ]);
-  if (out === null || inc === null) return null;
+  if (out === null && inc === null) return null;
   const s = new Set<string>();
-  for (const r of [...out, ...inc]) { const a = r.cp ?? ""; if (/^0x[0-9a-f]{40}$/.test(a) && a !== wallet) s.add(a); }
-  return [...s];
+  for (const r of [...(out ?? []), ...(inc ?? [])]) { const a = r.cp ?? ""; if (/^0x[0-9a-f]{40}$/.test(a) && a !== wallet) s.add(a); }
+  return { list: [...s], partial: out === null || inc === null };
 }
 
 // ---------------------------------------------------------------------------
@@ -45,10 +54,11 @@ export async function addressPoisoning(params: Record<string, string>) {
   if (!validAddr(candRaw)) throw new Error("Provide the recipient you are about to pay (to=0x…)");
   const wallet = walletRaw.toLowerCase();
   const cand = candRaw.toLowerCase();
-  const days = Math.min(Math.max(Number(params.days) || 180, 1), 365);
+  const days = Math.min(Math.max(Number(params.days) || 90, 1), 365);
 
-  const cps = await counterparties(wallet, days, 500);
-  if (cps === null) throw new Error("Counterparty history unavailable (warehouse) — not charged, retry shortly");
+  const cpr = await counterparties(wallet, days, 400);
+  if (cpr === null) throw new Error("Counterparty history unavailable (warehouse) — not charged, retry shortly");
+  const cps = cpr.list;
 
   // Exact match = a real, known counterparty (safe, not poisoning).
   if (cps.includes(cand)) {
@@ -76,6 +86,7 @@ export async function addressPoisoning(params: Record<string, string>) {
     to: candRaw,
     daysAnalysed: days,
     knownCounterparties: cps.length,
+    partialHistory: cpr.partial || undefined,
     lookalikeMatches: lookalikes.slice(0, 5),
     verdict, // known_counterparty | poisoning_suspected | weak_resemblance | no_resemblance
     recommendation:
@@ -99,8 +110,9 @@ export async function sanctionedExposure(params: Record<string, string>) {
   const wallet = walletRaw.toLowerCase();
   const days = Math.min(Math.max(Number(params.days) || 90, 1), 365);
 
-  const cps = await counterparties(wallet, days, 400);
-  if (cps === null) throw new Error("Counterparty history unavailable (warehouse) — not charged, retry shortly");
+  const cpr = await counterparties(wallet, days, 400);
+  if (cpr === null) throw new Error("Counterparty history unavailable (warehouse) — not charged, retry shortly");
+  const cps = cpr.list;
   if (cps.length === 0) {
     return { wallet: walletRaw, days, counterparties: 0, verdict: "no_activity", note: "No USDC counterparties in the window — nothing to screen.", checkedAt: new Date().toISOString() };
   }
@@ -117,6 +129,7 @@ export async function sanctionedExposure(params: Record<string, string>) {
     wallet: walletRaw,
     days,
     counterpartiesScreened: cps.length,
+    partialHistory: cpr.partial || undefined,
     sanctionedCounterparties: hits,
     verdict, // clear | sanctioned_exposure | no_activity
     recommendation:
