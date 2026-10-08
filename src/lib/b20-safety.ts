@@ -12,7 +12,7 @@
 
 import "server-only";
 import { decisionReceipt } from "./envelope";
-import { createPublicClient, getAddress, keccak256, toBytes, parseAbiItem } from "viem";
+import { createPublicClient, getAddress, keccak256, toBytes } from "viem";
 import { baseTransport } from "./base-transport";
 import { base } from "viem/chains";
 // Generic ERC-8056 scheduled-multiplier reader, Cobalt. Lives in tokenized-stocks
@@ -56,10 +56,6 @@ const FACTORY_ABI = [
   { type: "function", name: "isB20Initialized", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
 ] as const;
 
-// B20Factory event, for the launch radar.
-const B20_CREATED = parseAbiItem(
-  "event B20Created(address indexed token, uint8 indexed variant, string name, string symbol, uint8 decimals, bytes variantEventParams)",
-);
 
 // Policy scope ids are keccak256 of the label (per B20Constants).
 const TRANSFER_SENDER_POLICY = keccak256(toBytes("TRANSFER_SENDER_POLICY"));
@@ -1395,28 +1391,39 @@ export async function b20Guard(params: Record<string, string>) {
 
 export async function b20LaunchRadar(params: Record<string, string>) {
   const limit = Math.min(Math.max(parseInt(params.limit || "12", 10) || 12, 1), 25);
-  const latest = await client.getBlockNumber();
-  const span = 8000n; // ~4-5h on Base
-  const fromBlock = latest > span ? latest - span : 0n;
 
-  const logs = await client.getLogs({ address: B20_FACTORY, event: B20_CREATED, fromBlock, toBlock: "latest" });
-  const recent = logs.slice(-limit).reverse();
+  // Read B20Created from the indexed event warehouse (CDP SQL), NOT eth_getLogs.
+  // The public Base RPC rejects a getLogs range on the factory precompile outright
+  // ("Invalid parameters" at every span), so the log path failed on every call.
+  // base.events is the same reliable source rosterDrift uses, and it carries the
+  // decoded params (token/symbol/name/decimals/variant) plus the block + time.
+  const rows = await cdpSql<{
+    token?: string; symbol?: string; name?: string; decimals?: string; variant?: string; block_number?: string; block_timestamp?: string;
+  }>(
+    `SELECT toString(parameters['token']) AS token, toString(parameters['symbol']) AS symbol, ` +
+      `toString(parameters['name']) AS name, toString(parameters['decimals']) AS decimals, ` +
+      `toString(parameters['variant']) AS variant, block_number, block_timestamp ` +
+      `FROM base.events WHERE event_name = 'B20Created' ORDER BY block_timestamp DESC LIMIT ${limit}`,
+  );
+  // A warehouse miss is not an empty feed — fail loud (not charged) rather than
+  // claim "no new B20s" when we simply could not read.
+  if (rows === null) {
+    throw new Error("B20 launch feed unavailable (event warehouse) — not charged, retry shortly");
+  }
 
-  const tokens = recent.map((l) => {
-    const a = l.args as { token?: string; variant?: number; name?: string; symbol?: string; decimals?: number };
-    return {
-      token: a.token ?? null,
-      variant: a.variant === 1 ? "stablecoin" : "asset",
-      name: a.name ?? null,
-      symbol: a.symbol ?? null,
-      decimals: a.decimals ?? null,
-      block: Number(l.blockNumber),
-    };
-  });
+  const tokens = rows
+    .filter((r) => /^0x[0-9a-fA-F]{40}$/.test(String(r.token ?? "")))
+    .map((r) => ({
+      token: r.token!,
+      variant: r.variant === "1" ? "stablecoin" : "asset",
+      name: r.name ?? null,
+      symbol: r.symbol ?? null,
+      decimals: r.decimals != null ? Number(r.decimals) : null,
+      block: r.block_number != null ? Number(r.block_number) : null,
+      createdAt: r.block_timestamp ?? null,
+    }));
 
   return {
-    window: `blocks ${fromBlock}–${latest} (~last few hours)`,
-    found: logs.length,
     showing: tokens.length,
     tokens,
     note: `Freshly minted B20 tokens on Base, newest first. Run b20-safety on any address before touching it — new ≠ safe. Showing up to ${limit}.`,
