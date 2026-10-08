@@ -18,6 +18,7 @@ import { dnsLookup, defiTvl, stablecoinMcap } from "./commodity-data";
 import { cryptoMarkets, cryptoGlobal } from "./crypto-markets";
 import { fearGreed, cryptoTrending } from "./market-sentiment";
 import { fundTrace } from "./fund-trace";
+import { washTrading, launchSnipers, contractOwner } from "./onchain-forensics";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -397,6 +398,48 @@ export const SERVICES: ServiceDef[] = [
     ],
     handler: fundTrace,
     noFreeTier: true,
+  },
+  {
+    id: "wash-trading",
+    name: "Wash Trading Check",
+    tagline: "Is this token's volume real, or circular?",
+    description:
+      "Hot volume is often fake. This reads a token's transfer events and flags the wash/circular shape: the share of transfers round-tripping through addresses active on BOTH the send and receive side, plus participant concentration. Returns clean / elevated / likely_wash with the top round-trippers. A heuristic signal, not proof — LPs and routers legitimately sit on both sides — so size off it, don't convict on it. Pass days= (default 7). Not financial advice.",
+    price: "$0.05",
+    icon: "🔄",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "days", label: "Window days (default 7, max 30)", placeholder: "7" },
+    ],
+    handler: washTrading,
+  },
+  {
+    id: "launch-snipers",
+    name: "Launch Sniper Check",
+    tagline: "Were the first buyers a coordinated bundle, or organic?",
+    description:
+      "Reads a token's EARLIEST transfers to judge how it was launched: many recipients in a single early block or a tight block span is a sniped/bundled launch (coordinated, expect correlated dumping); very few early holders is dangerous concentration; a spread is organic. Returns the first holders and a verdict. The launch-quality read that pairs with b20-launch-radar — a heuristic, not proof. Pass first= (default 40). Not financial advice.",
+    price: "$0.05",
+    icon: "🎯",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "first", label: "Earliest transfers to analyse (default 40)", placeholder: "40" },
+    ],
+    handler: launchSnipers,
+  },
+  {
+    id: "contract-owner",
+    name: "Contract Owner",
+    tagline: "Who controls this contract right now — owner, admin, proxy",
+    description:
+      "Reads who controls a contract straight from chain: owner/getOwner/admin, pending owner, EIP-1967 proxy implementation + admin, and paused state — and whether the owner is a single EOA key (one compromise = total control) or a contract (multisig/timelock). Crucially: ownership 'renounced' is NOT safe if it is still an upgradeable proxy whose admin can swap the logic. The control-surface read before you trust a contract. Not financial advice.",
+    price: "$0.03",
+    icon: "🔑",
+    category: "Onchain",
+    params: [{ name: "address", label: "Contract address", placeholder: "0x… contract", required: true }],
+    handler: contractOwner,
   },
   {
     id: "fresh-bridge",
