@@ -226,6 +226,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "bridge-route": { from: "base", to: "arbitrum", token: "USDC", amount: "100" },
   // Track a bridge by source tx hash (a real Base tx; LiFi reports not-a-bridge cleanly).
   "bridge-status": { txHash: TX, from: "base", to: "arbitrum" },
+  // Cross-DEX price spread for a real Base token with multiple pools.
+  "dex-spread": { address: DEGEN },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
