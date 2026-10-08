@@ -50,14 +50,14 @@ export async function unitConvert(params: Record<string, string>) {
   };
   const fromDec = dec(from);
   const toDec = dec(to);
-  let base: bigint; // value in wei-equivalent (smallest unit at fromDec)
+  let base: bigint; // the amount in the smallest unit (wei): amount × 10^fromDec
   try {
     base = parseUnits(amount, fromDec);
   } catch {
     throw new Error(`amount must be a number in ${from} units`);
   }
-  // Re-scale from fromDec to toDec.
-  const out = toDec >= fromDec ? formatUnits(base * 10n ** BigInt(toDec - fromDec), toDec) : formatUnits(base / 10n ** BigInt(fromDec - toDec), toDec);
+  // 1 `from` unit = 10^fromDec wei; express that wei value in `to` units.
+  const out = formatUnits(base, toDec);
   return {
     amount,
     from,
