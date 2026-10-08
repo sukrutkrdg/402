@@ -85,6 +85,7 @@ import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
 import { safeApprove } from "./safe-approve";
+import { bridgeRoute } from "./bridge-route";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
@@ -1082,6 +1083,24 @@ export const SERVICES: ServiceDef[] = [
       { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
     ],
     handler: baseSwap,
+  },
+  {
+    id: "bridge-route",
+    name: "Cross-Chain Bridge Route",
+    tagline: "The safe route to move funds across chains — best bridge, fees, ready tx",
+    description:
+      "Agents bridge across chains and get it wrong — bad route, an untrusted bridge, fees that eat the transfer. Returns the best cross-chain route via the LiFi aggregator: which bridge, how much arrives, est. time, gas + bridge fees in USD, and the ready-to-send tx. Chains: ethereum, base, arbitrum, optimism, polygon. Tokens by symbol (USDC/USDT/ETH/WETH/DAI) or a 0x address + amountUnits. A quote — re-quote with your own sender before executing; we never hold keys. Not financial advice.",
+    price: "$0.02",
+    icon: "🌉",
+    category: "Onchain",
+    params: [
+      { name: "from", label: "From chain", placeholder: "base", required: true },
+      { name: "to", label: "To chain", placeholder: "arbitrum", required: true },
+      { name: "token", label: "Token symbol (default USDC)", placeholder: "USDC" },
+      { name: "amount", label: "Amount to bridge", placeholder: "100", required: true },
+      { name: "fromAddress", label: "Your wallet (optional, for a ready tx)", placeholder: "0x…" },
+    ],
+    handler: bridgeRoute,
   },
   {
     id: "base-swap-validity",
