@@ -240,6 +240,9 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "wash-trading": { address: DEGEN },
   "launch-snipers": { address: DEGEN },
   "contract-owner": { address: DEGEN },
+  "token-age": { address: DEGEN },
+  // Overlap between two real Base tokens.
+  "holder-overlap": { a: DEGEN, b: USDC },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
