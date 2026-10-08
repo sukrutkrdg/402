@@ -11,6 +11,7 @@
 import { aiSummarize, aiExtract, aiExtractBatch, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo, tokenPools } from "./onchain-extra";
+import { dexSpread } from "./dex-spread";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -1587,6 +1588,21 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: tokenPools,
+  },
+  {
+    id: "dex-spread",
+    name: "DEX Price Spread",
+    tagline: "Is this token's price consistent across DEXes — arb window or manipulation?",
+    description:
+      "A token on several Base DEXes should cost about the same on each; a gap is either an arbitrage window or, on a thin pool, a mispricing that signals wash/manipulation. Compares the price across the LIQUID venues (over a floor, default $5k): tight (trustworthy), arb_window, wide (likely mispricing), or single_venue (one pool, as manipulable as it is thin). Separates real arbitrage from thin-pool noise. Snapshots — confirm with a live quote. Not financial advice.",
+    price: "$0.02",
+    icon: "⚖️",
+    category: "Markets",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "minLiquidityUsd", label: "Liquidity floor per venue (optional, default 5000)", placeholder: "5000" },
+    ],
+    handler: dexSpread,
   },
   {
     id: "ens-resolve",
