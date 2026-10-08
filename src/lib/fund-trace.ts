@@ -25,6 +25,7 @@ import { classifyCode } from "./primitives";
 import { sanctionsCheck } from "./compliance";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const KNOWN_FUNDERS: Record<string, string> = {
   "0x1682ae6375c4e4a97e4b583bc394c861a46d8962": "Circle CCTP TokenMessenger (cross-chain USDC)",
@@ -37,7 +38,12 @@ interface Resolved { funder: string | null; kind: FunderKind; label: string | nu
 
 /** One hop: who first funded `w`, and what kind of thing it is. */
 async function resolveFunder(w: Address): Promise<Resolved> {
-  const first = await walletFirstTx(w);
+  let first: Awaited<ReturnType<typeof walletFirstTx>>;
+  try {
+    first = await walletFirstTx(w); // heavy archive search — a rate-limited hop must END the walk, not 502 the paid call
+  } catch {
+    return { funder: null, kind: "unresolved", label: null, ageDays: null };
+  }
   if (!first.resolved || !first.txHash) return { funder: null, kind: "unresolved", label: null, ageDays: null };
   let funder: string | null = null, toAddr: string | null = null;
   try {
@@ -73,6 +79,10 @@ export async function fundTrace(params: Record<string, string>) {
   let origin: string | null = null;
 
   for (let i = 0; i < maxHops; i++) {
+    // Each hop's earliest-tx lookup fires a burst of archive reads; space the hops
+    // out so the per-second RPC limit resets between them (one hop is fine — it is
+    // first-funder — but back-to-back hops otherwise trip a public-RPC rate cap).
+    if (i > 0) await sleep(1500);
     const sanctionedNow = i === 0 ? await isSanctioned(current) : false; // hop-0 checked once at start
     if (sanctionedNow) { verdict = "tainted"; origin = current; hops.push({ hop: i, address: current, kind: "sanctioned" }); break; }
 
