@@ -15,6 +15,7 @@ import { dexSpread } from "./dex-spread";
 import { multiChainGas } from "./multi-chain-gas";
 import { hashUtil, unitConvert, ping } from "./compute-utils";
 import { dnsLookup, defiTvl, stablecoinMcap } from "./commodity-data";
+import { cryptoMarkets, cryptoGlobal } from "./crypto-markets";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -3111,6 +3112,33 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [{ name: "limit", label: "How many top coins (default 10, max 30)", placeholder: "10" }],
     handler: stablecoinMcap,
+  },
+  {
+    id: "crypto-markets",
+    name: "Crypto Market Data",
+    tagline: "Top assets by market cap — live price, mcap, 24h, volume",
+    description:
+      "Live cross-asset market data: the top coins ranked by market cap with price, market cap, 24h change and volume (CoinGecko). The global snapshot an agent reads before trading — our other price tools are Base-token-address based; this is the whole market. Pass limit= (up to 100) and vs= (usd/eur/…). Not financial advice.",
+    price: "$0.01",
+    icon: "📊",
+    category: "Markets",
+    params: [
+      { name: "limit", label: "How many coins (default 20, max 100)", placeholder: "20" },
+      { name: "vs", label: "Quote currency (default usd)", placeholder: "usd" },
+    ],
+    handler: cryptoMarkets,
+  },
+  {
+    id: "crypto-global",
+    name: "Crypto Market Overview",
+    tagline: "Total market cap, BTC/ETH dominance, 24h move — one call",
+    description:
+      "A one-call read of the whole crypto market (CoinGecko): total market capitalisation, 24h volume, the 24h market-cap move, BTC and ETH dominance, and the active-coin count. The macro context an agent uses to size risk before acting. Not financial advice.",
+    price: "$0.01",
+    icon: "🌍",
+    category: "Markets",
+    params: [],
+    handler: cryptoGlobal,
   },
   {
     id: "buy-credits",
