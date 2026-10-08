@@ -16,6 +16,7 @@ import { multiChainGas } from "./multi-chain-gas";
 import { hashUtil, unitConvert, ping } from "./compute-utils";
 import { dnsLookup, defiTvl, stablecoinMcap } from "./commodity-data";
 import { cryptoMarkets, cryptoGlobal } from "./crypto-markets";
+import { fearGreed, cryptoTrending } from "./market-sentiment";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -3139,6 +3140,30 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [],
     handler: cryptoGlobal,
+  },
+  {
+    id: "fear-greed",
+    name: "Crypto Fear & Greed",
+    tagline: "The market-mood gauge every trading agent checks (0–100)",
+    description:
+      "The crypto Fear & Greed Index (alternative.me): 0 = extreme fear, 100 = extreme greed, from volatility, momentum, volume, social and dominance — plus the day-over-day change and recent history. The one-number market-mood read an agent uses to size risk. Pass days= for history (up to 30). A sentiment gauge, not a signal. Not financial advice.",
+    price: "$0.002",
+    icon: "😱",
+    category: "Markets",
+    params: [{ name: "days", label: "History days (default 1, max 30)", placeholder: "7" }],
+    handler: fearGreed,
+  },
+  {
+    id: "crypto-trending",
+    name: "Trending Coins",
+    tagline: "What the market is watching right now — global attention feed",
+    description:
+      "The coins most searched on CoinGecko right now, ranked, with market-cap rank, price and 24h change. A global attention/discovery feed for agents hunting what's moving — distinct from trending-tokens, which is Base-DEX specific. An attention signal, not quality or safety: vet anything here with token-risk before touching it. Not financial advice.",
+    price: "$0.01",
+    icon: "🔥",
+    category: "Markets",
+    params: [],
+    handler: cryptoTrending,
   },
   {
     id: "buy-credits",
