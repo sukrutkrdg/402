@@ -20,7 +20,7 @@ import "server-only";
 const LIFI = "https://li.quest/v1/quote";
 
 /** Chains an agent is likely to bridge between, name → id. Numeric ids pass through. */
-const CHAINS: Record<string, number> = { ethereum: 1, eth: 1, mainnet: 1, base: 8453, arbitrum: 42161, arb: 42161, optimism: 10, op: 10, polygon: 137, matic: 137 };
+export const CHAINS: Record<string, number> = { ethereum: 1, eth: 1, mainnet: 1, base: 8453, arbitrum: 42161, arb: 42161, optimism: 10, op: 10, polygon: 137, matic: 137 };
 /** Decimals for the assets worth bridging by symbol. Raw addresses need amountUnits. */
 const DECIMALS: Record<string, number> = { USDC: 6, USDT: 6, ETH: 18, WETH: 18, DAI: 18 };
 
