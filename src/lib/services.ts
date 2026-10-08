@@ -84,6 +84,7 @@ import { volumeCheck } from "./volume-check";
 import { positionHealth } from "./position-health";
 import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
+import { safeApprove } from "./safe-approve";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
@@ -1382,6 +1383,24 @@ export const SERVICES: ServiceDef[] = [
       { name: "wallet", label: "Your wallet (optional, reads live allowance)", placeholder: "0x… wallet" },
     ],
     handler: revokeBuilder,
+  },
+  {
+    id: "safe-approve",
+    name: "Safe Approve Builder",
+    tagline: "Exact-amount approve calldata — never unlimited",
+    description:
+      "Unlimited allowances are the #1 drain vector, and agents reach for approve(max) on every swap. This builds ready-to-sign calldata for an approval of EXACTLY the amount you need (via the token's decimals) and refuses unlimited unless forced. Reads the live allowance and returns a revoke step first when one is already set (a non-zero→non-zero approve reverts on USDT-style tokens). Build-time prevention, not detection; we never hold keys. Not financial advice.",
+    price: "$0.02",
+    icon: "✅",
+    category: "Utility",
+    params: [
+      { name: "token", label: "Token contract", placeholder: "0x… token", required: true },
+      { name: "spender", label: "Spender (router/contract)", placeholder: "0x… spender", required: true },
+      { name: "amount", label: "Exact amount to approve (or 'max')", placeholder: "100", required: true },
+      { name: "owner", label: "Your wallet (optional, reads live allowance)", placeholder: "0x… wallet" },
+      { name: "allowUnlimited", label: "Allow unlimited (1 = yes, not recommended)", placeholder: "" },
+    ],
+    handler: safeApprove,
   },
   {
     id: "approval-advisor",
