@@ -21,6 +21,7 @@ import { fundTrace } from "./fund-trace";
 import { washTrading, launchSnipers, contractOwner } from "./onchain-forensics";
 import { holderOverlap, tokenAge } from "./token-cohort";
 import { addressPoisoning, sanctionedExposure } from "./wallet-forensics";
+import { priceImpact } from "./price-impact";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -499,6 +500,22 @@ export const SERVICES: ServiceDef[] = [
       { name: "days", label: "Window days (default 90, max 365)", placeholder: "90" },
     ],
     handler: sanctionedExposure,
+  },
+  {
+    id: "price-impact",
+    name: "Price Impact",
+    tagline: "How much will MY trade move the price? — size before you buy",
+    description:
+      "A quote shows today's price; it does NOT tell you a $5k buy into a $20k pool pays ~20% more. This takes the token's deepest Base pool, treats it as constant-product (Uniswap-V2 / Aerodrome volatile) and computes the exact x*y=k price impact for your USD size. Conservative — concentrated-liquidity pools usually do better. Also returns the largest size under 1% and 3% impact. Pass address= and size= (USD). An estimate; confirm with swap-route. Not financial advice.",
+    price: "$0.03",
+    icon: "📉",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "size", label: "Trade size in USD", placeholder: "5000", required: true },
+      { name: "side", label: "buy or sell (default buy)", placeholder: "buy" },
+    ],
+    handler: priceImpact,
   },
   {
     id: "fresh-bridge",
