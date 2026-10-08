@@ -86,6 +86,7 @@ import { tokenCompare } from "./token-compare";
 import { revokeBuilder } from "./revoke-builder";
 import { safeApprove } from "./safe-approve";
 import { bridgeRoute } from "./bridge-route";
+import { bridgeStatus } from "./bridge-status";
 import { preTradeGate } from "./gate";
 import { whaleFlow } from "./whale-flow";
 import { watchlistDiff } from "./watchlist";
@@ -1101,6 +1102,22 @@ export const SERVICES: ServiceDef[] = [
       { name: "fromAddress", label: "Your wallet (optional, for a ready tx)", placeholder: "0x…" },
     ],
     handler: bridgeRoute,
+  },
+  {
+    id: "bridge-status",
+    name: "Bridge Status Tracker",
+    tagline: "Did the cross-chain transfer land? Track it by source tx hash",
+    description:
+      "The other half of bridge-route. A bridge takes minutes with funds in flight, and from the source chain alone an agent cannot tell if it completed. Tracks a transfer by its source tx hash via the LiFi status API: completed (with the receiving tx), pending (poll again), failed (with the reason), or not-found (not a bridge tx, or too early to index). Pass from/to/bridge for a faster lookup. not-found reads as 'not indexed yet', never 'failed'. Not financial advice.",
+    price: "$0.01",
+    icon: "📦",
+    category: "Onchain",
+    params: [
+      { name: "txHash", label: "Source-chain tx hash", placeholder: "0x… 32-byte hash", required: true },
+      { name: "from", label: "From chain (optional)", placeholder: "base" },
+      { name: "to", label: "To chain (optional)", placeholder: "arbitrum" },
+    ],
+    handler: bridgeStatus,
   },
   {
     id: "base-swap-validity",
