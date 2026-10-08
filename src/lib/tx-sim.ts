@@ -1,47 +1,54 @@
 /**
- * Transaction Simulation — "what will this transaction actually do before I sign it".
+ * Transaction simulation — "will this transaction succeed, what will it cost, and
+ * is it a risky one?" — answered BEFORE an agent signs.
  *
- * Simulates an UNSIGNED transaction against current Base state via Alchemy's
- * `alchemy_simulateAssetChanges`, and decodes the calldata for approval risk.
- * Returns, from the sender's perspective: what tokens leave / arrive, any
- * approvals granted (flagging unlimited / setApprovalForAll — the classic drain
- * vector), whether it would revert, and gas. This is the highest-stakes
- * pre-execution question an agent faces; nobody else on x402 answers it.
+ * The highest-stakes pre-execution question an agent faces, and the one the MEV /
+ * agent-safety research keeps naming: simulate first, block on failure. An earlier
+ * version used Alchemy's asset-change tracer, which Base's RPC does not serve
+ * ("JS Tracer is not enabled"), so it was disabled. This version uses only the
+ * universally-supported reads — `eth_call` for success/revert, `eth_estimateGas`
+ * for cost — plus calldata decoding for the drain-vector risks. No metered
+ * upstream, works on any Base RPC.
  *
- * Metered upstream (Alchemy) → registered paid-only (noFreeTier).
+ * What it returns from the sender's perspective:
+ *   - willSucceed / revertReason — does this exact tx execute against live state?
+ *   - gasEstimate + gasCostEth — what it costs at the current gas price
+ *   - method + approval decoding — approve / setApprovalForAll / permit, and
+ *     whether the amount is UNLIMITED (the classic drain the agent must see)
+ *
+ * It does NOT enumerate every token that moves (that needed the tracer). It
+ * answers the three things that decide whether to sign: will it work, what does
+ * it cost, and is it silently granting someone the power to drain you.
  */
 
 import "server-only";
-import { getAddress, parseEther } from "viem";
+import { createPublicClient, getAddress, parseEther, formatEther, type Address, type Hex } from "viem";
+import { base } from "viem/chains";
+import { baseTransport } from "./base-transport";
 
-const rpcUrl = (k: string) => `https://base-mainnet.g.alchemy.com/v2/${k}`;
-const MAX_UINT = (2n ** 256n - 1n).toString();
+const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
+const MAX_UINT = 2n ** 256n - 1n;
+/** Treat an allowance within a factor of uint256-max as effectively unlimited. */
+const UNLIMITED_FLOOR = 2n ** 255n;
 
-function key(): string {
-  const k = process.env.ALCHEMY_API_KEY?.trim();
-  if (!k) throw new Error("Simulation not configured: set ALCHEMY_API_KEY");
-  return k;
-}
-
-function reqAddr(raw: string, label: string): string {
+function reqAddr(raw: string, label: string): Address {
   const v = (raw || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(v)) throw new Error(`Provide a valid 0x… ${label} address`);
   return getAddress(v);
 }
 
-// value may be decimal ETH ("0.1") or a 0x-hex wei value; normalise to hex wei.
-function toHexWei(raw?: string): string {
+/** value may be decimal ETH ("0.1") or a 0x-hex wei value; normalise to bigint wei. */
+function toWei(raw?: string): bigint {
   const v = (raw || "").trim();
-  if (!v || v === "0") return "0x0";
-  if (v.startsWith("0x")) return v;
+  if (!v || v === "0") return 0n;
+  if (v.startsWith("0x")) return BigInt(v);
   try {
-    return "0x" + parseEther(v).toString(16);
+    return parseEther(v);
   } catch {
     throw new Error("value must be ETH (e.g. 0.1) or a 0x hex wei amount");
   }
 }
 
-// Risky method selectors an agent should be warned about.
 const SELECTORS: Record<string, string> = {
   "0x095ea7b3": "approve",
   "0xa22cb465": "setApprovalForAll",
@@ -51,117 +58,105 @@ const SELECTORS: Record<string, string> = {
   "0xa9059cbb": "transfer",
 };
 
-interface AlchemyChange {
-  assetType?: string; // NATIVE | ERC20 | ERC721 | ERC1155 | SPECIAL_NFT
-  changeType?: string; // TRANSFER | APPROVE
-  from?: string;
-  to?: string;
-  rawAmount?: string;
-  amount?: string;
-  symbol?: string;
-  decimals?: number;
-  contractAddress?: string;
-  tokenId?: string;
-  name?: string;
+/** 32-byte word at index i of the calldata args (after the 4-byte selector). */
+function word(data: string, i: number): string {
+  const start = 10 + i * 64;
+  return data.slice(start, start + 64);
 }
-interface SimResult {
-  changes?: AlchemyChange[];
-  gasUsed?: string;
-  error?: { message?: string } | string | null;
-}
+const wordToAddr = (w: string) => ("0x" + w.slice(24)).toLowerCase();
+const wordToBig = (w: string) => (w ? BigInt("0x" + w) : 0n);
 
 export async function simulateTx(params: Record<string, string>) {
   const from = reqAddr(params.from || "", "from (sender)");
   const to = reqAddr(params.to || "", "to (recipient/contract)");
-  const data = (params.data || params.calldata || "0x").trim();
-  if (data !== "0x" && !/^0x[0-9a-fA-F]*$/.test(data)) {
-    throw new Error("data/calldata must be 0x-prefixed hex");
+  const data = (params.data || params.calldata || "0x").trim() as Hex;
+  if (data !== "0x" && !/^0x[0-9a-fA-F]*$/.test(data)) throw new Error("data/calldata must be 0x-prefixed hex");
+  const value = toWei(params.value);
+
+  // 1) Will it execute? eth_call runs the tx against live state and reverts with
+  //    the contract's own reason if it would fail — the headline signal.
+  let willSucceed: boolean;
+  let revertReason: string | null = null;
+  try {
+    await client.call({ account: from, to, data, value });
+    willSucceed = true;
+  } catch (e) {
+    willSucceed = false;
+    const err = e as { shortMessage?: string; details?: string; message?: string };
+    revertReason = (err.shortMessage || err.details || err.message || "execution reverted").split("\n")[0].slice(0, 200);
   }
-  const value = toHexWei(params.value);
-  const k = key();
 
-  const tx = { from, to, value, data };
-  const res = await fetch(rpcUrl(k), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id: 1, jsonrpc: "2.0", method: "alchemy_simulateAssetChanges", params: [tx] }),
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!res.ok) throw new Error(`Simulation upstream responded ${res.status}`);
-  const j = (await res.json()) as { result?: SimResult; error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || "Simulation RPC error");
-  const sim = j.result || {};
+  // 2) What will it cost? estimateGas also reverts on a failing tx, so it doubles
+  //    as a check; a null estimate on an otherwise-succeeding call is just the
+  //    node declining to estimate, not a failure.
+  let gasEstimate: string | null = null;
+  let gasCostEth: string | null = null;
+  try {
+    const gas = await client.estimateGas({ account: from, to, data, value });
+    const gasPrice = await client.getGasPrice();
+    gasEstimate = gas.toString();
+    gasCostEth = formatEther(gas * gasPrice);
+  } catch {
+    /* estimate unavailable — leave null; the call result above is authoritative */
+  }
 
-  const errMsg =
-    typeof sim.error === "string" ? sim.error : sim.error?.message ? sim.error.message : null;
-  const willRevert = Boolean(errMsg);
-
-  const lc = (s?: string) => (s || "").toLowerCase();
-  const fromLc = from.toLowerCase();
-
-  // Normalise each change from the SENDER's perspective.
-  const changes = (sim.changes || []).map((c) => {
-    const isApprove = c.changeType === "APPROVE";
-    const unlimited = isApprove && c.rawAmount === MAX_UINT;
-    let direction: "out" | "in" | "approve" | "other" = "other";
-    if (isApprove) direction = "approve";
-    else if (lc(c.from) === fromLc) direction = "out";
-    else if (lc(c.to) === fromLc) direction = "in";
-    return {
-      assetType: c.assetType ?? null,
-      direction,
-      symbol: c.symbol ?? c.name ?? null,
-      amount: c.amount ?? null,
-      contractAddress: c.contractAddress ?? null,
-      tokenId: c.tokenId ?? null,
-      to: c.to ?? null,
-      unlimited: unlimited || undefined,
-    };
-  });
-
-  // Calldata action + risk flags.
+  // 3) Decode the risky bits straight from calldata — no tracer needed.
   const selector = data.length >= 10 ? data.slice(0, 10).toLowerCase() : null;
   const method = selector ? (SELECTORS[selector] ?? null) : null;
-  const approvals = changes.filter((c) => c.direction === "approve");
   const flags: string[] = [];
-  if (willRevert) flags.push("would_revert");
-  if (approvals.some((a) => a.unlimited)) flags.push("unlimited_approval");
-  if (method === "setApprovalForAll") flags.push("set_approval_for_all");
-  if (approvals.length > 0) flags.push("grants_approval");
-  if (changes.some((c) => c.direction === "out" && c.assetType === "NATIVE")) flags.push("sends_native");
-  if (changes.some((c) => c.direction === "out")) flags.push("moves_assets_out");
+  let approval: { spender: string; amount: string; unlimited: boolean } | null = null;
+  let setApprovalForAll: { operator: string; approved: boolean } | null = null;
 
-  // Simple risk level for agents.
-  const level =
+  if (method === "approve" || method === "increaseAllowance") {
+    const spender = wordToAddr(word(data, 0));
+    const amount = wordToBig(word(data, 1));
+    const unlimited = amount >= UNLIMITED_FLOOR;
+    approval = { spender, amount: amount === MAX_UINT ? "unlimited (uint256 max)" : amount.toString(), unlimited };
+    flags.push("grants_approval");
+    if (unlimited) flags.push("unlimited_approval");
+  } else if (method === "setApprovalForAll") {
+    const operator = wordToAddr(word(data, 0));
+    const approved = wordToBig(word(data, 1)) !== 0n;
+    setApprovalForAll = { operator, approved };
+    if (approved) flags.push("set_approval_for_all");
+  } else if (method === "permit") {
+    flags.push("grants_approval");
+    const amount = wordToBig(word(data, 2));
+    if (amount >= UNLIMITED_FLOOR) flags.push("unlimited_approval");
+  }
+  if (value > 0n) flags.push("sends_native");
+  if (!willSucceed) flags.push("would_revert");
+
+  const riskLevel =
     flags.includes("unlimited_approval") || flags.includes("set_approval_for_all")
       ? "high"
-      : willRevert
+      : !willSucceed
         ? "review"
-        : flags.includes("moves_assets_out") || flags.includes("grants_approval")
+        : flags.includes("grants_approval") || flags.includes("sends_native")
           ? "medium"
           : "low";
-
-  const outgoing = changes.filter((c) => c.direction === "out");
-  const incoming = changes.filter((c) => c.direction === "in");
 
   return {
     from,
     to,
-    method, // decoded method name if recognised (approve, transfer, …)
-    willRevert,
-    revertReason: errMsg,
-    gasUsed: sim.gasUsed ?? null,
-    riskLevel: level, // low | medium | review | high
-    flags, // machine-readable risk flags
-    summary: {
-      assetsOut: outgoing.length,
-      assetsIn: incoming.length,
-      approvalsGranted: approvals.length,
-    },
-    outgoing, // what leaves the sender
-    incoming, // what arrives to the sender
-    approvals, // approvals this tx would grant (watch unlimited/setApprovalForAll)
-    note: "Pre-execution simulation against current Base state. Not financial advice; simulate again just before signing as state can change.",
+    method, // decoded method if recognised (approve, setApprovalForAll, transfer, …)
+    willSucceed,
+    revertReason, // the contract's own reason when it would fail
+    gasEstimate,
+    gasCostEth,
+    valueEth: value > 0n ? formatEther(value) : "0",
+    riskLevel, // low | medium | review | high
+    flags, // machine-readable: would_revert, unlimited_approval, set_approval_for_all, grants_approval, sends_native
+    ...(approval ? { approval } : {}),
+    ...(setApprovalForAll ? { setApprovalForAll } : {}),
+    recommendation: !willSucceed
+      ? `Do NOT sign — this transaction reverts against current state${revertReason ? `: ${revertReason}` : ""}. Fix the cause before sending.`
+      : flags.includes("unlimited_approval") || flags.includes("set_approval_for_all")
+        ? "Executes, but grants UNLIMITED spending/transfer power to the spender — the classic drain vector. Approve an exact amount instead, or only if you fully trust the spender."
+        : flags.includes("grants_approval")
+          ? "Executes and grants a bounded approval. Confirm the spender is one you intend to fund."
+          : "Executes against current state. State can change before you sign — simulate again immediately before submitting.",
+    note: "Pre-sign simulation on live Base state: eth_call for success/revert, eth_estimateGas for cost, and calldata decoding for approval/drain risk. Does not enumerate every token that moves (that needs a tracer Base's RPC doesn't serve). Re-simulate just before signing. Not financial advice.",
     simulatedAt: new Date().toISOString(),
   };
 }

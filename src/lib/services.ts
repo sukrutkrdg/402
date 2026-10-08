@@ -935,26 +935,23 @@ export const SERVICES: ServiceDef[] = [
     params: [{ name: "hash", label: "Transaction hash", placeholder: "0x… (66 hex characters)", required: true }],
     handler: txDecode,
   },
-  // HIDDEN until the simulation backend is replaced (Alchemy plan lacks
-  // alchemy_simulateAssetChanges on Base — 'JS Tracer is not enabled').
-  //   {
-  //     id: "simulate-tx",
-  //     name: "Transaction Simulation",
-  //     tagline: "What an unsigned tx will do — before you sign it",
-  //     description:
-  //       "Simulate an UNSIGNED transaction against current Base state: what tokens leave/arrive for the sender, any approvals it grants (flags unlimited allowance & setApprovalForAll — the classic drain vector), whether it would revert, and gas. The pre-execution safety check every agent needs before signing.",
-  //     price: "$0.03",
-  //     icon: "🧪",
-  //     category: "Onchain",
-  //     params: [
-  //       { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
-  //       { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
-  //       { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
-  //       { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
-  //     ],
-  //     handler: simulateTx,
-  //     noFreeTier: true,
-  //   },
+  {
+    id: "simulate-tx",
+    name: "Transaction Simulation",
+    tagline: "Will this tx succeed, what will it cost, is it a drain — before you sign",
+    description:
+      "Simulate an UNSIGNED transaction against live Base state before an agent signs: will it SUCCEED or revert (with the contract's own reason), the gas estimate and ETH cost, and — decoded from the calldata — whether it grants an approval, and whether that approval is UNLIMITED (approve/permit) or a setApprovalForAll, the classic drain vectors. Pass from, to, and optionally data (calldata) + value. The pre-execution check the agent-safety playbook says to run and block on. Not financial advice.",
+    price: "$0.02",
+    icon: "🧪",
+    category: "Onchain",
+    params: [
+      { name: "from", label: "Sender address", placeholder: "0x… sender", required: true },
+      { name: "to", label: "To (recipient/contract)", placeholder: "0x… recipient or contract", required: true },
+      { name: "data", label: "Calldata (hex, optional)", placeholder: "0x… (for contract calls)" },
+      { name: "value", label: "ETH value (optional)", placeholder: "0.1" },
+    ],
+    handler: simulateTx,
+  },
   {
     id: "exit-liquidity",
     name: "Exit Liquidity Check",
