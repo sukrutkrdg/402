@@ -12,6 +12,7 @@ import { aiSummarize, aiExtract, aiExtractBatch, aiTranslate } from "./ai";
 import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo, tokenPools } from "./onchain-extra";
 import { dexSpread } from "./dex-spread";
+import { multiChainGas } from "./multi-chain-gas";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -484,6 +485,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [],
     handler: gasOracle,
+  },
+  {
+    id: "multi-chain-gas",
+    name: "Multi-Chain Gas Compare",
+    tagline: "Which chain is cheapest to operate on right now",
+    description:
+      "Reads the live gas price on each major EVM chain an agent uses (base, arbitrum, optimism, ethereum, polygon) and turns it into the USD cost of the actions that matter — a plain transfer and a DEX swap — using live native-token prices. Returns one ranked answer with the cheapest chain, so an agent deciding where to settle doesn't make five RPC calls. A chain it could not read is 'unknown' and excluded from the pick, never guessed. Gas units are typical estimates. Not financial advice.",
+    price: "$0.01",
+    icon: "⛽",
+    category: "Markets",
+    params: [],
+    handler: multiChainGas,
   },
   {
     id: "b20-safety",
