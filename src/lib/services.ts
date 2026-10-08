@@ -14,6 +14,7 @@ import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo, tokenPools 
 import { dexSpread } from "./dex-spread";
 import { multiChainGas } from "./multi-chain-gas";
 import { hashUtil, unitConvert, ping } from "./compute-utils";
+import { dnsLookup, defiTvl, stablecoinMcap } from "./commodity-data";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -3067,6 +3068,49 @@ export const SERVICES: ServiceDef[] = [
     category: "Utility",
     params: [{ name: "echo", label: "Optional message to echo back", placeholder: "hello" }],
     handler: ping,
+  },
+  {
+    id: "dns-lookup",
+    name: "DNS Lookup",
+    tagline: "A / AAAA / MX / TXT / NS / CNAME records for any domain",
+    description:
+      "Resolve DNS records for a domain via Cloudflare DNS-over-HTTPS — A, AAAA, MX, TXT, NS, CNAME, SOA. Pass name= and type= (default A). Returns each record with its TTL, plus NXDOMAIN when the name does not exist. The DNS commodity agents call constantly for infra, email and domain checks, served at the sub-cent floor. Not financial advice.",
+    price: "$0.002",
+    icon: "🌐",
+    category: "Business",
+    params: [
+      { name: "name", label: "Domain", placeholder: "coinbase.com", required: true },
+      { name: "type", label: "Record type (default A)", placeholder: "A" },
+    ],
+    handler: dnsLookup,
+  },
+  {
+    id: "defi-tvl",
+    name: "DeFi TVL Rankings",
+    tagline: "Top DeFi protocols by TVL, filterable by chain & category",
+    description:
+      "Top DeFi protocols ranked by total value locked (DefiLlama), with 1d/7d change — CEX/Chain/Bridge excluded so this is real DeFi. Pass chain= (e.g. base) to filter to protocols active on it, category= (e.g. Lending, Dexes) to narrow, limit= up to 50. tvlUsd is the protocol's GLOBAL TVL; chain filters presence, not per-chain TVL. The DeFi-rankings commodity, served cheap. Not financial advice.",
+    price: "$0.01",
+    icon: "🏦",
+    category: "Markets",
+    params: [
+      { name: "chain", label: "Filter by chain (optional)", placeholder: "base" },
+      { name: "category", label: "Filter by category (optional)", placeholder: "Lending" },
+      { name: "limit", label: "How many (default 10, max 50)", placeholder: "10" },
+    ],
+    handler: defiTvl,
+  },
+  {
+    id: "stablecoin-mcap",
+    name: "Stablecoin Market Cap",
+    tagline: "Total stablecoin market cap + the largest by circulating supply",
+    description:
+      "Total stablecoin market capitalisation and the largest stablecoins by circulating supply across all chains (DefiLlama), with peg type/mechanism and live price — plus a depeg watch flagging any USD-pegged coin 2%+ off a dollar. The stablecoin-market commodity agents track; for a single Base-stablecoin peg check use stablecoin-peg. Not financial advice.",
+    price: "$0.01",
+    icon: "💵",
+    category: "Markets",
+    params: [{ name: "limit", label: "How many top coins (default 10, max 30)", placeholder: "10" }],
+    handler: stablecoinMcap,
   },
   {
     id: "buy-credits",
