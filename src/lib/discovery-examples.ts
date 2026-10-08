@@ -228,6 +228,10 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "bridge-status": { txHash: TX, from: "base", to: "arbitrum" },
   // Cross-DEX price spread for a real Base token with multiple pools.
   "dex-spread": { address: DEGEN },
+  // keccak256 of the ERC-20 Transfer signature — a real, recognisable digest.
+  "hash": { input: "Transfer(address,address,uint256)", algo: "keccak256" },
+  // 1.5 ether → wei.
+  "unit-convert": { amount: "1.5", from: "ether", to: "wei" },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
