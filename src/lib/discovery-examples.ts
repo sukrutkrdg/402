@@ -234,6 +234,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "unit-convert": { amount: "1.5", from: "ether", to: "wei" },
   // A real domain's A records.
   "dns-lookup": { name: "coinbase.com", type: "A" },
+  // Trace an established wallet's source of funds.
+  "fund-trace": { wallet: WALLET2 },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",

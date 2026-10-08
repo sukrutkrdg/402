@@ -17,6 +17,7 @@ import { hashUtil, unitConvert, ping } from "./compute-utils";
 import { dnsLookup, defiTvl, stablecoinMcap } from "./commodity-data";
 import { cryptoMarkets, cryptoGlobal } from "./crypto-markets";
 import { fearGreed, cryptoTrending } from "./market-sentiment";
+import { fundTrace } from "./fund-trace";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -379,6 +380,22 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "wallet", label: "Wallet address", placeholder: "0x... wallet to trace", required: true }],
     handler: firstFunder,
+    noFreeTier: true,
+  },
+  {
+    id: "fund-trace",
+    name: "Fund Trace (Source of Funds)",
+    tagline: "Trace a wallet's money back to a CEX, a bridge — or a sanctioned address",
+    description:
+      "first-funder goes one hop; this walks the funding chain back up to 8 hops to a recognisable origin (a CEX/bridge on-ramp — lower-risk provenance) OR a SANCTIONED address (dirty money, taint by provenance) OR a dead-end of fresh anon EOAs (the sybil/burner-cluster shape). One verdict compliance can refuse on. Best-effort: internal-transfer funding is invisible and ends the walk, never guessed. A CEX origin is a signal, not identity. Not financial advice.",
+    price: "$0.10",
+    icon: "🧵",
+    category: "Onchain",
+    params: [
+      { name: "wallet", label: "Wallet to trace", placeholder: "0x… wallet", required: true },
+      { name: "hops", label: "Max hops (default 5, max 8)", placeholder: "5" },
+    ],
+    handler: fundTrace,
     noFreeTier: true,
   },
   {
