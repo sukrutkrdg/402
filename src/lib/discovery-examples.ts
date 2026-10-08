@@ -225,6 +225,13 @@ const OVERRIDES: Record<string, Record<string, string>> = {
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
     to: USDC,
   },
+  // Simulate the same approve(Aerodrome router, 0) from a real wallet: a tx that
+  // succeeds and grants a bounded (zero) approval — a safe, runnable example.
+  "simulate-tx": {
+    from: WALLET,
+    to: USDC,
+    data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
+  },
   "commerce-escrow": { payer: WALLET, receiver: WALLET2, operator: WALLET },
   "commerce-operator-audit": { operator: WALLET },
   "morpho-vault": { vault: VAULT },
