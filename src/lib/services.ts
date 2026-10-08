@@ -13,6 +13,7 @@ import { tokenRisk, addressIntel } from "./onchain";
 import { gasOracle, tokenPrice, txDecode, multiTokenPrice, pairInfo, tokenPools } from "./onchain-extra";
 import { dexSpread } from "./dex-spread";
 import { multiChainGas } from "./multi-chain-gas";
+import { hashUtil, unitConvert, ping } from "./compute-utils";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -3023,6 +3024,49 @@ export const SERVICES: ServiceDef[] = [
       });
       return { count, tokens, generatedAt: new Date().toISOString() };
     },
+  },
+  {
+    id: "hash",
+    name: "Hash",
+    tagline: "keccak256 / sha256 of text or hex — the most-bought x402 utility",
+    description:
+      "Compute keccak256 (the EVM/Solidity hash — event topics, function selectors, mapping keys) or sha256 of any input. Pass input=text for UTF-8, or 0x-hex to hash raw bytes; algo=keccak256 (default) or sha256. Returns the digest and, for keccak, the 4-byte function selector. Pure compute, no chain, sub-cent — the commodity hashing call the whole x402 ecosystem hammers, served at the floor. Not financial advice.",
+    price: "$0.002",
+    icon: "#️⃣",
+    category: "Utility",
+    params: [
+      { name: "input", label: "Text or 0x-hex to hash", placeholder: "Transfer(address,address,uint256)", required: true },
+      { name: "algo", label: "keccak256 (default) or sha256", placeholder: "keccak256" },
+    ],
+    handler: hashUtil,
+  },
+  {
+    id: "unit-convert",
+    name: "Unit Convert",
+    tagline: "wei / gwei / ether — or any token decimals, both ways",
+    description:
+      "Convert an amount between wei, kwei, mwei, gwei, szabo, finney and ether — or between any token decimals (pass a number like 6 for USDC). Integer-exact, no precision loss. Pass amount, from, to. Pure compute, sub-cent — the unit-conversion commodity agents call constantly when building transactions. Not financial advice.",
+    price: "$0.002",
+    icon: "🔢",
+    category: "Utility",
+    params: [
+      { name: "amount", label: "Amount", placeholder: "1.5", required: true },
+      { name: "from", label: "From unit (or decimals number)", placeholder: "ether" },
+      { name: "to", label: "To unit (or decimals number)", placeholder: "wei" },
+    ],
+    handler: unitConvert,
+  },
+  {
+    id: "ping",
+    name: "x402 Ping",
+    tagline: "Always-returns health check — the cheapest end-to-end x402 test",
+    description:
+      "The cheapest possible end-to-end x402 purchase: always returns 200 with a timestamp (and echoes an optional message). Use it to verify your x402 client, the payment path and our settlement in one sub-cent call before wiring up a real endpoint — the pattern crawlers and monitors hit most across the network.",
+    price: "$0.002",
+    icon: "🏓",
+    category: "Utility",
+    params: [{ name: "echo", label: "Optional message to echo back", placeholder: "hello" }],
+    handler: ping,
   },
   {
     id: "buy-credits",
