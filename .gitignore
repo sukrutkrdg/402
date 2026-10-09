@@ -39,3 +39,6 @@ _*.txt
 !.env.example
 awe.md
 _*.md
+
+# hero/OG image render artifact
+scripts/.hero.svg

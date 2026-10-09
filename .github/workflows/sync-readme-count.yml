@@ -1,0 +1,53 @@
+name: Sync README service count
+
+# Keep the README's live-API count/badge in step with the real catalogue.
+# Primary trigger: a successful production deploy (Vercel posts deployment_status
+# to GitHub) — so this runs right AFTER each deploy. Plus a daily safety net and
+# a manual button.
+on:
+  deployment_status:
+  schedule:
+    - cron: "17 6 * * *" # daily, 06:17 UTC — catches anything the deploy hook missed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-readme-count
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # On a deploy event, only act on a SUCCESSFUL production deployment.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       (github.event.deployment_status.environment == 'Production' ||
+        github.event.deployment_status.environment == 'production'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # No deps needed — the script uses only Node builtins (fs + global fetch).
+      - name: Sync count from live catalogue
+        run: node scripts/sync-readme-count.mjs
+
+      - name: Commit if the count changed
+        run: |
+          if [ -n "$(git status --porcelain README.md)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add README.md
+            git commit -m "chore: sync README service count to live catalogue [skip ci]"
+            git push
+            echo "README updated and pushed."
+          else
+            echo "README already in sync — nothing to do."
+          fi

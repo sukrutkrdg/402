@@ -25,10 +25,15 @@ const today = new Date().toISOString().slice(0, 10);
 
 let md = readFileSync(README, "utf8");
 const before = md;
+// Keep the existing "as of" date when the count hasn't changed — the date marks
+// the last COUNT change, not every sync run, so the daily job makes no noise.
+const curLine = md.match(/^(\d+) public services as of (\d{4}-\d{2}-\d{2})/m);
+const curCount = curLine ? Number(curLine[1]) : null;
+const date = curCount === count && curLine ? curLine[2] : today;
 md = md
   .replace(/live%20APIs-\d+-0052FF/g, `live%20APIs-${count}-0052FF`)
   .replace(/Live APIs: \d+/g, `Live APIs: ${count}`)
-  .replace(/^\d+ public services as of \d{4}-\d{2}-\d{2}/m, `${count} public services as of ${today}`);
+  .replace(/^\d+ public services as of \d{4}-\d{2}-\d{2}/m, `${count} public services as of ${date}`);
 
 if (md === before) {
   console.log(`README already in sync (count=${count}, date=${today}).`);
