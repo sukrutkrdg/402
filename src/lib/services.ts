@@ -25,6 +25,7 @@ import { priceImpact } from "./price-impact";
 import { dumpRisk } from "./dump-risk";
 import { ownerPowers } from "./owner-powers";
 import { supplyInflation } from "./supply-inflation";
+import { activityTrend } from "./activity-trend";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -558,6 +559,18 @@ export const SERVICES: ServiceDef[] = [
       { name: "days", label: "Window days (default 30, max 45)", placeholder: "30" },
     ],
     handler: supplyInflation,
+  },
+  {
+    id: "activity-trend",
+    name: "Activity Trend (Adoption)",
+    tagline: "Is the token gaining or losing on-chain users?",
+    description:
+      "Not price momentum — ADOPTION. token-age tells you when a token was born; holder-distribution is a snapshot. Neither shows the TRAJECTORY. A token can pass every static check and still bleed users week over week — what a human sees watching for days, an agent can't. Reads weekly transfer counts and distinct participants over the last 28 days and calls it: accelerating, steady, cooling, dying, or low_activity. Activity ≠ price; pair with wash-trading. Not financial advice.",
+    price: "$0.03",
+    icon: "📈",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: activityTrend,
   },
   {
     id: "fresh-bridge",
