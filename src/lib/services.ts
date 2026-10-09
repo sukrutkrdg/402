@@ -24,6 +24,7 @@ import { addressPoisoning, sanctionedExposure } from "./wallet-forensics";
 import { priceImpact } from "./price-impact";
 import { dumpRisk } from "./dump-risk";
 import { ownerPowers } from "./owner-powers";
+import { supplyInflation } from "./supply-inflation";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -542,6 +543,21 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: ownerPowers,
+  },
+  {
+    id: "supply-inflation",
+    name: "Supply Inflation",
+    tagline: "Not 'can it mint' — is it minting, and how fast?",
+    description:
+      "owner-powers says the owner CAN mint; this says whether they ARE, and how fast. A token can advertise fixed supply and quietly inflate it, diluting holders before the dump. Sums zero-address mints and burns over a window (CDP SQL) against live on-chain totalSupply, annualised. Verdict from fixed_in_window / deflationary to hyperinflation. Honest: bridges, staking and LP programs mint legitimately — flags the RATE, not intent. Not financial advice.",
+    price: "$0.03",
+    icon: "🖨️",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+      { name: "days", label: "Window days (default 30, max 365)", placeholder: "30" },
+    ],
+    handler: supplyInflation,
   },
   {
     id: "fresh-bridge",

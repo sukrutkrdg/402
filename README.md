@@ -1,7 +1,7 @@
 # x402 Bazaar — Pay-per-call API marketplace for agents on Base & NEAR
 
 A **live pay-per-call API marketplace** on **Base mainnet**, with NEAR-native checks and payment from **NEAR** — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
-215 public services as of 2026-10-08 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
+216 public services as of 2026-10-09 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
 a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 82 of Coinbase's
 tokenized equities, Cobalt coverage (validity/conditional swaps, composite policies, scheduled
 multiplier), a full x402 agent-trust suite (seller & payer reputation, Know-Your-Agent identity,
@@ -9,7 +9,8 @@ pre-pay screening, wallet drain-surface, MEV/sandwich guard), address-poisoning 
 sanctioned-exposure (OFAC taint-by-association) forensics, pre-trade price-impact
 (how much your size moves the pool) and dump-risk (exit-liquidity: can the pool
 absorb the big holders), owner-powers (the latent rug surface — what the owner can
-still do to you after you buy), x402 market intelligence,
+still do to you after you buy), supply-inflation (is the token quietly minting,
+and how fast), x402 market intelligence,
 stablecoin-peg monitoring, wallet intelligence, OFAC screening, AI-written reports — sold to AI
 agents and humans over
 [**x402**](https://docs.cdp.coinbase.com/x402), settled in USDC via the Coinbase CDP facilitator,
