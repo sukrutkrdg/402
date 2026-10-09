@@ -255,6 +255,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "owner-powers": { address: DEGEN },
   // Is a real Base token's supply being inflated, and how fast?
   "supply-inflation": { address: DEGEN, days: "30" },
+  // Is a real Base token gaining or losing on-chain activity?
+  "activity-trend": { address: DEGEN },
   "sign-guard": {
     // approve(Aerodrome router, 0) — the revoke every wallet tool wants checked.
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
