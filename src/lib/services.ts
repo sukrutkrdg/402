@@ -23,6 +23,7 @@ import { holderOverlap, tokenAge } from "./token-cohort";
 import { addressPoisoning, sanctionedExposure } from "./wallet-forensics";
 import { priceImpact } from "./price-impact";
 import { dumpRisk } from "./dump-risk";
+import { ownerPowers } from "./owner-powers";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -529,6 +530,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: dumpRisk,
+  },
+  {
+    id: "owner-powers",
+    name: "Owner Powers (Latent Rug Surface)",
+    tagline: "What can the owner do to you AFTER you buy?",
+    description:
+      "A token can look clean now — low tax, no honeypot, sells fine — and still leave the owner holding the switches to trap you later. sellability asks 'can I sell today'; this asks 'what can the owner do AFTER I buy'. Lists the mutable owner powers — raise sell tax to 100%, zero your balance, blacklist you, pause transfers, reclaim 'renounced' ownership, mint supply — each mapped to the attack it enables, plus whether a renounce is real. Not financial advice.",
+    price: "$0.03",
+    icon: "🎛️",
+    category: "Onchain",
+    params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+    handler: ownerPowers,
   },
   {
     id: "fresh-bridge",
