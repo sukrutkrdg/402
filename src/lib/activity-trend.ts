@@ -22,7 +22,7 @@ import { cdpSql } from "./covalent";
 const TRANSFER = "Transfer(address,address,uint256)";
 const validAddr = (a?: string) => /^0x[0-9a-fA-F]{40}$/.test((a ?? "").trim());
 
-interface Row { wk?: string; c?: string; sf?: string; st?: string }
+interface Row { c1?: string; c2?: string; c3?: string; c4?: string; r1?: string; r2?: string; r3?: string; r4?: string }
 
 export async function activityTrend(params: Record<string, string>) {
   const raw = (params.address || params.token || "").trim();
@@ -30,21 +30,34 @@ export async function activityTrend(params: Record<string, string>) {
   const address = getAddress(raw);
   const token = address.toLowerCase();
 
-  // Weekly buckets over 28 days. Grouping doesn't change the bytes scanned, so the
-  // 28-day cap (cf. wash-trading's 30d) is what keeps this reliable on busy tokens.
+  // Four FULL 7-day windows anchored to now (c1 = most recent 7 days). Rolling,
+  // not calendar buckets — so the current week is never a partial-week false drop.
+  // One 28-day scan (cf. wash-trading's 30d cap) keeps it reliable on busy tokens.
+  const win = (a: number, b: number) =>
+    b === 0
+      ? `block_timestamp > now() - INTERVAL ${a} DAY`
+      : `block_timestamp <= now() - INTERVAL ${b} DAY AND block_timestamp > now() - INTERVAL ${a} DAY`;
   const rows = await cdpSql<Row>(
-    `SELECT toString(toStartOfInterval(block_timestamp, INTERVAL 7 DAY)) AS wk, count() AS c, uniqExact(toString(parameters['from'])) AS sf, uniqExact(toString(parameters['to'])) AS st FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND block_timestamp > now() - INTERVAL 28 DAY GROUP BY wk ORDER BY wk ASC`,
+    `SELECT countIf(${win(7, 0)}) AS c1, countIf(${win(14, 7)}) AS c2, countIf(${win(21, 14)}) AS c3, countIf(${win(28, 21)}) AS c4, ` +
+      `uniqExactIf(toString(parameters['to']), ${win(7, 0)}) AS r1, uniqExactIf(toString(parameters['to']), ${win(14, 7)}) AS r2, ` +
+      `uniqExactIf(toString(parameters['to']), ${win(21, 14)}) AS r3, uniqExactIf(toString(parameters['to']), ${win(28, 21)}) AS r4 ` +
+      `FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND block_timestamp > now() - INTERVAL 28 DAY`,
   );
   if (rows === null) throw new Error("Activity data unavailable (warehouse) — not charged, retry shortly");
 
-  const weeks = rows.map((r) => ({
-    weekStart: (r.wk ?? "").slice(0, 10),
-    transfers: Number(r.c ?? 0),
-    senders: Number(r.sf ?? 0),
-    receivers: Number(r.st ?? 0),
-  }));
+  const row = rows[0] ?? {};
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  const DAY = 86_400_000;
+  const dateAgo = (d: number) => new Date(Date.now() - d * DAY).toISOString().slice(0, 10);
+  // Oldest → newest, each a full 7-day window.
+  const weeks = [
+    { weekStart: dateAgo(28), transfers: n(row.c4), receivers: n(row.r4) },
+    { weekStart: dateAgo(21), transfers: n(row.c3), receivers: n(row.r3) },
+    { weekStart: dateAgo(14), transfers: n(row.c2), receivers: n(row.r2) },
+    { weekStart: dateAgo(7), transfers: n(row.c1), receivers: n(row.r1) },
+  ];
 
-  if (weeks.length === 0 || weeks.every((w) => w.transfers === 0)) {
+  if (weeks.every((w) => w.transfers === 0)) {
     return { address, windowDays: 28, weeks: [], verdict: "dormant", recommendation: "No transfer activity in the last 28 days — the token is dormant (or not trading). Treat as illiquid/abandoned until it shows a pulse.", note: "Weekly on-chain activity over 28 days (CDP SQL). A momentum signal, not a price call. Not financial advice.", checkedAt: new Date().toISOString() };
   }
 
@@ -68,7 +81,7 @@ export async function activityTrend(params: Record<string, string>) {
   return {
     address,
     windowDays: 28,
-    weeks, // oldest → newest: transfers, senders, receivers
+    weeks, // oldest → newest, each a full 7-day window: transfers, receivers
     totalTransfers,
     peakWeeklyTransfers: peak,
     latestWeeklyTransfers: last,
