@@ -30,7 +30,7 @@ import { z } from "zod";
 
 // Keep in step with package.json and server.json — all three are published and
 // a stale one here is what the MCP registry reports.
-const VERSION = "0.2.9";
+const VERSION = "0.3.0";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
@@ -275,6 +275,92 @@ function registerService(service) {
 
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// 3b. Static tools — ALWAYS present, before and independent of the catalog.
+//
+// Every per-service tool above is registered only after the catalog loads over
+// the network. A registry scanner that samples tools/list the instant we connect
+// — or whose sandbox can't reach the catalog at all — therefore saw ZERO tools
+// and listed the server as empty (mcprush did exactly this). These two guarantee
+// a real, useful surface immediately, and let an agent drive the whole catalog
+// through one call even before the dynamic tools arrive.
+// ---------------------------------------------------------------------------
+
+const X402_ORIGIN = (() => {
+  try { return new URL(CATALOG_URL).origin; } catch { return "https://402.com.tr"; }
+})();
+
+function registerStaticTools() {
+  server.registerTool(
+    "list_x402_services",
+    {
+      title: "List x402 Bazaar services",
+      description:
+        "List every service in the x402 Bazaar catalog (id, name, price, category, tagline). Call this first to discover what is available, then call a service by its own tool or via call_x402_service. Free, no payment.",
+      inputSchema: {
+        query: z.string().optional().describe("Case-insensitive substring to filter by id / name / tagline."),
+        category: z.string().optional().describe("Filter by category (e.g. Onchain, Markets, AI)."),
+      },
+      annotations: { title: "List x402 Bazaar services", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ query, category } = {}) => {
+      try {
+        const res = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(10000) });
+        const cat = res.ok ? await res.json() : {};
+        let services = cat.services ?? cat ?? [];
+        if (!Array.isArray(services)) services = [];
+        const q = (query ?? "").toLowerCase();
+        const c = (category ?? "").toLowerCase();
+        const rows = services
+          .filter((s) => !c || String(s.category ?? "").toLowerCase() === c)
+          .filter((s) => !q || `${s.id} ${s.name} ${s.tagline ?? ""}`.toLowerCase().includes(q))
+          .map((s) => ({ id: s.id, name: s.name, price: s.price, category: s.category, tagline: s.tagline }));
+        return { content: [{ type: "text", text: JSON.stringify({ count: rows.length, services: rows }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: `[x402-bazaar-mcp] Could not load catalog: ${err?.message ?? err}` }], isError: true };
+      }
+    },
+  );
+  registeredNames.add("list_x402_services");
+
+  server.registerTool(
+    "call_x402_service",
+    {
+      title: "Call any x402 Bazaar service",
+      description:
+        "Call any x402 Bazaar service by id with its parameters. Pays via the configured mode (free daily call / prepaid credit token / wallet). Use list_x402_services to see ids and inputs. Example: service=\"token-risk\", params={ \"address\": \"0x…\" }.",
+      inputSchema: {
+        service: z.string().describe("The service id, e.g. \"token-risk\" or \"price-impact\"."),
+        params: z.object({}).passthrough().optional().describe("The service's input parameters as an object."),
+      },
+      annotations: { title: "Call any x402 Bazaar service", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ service, params } = {}) => {
+      const id = String(service ?? "").trim().replace(/[^a-z0-9-]/gi, "");
+      if (!id) return { content: [{ type: "text", text: "[x402-bazaar-mcp] Provide a service id (see list_x402_services)." }], isError: true };
+      try {
+        const url = new URL(`/api/x402/${id}`, X402_ORIGIN);
+        for (const [k, v] of Object.entries(params ?? {})) {
+          if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+        }
+        const response = await payAwareFetch(url.toString());
+        let text = await response.text();
+        try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* leave as-is */ }
+        if (response.status === 402) {
+          text += "\n\n[x402-bazaar-mcp] 402 Payment Required — set X402_CREDIT_TOKEN or AGENT_PRIVATE_KEY (buy credits with USDC/USDT/NEAR at https://402.com.tr/credits).";
+        }
+        return { content: [{ type: "text", text }], isError: !response.ok };
+      } catch (err) {
+        return { content: [{ type: "text", text: `[x402-bazaar-mcp] Request failed: ${err?.message ?? err}` }], isError: true };
+      }
+    },
+  );
+  registeredNames.add("call_x402_service");
+}
+
+// Register the static tools NOW, so tools/list is never empty.
+registerStaticTools();
 
 // ---------------------------------------------------------------------------
 // 4. Load the catalog (non-fatal) + register tools. Refresh hourly so newly
