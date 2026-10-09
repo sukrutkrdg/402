@@ -35,6 +35,7 @@ import { riskSignal, isRefundable, withBaseReceipt } from "@/lib/envelope";
 import { withRelated } from "@/lib/related";
 import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
+import { discoveryOutputFor } from "@/lib/morpho-health-output-contract";
 import { priceMills } from "@/lib/price";
 import { recordExternalRevenue } from "@/lib/keepalive-economics";
 import { translateIsLong } from "@/lib/ai";
@@ -724,6 +725,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   //   captured into source instead of nothing at all.
   const exampleInput = exampleInputFor(service);
   const outputExample = (await loadSample(service.id)) ?? staticOutputExample(service.id);
+  const discoveryOutput = discoveryOutputFor(service.id, outputExample);
 
   // Tier packs, mode pricing and coupon discounts all live in one place now, so
   // the challenge and the credit debit cannot disagree. See effectivePriceFor.
@@ -753,7 +755,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       ...declareDiscoveryExtension({
         ...(inputSchema ? { inputSchema } : {}),
         ...(exampleInput ? { input: exampleInput } : {}),
-        ...(outputExample ? { output: { example: outputExample } } : {}),
+        ...(discoveryOutput ? { output: discoveryOutput } : {}),
       }),
     },
   };
