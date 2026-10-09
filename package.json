@@ -13,7 +13,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sync:count": "node scripts/sync-readme-count.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
