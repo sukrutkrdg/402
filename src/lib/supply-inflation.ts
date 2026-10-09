@@ -38,8 +38,8 @@ export async function supplyInflation(params: Record<string, string>) {
   const token = address.toLowerCase();
   const days = Math.min(Math.max(Number(params.days) || 30, 1), 365);
 
-  const mintQ = `SELECT count() AS c, sum(toFloat64(parameters['value'])) AS v, toString(max(block_timestamp)) AS last FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['from']))='${ZERO}' AND block_timestamp > now() - INTERVAL ${days} DAY`;
-  const burnQ = `SELECT count() AS c, sum(toFloat64(parameters['value'])) AS v FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['to'])) IN ('${ZERO}','${DEAD}') AND block_timestamp > now() - INTERVAL ${days} DAY`;
+  const mintQ = `SELECT count() AS c, sum(toFloat64OrZero(toString(parameters['value']))) AS v, toString(max(block_timestamp)) AS last FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['from']))='${ZERO}' AND block_timestamp > now() - INTERVAL ${days} DAY`;
+  const burnQ = `SELECT count() AS c, sum(toFloat64OrZero(toString(parameters['value']))) AS v FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['to'])) IN ('${ZERO}','${DEAD}') AND block_timestamp > now() - INTERVAL ${days} DAY`;
 
   const [mintR, burnR] = await Promise.all([
     cdpSql<{ c?: string; v?: string; last?: string }>(mintQ),
