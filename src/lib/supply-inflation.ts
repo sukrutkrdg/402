@@ -36,7 +36,9 @@ export async function supplyInflation(params: Record<string, string>) {
   if (!validAddr(raw)) throw new Error("Provide a valid 0x… token address");
   const address = getAddress(raw);
   const token = address.toLowerCase();
-  const days = Math.min(Math.max(Number(params.days) || 30, 1), 365);
+  // Full-partition scan on an active token is byte-heavy; keep the window inside
+  // what the warehouse reliably serves (cf. wash-trading's 30-day cap).
+  const days = Math.min(Math.max(Number(params.days) || 30, 1), 45);
 
   const mintQ = `SELECT count() AS c, sum(toFloat64OrZero(toString(parameters['value']))) AS v, toString(max(block_timestamp)) AS last FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['from']))='${ZERO}' AND block_timestamp > now() - INTERVAL ${days} DAY`;
   const burnQ = `SELECT count() AS c, sum(toFloat64OrZero(toString(parameters['value']))) AS v FROM base.events WHERE address='${token}' AND event_signature='${TRANSFER}' AND lower(toString(parameters['to'])) IN ('${ZERO}','${DEAD}') AND block_timestamp > now() - INTERVAL ${days} DAY`;

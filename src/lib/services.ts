@@ -555,7 +555,7 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [
       { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
-      { name: "days", label: "Window days (default 30, max 365)", placeholder: "30" },
+      { name: "days", label: "Window days (default 30, max 45)", placeholder: "30" },
     ],
     handler: supplyInflation,
   },
