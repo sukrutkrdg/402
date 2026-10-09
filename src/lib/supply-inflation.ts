@@ -53,7 +53,8 @@ export async function supplyInflation(params: Record<string, string>) {
   const burnCount = Number(burnR[0]?.c ?? 0);
   const mintedWei = Number(mintR[0]?.v ?? 0); // float64 — fine for a ratio
   const burnedWei = Number(burnR[0]?.v ?? 0);
-  const lastMintAt = mintR[0]?.last && !/^0{4}/.test(mintR[0].last) ? mintR[0].last : null;
+  // max(block_timestamp) over zero mints returns the epoch sentinel — only real when there were mints.
+  const lastMintAt = mintCount > 0 && mintR[0]?.last && !/^1970|^0{4}/.test(mintR[0].last) ? mintR[0].last : null;
 
   // Live supply on-chain to turn raw mint volume into a % of supply.
   let decimals: number | null = null;
