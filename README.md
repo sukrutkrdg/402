@@ -1,6 +1,13 @@
 # x402 Bazaar — Pay-per-call API marketplace for agents on Base & NEAR
 
+[![Open Source: MIT](https://img.shields.io/badge/open%20source-MIT-0052FF)](LICENSE)
+[![Built on Base](https://img.shields.io/badge/built%20on-Base-0052FF)](https://base.org)
+[![x402](https://img.shields.io/badge/x402-pay--per--call-0052FF)](https://docs.cdp.coinbase.com/x402)
+[![Live APIs: 216](https://img.shields.io/badge/live%20APIs-216-0052FF)](https://402.com.tr/api/catalog)
+[![Status: live](https://img.shields.io/badge/status-live%20on%20mainnet-brightgreen)](https://402.com.tr)
+
 A **live pay-per-call API marketplace** on **Base mainnet**, with NEAR-native checks and payment from **NEAR** — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
+Open source (MIT) — every settlement is verifiable on-chain, no DB and no trust required (decode the Builder Codes yourself at [`/dashboard`](https://402.com.tr/dashboard)).
 216 public services as of 2026-10-09 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
 a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 82 of Coinbase's
 tokenized equities, Cobalt coverage (validity/conditional swaps, composite policies, scheduled
