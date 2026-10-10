@@ -22,19 +22,22 @@
 /** Words that carry no search intent on their own. */
 const STOPWORDS = new Set(["ai", "api", "get", "the", "and", "a", "of", "v2", "x402", "base", "batch", "info", "check", "scan", "audit", "report"]);
 
+// Each category also carries the Agentic.Market (Coinbase x402 storefront)
+// taxonomy words agents BROWSE by — data / trading / security / infrastructure /
+// inference / search — so a category sweep surfaces us, not just a keyword match.
 const CATEGORY_TAGS: Record<string, string[]> = {
-  Onchain: ["onchain", "base", "evm", "wallet-intel"],
-  NEAR: ["near", "nep-141", "near-intents", "onchain"],
-  B20: ["b20", "base-token-standard", "freeze", "seize", "token-safety", "stablecoin", "compliance"],
-  AI: ["ai", "llm", "analysis", "report"],
-  Markets: ["market-data", "price", "liquidity", "dex"],
-  Business: ["business", "verification", "due-diligence", "kyb"],
-  Lending: ["lending", "defi", "morpho", "liquidation"],
-  Accounts: ["account-abstraction", "smart-wallet", "paymaster", "erc4337"],
-  Utility: ["utility", "agent-tooling"],
-  Files: ["files", "storage", "documents", "agent-artifacts"],
-  Web: ["web", "scraping", "extraction", "content"],
-  Compliance: ["compliance", "sanctions", "ofac", "screening", "aml"],
+  Onchain: ["onchain", "base", "evm", "wallet-intel", "security", "data"],
+  NEAR: ["near", "nep-141", "near-intents", "onchain", "data"],
+  B20: ["b20", "base-token-standard", "freeze", "seize", "token-safety", "stablecoin", "compliance", "security", "data"],
+  AI: ["ai", "llm", "analysis", "report", "inference", "data"],
+  Markets: ["market-data", "price", "liquidity", "dex", "trading", "data"],
+  Business: ["business", "verification", "due-diligence", "kyb", "data"],
+  Lending: ["lending", "defi", "morpho", "liquidation", "trading", "data"],
+  Accounts: ["account-abstraction", "smart-wallet", "paymaster", "erc4337", "infrastructure"],
+  Utility: ["utility", "agent-tooling", "infrastructure", "data"],
+  Files: ["files", "storage", "documents", "agent-artifacts", "infrastructure"],
+  Web: ["web", "scraping", "extraction", "content", "data", "search"],
+  Compliance: ["compliance", "sanctions", "ofac", "screening", "aml", "security", "data"],
 };
 
 /**
