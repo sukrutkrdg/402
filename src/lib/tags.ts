@@ -77,6 +77,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "safe-approve": ["approval", "allowance", "approve", "calldata", "wallet-security", "spend-cap"],
   "contract-owner": ["owner", "admin", "proxy-admin", "contract-risk", "token-safety", "control"],
   "deployer-rep": ["deployer", "serial-deployer", "reputation", "rug-history", "token-safety"],
+  "perp-funding": ["derivatives", "perp", "funding-rate", "open-interest", "basis", "futures", "trading", "long-short"],
   // Counterparty / address screening — the question with the most abandoned buyers.
   "safe-to-send": ["send-safety", "counterparty", "address-screening", "sanctions", "ofac", "scam-address", "before-you-send", "recipient-check"],
   sanctions: ["sanctions", "ofac", "screening", "compliance", "aml", "counterparty"],

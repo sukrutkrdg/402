@@ -26,6 +26,7 @@ import { dumpRisk } from "./dump-risk";
 import { ownerPowers } from "./owner-powers";
 import { supplyInflation } from "./supply-inflation";
 import { activityTrend } from "./activity-trend";
+import { perpFunding } from "./perp-funding";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -571,6 +572,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Onchain",
     params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
     handler: activityTrend,
+  },
+  {
+    id: "perp-funding",
+    name: "Perp Funding & Basis",
+    tagline: "The futures side of a trade — funding, OI, basis, crowding",
+    description:
+      "Choosing between spot and a perp? This is the data that choice needs. Aggregate OI-weighted perpetual funding, open interest and basis for a coin across venues (CoinGecko, no key): who pays whom (longs crowded vs shorts crowded), the carry you earn or bleed holding the perp, and contango vs backwardation. Verdict neutral / elevated / extreme. Pass symbol=BTC. Funding annualised as an estimate (8h intervals assumed). A market-structure signal, not a price call. Not financial advice.",
+    price: "$0.04",
+    icon: "📑",
+    category: "Markets",
+    params: [{ name: "symbol", label: "Coin symbol (BTC, ETH, SOL…)", placeholder: "BTC", required: true }],
+    handler: perpFunding,
   },
   {
     id: "fresh-bridge",
