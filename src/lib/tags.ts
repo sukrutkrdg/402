@@ -111,6 +111,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "near-swap-quote": ["near", "near-intents", "swap", "quote", "cross-chain"],
   "near-pre-trade-gate": ["near", "pre-trade", "honeypot", "token-safety", "near-intents"],
   "near-portfolio": ["near", "portfolio", "net-worth", "nep-141", "wallet-intel"],
+  "near-account-age": ["near", "account-age", "provenance", "sybil", "know-your-agent", "creator", "trust", "fresh-account"],
   "near-wallet-activity": ["near", "wallet-intel", "transaction-history", "counterparties", "indexer"],
   "near-token-holders": ["near", "nep-141", "holders", "concentration", "whale-watch"],
   "base-swap": ["base", "swap", "dex-aggregator", "0x", "execution"],
