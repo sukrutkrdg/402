@@ -84,6 +84,30 @@ Agents from the NEAR ecosystem reach the same catalogue two ways; the x402 chall
 
 Source: [`integrations/`](integrations) and [`mcp/`](mcp).
 
+## Plug into a trading agent (Coinbase for Agents & any MCP)
+
+Coinbase for Agents can structure and place a trade from your chat — but its flow
+goes *portfolio → view → buy research → compare → structure → execute* with **no
+token-safety step**. For ETH that's fine; for any altcoin it's the step that
+decides whether you're entering a trap. x402 Bazaar is that step.
+
+MCP clients can run several servers at once, so add ours **alongside** Coinbase's
+(`npx x402-bazaar-mcp`, or hosted `https://402.com.tr/mcp`). Then drop a safety
+gate into the same chat, between "form a view" and "structure the trade":
+
+> **Before we size this, call x402 Bazaar.** Run `pre-trade-gate`, `dump-risk` and
+> `price-impact` on `<token>` for a `$<size>` buy. If `pre-trade-gate` returns STOP
+> or `dump-risk` is an exit_trap, don't structure the trade — tell me why.
+
+and before you send to a new address:
+
+> Run x402 Bazaar `address-poisoning` (my wallet → this recipient) and
+> `sanctioned-exposure` on the recipient. Only proceed if both are clear.
+
+Each call is a USDC micro-payment on Base ($0.002–$0.10), pay-per-call, no
+subscription — the cheap, agent-native complement to Nansen/Arkham/Glassnode for
+the onchain-safety reads their flow doesn't make.
+
 ## How Builder Codes are wired
 
 **Seller** declares the app code per route:
