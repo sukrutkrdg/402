@@ -259,6 +259,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "activity-trend": { address: DEGEN },
   // Perp funding / basis / OI for a major coin.
   "perp-funding": { symbol: "BTC" },
+  // Market-wide crowded longs/shorts by funding.
+  "funding-radar": { limit: "8" },
   // web-extract's urls= is required; without a runnable example the keepalive cron
   // could never settle it, so it sat permanently absent from discovery.
   "web-extract": { urls: "https://example.com" },

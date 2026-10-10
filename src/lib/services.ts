@@ -27,6 +27,7 @@ import { ownerPowers } from "./owner-powers";
 import { supplyInflation } from "./supply-inflation";
 import { activityTrend } from "./activity-trend";
 import { perpFunding } from "./perp-funding";
+import { fundingRadar } from "./funding-radar";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -584,6 +585,21 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [{ name: "symbol", label: "Coin symbol (BTC, ETH, SOL…)", placeholder: "BTC", required: true }],
     handler: perpFunding,
+  },
+  {
+    id: "funding-radar",
+    name: "Funding Radar (Crowding)",
+    tagline: "Where's the crowd? Most crowded longs & shorts by funding",
+    description:
+      "Scans the whole perpetual market and ranks the most crowded longs and shorts by funding, so an agent finds squeeze / mean-reversion setups in one call. Extreme positive funding = crowded long (long-squeeze risk on a dip); extreme negative = crowded short (short-squeeze fuel on a pump). Returns the market tilt plus the top coins at each edge, OI-weighted over a liquidity floor. CoinGecko, no key. A setup radar, not an entry signal. Not financial advice.",
+    price: "$0.05",
+    icon: "🛰️",
+    category: "Markets",
+    params: [
+      { name: "limit", label: "Top N per side (default 8, max 15)", placeholder: "8" },
+      { name: "minOi", label: "Min open interest USD (default 25M)", placeholder: "25000000" },
+    ],
+    handler: fundingRadar,
   },
   {
     id: "fresh-bridge",
