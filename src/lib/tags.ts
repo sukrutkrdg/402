@@ -79,6 +79,8 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "deployer-rep": ["deployer", "serial-deployer", "reputation", "rug-history", "token-safety"],
   "perp-funding": ["derivatives", "perp", "funding-rate", "open-interest", "basis", "futures", "trading", "long-short"],
   "funding-radar": ["derivatives", "funding-rate", "squeeze", "crowding", "long-short", "perp", "market-structure", "trading"],
+  "tokenized-stock-price": ["tokenized-stock", "equities", "stocks", "rwa", "aapl", "tsla", "price", "onchain-price", "b20"],
+  "market-pulse": ["sentiment", "fear-greed", "trending", "funding", "market-mood", "risk-on", "trading", "positioning"],
   // Counterparty / address screening — the question with the most abandoned buyers.
   "safe-to-send": ["send-safety", "counterparty", "address-screening", "sanctions", "ofac", "scam-address", "before-you-send", "recipient-check"],
   sanctions: ["sanctions", "ofac", "screening", "compliance", "aml", "counterparty"],

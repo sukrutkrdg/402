@@ -28,6 +28,8 @@ import { supplyInflation } from "./supply-inflation";
 import { activityTrend } from "./activity-trend";
 import { perpFunding } from "./perp-funding";
 import { fundingRadar } from "./funding-radar";
+import { tokenizedStockPrice } from "./tokenized-stock-price";
+import { marketPulse } from "./market-pulse";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -600,6 +602,30 @@ export const SERVICES: ServiceDef[] = [
       { name: "minOi", label: "Min open interest USD (default 25M)", placeholder: "25000000" },
     ],
     handler: fundingRadar,
+  },
+  {
+    id: "tokenized-stock-price",
+    name: "Tokenized Stock Price (onchain)",
+    tagline: "Live Base price & liquidity of Coinbase's tokenized stocks",
+    description:
+      "b20-safety says a tokenized stock is a real issuance; this says what it trades at ON-CHAIN and whether there's liquidity for size. Pass symbol=AAPL (or AAPLc) for the deepest Base pool's price, aggregate liquidity, 24h move and volume; omit symbol for the full directory. Covers all 82 — the roster is anchored on-chain by the policy admin, not a hand-kept list. This is the tradeable Base price, which can diverge from NYSE NAV. Not financial advice.",
+    price: "$0.03",
+    icon: "🏦",
+    category: "Markets",
+    params: [{ name: "symbol", label: "Ticker (AAPL, TSLA, NVDA… or AAPLc). Omit for the list", placeholder: "AAPL" }],
+    handler: tokenizedStockPrice,
+  },
+  {
+    id: "market-pulse",
+    name: "Market Pulse (trading-grade)",
+    tagline: "Mood + attention + leverage, in one read",
+    description:
+      "One trading-grade read where the single Fear & Greed number isn't enough. Combines three independent angles: mood (Fear & Greed), attention (what's trending), and leverage (OI-weighted perp funding tilt market-wide). The edge is the combination — greed + crowded longs = froth/long-squeeze risk; fear + crowded shorts = capitulation/short-squeeze setup. Returns a stance (frothy / capitulation_setup / risk_on / risk_off / neutral). One call, no key. A gauge, not a signal. Not financial advice.",
+    price: "$0.03",
+    icon: "🌡️",
+    category: "Markets",
+    params: [],
+    handler: marketPulse,
   },
   {
     id: "fresh-bridge",
