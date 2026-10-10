@@ -257,6 +257,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "supply-inflation": { address: DEGEN, days: "30" },
   // Is a real Base token gaining or losing on-chain activity?
   "activity-trend": { address: DEGEN },
+  // Perp funding / basis / OI for a major coin.
+  "perp-funding": { symbol: "BTC" },
   // web-extract's urls= is required; without a runnable example the keepalive cron
   // could never settle it, so it sat permanently absent from discovery.
   "web-extract": { urls: "https://example.com" },
