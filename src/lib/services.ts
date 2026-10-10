@@ -30,6 +30,7 @@ import { perpFunding } from "./perp-funding";
 import { fundingRadar } from "./funding-radar";
 import { tokenizedStockPrice } from "./tokenized-stock-price";
 import { marketPulse } from "./market-pulse";
+import { nearAccountAge } from "./near-account-age";
 import { holderDistribution } from "./holders";
 import { walletTokens, trendingTokens } from "./onchain-extra2";
 import { registerAlert } from "./alerts";
@@ -626,6 +627,18 @@ export const SERVICES: ServiceDef[] = [
     category: "Markets",
     params: [],
     handler: marketPulse,
+  },
+  {
+    id: "near-account-age",
+    name: "NEAR Account Age & Origin",
+    tagline: "Is this NEAR account/agent established or a fresh throwaway?",
+    description:
+      "Before you trust, pay or copy a NEAR account — or one of the agents on NEAR AI's Agent Market — is it established or created minutes ago? near-account gives the current state; this gives the PROVENANCE: the creation date (age), the creator (first provenance hop), and whether it's since been deleted, from the NearBlocks indexer. Age is a first-order Sybil/trust signal — new ≠ malicious, but a fresh counterparty warrants caution. Pair with near-wallet-activity. Not financial advice.",
+    price: "$0.02",
+    icon: "🌱",
+    category: "NEAR",
+    params: [{ name: "account", label: "NEAR account id", placeholder: "name.near or 64-hex implicit", required: true }],
+    handler: nearAccountAge,
   },
   {
     id: "fresh-bridge",
