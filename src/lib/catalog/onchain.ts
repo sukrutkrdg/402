@@ -6,6 +6,7 @@ import type { ServiceDef } from "./types";
 import { addressIntel, tokenRisk } from "../onchain";
 import { preTradeGate } from "../gate";
 import { preTradeAlphaShield } from "../alpha-shield";
+import { preTradeBundle } from "../pre-trade-bundle";
 import { clankerTokenAudit } from "../clanker-audit";
 import { signGuard } from "../sign-guard";
 import { spendAudit } from "../spend-audit";
@@ -97,6 +98,21 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
         { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
       ],
       handler: preTradeGate,
+      noFreeTier: true,
+    },
+  {
+      id: "pre-trade-bundle",
+      name: "Pre-Trade Security & DEX Bundle",
+      tagline: "All-in-one check: Honeypot + Clanker authenticity + Cross-DEX spread",
+      description:
+        "The all-in-one pre-trade intelligence bundle for autonomous trading agents on Base: evaluates contract honeypot & sell tax vulnerability (token-risk), validates Clanker autonomous deployer authenticity & impersonator detection (clanker-token-audit), and analyzes real cross-DEX liquidity spread (base-dex-spread) in a single call. Saves round-trips and returns an explicit EXECUTE, REDUCE_SIZE, or ABORT decision receipt.",
+      price: "$0.05",
+      icon: "⚡",
+      category: "Onchain",
+      params: [
+        { name: "address", label: "Token contract address", placeholder: "0x… token address", required: true },
+      ],
+      handler: preTradeBundle,
       noFreeTier: true,
     },
   {

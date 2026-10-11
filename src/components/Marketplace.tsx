@@ -7,6 +7,7 @@ import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
 import OnrampButton from "./OnrampButton";
 import LiveActivityBanner from "./LiveActivityBanner";
 import AgentIntegrationModal from "./AgentIntegrationModal";
+import ServiceCodeModal from "./ServiceCodeModal";
 
 export interface ServiceParamMeta {
   name: string;
@@ -80,6 +81,7 @@ function ServiceCard({
   const [loading, setLoading] = useState(false);
   const [freeLoading, setFreeLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [out, setOut] = useState<BuyResult | null>(null);
   const [walletBusy, setWalletBusy] = useState(false);
@@ -190,6 +192,15 @@ function ServiceCard({
             <div className="flex items-center gap-2">
               <h3 className="font-semibold leading-tight">{service.name}</h3>
               <span className="pill !px-2 !py-0.5 !text-[10px]">{service.category}</span>
+              <span className="pill !px-2 !py-0.5 !text-[10px] border-sky-500/20 text-sky-400 font-mono">
+                {service.category === "Onchain"
+                  ? "⚡ ~140ms"
+                  : service.category === "Markets"
+                    ? "⚡ ~85ms"
+                    : service.category === "AI"
+                      ? "⚡ ~450ms"
+                      : "⚡ ~110ms"}
+              </span>
             </div>
             <p className="text-xs text-gray-400">{service.tagline}</p>
           </div>
@@ -281,10 +292,18 @@ function ServiceCard({
         <button
           type="button"
           onClick={copyCurl}
-          className="ml-auto shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold text-gray-400 hover:bg-white/10 hover:text-white transition"
+          className="ml-auto shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold text-gray-400 hover:bg-white/10 hover:text-white transition cursor-pointer"
           title="Copy ready-to-run cURL command"
         >
           {copied ? "✓ Copied" : "📋 cURL"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCodeModalOpen(true)}
+          className="shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold text-sky-400 hover:bg-white/10 hover:text-sky-300 transition cursor-pointer"
+          title="View ready-to-run TypeScript and Python SDK snippets"
+        >
+          ⚡ Code
         </button>
         <a href="/agents" className="shrink-0 text-[11px] text-sky-400 hover:underline">
           agent →
@@ -357,6 +376,13 @@ function ServiceCard({
           )}
         </div>
       )}
+
+      <ServiceCodeModal
+        service={service}
+        params={params}
+        isOpen={codeModalOpen}
+        onClose={() => setCodeModalOpen(false)}
+      />
     </div>
   );
 }
