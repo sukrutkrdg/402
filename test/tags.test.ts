@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { tagsFor } from "../src/lib/tags";
 
 /**
@@ -10,13 +10,17 @@ import { tagsFor } from "../src/lib/tags";
  * sell token, token scam check, rug detection` — we listed `onchain`.
  */
 function services(): { id: string; category: string }[] {
-  const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
+  const dir = new URL("../src/lib/catalog/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "types.ts" && f !== "index.ts");
   const out: { id: string; category: string }[] = [];
-  for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
-    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
-    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
-    const category = body.match(/^\s*category:\s*"([^"]+)"/m)?.[1];
-    if (id && category && !/^\s*\/\//.test(body)) out.push({ id, category });
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
+      const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
+      const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+      const category = body.match(/^\s*category:\s*"([^"]+)"/m)?.[1];
+      if (id && category && !/^\s*\/\//.test(body)) out.push({ id, category });
+    }
   }
   return out;
 }

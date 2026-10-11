@@ -26,19 +26,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 const WINDOW_MS = 10 * 60 * 1000; // how stale a signed message may be
-
-/** The exact message the wallet must sign. Readable, because wallets show it. */
-export function recoveryMessage(address: string, issuedAt: string): string {
-  return [
-    "x402 Bazaar — recover credit balance",
-    "",
-    `Address: ${address.toLowerCase()}`,
-    `Issued: ${issuedAt}`,
-    "",
-    "Signing this re-issues your credit token and moves the remaining balance to it.",
-    "Any token issued earlier stops working.",
-  ].join("\n");
-}
+import { recoveryMessage } from "@/lib/credits-recovery";
 
 export async function POST(req: NextRequest) {
   if (!kvConfigured()) {

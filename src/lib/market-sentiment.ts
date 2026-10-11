@@ -55,18 +55,12 @@ export async function fearGreed(params: Record<string, string>) {
 // crypto-trending — globally trending coins (CoinGecko)
 // ---------------------------------------------------------------------------
 
+import { coinGeckoTrending } from "./upstream-cache";
+
 interface TrendItem { item?: { id?: string; name?: string; symbol?: string; market_cap_rank?: number; data?: { price?: number; price_change_percentage_24h?: { usd?: number }; market_cap?: string } } }
 
 export async function cryptoTrending(_params: Record<string, string>) {
-  let res: Response;
-  try {
-    res = await fetch("https://api.coingecko.com/api/v3/search/trending", { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
-  } catch {
-    throw new Error("Trending source unreachable (CoinGecko) — not charged, retry shortly");
-  }
-  if (res.status === 429) throw new Error("Trending rate-limited upstream — not charged, retry shortly");
-  if (!res.ok) throw new Error(`CoinGecko responded ${res.status} — not charged`);
-  const j = (await res.json()) as { coins?: TrendItem[] };
+  const j = await coinGeckoTrending<{ coins?: TrendItem[] }>();
   const coins = (j.coins ?? []).map((c, i) => ({
     trendingRank: i + 1,
     symbol: (c.item?.symbol ?? "").toUpperCase(),

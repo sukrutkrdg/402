@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { exampleInputFor } from "../src/lib/discovery-examples";
 import { priceCents } from "../src/lib/price";
 import { INDEX_FRESH_SECONDS, indexFreshKey } from "../src/lib/index-freshness";
@@ -21,21 +21,25 @@ const vercel = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url
 };
 
 function services(): { id: string; category: string; price: string; params: { name: string; label: string; placeholder: string; required?: boolean }[] }[] {
-  const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
+  const dir = new URL("../src/lib/catalog/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "types.ts" && f !== "index.ts");
   const out: ReturnType<typeof services> = [];
-  for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
-    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
-    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
-    const category = body.match(/^\s*category:\s*"([^"]+)"/m)?.[1];
-    const price = body.match(/^\s*price:\s*"([^"]+)"/m)?.[1];
-    if (!id || !category || !price || /^\s*\/\//.test(body)) continue;
-    const params = [...body.matchAll(/\{[^{}]*\bname:\s*"(\w+)"[^{}]*\}/g)].map((m) => ({
-      name: m[1],
-      label: m[0].match(/label:\s*"([^"]*)"/)?.[1] ?? "",
-      placeholder: m[0].match(/placeholder:\s*"([^"]*)"/)?.[1] ?? "",
-      required: /required:\s*true/.test(m[0]),
-    }));
-    out.push({ id, category, price, params });
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
+      const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
+      const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+      const category = body.match(/^\s*category:\s*"([^"]+)"/m)?.[1];
+      const price = body.match(/^\s*price:\s*"([^"]+)"/m)?.[1];
+      if (!id || !category || !price || /^\s*\/\//.test(body)) continue;
+      const params = [...body.matchAll(/\{[^{}]*\bname:\s*"(\w+)"[^{}]*\}/g)].map((m) => ({
+        name: m[1],
+        label: m[0].match(/label:\s*"([^"]*)"/)?.[1] ?? "",
+        placeholder: m[0].match(/placeholder:\s*"([^"]*)"/)?.[1] ?? "",
+        required: /required:\s*true/.test(m[0]),
+      }));
+      out.push({ id, category, price, params });
+    }
   }
   return out;
 }

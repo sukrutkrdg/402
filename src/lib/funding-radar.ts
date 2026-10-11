@@ -13,31 +13,15 @@
  */
 
 import "server-only";
+import { coinGeckoDerivatives, type CoinGeckoDerivRow } from "./upstream-cache";
 
-const CG = "https://api.coingecko.com/api/v3";
-
-interface Deriv {
-  index_id?: string;
-  basis?: number;
-  funding_rate?: number;
-  open_interest?: number;
-  contract_type?: string;
-}
+type Deriv = CoinGeckoDerivRow;
 
 export async function fundingRadar(params: Record<string, string>) {
   const minOiUsd = Math.max(1_000_000, Number(params.minOi ?? params.minOiUsd) || 25_000_000);
   const topN = Math.min(Math.max(Number(params.limit) || 8, 3), 15);
 
-  let res: Response;
-  try {
-    res = await fetch(`${CG}/derivatives?include_tickers=unexpired`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
-  } catch {
-    throw new Error("Derivatives data unreachable (CoinGecko) — not charged, retry shortly");
-  }
-  if (res.status === 429) throw new Error("Derivatives data rate-limited upstream — not charged, retry shortly");
-  if (!res.ok) throw new Error(`CoinGecko responded ${res.status} — not charged`);
-  const all = (await res.json()) as Deriv[];
-  if (!Array.isArray(all)) throw new Error("Derivatives data returned an unexpected shape — not charged");
+  const all = await coinGeckoDerivatives();
 
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   // Group perpetuals by coin, OI-weight funding + basis.

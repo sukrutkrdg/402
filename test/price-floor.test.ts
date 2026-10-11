@@ -1,17 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { priceCents } from "../src/lib/price";
 
-/** Declared prices, read from source — importing the registry would pull in every
+/** Declared prices, read from catalog source — importing the registry would pull in every
  *  server-only handler behind it. */
 function declaredPrices(): Record<string, string> {
-  const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
+  const dir = new URL("../src/lib/catalog/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "types.ts" && f !== "index.ts");
   const out: Record<string, string> = {};
-  for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
-    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
-    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
-    const price = body.match(/^\s*price:\s*"([^"]+)"/m)?.[1];
-    if (id && price && !/^\s*\/\//.test(body)) out[id] = price;
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
+      const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
+      const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+      const price = body.match(/^\s*price:\s*"([^"]+)"/m)?.[1];
+      if (id && price && !/^\s*\/\//.test(body)) out[id] = price;
+    }
   }
   return out;
 }

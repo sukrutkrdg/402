@@ -23,6 +23,7 @@ import {
 } from "viem";
 import { base } from "viem/chains";
 import { getConfig } from "@/lib/config";
+import { dexPair } from "./upstream-cache";
 import { baseTransport } from "@/lib/base-transport";
 import { dexTokenPairs } from "@/lib/upstream-cache";
 
@@ -233,16 +234,8 @@ export async function pairInfo(params: Record<string, string>) {
   const pair = (params.pair || "").trim();
   if (!/^0x[0-9a-fA-F]{40}$/.test(pair)) throw new Error("Provide a valid 0x… pair address");
 
-  let data: { pairs?: DexScreenerPair[] | null; pair?: DexScreenerPair | null };
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/pairs/base/${pair}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    throw new Error(`Pair fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const data = await dexPair<{ pairs?: DexScreenerPair[] | null; pair?: DexScreenerPair | null }>(pair);
+  if (!data) throw new Error("Pair fetch failed: DexScreener unreachable or rate-limited");
 
   const p = (Array.isArray(data.pairs) ? data.pairs[0] : data.pair) ?? null;
   if (!p) throw new Error("No data found for this pair");

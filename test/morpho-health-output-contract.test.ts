@@ -168,7 +168,7 @@ describe("morpho-health source wiring", () => {
   });
 
   it("does not change morpho-health price, method, or query contract", () => {
-    const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
+    const src = readFileSync(new URL("../src/lib/catalog/utility.ts", import.meta.url), "utf8");
     const chunk = src.split(/\r?\n {2}\{\r?\n/).find((c) => /id:\s*"morpho-health"/.test(c));
     expect(chunk).toBeTruthy();
     expect(chunk).toMatch(/price:\s*"\$0\.04"/);

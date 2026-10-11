@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { exampleInputFor, staticOutputExample, staticOutputExampleIds, type ExampleService } from "../src/lib/discovery-examples";
 
 /**
@@ -17,22 +17,24 @@ import { exampleInputFor, staticOutputExample, staticOutputExampleIds, type Exam
  * in every server-only handler behind it.
  */
 function parseServices(): ExampleService[] {
-  const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
-  // \r optional: the file is LF in git, but a Windows checkout makes it CRLF and
-  // a guard that silently parses zero services is worse than no guard.
-  const chunks = src.split(/\r?\n {2}\{\r?\n/).slice(1);
+  const dir = new URL("../src/lib/catalog/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "types.ts" && f !== "index.ts");
   const out: ExampleService[] = [];
-  for (const chunk of chunks) {
-    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
-    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
-    if (!id || /^\s*\/\//.test(body)) continue;
-    const params: ExampleService["params"] = [...body.matchAll(/\{[^{}]*\bname:\s*"(\w+)"[^{}]*\}/g)].map((m) => ({
-      name: m[1],
-      label: m[0].match(/label:\s*"([^"]*)"/)?.[1] ?? "",
-      placeholder: m[0].match(/placeholder:\s*"([^"]*)"/)?.[1] ?? "",
-      required: /required:\s*true/.test(m[0]),
-    }));
-    out.push({ id, category: body.match(/^\s*category:\s*"([^"]+)"/m)?.[1], params });
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    const chunks = src.split(/\r?\n {2}\{\r?\n/).slice(1);
+    for (const chunk of chunks) {
+      const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
+      const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+      if (!id || /^\s*\/\//.test(body)) continue;
+      const params: ExampleService["params"] = [...body.matchAll(/\{[^{}]*\bname:\s*"(\w+)"[^{}]*\}/g)].map((m) => ({
+        name: m[1],
+        label: m[0].match(/label:\s*"([^"]*)"/)?.[1] ?? "",
+        placeholder: m[0].match(/placeholder:\s*"([^"]*)"/)?.[1] ?? "",
+        required: /required:\s*true/.test(m[0]),
+      }));
+      out.push({ id, category: body.match(/^\s*category:\s*"([^"]+)"/m)?.[1], params });
+    }
   }
   return out;
 }

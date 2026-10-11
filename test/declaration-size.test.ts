@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 /**
  * Every endpoint whose `description` grew past ~500 characters stopped being
@@ -93,34 +93,34 @@ interface Declared {
 }
 
 function parseServices(): { declared: Declared[]; unparsable: string[] } {
-  const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
-  // Entry boundaries: each service is an object literal opening at this indent.
-  // \r is optional throughout: the file is LF in git but a Windows checkout (or
-  // any tool that rewrites it) makes it CRLF, and a guard that silently parses
-  // ZERO entries on the developer's machine is worse than no guard at all.
-  const chunks = src.split(/\r?\n {2}\{\r?\n/).slice(1);
+  const dir = new URL("../src/lib/catalog/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "types.ts" && f !== "index.ts");
   const declared: Declared[] = [];
   const unparsable: string[] = [];
-  for (const chunk of chunks) {
-    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
-    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
-    if (!id) continue; // not a service entry (nested object, params list, …)
-    // Skip commented-out entries: they declare nothing at runtime.
-    if (/^\s*\/\//.test(body)) continue;
-    const desc = body.match(/^\s*description:\s*(?:\/\/[^\n]*\n\s*)*"((?:[^"\\]|\\.)*)",?\s*$/m);
-    if (!desc) {
-      // A description this parser cannot read is exactly the case that used to
-      // slip through. Name it and fail rather than measure the wrong string.
-      if (/^\s*description:/m.test(body)) unparsable.push(id);
-      continue;
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    const chunks = src.split(/\r?\n {2}\{\r?\n/).slice(1);
+    for (const chunk of chunks) {
+      const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
+      const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+      if (!id) continue; // not a service entry (nested object, params list, …)
+      // Skip commented-out entries: they declare nothing at runtime.
+      if (/^\s*\/\//.test(body)) continue;
+      const desc = body.match(/^\s*description:\s*(?:\/\/[^\n]*\n\s*)*"((?:[^"\\]|\\.)*)",?\s*$/m);
+      if (!desc) {
+        // A description this parser cannot read is exactly the case that used to
+        // slip through. Name it and fail rather than measure the wrong string.
+        if (/^\s*description:/m.test(body)) unparsable.push(id);
+        continue;
+      }
+      const description = JSON.parse(`"${desc[1]}"`) as string;
+      declared.push({
+        id,
+        description,
+        codePoints: [...description].length,
+        bytes: Buffer.byteLength(description, "utf8"),
+      });
     }
-    const description = JSON.parse(`"${desc[1]}"`) as string;
-    declared.push({
-      id,
-      description,
-      codePoints: [...description].length,
-      bytes: Buffer.byteLength(description, "utf8"),
-    });
   }
   return { declared, unparsable };
 }

@@ -152,7 +152,7 @@ describe("linkCreditOwner", () => {
  */
 describe("recovery message + signature round-trip", () => {
   it("produces the exact string both sides must agree on", { timeout: 30_000 }, async () => {
-    const { recoveryMessage } = await import("@/app/api/credits/recover/route");
+    const { recoveryMessage } = await import("@/lib/credits-recovery");
     expect(recoveryMessage("0xABCdef0000000000000000000000000000000001", "2026-07-29T00:00:00.000Z")).toBe(
       [
         "x402 Bazaar — recover credit balance",
@@ -167,7 +167,7 @@ describe("recovery message + signature round-trip", () => {
   });
 
   it("verifies a signature produced by the paying wallet, and rejects another wallet's", { timeout: 30_000 }, async () => {
-    const { recoveryMessage } = await import("@/app/api/credits/recover/route");
+    const { recoveryMessage } = await import("@/lib/credits-recovery");
     const { privateKeyToAccount } = await import("viem/accounts");
     const { verifyMessage } = await import("viem");
 

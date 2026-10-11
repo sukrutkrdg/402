@@ -78,18 +78,21 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>) {
+  const attached = (request as unknown as { _bodyParams?: Record<string, string> })._bodyParams;
   const url = new URL(request.url);
   const params: Record<string, string> = {};
   for (const p of service!.params) {
-    const v = url.searchParams.get(p.name);
+    // Explicit query params win over body params
+    const v = url.searchParams.get(p.name) ?? attached?.[p.name];
     // Defensive ceiling. Most params are short (addresses etc.) so 2000 is plenty,
     // but the text-AI services legitimately take large inputs — text/texts/text1..N
     // up to ~16K each (ai-extract-batch joins up to ~40K). Those params get a wider
     // cap so the handler's own clamp (16K/6K) is the real limit, not this slice.
     // Without this the paid AI tools silently processed only the first 2000 chars.
-    if (v) {
-      const wide = /^text(s|\d+)?$/i.test(p.name);
-      params[p.name] = v.slice(0, wide ? 45000 : 2000);
+    if (v !== undefined && v !== null) {
+      const isWideParam = /^(text(s|\d+)?|input|data|content|prompt|document|code|body|payload)$/i.test(p.name);
+      const wide = Boolean(attached?.[p.name]) || isWideParam;
+      params[p.name] = String(v).slice(0, wide ? 45000 : 2000);
     }
   }
   return params;
@@ -932,19 +935,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ service: s
     return NextResponse.json({ error: "Body must be a JSON object of parameters" }, { status: 400 });
   }
 
-  const url = new URL(req.url);
+  const bodyParams: Record<string, string> = {};
   for (const p of service.params) {
-    if (url.searchParams.has(p.name)) continue;
     const v = body[p.name];
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-      url.searchParams.set(p.name, String(v));
+      bodyParams[p.name] = String(v);
     }
   }
 
-  // Forwarded as a GET with the original headers — the payment header, the
-  // credit token and the force flag all have to survive the hand-off.
-  const headers = new Headers(req.headers);
-  headers.delete("content-type");
-  headers.delete("content-length");
-  return GET(new NextRequest(url, { method: "GET", headers }), ctx);
+  // Attach body parameters directly without expanding the URL query string
+  // into an oversized URL (which triggers HTTP 414 URI Too Long on reverse proxies).
+  (req as unknown as { _bodyParams?: Record<string, string> })._bodyParams = bodyParams;
+  return GET(req, ctx);
 }

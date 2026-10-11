@@ -17,35 +17,15 @@
  */
 
 import "server-only";
+import { coinGeckoDerivatives, type CoinGeckoDerivRow } from "./upstream-cache";
 
-const CG = "https://api.coingecko.com/api/v3";
-
-interface Deriv {
-  market?: string;
-  symbol?: string;
-  index_id?: string;
-  price?: string;
-  basis?: number;
-  funding_rate?: number;
-  open_interest?: number;
-  volume_24h?: number;
-  contract_type?: string;
-}
+type Deriv = CoinGeckoDerivRow;
 
 export async function perpFunding(params: Record<string, string>) {
   const symRaw = (params.symbol || params.coin || params.ticker || "").trim().toUpperCase();
   if (!/^[A-Z0-9]{2,10}$/.test(symRaw)) throw new Error("Provide a coin symbol (symbol=BTC, ETH, SOL…)");
 
-  let res: Response;
-  try {
-    res = await fetch(`${CG}/derivatives?include_tickers=unexpired`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
-  } catch {
-    throw new Error("Derivatives data unreachable (CoinGecko) — not charged, retry shortly");
-  }
-  if (res.status === 429) throw new Error("Derivatives data rate-limited upstream — not charged, retry shortly");
-  if (!res.ok) throw new Error(`CoinGecko responded ${res.status} — not charged`);
-  const all = (await res.json()) as Deriv[];
-  if (!Array.isArray(all)) throw new Error("Derivatives data returned an unexpected shape — not charged");
+  const all = await coinGeckoDerivatives();
 
   // Perpetuals for this coin. Match the index first; fall back to the symbol
   // prefix so a coin CoinGecko doesn't index by ticker is still caught.

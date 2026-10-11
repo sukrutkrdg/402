@@ -5,19 +5,7 @@ import { useAccount, useReadContract, useSignMessage } from "wagmi";
 import type { Connector } from "wagmi";
 import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
 import OnrampButton from "@/components/OnrampButton";
-
-/** Must match recoveryMessage() in /api/credits/recover. */
-function recoveryMessage(address: string, issuedAt: string): string {
-  return [
-    "x402 Bazaar — recover credit balance",
-    "",
-    `Address: ${address.toLowerCase()}`,
-    `Issued: ${issuedAt}`,
-    "",
-    "Signing this re-issues your credit token and moves the remaining balance to it.",
-    "Any token issued earlier stops working.",
-  ].join("\n");
-}
+import { recoveryMessage } from "@/lib/credits-recovery";
 
 // Survives a refresh or an accidental navigation until the buyer confirms they
 // saved it. sessionStorage (not localStorage) so it dies with the tab.

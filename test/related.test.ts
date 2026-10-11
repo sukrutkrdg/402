@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { relatedFor } from "@/lib/related";
 
 /**
@@ -9,20 +9,18 @@ import { relatedFor } from "@/lib/related";
  * a suggestion carrying a stale price is a lie the buyer acts on.
  */
 function catalogue(): Map<string, { price: string; hidden: boolean }> {
-  const src = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
+  const dir = new URL("../src/lib/catalog/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "types.ts" && f !== "index.ts");
   const out = new Map<string, { price: string; hidden: boolean }>();
-  // \r is optional: the file is LF in git, but a Windows checkout makes it CRLF
-  // and a parser that then finds zero services turns this guard into decoration.
-  for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
-    const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
-    const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
-    const price = body.match(/^\s*price:\s*"([^"]+)",/m)?.[1];
-    if (!id || !price) continue;
-    // Only an unconditional `hidden: true` is a static error. Services gated on
-    // configuration (`hidden: !s3Config()`) are visible whenever that config is
-    // present, and relatedFor filters the catalogue at request time anyway — so
-    // suggesting one is safe: it simply drops out when the bucket is absent.
-    out.set(id, { price, hidden: /^\s*hidden:\s*true/m.test(body) });
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    for (const chunk of src.split(/\r?\n {2}\{\r?\n/).slice(1)) {
+      const body = chunk.split(/\r?\n {2}\},?\r?\n/)[0];
+      const id = body.match(/^\s*id:\s*"([\w-]+)",/m)?.[1];
+      const price = body.match(/^\s*price:\s*"([^"]+)",/m)?.[1];
+      if (!id || !price) continue;
+      out.set(id, { price, hidden: /^\s*hidden:\s*true/m.test(body) });
+    }
   }
   return out;
 }

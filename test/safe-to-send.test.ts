@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
  * rather than importing: the handler pulls in server-only upstreams.
  */
 const src = readFileSync(new URL("../src/lib/safe-to-send.ts", import.meta.url), "utf8");
-const services = readFileSync(new URL("../src/lib/services.ts", import.meta.url), "utf8");
+const services = readFileSync(new URL("../src/lib/catalog/onchain.ts", import.meta.url), "utf8");
 
 describe("safe-to-send", () => {
   it("never returns GO on a check that did not run", () => {

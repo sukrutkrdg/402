@@ -92,10 +92,11 @@ export async function POST(req: NextRequest) {
 
   const origin = new URL(req.url).origin;
   const target = new URL(`/api/x402/${service.id}`, origin);
+  const hasParams = Boolean(body.params && Object.keys(body.params).length > 0);
   for (const p of service.params) {
     const v = body.params?.[p.name];
-    // Cap each value so large AI inputs stay within URL length limits.
-    if (v) target.searchParams.set(p.name, v.slice(0, 5000));
+    // Keep short params on query string for logging/visibility; full payload sent via POST body
+    if (v && v.length <= 200) target.searchParams.set(p.name, v);
   }
 
   let payingFetch: ReturnType<typeof getPayingFetch>;
@@ -109,7 +110,14 @@ export async function POST(req: NextRequest) {
   let res: Response;
   try {
     // Force the paid flow (skip free tier) so this endpoint always settles a real payment.
-    res = await payingFetch(target.toString(), { headers: { "x-x402-force": "1" } });
+    res = await payingFetch(target.toString(), {
+      method: hasParams ? "POST" : "GET",
+      headers: {
+        "x-x402-force": "1",
+        ...(hasParams ? { "content-type": "application/json" } : {}),
+      },
+      ...(hasParams ? { body: JSON.stringify(body.params) } : {}),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Payment failed";
     return NextResponse.json({ error: `Payment failed: ${message}` }, { status: 502 });
