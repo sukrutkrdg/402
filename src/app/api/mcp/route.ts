@@ -160,10 +160,63 @@ export function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
 }
 
-export function GET() {
-  // No server-initiated SSE stream for this stateless server.
+export function GET(req?: NextRequest) {
+  const format = req?.nextUrl?.searchParams?.get("format")?.toLowerCase();
+
+  if (format === "openai" || format === "tools") {
+    const tools = mcpToolList().map((t) => ({
+      type: "function" as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema,
+      },
+    }));
+    return Response.json({ tools, count: tools.length }, { headers: { ...CORS, "Content-Type": "application/json" } });
+  }
+
+  if (format === "claude" || format === "anthropic") {
+    const tools = mcpToolList().map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema,
+    }));
+    return Response.json({ tools, count: tools.length }, { headers: { ...CORS, "Content-Type": "application/json" } });
+  }
+
+  const site = getSiteUrl();
+  const toolCount = visibleServices().length;
   return Response.json(
-    { jsonrpc: "2.0", id: null, error: { code: -32000, message: "Use POST for the MCP Streamable HTTP transport." } },
-    { status: 405, headers: { ...CORS, Allow: "POST, OPTIONS" } },
+    {
+      server: SERVER,
+      protocolVersion: PROTOCOL,
+      toolCount,
+      transport: "Streamable HTTP (POST to this URL)",
+      endpoints: {
+        mcp: `${site}/api/mcp`,
+        openapi: `${site}/openapi.json`,
+        catalog: `${site}/api/catalog`,
+      },
+      integrations: {
+        claudeDesktop: {
+          mcpServers: {
+            "x402-bazaar": {
+              url: `${site}/api/mcp`,
+            },
+          },
+        },
+        cursor: {
+          type: "streamable-http",
+          url: `${site}/api/mcp`,
+        },
+        openaiToolsUrl: `${site}/api/mcp?format=openai`,
+        anthropicToolsUrl: `${site}/api/mcp?format=anthropic`,
+      },
+      quickstart: {
+        pythonOpenAI: `tools = requests.get("${site}/api/mcp?format=openai").json()["tools"]`,
+        pythonAnthropic: `tools = requests.get("${site}/api/mcp?format=anthropic").json()["tools"]`,
+      },
+    },
+    { headers: { ...CORS, "Content-Type": "application/json" } },
   );
 }

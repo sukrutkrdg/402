@@ -16,6 +16,7 @@
 
 import "server-only";
 import { nearblocks, nsToIso } from "./nearblocks";
+import { rpcQuery } from "./near-rpc";
 
 const validId = (a: string) => /^[a-z0-9._-]{2,64}$/.test(a) || /^[0-9a-f]{64}$/.test(a);
 
@@ -31,8 +32,33 @@ export async function nearAccountAge(params: Record<string, string>) {
 
   let acctResp: { account?: AcctRow[] };
   try {
-    acctResp = await nearblocks<{ account?: AcctRow[] }>(`/account/${account}`);
+    acctResp = await nearblocks<{ account?: AcctRow[] }>(`/v1/account/${account}`);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/404/.test(msg)) {
+      try {
+        const rpc = await rpcQuery<{ amount: string; block_height: number }>({
+          request_type: "view_account",
+          account_id: account,
+        });
+        if (rpc.ok) {
+          return {
+            account,
+            verdict: "established",
+            note: "Account exists onchain (confirmed via NEAR RPC) but creation history is not indexed by NearBlocks. Treat with normal diligence.",
+            checkedAt: new Date().toISOString(),
+          };
+        }
+      } catch {
+        /* RPC down or account unknown */
+      }
+      return {
+        account,
+        verdict: "not_created",
+        note: "No creation record for this account — it may be an implicit account never funded (so it doesn't exist yet), a top-level account, or unknown to the indexer. Treat as unestablished, not safe. Not financial advice.",
+        checkedAt: new Date().toISOString(),
+      };
+    }
     throw e instanceof Error ? e : new Error("NEAR indexer error — not charged, retry shortly");
   }
   const a = acctResp.account?.[0];
@@ -57,7 +83,7 @@ export async function nearAccountAge(params: Record<string, string>) {
   let creatorType: "system" | "account" | null = null;
   if (creationTx) {
     try {
-      const txResp = await nearblocks<{ txns?: TxRow[] }>(`/txns/${creationTx}`);
+      const txResp = await nearblocks<{ txns?: TxRow[] }>(`/v1/txns/${creationTx}`);
       const signer = txResp.txns?.[0]?.signer_account_id ?? null;
       if (signer) { creator = signer; creatorType = SYSTEM_CREATOR.test(signer) ? "system" : "account"; }
     } catch { /* provenance is a bonus; age stands without it */ }

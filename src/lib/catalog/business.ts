@@ -475,7 +475,7 @@ export const BUSINESS_SERVICES: ServiceDef[] = [
         { name: "asset", label: "Asset", placeholder: "USDC" },
         { name: "counterparty", label: "Counterparty", placeholder: "0x…" },
         { name: "memo", label: "Memo", placeholder: "Invoice 1042" },
-        { name: "tx", label: "Base tx hash (optional)", placeholder: "0x…" },
+        { name: "tx", label: "Base tx hash (optional)", placeholder: "0x68fdf10f8eb842afcddf79b2a779ed78e5be35d698e95cee1966f1787eb02b5e" },
         { name: "debitAccount", label: "Debit account", placeholder: "Crypto Clearing" },
         { name: "creditAccount", label: "Credit account", placeholder: "Accounts Receivable" },
       ],

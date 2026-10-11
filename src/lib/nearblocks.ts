@@ -24,13 +24,14 @@ function base(): string {
 }
 
 export async function nearblocks<T>(path: string): Promise<T> {
-  const hit = cache.get(path);
+  const normPath = path.startsWith("/v1/") ? path : `/v1${path.startsWith("/") ? "" : "/"}${path}`;
+  const hit = cache.get(normPath);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.value as T;
   const headers: Record<string, string> = { accept: "application/json" };
   if (process.env.NEARBLOCKS_API_KEY) headers.authorization = `Bearer ${process.env.NEARBLOCKS_API_KEY}`;
   let res: Response;
   try {
-    res = await fetch(`${base()}${path}`, { headers, signal: AbortSignal.timeout(15_000) });
+    res = await fetch(`${base()}${normPath}`, { headers, signal: AbortSignal.timeout(15_000) });
   } catch {
     throw new Error("NEAR indexer (NearBlocks) unreachable — not charged, retry shortly");
   }
@@ -42,7 +43,7 @@ export async function nearblocks<T>(path: string): Promise<T> {
   } catch {
     throw new Error("NEAR indexer (NearBlocks) sent an unreadable answer — not charged, retry shortly");
   }
-  cache.set(path, { at: Date.now(), value });
+  cache.set(normPath, { at: Date.now(), value });
   if (cache.size > 500) cache.delete(cache.keys().next().value!);
   return value;
 }

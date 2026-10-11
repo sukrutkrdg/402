@@ -61,6 +61,12 @@ describe("near-account-age", () => {
     expect(r.verdict).toBe("not_created");
   });
 
+  it("handles indexer 404 cleanly as not_created instead of throwing 502", async () => {
+    nbMock.nearblocks.mockRejectedValueOnce(new Error("NEAR indexer (NearBlocks) error 404 — not charged, retry shortly"));
+    const r = await nearAccountAge({ account: "unknown-implicit-ghost.near" });
+    expect(r.verdict).toBe("not_created");
+  });
+
   it("age still returned if the creator lookup fails (best-effort)", async () => {
     nbMock.nearblocks
       .mockResolvedValueOnce({ account: [{ created: { transaction_hash: "cHash", block_timestamp: daysAgoNs(500) }, deleted: {} }] })

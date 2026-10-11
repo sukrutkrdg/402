@@ -134,7 +134,7 @@ export const B20_SERVICES: ServiceDef[] = [
       category: "B20",
       params: [
         { name: "address", label: "B20 token address", placeholder: "0x… B20 token" },
-        { name: "policy", label: "Registry policy ID (optional)", placeholder: "e.g. 2" },
+        { name: "policy", label: "Registry policy ID (optional)", placeholder: "1" },
       ],
       handler: b20PolicyMembers,
       noFreeTier: true,

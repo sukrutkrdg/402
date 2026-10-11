@@ -30,6 +30,6 @@ export function OPTIONS() {
   return mcpOptions();
 }
 
-export function GET() {
-  return mcpGet();
+export function GET(req: NextRequest) {
+  return mcpGet(req);
 }

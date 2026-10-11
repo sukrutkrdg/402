@@ -33,7 +33,7 @@ export const UTILITY_SERVICES: ServiceDef[] = [
       category: "Lending",
       params: [
         { name: "wallet", label: "Borrower wallet", placeholder: "0x… wallet", required: true },
-        { name: "market", label: "Morpho market id (optional)", placeholder: "0x… 32-byte id (default cbBTC/USDC)" },
+        { name: "market", label: "Morpho market id (optional)", placeholder: "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836" },
       ],
       handler: morphoHealth,
       noFreeTier: true,
@@ -61,8 +61,8 @@ export const UTILITY_SERVICES: ServiceDef[] = [
       icon: "⚔️",
       category: "Lending",
       params: [
-        { name: "market", label: "Morpho market id (optional)", placeholder: "0x… 32-byte id (default cbBTC/USDC)" },
-        { name: "maxHealth", label: "Health cutoff (optional)", placeholder: "1.1 (<=1.0 = already liquidatable)" },
+        { name: "market", label: "Morpho market id (optional)", placeholder: "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836" },
+        { name: "maxHealth", label: "Health cutoff (optional)", placeholder: "1.1" },
       ],
       handler: morphoLiquidations,
       noFreeTier: true,

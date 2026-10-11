@@ -209,7 +209,7 @@ const NFT_COLLECTION = "0xEa2a41c02fA86A4901826615F9796e603C6a4491";
 const OVERRIDES: Record<string, Record<string, string>> = {
   // B20 endpoints that only answer for an Asset (variant 0).
   "b20-seizure-history": { address: B20_ASSET },
-  "b20-policy-members": { address: B20_ASSET },
+  "b20-policy-members": { address: B20_ASSET, policy: "1" },
   "b20-policy-admin": { address: B20_ASSET },
   "b20-policy-watch": { address: B20_ASSET },
   "b20-guard": { address: B20_ASSET },
@@ -283,16 +283,27 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "commerce-escrow": { payer: WALLET, receiver: WALLET2, operator: WALLET },
   "commerce-operator-audit": { operator: WALLET },
   "morpho-vault": { vault: VAULT },
+  "morpho-health": { wallet: WALLET, market: "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836" },
+  "morpho-liquidatable": { market: "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836", maxHealth: "1.1" },
+  "settlement-line": {
+    amount: "12.50",
+    asset: "USDC",
+    counterparty: WALLET,
+    memo: "Invoice 1042",
+    tx: TX,
+    debitAccount: "Crypto Clearing",
+    creditAccount: "Accounts Receivable",
+  },
   // The route is quoted OUT of USDC, so quoting into USDC would price nothing.
   "swap-route": { tokenOut: DEGEN, amountUsd: "100" },
   // A quote only: the transaction is returned, never sent.
   "base-swap": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   // Same quote, plus a block deadline so the conditional example actually builds
   // a (non-empty) validity set. The tx is returned, never sent.
-  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "40000000" },
+  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", fromBlock: "0", beforeBlock: "50000000" },
   // A block deadline alone is a valid, runnable condition set; no signedTx so the
   // envelope comes back with a placeholder. Nothing is sent.
-  "validity-build": { beforeBlock: "40000000" },
+  "validity-build": { fromBlock: "0", beforeBlock: "50000000" },
   // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.

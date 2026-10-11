@@ -15,9 +15,11 @@ export function GET() {
   for (const s of SERVICES.filter((x) => !x.hidden)) {
     paths[`/api/x402/${s.id}`] = {
       get: {
+        tags: [s.category || "Utility"],
         operationId: s.id.replace(/-/g, "_"),
         summary: s.name,
         description: `${s.description} Paid via x402: ${s.price} in USDC on Base (eip155:8453) to ${cfg.payTo}. Returns 402 with payment requirements; pay and retry.`,
+        "x-openai-isConsequential": s.id === "buy-credits",
         parameters: s.params.map((p) => ({
           name: p.name,
           in: "query",
