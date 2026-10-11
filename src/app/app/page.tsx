@@ -43,7 +43,16 @@ type TypedData = {
 // drifted from the catalog — which matters more than a wrong label, because the
 // gas-mode payment transfers exactly this amount on-chain: one was overcharging
 // the user and the other was paying too little to redeem the report.
+export const TRENDING_TOKENS = [
+  { symbol: "DEGEN", address: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", desc: "Top Base Meme" },
+  { symbol: "HIGHER", address: "0x0578d8A44db98B23BF096A382e016e29a5CE0ffe", desc: "Farcaster Meme" },
+  { symbol: "BRETT", address: "0x532f27101965dd16442e59d40670faf5ebb142e4", desc: "Base Mascot" },
+  { symbol: "TOSHI", address: "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4", desc: "Cat Coin" },
+  { symbol: "CLANKER", address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb", desc: "Autonomous Agent" },
+] as const;
+
 const CHECKS = [
+  { id: "pre-trade-bundle", label: "⚡ Pre-Trade Bundle · Honeypot + Clanker + Spread" },
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize" },
@@ -111,6 +120,14 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     : "";
   const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
   switch (id) {
+    case "pre-trade-bundle": {
+      const v = s(d.verdict).replace(/_/g, " ");
+      const score = s(d.safetyScore);
+      const rec = s(d.recommendation);
+      const summ = s(d.summary);
+      const findings = Array.isArray(d.keyFindings) ? (d.keyFindings as string[]).map((f) => `• ${f}`).join("\n") : "";
+      return `VERDICT: ${v} · Safety Score: ${score}/100\nRecommendation: ${rec}\n\n${summ}${findings ? `\n\n${findings}` : ""}`;
+    }
     case "pre-trade-gate": {
       const rc = (d.receipt ?? {}) as { observedRisks?: string[] };
       const risks = Array.isArray(rc.observedRisks) && rc.observedRisks.length ? rc.observedRisks.map((r) => `• ${r}`).join("\n") : "";
@@ -212,6 +229,33 @@ export default function MiniApp() {
   // show no price and don't let a payment start, rather than quoting a number we
   // haven't confirmed — this screen's gas mode transfers exactly what it shows.
   const [prices, setPrices] = useState<Record<string, string>>({});
+  const [recents, setRecents] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("bazaar_recent_tokens");
+      if (raw) setRecents(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  function saveRecent(tokenAddress: string) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(tokenAddress.trim())) return;
+    try {
+      const norm = tokenAddress.trim();
+      const next = [norm, ...recents.filter((x) => x.toLowerCase() !== norm.toLowerCase())].slice(0, 5);
+      setRecents(next);
+      localStorage.setItem("bazaar_recent_tokens", JSON.stringify(next));
+    } catch {}
+  }
+
+  function copyResult() {
+    if (!out) return;
+    navigator.clipboard.writeText(out).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/catalog")
@@ -269,6 +313,7 @@ export default function MiniApp() {
 
   async function freeCheck() {
     if (!valid) return;
+    saveRecent(addr.trim());
     setErr(null);
     setOut(null);
     setBusy("free");
@@ -298,6 +343,7 @@ export default function MiniApp() {
 
   async function paidReport(chosenConnector?: Connector) {
     if (!valid) return;
+    saveRecent(addr.trim());
     setErr(null);
     setOut(null);
     setStep(null);
@@ -449,6 +495,7 @@ export default function MiniApp() {
   // it does not touch paidReport / the x402 flow.
   async function payOnchain(chosenConnector?: Connector) {
     if (!valid) return;
+    saveRecent(addr.trim());
     setErr(null);
     setOut(null);
     setStep(null);
@@ -617,11 +664,18 @@ export default function MiniApp() {
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6">
-      <header className="flex flex-col gap-1">
-        <span className="pill w-fit">🛡️ x402 Bazaar</span>
-        <h1 className="text-xl font-bold">Base Token Safety Suite</h1>
+      <header className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <span className="pill w-fit border-sky-500/30 bg-sky-500/10 text-sky-300">
+            🛡️ x402 Bazaar
+          </span>
+          <span className="pill w-fit border-emerald-500/30 bg-emerald-500/10 text-emerald-300 font-mono text-[10px]">
+            ⚡ Base Mainnet
+          </span>
+        </div>
+        <h1 className="text-xl font-bold tracking-tight">Base Token Safety Suite</h1>
         <p className="text-xs text-gray-400">
-          Paste a Base token — free rug-score, or pick a full check and pay in-app over x402.
+          Paste any Base token for instant rug check, Clanker audit &amp; DEX spread — pay per-call over x402.
         </p>
       </header>
 
@@ -644,86 +698,257 @@ export default function MiniApp() {
         <WalletProtect />
       ) : (
         <>
-          <input
-        value={addr}
-        onChange={(e) => setAddr(e.target.value)}
-        placeholder="0x… token address"
-        className="w-full rounded-lg border border-base-line bg-black/40 px-3 py-2 font-mono text-sm outline-none focus:border-base-blue"
-      />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                Target Base Token
+              </label>
+              {valid && (
+                <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  ✓ Valid 0x address
+                </span>
+              )}
+            </div>
 
-      <select
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="w-full rounded-lg border border-base-line bg-black/40 px-3 py-2 text-sm outline-none focus:border-base-blue"
-      >
-        {CHECKS.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.label}
-            {prices[c.id] ? ` · ${prices[c.id]}` : ""}
-          </option>
-        ))}
-      </select>
+            <div className="relative flex items-center">
+              <input
+                value={addr}
+                onChange={(e) => setAddr(e.target.value)}
+                placeholder="0x… Base token contract"
+                className="w-full rounded-xl border border-base-line bg-black/40 pl-3.5 pr-24 py-2.5 font-mono text-xs text-white placeholder-gray-500 outline-none focus:border-base-blue transition"
+              />
+              <div className="absolute right-2 flex items-center gap-1">
+                {addr && (
+                  <button
+                    type="button"
+                    onClick={() => { setAddr(""); setOut(null); setErr(null); }}
+                    className="text-gray-400 hover:text-white text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                    title="Clear address"
+                  >
+                    ✕
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text) {
+                        setAddr(text.trim());
+                        setErr(null);
+                        setOut(null);
+                      }
+                    } catch {}
+                  }}
+                  className="text-[11px] font-medium text-sky-400 hover:text-sky-300 bg-white/5 hover:bg-white/10 px-2 py-1 rounded transition cursor-pointer"
+                  title="Paste from clipboard"
+                >
+                  📋 Paste
+                </button>
+              </div>
+            </div>
 
-      <div className="flex gap-2">
-        <button onClick={freeCheck} disabled={!valid || busy !== null} className="btn-ghost flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "free" ? "Checking…" : "Free rug-score"}
-        </button>
-        <button onClick={() => (gasMode ? payOnchain() : paidReport())} disabled={!valid || busy !== null || !price} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-40">
-          {busy === "paid" ? "Paying…" : `${gasMode ? "⛽ Pay onchain" : "Run"}${price ? ` · ${price}` : " · loading price…"}`}
-        </button>
-      </div>
+            {/* Quick-Pick Popular Base Tokens */}
+            <div className="flex flex-col gap-1.5 pt-1">
+              <div className="flex items-center justify-between text-[11px] text-gray-400">
+                <span>⚡ Trending on Base (1-tap):</span>
+                {recents.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setRecents([]); localStorage.removeItem("bazaar_recent_tokens"); }}
+                    className="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer"
+                  >
+                    clear history
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {TRENDING_TOKENS.map((t) => (
+                  <button
+                    key={t.symbol}
+                    type="button"
+                    onClick={() => {
+                      setAddr(t.address);
+                      setErr(null);
+                      setOut(null);
+                    }}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-medium border transition cursor-pointer ${
+                      addr.toLowerCase() === t.address.toLowerCase()
+                        ? "border-sky-500 bg-sky-500/20 text-sky-200"
+                        : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    ${t.symbol}
+                  </button>
+                ))}
+              </div>
 
-      <label className="flex items-start gap-2 text-[11px] leading-snug text-gray-400">
-        <input
-          type="checkbox"
-          checked={gasMode}
-          onChange={(e) => setGasMode(e.target.checked)}
-          className="mt-0.5 accent-base-blue"
-        />
-        <span>
-          ⛽ Pay onchain from my wallet <span className="text-gray-500">(counts on the Base App leaderboard · costs a little ETH for gas)</span>. Off = gasless one-tap, no gas.
-        </span>
-      </label>
+              {/* Recent Scans */}
+              {recents.length > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-400 overflow-x-auto pt-1">
+                  <span className="shrink-0 text-gray-500 text-[10px]">Recent:</span>
+                  {recents.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => { setAddr(r); setErr(null); setOut(null); }}
+                      className="shrink-0 rounded px-2 py-0.5 font-mono text-[10px] bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/5 cursor-pointer"
+                    >
+                      {r.slice(0, 6)}…{r.slice(-4)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
-      {!hasWallet && (
-        <p className="text-center text-[11px] text-gray-500">Open in the Base App, or use a browser wallet, to pay.</p>
-      )}
-      {walletPicker && (
-        <div className="card space-y-2 border-base-blue/30 bg-base-blue/10 p-3">
-          <p className="text-xs text-sky-200">Choose a wallet to pay with:</p>
-          <div className="flex flex-wrap gap-2">
-            {walletPicker.map((c) => (
-              <button
-                key={c.uid}
-                onClick={() => (gasMode ? payOnchain(c) : paidReport(c))}
-                className="btn-ghost !px-3 !py-1.5 text-xs"
-              >
-                {c.name}
-              </button>
-            ))}
-            <button onClick={() => setWalletPicker(null)} className="btn-ghost !px-3 !py-1.5 text-xs opacity-60">
-              Cancel
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Select Security Check ({CHECKS.length} available)
+            </label>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="w-full rounded-xl border border-base-line bg-black/40 px-3.5 py-2.5 text-xs text-white outline-none focus:border-base-blue cursor-pointer"
+            >
+              {CHECKS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                  {prices[c.id] ? ` · ${prices[c.id]}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={freeCheck}
+              disabled={!valid || busy !== null}
+              className="btn-ghost flex-1 !py-2.5 text-xs font-semibold disabled:opacity-40 cursor-pointer"
+            >
+              {busy === "free" ? "Checking…" : "🧪 Free Rug-Score"}
+            </button>
+            <button
+              onClick={() => (gasMode ? payOnchain() : paidReport())}
+              disabled={!valid || busy !== null || !price}
+              className="btn-primary flex-1 !py-2.5 text-xs font-semibold disabled:opacity-40 shadow-lg shadow-base-blue/20 cursor-pointer"
+            >
+              {busy === "paid" ? "Paying…" : `${gasMode ? "⛽ Pay onchain" : "⚡ Run Check"}${price ? ` · ${price}` : " · …"}`}
             </button>
           </div>
-        </div>
-      )}
-      {busy === "paid" && step && (
-        <div className="card border-base-blue/30 bg-base-blue/10 p-3 text-xs text-sky-200">{step}</div>
-      )}
-      {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
-      {lastPaid && busy === null && (
-        <button onClick={retryRedeem} className="btn-primary !py-2 text-sm">
-          🔁 Retry — already paid {lastPaid.price}, no new charge
-        </button>
-      )}
-      {out && <pre className="card whitespace-pre-wrap p-3 text-xs leading-relaxed text-gray-200">{out}</pre>}
 
-      {previewShown && busy === null && (
-        <button onClick={() => (gasMode ? payOnchain() : paidReport())} className="btn-primary !py-2 text-sm">
-          🔓 Unlock full report · {check.label}
-          {price ? ` · ${price}` : ""}
-        </button>
-      )}
+          <label className="flex items-start gap-2 text-[11px] leading-snug text-gray-400">
+            <input
+              type="checkbox"
+              checked={gasMode}
+              onChange={(e) => setGasMode(e.target.checked)}
+              className="mt-0.5 accent-base-blue cursor-pointer"
+            />
+            <span>
+              ⛽ Pay onchain from my wallet <span className="text-gray-500">(counts on the Base App leaderboard · costs a little ETH for gas)</span>. Off = gasless one-tap, no gas.
+            </span>
+          </label>
+
+          {!hasWallet && (
+            <p className="text-center text-[11px] text-gray-500">Open in the Base App, or use a browser wallet, to pay.</p>
+          )}
+          {walletPicker && (
+            <div className="card space-y-2 border-base-blue/30 bg-base-blue/10 p-3">
+              <p className="text-xs text-sky-200">Choose a wallet to pay with:</p>
+              <div className="flex flex-wrap gap-2">
+                {walletPicker.map((c) => (
+                  <button
+                    key={c.uid}
+                    onClick={() => (gasMode ? payOnchain(c) : paidReport(c))}
+                    className="btn-ghost !px-3 !py-1.5 text-xs"
+                  >
+                    {c.name}
+                  </button>
+                ))}
+                <button onClick={() => setWalletPicker(null)} className="btn-ghost !px-3 !py-1.5 text-xs opacity-60">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {busy === "paid" && step && (
+            <div className="card border-base-blue/30 bg-base-blue/10 p-3 text-xs text-sky-200">{step}</div>
+          )}
+          {err && <div className="card border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{err}</div>}
+          {lastPaid && busy === null && (
+            <button onClick={retryRedeem} className="btn-primary !py-2 text-sm cursor-pointer">
+              🔁 Retry — already paid {lastPaid.price}, no new charge
+            </button>
+          )}
+
+          {out && (
+            <div className="card flex flex-col gap-3 p-4 border border-white/15 bg-[#0b0e15] shadow-2xl backdrop-blur">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">
+                    {/HONEYPOT|DANGEROUS|CANNOT SELL|BLOCKED|HIGH SCAM/i.test(out)
+                      ? "🚨"
+                      : /CAUTION|HOLD|DEGRADED|HIGH RISK/i.test(out)
+                        ? "⚠️"
+                        : "🛡️"}
+                  </span>
+                  <span className="text-xs font-bold text-white tracking-wide">
+                    {check.label.split("·")[0].trim()} Verdict
+                  </span>
+                </div>
+                <span
+                  className={`pill !px-2.5 !py-0.5 text-[11px] font-bold ${
+                    /HONEYPOT|DANGEROUS|CANNOT SELL|BLOCKED|HIGH SCAM/i.test(out)
+                      ? "border-red-500/40 bg-red-500/15 text-red-300"
+                      : /CAUTION|HOLD|DEGRADED|HIGH RISK/i.test(out)
+                        ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+                        : "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                  }`}
+                >
+                  {/HONEYPOT|DANGEROUS|CANNOT SELL|BLOCKED|HIGH SCAM/i.test(out)
+                    ? "DANGER"
+                    : /CAUTION|HOLD|DEGRADED|HIGH RISK/i.test(out)
+                      ? "CAUTION"
+                      : "PASSED"}
+                </span>
+              </div>
+
+              <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-gray-200">
+                {out}
+              </pre>
+
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 text-xs">
+                <button
+                  type="button"
+                  onClick={copyResult}
+                  className="btn-ghost !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copied ? "✓ Copied" : "📋 Copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    sdk.actions
+                      .composeCast({
+                        text: `${check.label.replace(/^[^A-Za-z0-9]+\s*/, "")} for ${addr.trim().slice(0, 6)}…${addr.trim().slice(-4)} 🛡️\n\n${out.slice(0, 200)}\n\nCheck any Base token 👇`,
+                        embeds: [`https://402.com.tr/app?token=${addr.trim()}&check=${selected}`],
+                      })
+                      .catch(() => {})
+                  }
+                  className="btn-primary !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  ↗ Cast on Farcaster
+                </button>
+              </div>
+            </div>
+          )}
+
+          {previewShown && busy === null && (
+            <button onClick={() => (gasMode ? payOnchain() : paidReport())} className="btn-primary !py-2 text-sm cursor-pointer">
+              🔓 Unlock full report · {check.label}
+              {price ? ` · ${price}` : ""}
+            </button>
+          )}
 
       {/* Fund the connected wallet with USDC on Base when it's short. */}
       <div className="flex justify-center">
