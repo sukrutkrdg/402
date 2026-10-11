@@ -738,9 +738,10 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             onClick={() => setCat(null)}
             className={`pill ${cat === null ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
           >
-            🌟 All
+            🌟 All ({services.length})
           </button>
           {cats.map((c) => {
+            const count = services.filter((s) => s.category === c).length;
             const emojiMap: Record<string, string> = {
               B20: "🚨",
               NEAR: "Ⓝ",
@@ -764,7 +765,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
                 onClick={() => setCat(c === cat ? null : c)}
                 className={`pill ${c === cat ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
               >
-                {emoji}{c}
+                {emoji}{c} ({count})
               </button>
             );
           })}
