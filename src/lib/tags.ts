@@ -121,6 +121,9 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "near-lending-health": ["near", "lending", "health-factor", "liquidation", "defi"],
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
+  "polymarket-odds": ["polymarket", "prediction-market", "odds", "probabilities", "event-contracts", "oracle"],
+  "agent-provenance": ["ai-agents", "provenance", "virtuals", "agentkit", "eip-7702", "identity", "sybil"],
+  "rwa-yield-benchmark": ["rwa", "yield", "treasury", "sofr", "benchmark", "defi", "morpho", "moonwell"],
 };
 
 const MAX_TAGS = 12;

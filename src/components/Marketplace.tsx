@@ -5,6 +5,8 @@ import type { Connector } from "wagmi";
 import StatusBar, { useStatus } from "./StatusBar";
 import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
 import OnrampButton from "./OnrampButton";
+import LiveActivityBanner from "./LiveActivityBanner";
+import AgentIntegrationModal from "./AgentIntegrationModal";
 
 export interface ServiceParamMeta {
   name: string;
@@ -337,6 +339,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const [token, setToken] = useState("");
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState<string | null>(null);
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
 
   // Default to false until status loads so the Pay button can't be clicked early.
   const buyerEnabled = status !== null && (status.buyerEnabled ?? false);
@@ -374,6 +377,9 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
 
   return (
     <div className="flex flex-col gap-10">
+      <LiveActivityBanner onOpenModal={() => setAgentModalOpen(true)} />
+      <AgentIntegrationModal isOpen={agentModalOpen} onClose={() => setAgentModalOpen(false)} />
+
       {/* B20 launch banner */}
       <a
         href="/app"
@@ -432,6 +438,16 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             >
               ⚡ Protect wallet · gas-free →
             </a>
+            <a href="/playground" className="btn-ghost !border-sky-500/40 !text-sky-300">
+              🧪 Playground →
+            </a>
+            <button
+              type="button"
+              onClick={() => setAgentModalOpen(true)}
+              className="btn-ghost !border-indigo-500/40 !text-indigo-200 cursor-pointer"
+            >
+              ⚡ Connect AI Agent →
+            </button>
             <a href="/agents" className="btn-ghost">
               For agents &amp; API →
             </a>
@@ -660,17 +676,36 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             onClick={() => setCat(null)}
             className={`pill ${cat === null ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
           >
-            All
+            🌟 All
           </button>
-          {cats.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCat(c === cat ? null : c)}
-              className={`pill ${c === cat ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
-            >
-              {c}
-            </button>
-          ))}
+          {cats.map((c) => {
+            const emojiMap: Record<string, string> = {
+              B20: "🚨",
+              NEAR: "Ⓝ",
+              Web: "🌐",
+              Files: "📁",
+              Compliance: "🛡️",
+              Business: "💼",
+              AI: "🤖",
+              Onchain: "⛓️",
+              Accounts: "👤",
+              Lending: "🏦",
+              Markets: "📊",
+              Data: "📈",
+              Utility: "🛠️",
+              Fun: "🎮",
+            };
+            const emoji = emojiMap[c] ? `${emojiMap[c]} ` : "";
+            return (
+              <button
+                key={c}
+                onClick={() => setCat(c === cat ? null : c)}
+                className={`pill ${c === cat ? "border-base-blue/50 bg-base-blue/15 text-sky-200" : "hover:text-white"}`}
+              >
+                {emoji}{c}
+              </button>
+            );
+          })}
         </div>
         {q && (
           <p className="text-[11px] text-gray-500">

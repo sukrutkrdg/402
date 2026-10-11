@@ -5,6 +5,7 @@
 import type { ServiceDef } from "./types";
 import { aiContractRisk, aiDeepDueDiligence, aiMarketBrief, aiTokenReport, aiTxExplain, aiWalletReport, aiWalletSecurity } from "../ai-report";
 import { aiExtract, aiExtractBatch, aiSummarize, aiTranslate } from "../ai";
+import { agentProvenance } from "../agent-provenance";
 
 export const AI_SERVICES: ServiceDef[] = [
   {
@@ -160,5 +161,19 @@ export const AI_SERVICES: ServiceDef[] = [
         { name: "to", label: "Target language", placeholder: "English" },
       ],
       handler: aiTranslate,
+    },
+  {
+      id: "agent-provenance",
+      name: "AI Agent Provenance & Verification",
+      tagline: "Verify autonomous AI agents on Base — Virtuals, AgentKit, EIP-7702",
+      description:
+        "🆕 Before paying, trading with, or copying an onchain agent: Is it an authenticated autonomous AI agent (Virtuals Protocol agent, Coinbase AgentKit, or EIP-7702 delegated wallet), or an unverified human EOA / sybil address? Inspects bytecode, delegation designators, transaction history, and agent framework markers to return a structured safety score and verdict. Pass address= (agent address).",
+      price: "$0.03",
+      icon: "🤖",
+      category: "AI",
+      params: [
+        { name: "address", label: "Agent address to verify", placeholder: "0x… wallet", required: true },
+      ],
+      handler: agentProvenance,
     },
 ];

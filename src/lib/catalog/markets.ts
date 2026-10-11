@@ -21,6 +21,8 @@ import { nftFloor } from "../alchemy";
 import { defiTvl, stablecoinMcap } from "../commodity-data";
 import { cryptoGlobal, cryptoMarkets } from "../crypto-markets";
 import { cryptoTrending, fearGreed } from "../market-sentiment";
+import { polymarketOdds } from "../polymarket";
+import { rwaYieldBenchmark } from "../rwa-yield-benchmark";
 
 export const MARKETS_SERVICES: ServiceDef[] = [
   {
@@ -324,5 +326,29 @@ export const MARKETS_SERVICES: ServiceDef[] = [
       category: "Markets",
       params: [],
       handler: cryptoTrending,
+    },
+  {
+      id: "polymarket-odds",
+      name: "Polymarket Odds & Probability",
+      tagline: "Event prediction probabilities & consensus odds from Polymarket",
+      description:
+        "🆕 Queries Polymarket's Gamma CLOB for active prediction markets. Resolves event outcome probabilities (Yes/No %), 24h volume, liquidity, and resolution date in one call. Designed for AI agents that need a real-world reality check before trading, hedging, or rebalancing treasury. Pass query= (e.g. 'fed', 'btc', 'kraken-ipo-in-2025'). A probabilistic signal, not financial advice.",
+      price: "$0.02",
+      icon: "🔮",
+      category: "Markets",
+      params: [{ name: "query", label: "Market topic, question or slug", placeholder: "fed", required: true }],
+      handler: polymarketOdds,
+    },
+  {
+      id: "rwa-yield-benchmark",
+      name: "RWA vs DeFi Yield Benchmark",
+      tagline: "Where should cash sit? Treasury yields vs Base DeFi lending",
+      description:
+        "🆕 Compares institutional risk-free RWA yields (US Treasury 4W / SOFR benchmark ~4.85%) against live onchain Base DeFi lending markets (Morpho Blue cbBTC/USDC, Moonwell Flagship USDC). Computes spread in basis points and produces an actionable allocation recommendation (rwa_favored, defi_favored, balanced) for AI treasuries and yield optimizers. Not financial advice.",
+      price: "$0.02",
+      icon: "⚖️",
+      category: "Markets",
+      params: [],
+      handler: rwaYieldBenchmark,
     },
 ];

@@ -153,6 +153,9 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   // reason. `text` is truncated here to a fragment on purpose: the shop window
   // shows that pages come back with their text, not the text itself.
   "exa-contents": {"pageCount":1,"requested":1,"maxChars":8000,"upstream":"exa","failedCount":0,"pages":[{"url":"https://github.com/qdrant/qdrant","title":"Qdrant: Open-Source Vector Database","author":null,"publishedDate":"2026-04-18T00:00:00.000Z","chars":7412,"truncated":false,"text":"Qdrant is an open-source vector database and similarity search engine…"}]},
+  "polymarket-odds": {"query":"fed","found":true,"title":"Fed Interest Rate Cut in 2026?","slug":"fed-rate-cut-2026","verdict":"moderate_probability","consensusProbability":"72.5%","volumeUsd":"$5,400,000","source":"Polymarket Gamma CLOB"},
+  "agent-provenance": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","isAgent":true,"framework":"eip7702","delegatedTo":"0x36d3cbd83961868398d056efbf50f5ce15528c0d","isContract":false,"txCount":480,"agentSafetyScore":80,"verdict":"delegated_agent"},
+  "rwa-yield-benchmark": {"benchmarkRwaRate":"4.85%","defiUsdcSupplyApy":"5.20%","spreadBps":35,"verdict":"balanced","recommendation":"DeFi and RWA yields are closely aligned (+35 bps spread). Balanced 50/50 diversification recommended."},
 };
 
 /** The static example for a service, or undefined when we have none. */
@@ -296,6 +299,9 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   },
   // The route is quoted OUT of USDC, so quoting into USDC would price nothing.
   "swap-route": { tokenOut: DEGEN, amountUsd: "100" },
+  "polymarket-odds": { query: "fed" },
+  "agent-provenance": { address: WALLET },
+  "rwa-yield-benchmark": {},
   // A quote only: the transaction is returned, never sent.
   "base-swap": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   // Same quote, plus a block deadline so the conditional example actually builds
