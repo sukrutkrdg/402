@@ -31,7 +31,7 @@ describe("polymarket-odds", () => {
       json: async () => mockEvents,
     } as Response);
 
-    const res = await polymarketOdds({ query: "fed-rate-cut-next-fomc" });
+    const res = (await polymarketOdds({ query: "fed-rate-cut-next-fomc" })) as any;
     expect(res.found).toBe(true);
     expect(res.title).toBe("Fed Interest Rate Cut in next FOMC?");
     expect(res.verdict).toBe("moderate_probability");
@@ -48,7 +48,7 @@ describe("polymarket-odds", () => {
       json: async () => [],
     } as Response);
 
-    const res = await polymarketOdds({ query: "nonexistent-crypto-unknown-event-xyz" });
+    const res = (await polymarketOdds({ query: "nonexistent-crypto-unknown-event-xyz" })) as any;
     expect(res.found).toBe(false);
     expect(res.verdict).toBe("not_found");
     expect(res.note).toContain("No active prediction market found");

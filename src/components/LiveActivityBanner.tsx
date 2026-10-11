@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 
 const RECENT_SETTLEMENTS = [
+  { service: "pre-trade-alpha-shield", price: "$0.05", ms: 340, note: "5-Vector Autonomous Shield" },
+  { service: "agent-credit-score", price: "$0.04", ms: 210, note: "Agent FICO & Tier AAA Line" },
   { service: "deep-dd", price: "$0.75", ms: 17920, note: "18-Key AI Evaluation" },
   { service: "polymarket-odds", price: "$0.02", ms: 412, note: "Fed FOMC Probabilities" },
   { service: "agent-provenance", price: "$0.03", ms: 290, note: "Virtuals & EIP-7702 Verify" },

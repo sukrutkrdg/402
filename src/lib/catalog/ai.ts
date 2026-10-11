@@ -6,6 +6,8 @@ import type { ServiceDef } from "./types";
 import { aiContractRisk, aiDeepDueDiligence, aiMarketBrief, aiTokenReport, aiTxExplain, aiWalletReport, aiWalletSecurity } from "../ai-report";
 import { aiExtract, aiExtractBatch, aiSummarize, aiTranslate } from "../ai";
 import { agentProvenance } from "../agent-provenance";
+import { agentCreditScore } from "../agent-credit-score";
+import { agentFullAudit } from "../agent-full-audit";
 
 export const AI_SERVICES: ServiceDef[] = [
   {
@@ -175,5 +177,33 @@ export const AI_SERVICES: ServiceDef[] = [
         { name: "address", label: "Agent address to verify", placeholder: "0x… wallet", required: true },
       ],
       handler: agentProvenance,
+    },
+  {
+      id: "agent-credit-score",
+      name: "Agent Credit Score & FICO",
+      tagline: "Onchain credit score, trust tier, and postpaid credit limit for AI agents",
+      description:
+        "🆕 Evaluates an onchain AI agent's transaction history, solvency, ETH/USDC reserves, and Builder Code activity to compute a FICO-style credit score (300-850), trust tier (AAA to F), and approved postpaid micro-credit limit on Base. Eligible agents qualify for batch-settled zero-latency API calls and EAS onchain attestations. Pass address= (agent wallet or contract).",
+      price: "$0.04",
+      icon: "💳",
+      category: "AI",
+      params: [
+        { name: "address", label: "Agent address to score", placeholder: "0x… agent wallet", required: true },
+      ],
+      handler: agentCreditScore,
+    },
+  {
+      id: "agent-full-audit",
+      name: "AI Agent Full Forensic Audit",
+      tagline: "Comprehensive provenance, solvency, wash-trading, and safety audit",
+      description:
+        "🆕 Institutional due-diligence for autonomous agents: runs provenance (Virtuals/AgentKit/EIP-7702), financial solvency & credit rating, wash trading / circular transaction detection, and control permissions in one composite call. Collapses the agent risk stack into one verified verdict: VERIFIED_AUTONOMOUS, CONTROLLED_OPERATOR, or HIGH_RISK_BOT. Pass address= (agent address).",
+      price: "$0.06",
+      icon: "🛡️",
+      category: "AI",
+      params: [
+        { name: "address", label: "Agent address to audit", placeholder: "0x… agent address", required: true },
+      ],
+      handler: agentFullAudit,
     },
 ];

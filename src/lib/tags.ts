@@ -124,6 +124,9 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "polymarket-odds": ["polymarket", "prediction-market", "odds", "probabilities", "event-contracts", "oracle"],
   "agent-provenance": ["ai-agents", "provenance", "virtuals", "agentkit", "eip-7702", "identity", "sybil"],
   "rwa-yield-benchmark": ["rwa", "yield", "treasury", "sofr", "benchmark", "defi", "morpho", "moonwell"],
+  "pre-trade-alpha-shield": ["alpha-shield", "honeypot", "b20", "seizure", "slippage", "mev", "pre-trade", "security"],
+  "agent-credit-score": ["agent-fico", "credit-score", "postpaid", "eas", "attestation", "trust", "reputation", "solvency"],
+  "agent-full-audit": ["agent-audit", "forensics", "provenance", "wash-trading", "due-diligence", "ai-agents"],
 };
 
 const MAX_TAGS = 12;

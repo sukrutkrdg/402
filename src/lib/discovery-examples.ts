@@ -156,6 +156,9 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   "polymarket-odds": {"query":"fed","found":true,"title":"Fed Interest Rate Cut in 2026?","slug":"fed-rate-cut-2026","verdict":"moderate_probability","consensusProbability":"72.5%","volumeUsd":"$5,400,000","source":"Polymarket Gamma CLOB"},
   "agent-provenance": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","isAgent":true,"framework":"eip7702","delegatedTo":"0x36d3cbd83961868398d056efbf50f5ce15528c0d","isContract":false,"txCount":480,"agentSafetyScore":80,"verdict":"delegated_agent"},
   "rwa-yield-benchmark": {"benchmarkRwaRate":"4.85%","defiUsdcSupplyApy":"5.20%","spreadBps":35,"verdict":"balanced","recommendation":"DeFi and RWA yields are closely aligned (+35 bps spread). Balanced 50/50 diversification recommended."},
+  "pre-trade-alpha-shield": {"address":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","verdict":"EXECUTE","safetyScore":92,"recommendation":"All 5 safety vectors verified clean. Safe for autonomous execution.","data":{"verdict":"EXECUTE","safetyScore":92,"recommendations":{"maxSafeTradeUsd":920,"maxRecommendedSlippageBps":65,"sandwichRisk":"LOW"}}},
+  "agent-credit-score": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","creditScore":745,"ratingTier":"AA","postpaidCreditLimitUsd":50,"recommendation":"Approved for Tier AA autonomous credit with $50.00 USD line.","data":{"creditScore":745,"ratingTier":"AA","postpaidCreditLimitUsd":50,"easAttestationEligible":true}},
+  "agent-full-audit": {"agentAddress":"0x973a31858f4d2125f48c880542da11a2796f12d6","verdict":"VERIFIED_AUTONOMOUS","trustScore":85,"recommendation":"Verified autonomous operator with 85/100 trust score and clean transaction record.","data":{"auditVerdict":"VERIFIED_AUTONOMOUS","trustScore":85}},
 };
 
 /** The static example for a service, or undefined when we have none. */
@@ -406,6 +409,9 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // actually there, and has enough text to show what the endpoint returns.
   "url-extract": { url: "https://402.com.tr/agents", maxChars: "40000" },
   "url-to-json": { url: "https://402.com.tr/agents", fields: "title,summary" },
+  "pre-trade-alpha-shield": { address: DEGEN, size: "1000" },
+  "agent-credit-score": { address: WALLET },
+  "agent-full-audit": { address: WALLET },
 };
 
 /** Labels that mean "an account holds this", as opposed to a token or contract.

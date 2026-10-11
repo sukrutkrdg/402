@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Tab = "cursor" | "claude" | "langchain" | "crewai";
+type Tab = "cursor" | "claude" | "elizaos" | "python" | "langchain" | "crewai";
 
 export default function AgentIntegrationModal({
   isOpen,
@@ -42,7 +42,31 @@ export default function AgentIntegrationModal({
     2
   );
 
-  const langchainSnippet = `# 1-line LangChain / OpenAI Tools integration for all 225 x402 Bazaar tools
+  const elizaosSnippet = `// ⚡ Official ElizaOS (ai16z) Action Plugin for x402 Bazaar
+import { elizaX402Plugin } from "@x402/bazaar-sdk";
+
+// Register in your ElizaOS character runtime:
+runtime.registerPlugin(elizaX402Plugin);
+
+// Your autonomous agent now automatically runs:
+// - PRE_TRADE_CHECK (Honeypot, B20 Seizure, Slippage)
+// - CHECK_AGENT_CREDIT (Agent FICO, Postpaid Credit Limit)
+// - POLYMARKET_PREDICTION (Live Event Odds & Probability)`;
+
+  const pythonSnippet = `# ⚡ 1-Line Python SDK (pip install x402-bazaar)
+from x402 import Bazaar
+
+bazaar = Bazaar(site_url="${siteUrl}")
+
+# Run Pre-Trade Alpha Shield before any swap
+shield = bazaar.call("pre-trade-alpha-shield", address="0x4ed4e862860bed51a9570b96d89af5e1b0efefed")
+print("Verdict:", shield["verdict"]) # EXECUTE, CAUTION, or ABORT
+
+# Check Agent Credit & FICO score on Base
+credit = bazaar.call("agent-credit-score", address="0x50ec051c512da5047b41e8c78c2e6ba804be8505")
+print("Agent FICO:", credit["creditScore"], "Tier:", credit["ratingTier"])`;
+
+  const langchainSnippet = `# 1-line LangChain / OpenAI Tools integration for all 228 x402 Bazaar tools
 import requests
 from langchain_core.tools import StructuredTool
 
@@ -56,7 +80,7 @@ print(f"Loaded {len(tools_manifest)} autonomous Web3 tools ready for LangChain/C
   const crewaiSnippet = `from crewai import Agent, Task, Crew
 import requests
 
-# Load full 225-tool capability set directly from x402 Bazaar
+# Load full 228-tool capability set directly from x402 Bazaar
 tools = requests.get("${siteUrl}/api/mcp?format=openai").json()["tools"]
 
 market_agent = Agent(
@@ -73,6 +97,10 @@ market_agent = Agent(
       ? cursorSnippet
       : tab === "claude"
       ? claudeSnippet
+      : tab === "elizaos"
+      ? elizaosSnippet
+      : tab === "python"
+      ? pythonSnippet
       : tab === "langchain"
       ? langchainSnippet
       : crewaiSnippet;
@@ -92,7 +120,7 @@ market_agent = Agent(
             <div className="flex items-center gap-2">
               <span className="text-xl font-bold tracking-tight text-white">⚡ Connect AI Agent</span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                225 Tools Active
+                228 Tools Active
               </span>
             </div>
             <p className="text-xs text-gray-400 mt-1">
@@ -126,12 +154,28 @@ market_agent = Agent(
             Claude Desktop
           </button>
           <button
+            onClick={() => setTab("elizaos")}
+            className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+              tab === "elizaos" ? "bg-purple-600 text-white shadow-md shadow-purple-600/20" : "text-gray-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            🤖 ElizaOS
+          </button>
+          <button
+            onClick={() => setTab("python")}
+            className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+              tab === "python" ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20" : "text-gray-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            🐍 Python SDK
+          </button>
+          <button
             onClick={() => setTab("langchain")}
             className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
               tab === "langchain" ? "bg-base-blue text-white shadow-md shadow-base-blue/20" : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
           >
-            Python / LangChain
+            LangChain
           </button>
           <button
             onClick={() => setTab("crewai")}
@@ -155,9 +199,19 @@ market_agent = Agent(
               Paste into your <code className="text-sky-300 font-mono">claude_desktop_config.json</code> under <code className="text-sky-300 font-mono">mcpServers</code>.
             </span>
           )}
+          {tab === "elizaos" && (
+            <span>
+              Install <code className="text-purple-300 font-mono">@x402/bazaar-sdk</code> and register the action plugin directly into your ElizaOS character runtime.
+            </span>
+          )}
+          {tab === "python" && (
+            <span>
+              Use the official lightweight Python client for LangChain, AutoGen, LlamaIndex, or raw scripts.
+            </span>
+          )}
           {tab === "langchain" && (
             <span>
-              Load all 225 tool definitions in OpenAI function schema in a single HTTP request.
+              Load all 228 tool definitions in OpenAI function calling schema in a single HTTP request.
             </span>
           )}
           {tab === "crewai" && (

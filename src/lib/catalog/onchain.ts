@@ -5,6 +5,7 @@
 import type { ServiceDef } from "./types";
 import { addressIntel, tokenRisk } from "../onchain";
 import { preTradeGate } from "../gate";
+import { preTradeAlphaShield } from "../alpha-shield";
 import { signGuard } from "../sign-guard";
 import { spendAudit } from "../spend-audit";
 import { agentWalletAudit } from "../agent-wallet-audit";
@@ -95,6 +96,22 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
         { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
       ],
       handler: preTradeGate,
+      noFreeTier: true,
+    },
+  {
+      id: "pre-trade-alpha-shield",
+      name: "Pre-Trade Alpha Shield",
+      tagline: "5-Vector Autonomous Trading Shield — Honeypot, B20 Seizure, Tax & Slippage",
+      description:
+        "🆕 The ultimate composite defense for autonomous DeFi trading agents: checks Honeypot/Sellability, Base-native B20 Seizure (burnBlocked) & Policy Registry freeze, mutable Owner Trap Switches, and DEX Liquidity Depth/MEV Sandwich exposure in one sub-second call. Returns an explicit EXECUTE / CAUTION / ABORT verdict with recommended safe trade limit ($USD) and maximum slippage tolerance (bps).",
+      price: "$0.05",
+      icon: "🛡️",
+      category: "Onchain",
+      params: [
+        { name: "address", label: "Token contract address", placeholder: "0x… token contract", required: true },
+        { name: "size", label: "Trade size in USD (optional)", placeholder: "1000" },
+      ],
+      handler: preTradeAlphaShield,
       noFreeTier: true,
     },
   {
