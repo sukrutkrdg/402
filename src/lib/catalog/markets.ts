@@ -351,4 +351,18 @@ export const MARKETS_SERVICES: ServiceDef[] = [
       params: [],
       handler: rwaYieldBenchmark,
     },
+  {
+      id: "base-dex-spread",
+      name: "Base DEX Arbitrage & Spread Oracle",
+      tagline: "Live Aerodrome vs Uniswap v3 net price spread & arb profit",
+      description:
+        "🆕 Compares real-time liquidity and prices across Base's primary DEXes: Aerodrome (AMM / Slipstream) vs Uniswap v3. Calculates gross spread in bps, pool fee-adjusted net arbitrage profitability, optimal routing direction (BUY_AERODROME_SELL_UNISWAP or reverse), and estimated net profit per $1,000 USD. Essential for trading agents and market makers. Pass token= (token contract address).",
+      price: "$0.02",
+      icon: "⚡",
+      category: "Markets",
+      params: [
+        { name: "token", label: "Token address", placeholder: "0x… token address", required: true },
+      ],
+      handler: dexSpread,
+    },
 ];

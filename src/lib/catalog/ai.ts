@@ -8,6 +8,8 @@ import { aiExtract, aiExtractBatch, aiSummarize, aiTranslate } from "../ai";
 import { agentProvenance } from "../agent-provenance";
 import { agentCreditScore } from "../agent-credit-score";
 import { agentFullAudit } from "../agent-full-audit";
+import { agentSessionGuard } from "../session-guard";
+import { farcasterSocialVelocity } from "../farcaster-velocity";
 
 export const AI_SERVICES: ServiceDef[] = [
   {
@@ -205,5 +207,37 @@ export const AI_SERVICES: ServiceDef[] = [
         { name: "address", label: "Agent address to audit", placeholder: "0x… agent address", required: true },
       ],
       handler: agentFullAudit,
+    },
+  {
+      id: "agent-session-guard",
+      name: "Agent Session Key & Delegate Guard",
+      tagline: "Audit sub-agent session keys, spend caps, and wildcard drain vectors",
+      description:
+        "🆕 Pre-execution security audit for autonomous agent session keys (ERC-4337) and delegated signers (EIP-7702). Evaluates time-locks (perpetual leak vs bounded session), per-tx spend caps, router target allowlisting (Uniswap/Aerodrome vs unbounded execution), and produces an actionable GO / OVER_PERMISSIVE / DRAIN_RISK verdict before signing. Pass signer= (session key address).",
+      price: "$0.03",
+      icon: "🔐",
+      category: "AI",
+      params: [
+        { name: "signer", label: "Session key / delegate address", placeholder: "0x… session signer", required: true },
+        { name: "account", label: "Agent smart account (optional)", placeholder: "0x… agent wallet" },
+        { name: "allowedTargets", label: "Comma-separated target contracts (optional)", placeholder: "0x…, 0x…" },
+        { name: "spendCapUsd", label: "Spending limit in USD (optional)", placeholder: "100" },
+        { name: "expiryHours", label: "Session lifetime hours (optional)", placeholder: "24" },
+      ],
+      handler: agentSessionGuard,
+    },
+  {
+      id: "farcaster-social-velocity",
+      name: "Farcaster Velocity & Organic Momentum",
+      tagline: "Real-time cast velocity, bot spam filtering & organic social score",
+      description:
+        "🆕 Measures real-time Farcaster / Warpcast social momentum for tokens, memecoins, and AI agents on Base. Quantifies hourly cast velocity, author diversity ratio, engagement quality, and detects sybil astroturfing vs genuine viral attention. Returns a 0-100 momentum score and ORGANIC_VIRAL vs ASTROTURFED verdict. Pass query= (ticker, e.g. 'HIGHER' or token name).",
+      price: "$0.03",
+      icon: "🟣",
+      category: "AI",
+      params: [
+        { name: "query", label: "Search query, token or agent ticker", placeholder: "HIGHER", required: true },
+      ],
+      handler: farcasterSocialVelocity,
     },
 ];

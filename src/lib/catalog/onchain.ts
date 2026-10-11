@@ -6,6 +6,7 @@ import type { ServiceDef } from "./types";
 import { addressIntel, tokenRisk } from "../onchain";
 import { preTradeGate } from "../gate";
 import { preTradeAlphaShield } from "../alpha-shield";
+import { clankerTokenAudit } from "../clanker-audit";
 import { signGuard } from "../sign-guard";
 import { spendAudit } from "../spend-audit";
 import { agentWalletAudit } from "../agent-wallet-audit";
@@ -113,6 +114,20 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       ],
       handler: preTradeAlphaShield,
       noFreeTier: true,
+    },
+  {
+      id: "clanker-token-audit",
+      name: "Clanker Token Authenticity Audit",
+      tagline: "Verify official Clanker v4/v3 deployment & catch impersonator scams",
+      description:
+        "🆕 Verifies whether a Base token was deployed by the official autonomous Clanker deployer (v4.0.0 at 0xE85A59c628F7d27878ACeB4bf3b35733630083a9 or v3.1.0 at 0x2A787b2362021cC3eEa3C24C4748a6cD5B687382). Checks LP fee locker addresses, Uniswap v3 liquidity locking, and catches impersonators claiming to be Clanker-launched memes. Pass address= (token address).",
+      price: "$0.03",
+      icon: "🤖",
+      category: "Onchain",
+      params: [
+        { name: "address", label: "Token contract address", placeholder: "0x… token address", required: true },
+      ],
+      handler: clankerTokenAudit,
     },
   {
       id: "sign-guard",

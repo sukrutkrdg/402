@@ -127,6 +127,10 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "pre-trade-alpha-shield": ["alpha-shield", "honeypot", "b20", "seizure", "slippage", "mev", "pre-trade", "security"],
   "agent-credit-score": ["agent-fico", "credit-score", "postpaid", "eas", "attestation", "trust", "reputation", "solvency"],
   "agent-full-audit": ["agent-audit", "forensics", "provenance", "wash-trading", "due-diligence", "ai-agents"],
+  "clanker-token-audit": ["clanker", "token-audit", "deployer", "farcaster", "uniswap-v3", "lp-lock", "impersonator", "security"],
+  "base-dex-spread": ["dex-spread", "arbitrage", "aerodrome", "uniswap", "slipstream", "liquidity", "trading", "oracle"],
+  "agent-session-guard": ["session-key", "erc-4337", "eip-7702", "delegate", "guardrails", "spend-cap", "drain-risk", "security"],
+  "farcaster-social-velocity": ["farcaster", "warpcast", "social-velocity", "cast-velocity", "bot-spam", "momentum", "sentiment"],
 };
 
 const MAX_TAGS = 12;

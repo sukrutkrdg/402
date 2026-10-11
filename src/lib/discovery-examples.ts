@@ -159,6 +159,10 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   "pre-trade-alpha-shield": {"address":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","verdict":"EXECUTE","safetyScore":92,"recommendation":"All 5 safety vectors verified clean. Safe for autonomous execution.","data":{"verdict":"EXECUTE","safetyScore":92,"recommendations":{"maxSafeTradeUsd":920,"maxRecommendedSlippageBps":65,"sandwichRisk":"LOW"}}},
   "agent-credit-score": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","creditScore":745,"ratingTier":"AA","postpaidCreditLimitUsd":50,"recommendation":"Approved for Tier AA autonomous credit with $50.00 USD line.","data":{"creditScore":745,"ratingTier":"AA","postpaidCreditLimitUsd":50,"easAttestationEligible":true}},
   "agent-full-audit": {"agentAddress":"0x973a31858f4d2125f48c880542da11a2796f12d6","verdict":"VERIFIED_AUTONOMOUS","trustScore":85,"recommendation":"Verified autonomous operator with 85/100 trust score and clean transaction record.","data":{"auditVerdict":"VERIFIED_AUTONOMOUS","trustScore":85}},
+  "clanker-token-audit": {"address":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","isClankerDeployed":true,"clankerVersion":"v4.0.0","deployer":"0xE85A59c628F7d27878ACeB4bf3b35733630083a9","isLpLocked":true,"verdict":"GENUINE_CLANKER","recommendation":"Verified genuine autonomous Clanker deployment with locked liquidity."},
+  "base-dex-spread": {"tokenAddress":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","verdict":"PROFITABLE_SPREAD","spreadBps":78,"direction":"BUY_AERODROME_SELL_UNISWAP","estProfitPer1kUsd":7.8,"recommendation":"Gross spread is 78 bps. Net arb profitable after ~60 bps round-trip fees."},
+  "agent-session-guard": {"signer":"0x973a31858f4d2125f48c880542da11a2796f12d6","verdict":"SECURE_GUARDED","securityScore":90,"isWildcardTarget":false,"isPerpetualSession":false,"isUncappedSpending":false,"recommendation":"Signer is bounded by spend caps and target router allowlists."},
+  "farcaster-social-velocity": {"query":"HIGHER","velocityPerHour":42,"socialMomentumScore":88,"verdict":"ORGANIC_VIRAL","summary":"High cast velocity (42/hr) with diverse unique authors (82%) and healthy organic engagement."},
 };
 
 /** The static example for a service, or undefined when we have none. */
@@ -412,17 +416,21 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "pre-trade-alpha-shield": { address: DEGEN, size: "1000" },
   "agent-credit-score": { address: WALLET },
   "agent-full-audit": { address: WALLET },
+  "clanker-token-audit": { address: DEGEN },
+  "base-dex-spread": { token: DEGEN },
+  "agent-session-guard": { signer: WALLET },
+  "farcaster-social-velocity": { query: "HIGHER" },
 };
 
 /** Labels that mean "an account holds this", as opposed to a token or contract.
  *  `eoa` and the bare screening labels are here because they were missed once:
  *  wallet-delegation says "EOA address" and exists only to inspect delegation,
  *  yet it was handed the USDC contract, which it correctly called a contract. */
-const WALLET_LABEL = /wallet|holder|payer|merchant|borrower|victim|account|recipient|sender|safe|operator|owner|deployer|\beoa\b|address to (check|screen)|counterparty/i;
+const WALLET_LABEL = /wallet|holder|payer|merchant|borrower|victim|account|recipient|sender|safe|operator|owner|deployer|signer|delegate|\beoa\b|address to (check|screen)|counterparty/i;
 /** Parameters that carry an address. `from`/`to` are deliberately absent: they
  *  are currencies on fx-convert, dates on business-days and formats on
  *  file-convert, and each of those already has a usable placeholder. */
-const ADDRESS_PARAM = /^(address|addresses|token|tokens|contract|wallet|owner|spender)$/i;
+const ADDRESS_PARAM = /^(address|addresses|token|tokens|contract|wallet|owner|spender|signer)$/i;
 /**
  * A placeholder written for a human to read past, not for a machine to send.
  *
