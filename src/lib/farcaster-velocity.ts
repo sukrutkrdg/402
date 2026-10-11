@@ -52,7 +52,7 @@ export async function farcasterSocialVelocity(params: Record<string, string>) {
     const url = `https://api.warpcast.com/v2/search-casts?q=${encodeURIComponent(cleanQuery)}&limit=50`;
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(3500),
     });
 
     if (res.ok) {

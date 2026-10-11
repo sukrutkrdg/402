@@ -19,5 +19,5 @@ describe("farcaster-social-velocity", () => {
     expect(typeof res.velocityPerHour).toBe("number");
     expect(res.data).toBeDefined();
     expect(res.receipt).toBeDefined();
-  });
+  }, 10000);
 });

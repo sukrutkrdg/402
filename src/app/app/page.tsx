@@ -59,6 +59,8 @@ const CHECKS = [
   { id: "exit-liquidity", label: "🚪 Exit Liquidity" },
   { id: "lp-lock", label: "🔐 LP Lock Details" },
   { id: "token-unlock", label: "📆 LP Unlock Calendar" },
+  { id: "clanker-token-audit", label: "🤖 Clanker Token Audit · v4/v3 authenticity" },
+  { id: "base-dex-spread", label: "⚡ Base DEX Arbitrage · Aerodrome vs Uniswap" },
   { id: "proxy-check", label: "🧩 Proxy / Upgrade Risk" },
   { id: "contract-danger", label: "⚠️ Contract Danger" },
   { id: "token-momentum", label: "📈 Momentum (price/volume)" },
@@ -171,6 +173,10 @@ function formatResult(id: string, d: Record<string, unknown>): string {
       const rc = (d.receipt ?? {}) as { decision?: string; wouldChangeCall?: string };
       return `${rc.decision ? `${rc.decision} · ` : ""}Risk: ${s(d.riskLevel).toUpperCase()} (${s(d.riskScore)}/100)\n${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "no flags"}${rc.wouldChangeCall ? `\n\n↻ ${rc.wouldChangeCall}` : ""}`;
     }
+    case "clanker-token-audit":
+      return `${s(d.verdict).replace("_", " ").toUpperCase()}${d.clankerVersion && d.clankerVersion !== "none" ? ` (${d.clankerVersion})` : ""}\nDeployer: ${s(d.deployerAddress) || "Non-Clanker"}\nLP Locked: ${d.liquidityLocked ? "✅ Locked" : "❌ Unlocked"}\nImpersonator risk: ${d.isImpersonatorRisk ? "🚨 HIGH SCAM RISK" : "None"}\n\n➡️ ${s(d.recommendation)}`;
+    case "base-dex-spread":
+      return `VERDICT: ${s(d.verdict).replace("_", " ")}\nSpread: ${s(d.spreadBps)} bps · Direction: ${s(d.direction)}\nEst. Profit / $1k: $${s(d.estProfitPer1kUsd)}\n\n➡️ ${s(d.recommendation)}`;
     default:
       return JSON.stringify(d, null, 2).slice(0, 800);
   }
@@ -396,7 +402,7 @@ export default function MiniApp() {
       const pay = wrapFetchWithPayment(fetch, client);
 
       setStep(`Running ${check.label}…`);
-      const r = await withTimeout(pay(`/api/x402/${selected}?address=${addr.trim()}`), 90000, "payment/settlement");
+      const r = await withTimeout(pay(`/api/x402/${selected}?address=${addr.trim()}&token=${addr.trim()}`), 90000, "payment/settlement");
       setStep("Reading report…");
       const text = await r.text();
       if (!r.ok) {

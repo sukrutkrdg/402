@@ -11,6 +11,7 @@ import { getConfig, getSiteUrl } from "@/lib/config";
 import { POLICY_VERSION } from "@/lib/envelope";
 import { exampleInputFor } from "@/lib/discovery-examples";
 import { nearFunding } from "@/lib/near-funding";
+import { tagsFor } from "@/lib/tags";
 
 // Checks that carry the FULL decision receipt (confidence/refusal/refund), vs the
 // baseline (inputHash + policyVersion) every other paid service carries.
@@ -88,6 +89,7 @@ export function GET() {
       name: s.name,
       description: s.description,
       category: s.category,
+      tags: tagsFor(s),
       requiresAI: s.category === "AI",
       price: s.price,
       // Whether the daily free trial applies — AI/metered services never serve free.

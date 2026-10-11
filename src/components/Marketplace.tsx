@@ -25,6 +25,8 @@ export interface ServiceMeta {
   icon: string;
   category: string;
   params: ServiceParamMeta[];
+  tags?: string[];
+  noFreeTier?: boolean;
 }
 
 interface BuyResult {
@@ -76,11 +78,44 @@ function ServiceCard({
 }) {
   const [params, setParams] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [freeLoading, setFreeLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [out, setOut] = useState<BuyResult | null>(null);
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletData, setWalletData] = useState<unknown>(null);
   const { pay, picker, setPicker, step } = useX402Pay();
+
+  function copyCurl() {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => (v ?? "").trim()))
+    ).toString();
+    const url = `https://402.com.tr/api/x402/${service.id}${qs ? `?${qs}` : ""}`;
+    const cmd = `curl -X GET "${url}" -H "Accept: application/json"`;
+    navigator.clipboard.writeText(cmd).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function tryFree() {
+    setFreeLoading(true);
+    setError(null);
+    setWalletData(null);
+    try {
+      const qs = new URLSearchParams({
+        ...Object.fromEntries(Object.entries(params).filter(([, v]) => (v ?? "").trim())),
+        free: "1",
+      }).toString();
+      const res = await fetch(`/api/x402/${service.id}?${qs}`);
+      const json = await res.json();
+      if (!res.ok && res.status !== 402) throw new Error(json.error || `Request failed (${res.status})`);
+      setWalletData(json.data ?? json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Free test call failed");
+    } finally {
+      setFreeLoading(false);
+    }
+  }
 
   async function buy() {
     setLoading(true);
@@ -193,11 +228,27 @@ function ServiceCard({
         </div>
       )}
 
-      {/* Pay with the visitor's OWN browser wallet (Base App / Farcaster host,
-          or MetaMask / Coinbase in a plain browser) over x402. */}
-      <button className="btn-primary" onClick={() => payWithWallet()} disabled={walletBusy || loading}>
-        {walletBusy ? "Paying…" : `Pay ${service.price} with wallet`}
-      </button>
+      {/* Pay with the visitor's OWN browser wallet over x402, or try free */}
+      <div className="flex gap-2">
+        <button
+          className="btn-primary flex-1"
+          onClick={() => payWithWallet()}
+          disabled={walletBusy || loading || freeLoading}
+        >
+          {walletBusy ? "Paying…" : `Pay ${service.price} with wallet`}
+        </button>
+        {!service.noFreeTier && (
+          <button
+            type="button"
+            className="btn-ghost !px-3 text-xs shrink-0"
+            onClick={tryFree}
+            disabled={walletBusy || loading || freeLoading}
+            title="Try 1 free call today (no wallet required)"
+          >
+            {freeLoading ? "Testing…" : "🧪 Try free"}
+          </button>
+        )}
+      </div>
 
       {picker && (
         <div className="flex flex-col gap-2 rounded-lg border border-base-blue/30 bg-base-blue/10 p-3">
@@ -219,7 +270,7 @@ function ServiceCard({
       )}
 
       {buyerEnabled && (
-        <button className="btn-ghost !py-2 text-xs" onClick={buy} disabled={loading || walletBusy}>
+        <button className="btn-ghost !py-2 text-xs" onClick={buy} disabled={loading || walletBusy || freeLoading}>
           {loading ? "Processing…" : "Server pay (owner wallet)"}
         </button>
       )}
@@ -227,7 +278,15 @@ function ServiceCard({
       <div className="flex items-center gap-2 overflow-hidden rounded-lg border border-base-line bg-black/40 px-3 py-2">
         <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-gray-500">GET</span>
         <code className="truncate font-mono text-[11px] text-sky-300">/api/x402/{service.id}</code>
-        <a href="/agents" className="ml-auto shrink-0 text-[11px] text-sky-400 hover:underline">
+        <button
+          type="button"
+          onClick={copyCurl}
+          className="ml-auto shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold text-gray-400 hover:bg-white/10 hover:text-white transition"
+          title="Copy ready-to-run cURL command"
+        >
+          {copied ? "✓ Copied" : "📋 cURL"}
+        </button>
+        <a href="/agents" className="shrink-0 text-[11px] text-sky-400 hover:underline">
           agent →
         </a>
       </div>
@@ -360,7 +419,10 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   const q = search.trim().toLowerCase();
   const visible = services.filter((s) => {
     if (cat && s.category !== cat) return false;
-    if (q && !`${s.name} ${s.tagline} ${s.description} ${s.category} ${s.id}`.toLowerCase().includes(q)) return false;
+    if (q) {
+      const matchText = `${s.name} ${s.tagline} ${s.description} ${s.category} ${s.id} ${s.tags?.join(" ") ?? ""}`.toLowerCase();
+      if (!matchText.includes(q)) return false;
+    }
     return true;
   });
   const groups = groupByCategory(visible);
@@ -714,6 +776,32 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
           </p>
         )}
       </section>
+
+      {visible.length === 0 && (
+        <div className="card flex flex-col items-center justify-center p-8 text-center text-gray-400">
+          <span className="text-3xl mb-2">🔍</span>
+          <p className="font-semibold text-gray-200">No services found matching “{search}”</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Try searching for keywords like{" "}
+            <button type="button" onClick={() => setSearch("clanker")} className="text-sky-400 underline hover:text-sky-300">
+              clanker
+            </button>
+            ,{" "}
+            <button type="button" onClick={() => setSearch("arbitrage")} className="text-sky-400 underline hover:text-sky-300">
+              arbitrage
+            </button>
+            ,{" "}
+            <button type="button" onClick={() => setSearch("honeypot")} className="text-sky-400 underline hover:text-sky-300">
+              honeypot
+            </button>
+            , or{" "}
+            <button type="button" onClick={() => setSearch("session-key")} className="text-sky-400 underline hover:text-sky-300">
+              session-key
+            </button>
+            .
+          </p>
+        </div>
+      )}
 
       {groups.map(({ category, items }) => (
         <section key={category} className="flex flex-col gap-3">

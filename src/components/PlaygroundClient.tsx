@@ -43,6 +43,10 @@ export default function PlaygroundClient({ services }: { services: ServiceMeta[]
     if (svc.id === "polymarket-odds") defaults.query = "fed";
     if (svc.id === "agent-provenance") defaults.address = "0x973a31858f4d2125f48c880542da11a2796f12d6";
     if (svc.id === "token-risk" || svc.id === "deep-dd") defaults.address = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
+    if (svc.id === "clanker-token-audit") defaults.address = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
+    if (svc.id === "base-dex-spread") defaults.token = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
+    if (svc.id === "agent-session-guard") defaults.signer = "0x973a31858f4d2125f48c880542da11a2796f12d6";
+    if (svc.id === "farcaster-social-velocity") defaults.query = "HIGHER";
     setParams(defaults);
     setResponse(null);
     setStatusText(null);
@@ -57,20 +61,31 @@ export default function PlaygroundClient({ services }: { services: ServiceMeta[]
     const started = Date.now();
 
     try {
-      const res = await fetch("/api/buy", {
+      let res = await fetch("/api/buy", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ serviceId: selected.id, params }),
       });
+      let json = await res.json().catch(() => ({}));
+
+      // If server buyer is disabled or gated, fall back to free trial
+      if (!res.ok && (res.status === 403 || res.status === 401)) {
+        const qs = new URLSearchParams({ ...params, free: "1" }).toString();
+        const freeRes = await fetch(`/api/x402/${selected.id}?${qs}`);
+        if (freeRes.ok) {
+          res = freeRes;
+          json = await freeRes.json().catch(() => ({}));
+        }
+      }
+
       const ms = Date.now() - started;
       setLatencyMs(ms);
-      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setStatusText(`HTTP ${res.status}: ${json.error || "Execution failed"}`);
         setResponse(json);
       } else {
         setStatusText(`HTTP 200 OK (${ms}ms)`);
-        setResponse(json.result?.data ?? json);
+        setResponse(json.result?.data ?? json.data ?? json);
       }
     } catch (e) {
       setLatencyMs(Date.now() - started);
