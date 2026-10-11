@@ -63,6 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        <meta name="color-scheme" content="light dark" />
         {/* Google AdSense. Kept as a plain tag (not next/script) so it lands in the
             server-rendered HTML — the AdSense crawler reads the raw response when
             it verifies the site, and a client-injected tag can be missed. */}
