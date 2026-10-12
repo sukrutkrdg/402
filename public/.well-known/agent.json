@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name_for_model": "x402_bazaar",
+  "name_for_human": "x402 Bazaar",
+  "description_for_model": "Onchain intelligence and security marketplace on Base. Provides atomic token safety audits, honeypot detection, Clanker deployer verification, cross-DEX arbitrage radar, and gasless swap routing. All endpoints accept sub-cent USDC micropayments via HTTP 402 and EIP-3009 with zero API keys required.",
+  "description_for_human": "Pay-per-call API marketplace on Base for autonomous AI agents.",
+  "auth": {
+    "type": "x402",
+    "network": "eip155:8453",
+    "token": "USDC",
+    "token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "scheme": "exact",
+    "eip": "EIP-3009"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://402.com.tr/api/openapi"
+  },
+  "discovery": {
+    "catalog_url": "https://402.com.tr/api/catalog",
+    "facilitator_url": "https://402.com.tr",
+    "total_services": 143,
+    "builder_code": "bc_pa0gqlv1"
+  },
+  "protocols": {
+    "mcp": "https://402.com.tr/mcp",
+    "elizaos": "@sukrutkrdg/plugin-x402-bazaar",
+    "agentkit": "x402-bazaar-agentkit"
+  },
+  "logo_url": "https://402.com.tr/icon",
+  "contact_email": "sukrutkrdg@users.noreply.github.com",
+  "legal_info_url": "https://402.com.tr"
+}

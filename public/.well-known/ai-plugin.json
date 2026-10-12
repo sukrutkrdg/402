@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_model": "x402_bazaar",
+  "name_for_human": "x402 Bazaar",
+  "description_for_model": "Onchain risk engine and pay-per-call API marketplace on Base. Check token safety, honeypot risk, and dex arbitrage in real time.",
+  "description_for_human": "Pay-per-call APIs for AI agents on Base.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://402.com.tr/api/openapi"
+  },
+  "logo_url": "https://402.com.tr/icon",
+  "contact_email": "sukrutkrdg@users.noreply.github.com",
+  "legal_info_url": "https://402.com.tr"
+}

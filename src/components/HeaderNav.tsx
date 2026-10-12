@@ -22,6 +22,7 @@ const PRIMARY_LINKS: NavLinkItem[] = [
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
+  { href: "/terminal", label: "💻 Agent Terminal" },
   { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
   { href: "/radar", label: "📡 Live Arbitrage Radar" },
   { href: "/publish", label: "💰 Monetize API (90%)" },
