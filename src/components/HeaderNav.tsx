@@ -22,10 +22,11 @@ const PRIMARY_LINKS: NavLinkItem[] = [
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
-  { href: "/radar", label: "📡 Live Radar" },
+  { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
+  { href: "/radar", label: "📡 Live Arbitrage Radar" },
   { href: "/publish", label: "💰 Monetize API (90%)" },
+  { href: "/agents", label: "🤖 For Agents & MCP" },
   { href: "/dashboard", label: "📈 Dashboard" },
-  { href: "/agents", label: "🤖 For Agents" },
   { href: "/playground", label: "🧪 Playground" },
   { href: "/stats", label: "📊 Onchain Stats" },
   { href: "/status", label: "🟢 System Status" },
