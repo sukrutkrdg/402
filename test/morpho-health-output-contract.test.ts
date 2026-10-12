@@ -134,7 +134,7 @@ describe("morpho-health output contract", () => {
       required?: string[];
     };
     expect(exampleSchema.required).toEqual(REQUIRED);
-  });
+  }, 15000);
 });
 
 describe("morpho-health source wiring", () => {

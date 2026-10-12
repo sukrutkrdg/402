@@ -22,6 +22,7 @@ const PRIMARY_LINKS: NavLinkItem[] = [
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
+  { href: "/sdk", label: "📦 SDK & CLI" },
   { href: "/fleet", label: "🛡️ Fleet Controller" },
   { href: "/workflows", label: "⚡ Agent Workflows" },
   { href: "/terminal", label: "💻 Agent Terminal" },
