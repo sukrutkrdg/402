@@ -309,6 +309,22 @@ export default function MultiAgentSandbox({ services }: { services: ServiceMeta[
                   >
                     View on Basescan ↗
                   </a>
+                  <a
+                    href={`https://warpcast.com/~/compose?text=${encodeURIComponent(
+                      `Just simulated an autonomous EIP-3009 micro-payment on Base via x402 Bazaar!\n\n🤖 Agent: ${latestReceipt.buyerAgent.role}\n⚡ Service: ${latestReceipt.serviceId}\n💰 Settled: $${latestReceipt.settlement.totalAmountUsdc} USDC (0 Gas)\n🏛️ Builder Code: bc_pa0gqlv1`
+                    )}&embeds[]=${encodeURIComponent(
+                      `https://402.com.tr/api/frames/share?service=${latestReceipt.serviceId}&title=${encodeURIComponent(
+                        `Agent Micropayment: ${latestReceipt.serviceId}`
+                      )}&subtitle=${encodeURIComponent(
+                        `Settled $${latestReceipt.settlement.totalAmountUsdc} USDC on Base`
+                      )}`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] px-2.5 py-1 rounded bg-[#7c65c1]/20 hover:bg-[#7c65c1]/30 text-[#a78bfa] border border-[#7c65c1]/30 font-semibold transition flex items-center gap-1.5"
+                  >
+                    <span>🟣 Cast to Warpcast</span>
+                  </a>
                 </div>
               </div>
 
