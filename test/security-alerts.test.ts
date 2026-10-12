@@ -64,4 +64,27 @@ describe("security-alerts", () => {
     expect(ping.signature).toMatch(/^[a-f0-9]{64}$/);
     expect(typeof ping.latencyMs).toBe("number");
   });
+
+  it("lists active security webhooks filtered by alert type", async () => {
+    const targetToken = "0x4ed4e862860bed51a9570b96d89af5e1b0efefed";
+    await registerSecurityWebhook({
+      webhookUrl: "https://example.com/alerts-honeypot",
+      alertType: "HONEYPOT_DETECTED",
+      tokenAddress: targetToken,
+    });
+
+    const { getActiveSecurityWebhooks, dispatchSecurityAlert } = await import("@/lib/security-alerts");
+    const active = await getActiveSecurityWebhooks("HONEYPOT_DETECTED", targetToken);
+    expect(active.length).toBeGreaterThan(0);
+    expect(active.some((s) => s.alertType === "HONEYPOT_DETECTED")).toBe(true);
+
+    const dispatchRes = await dispatchSecurityAlert({
+      alertType: "HONEYPOT_DETECTED",
+      tokenAddress: targetToken,
+      data: { score: 10, reason: "tax spike" },
+    });
+    expect(dispatchRes).toBeDefined();
+    expect(typeof dispatchRes.dispatched).toBe("number");
+  });
 });
+

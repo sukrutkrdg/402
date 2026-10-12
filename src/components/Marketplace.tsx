@@ -193,13 +193,7 @@ function ServiceCard({
               <h3 className="font-semibold leading-tight">{service.name}</h3>
               <span className="pill !px-2 !py-0.5 !text-[10px]">{service.category}</span>
               <span className="pill !px-2 !py-0.5 !text-[10px] border-sky-500/20 text-sky-400 font-mono">
-                {service.category === "Onchain"
-                  ? "⚡ ~140ms"
-                  : service.category === "Markets"
-                    ? "⚡ ~85ms"
-                    : service.category === "AI"
-                      ? "⚡ ~450ms"
-                      : "⚡ ~110ms"}
+                {service.category === "AI" ? "⚡ AI Model" : "⚡ Live Onchain"}
               </span>
             </div>
             <p className="text-xs text-gray-400">{service.tagline}</p>

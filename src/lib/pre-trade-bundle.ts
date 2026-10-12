@@ -28,6 +28,7 @@ export interface PreTradeBundleResult {
   verdict: PreTradeVerdict;
   safetyScore: number; // 0 (worst) to 100 (safest)
   confidence: number;
+  degraded?: boolean;
   recommendation: "EXECUTE" | "REDUCE_SIZE" | "ABORT";
   summary: string;
   keyFindings: string[];
@@ -72,6 +73,11 @@ export async function preTradeBundle(params: Record<string, string>): Promise<Pr
   const risk = riskRes.status === "fulfilled" ? (riskRes.value as Record<string, any>) : null;
   const dex = dexRes.status === "fulfilled" ? (dexRes.value as Record<string, any>) : null;
 
+  const isRiskFulfilled = riskRes.status === "fulfilled" && risk !== null;
+  const isDexFulfilled = dexRes.status === "fulfilled" && dex !== null;
+  const isClankerFulfilled = clankerRes.status === "fulfilled" && clanker !== null;
+  const isDegraded = !(isRiskFulfilled && isDexFulfilled && isClankerFulfilled);
+
   // Extract Security Data
   const secData = (risk?.data?.security ?? risk?.security ?? {}) as {
     isHoneypot?: boolean;
@@ -100,6 +106,9 @@ export async function preTradeBundle(params: Record<string, string>): Promise<Pr
   if (isHoneypot) {
     score -= 100;
     findings.push("CRITICAL: Token detected as honeypot (cannot sell)");
+  } else if (!isRiskFulfilled || secData.isHoneypot === undefined) {
+    score -= 30;
+    findings.push("UNVERIFIED: Honeypot check could not be verified by upstream security provider");
   } else {
     findings.push("Clean honeypot check (sell allowed)");
   }
@@ -116,7 +125,10 @@ export async function preTradeBundle(params: Record<string, string>): Promise<Pr
     findings.push(`HIGH TAX: Excessive sell tax detected (${sellTaxPct}%)`);
   }
 
-  if (dexVerdict === "NO_POOLS_FOUND") {
+  if (!isDexFulfilled) {
+    score -= 20;
+    findings.push("UNVERIFIED: Cross-DEX liquidity & routing could not be verified");
+  } else if (dexVerdict === "NO_POOLS_FOUND") {
     score -= 30;
     findings.push("LOW LIQUIDITY: No active Uniswap v3 or Aerodrome liquidity pools found");
   } else if (spreadBps > 300) {
@@ -145,6 +157,10 @@ export async function preTradeBundle(params: Record<string, string>): Promise<Pr
     verdict = "HIGH_RISK";
     recommendation = "ABORT";
     summary = "HIGH RISK. Elevated contract flags or extreme sell tax present.";
+  } else if (!isRiskFulfilled || secData.isHoneypot === undefined) {
+    verdict = "ILLIQUID_SPREAD";
+    recommendation = "REDUCE_SIZE";
+    summary = "CAUTION. Security check provider was unavailable; exercise caution and verify manually.";
   } else if (score < 75 || dexVerdict === "NO_POOLS_FOUND" || spreadBps > 500) {
     verdict = "ILLIQUID_SPREAD";
     recommendation = "REDUCE_SIZE";
@@ -159,7 +175,8 @@ export async function preTradeBundle(params: Record<string, string>): Promise<Pr
     address: normalizedAddr,
     verdict,
     safetyScore: score,
-    confidence: riskRes.status === "fulfilled" && dexRes.status === "fulfilled" ? 95 : 75,
+    confidence: isDegraded ? 65 : 95,
+    degraded: isDegraded,
     recommendation,
     summary,
     keyFindings: findings,
@@ -187,7 +204,7 @@ export async function preTradeBundle(params: Record<string, string>): Promise<Pr
   const receipt = decisionReceipt({
     endpoint: "pre-trade-bundle",
     params: { address: normalizedAddr },
-    degraded: !(riskRes.status === "fulfilled" && dexRes.status === "fulfilled"),
+    degraded: isDegraded,
   });
   return {
     ...result,

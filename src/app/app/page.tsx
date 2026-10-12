@@ -199,6 +199,42 @@ function formatResult(id: string, d: Record<string, unknown>): string {
   }
 }
 
+function getVerdictStatus(text: string): { label: "DANGER" | "CAUTION" | "PASSED"; icon: string; style: string } {
+  // If explicitly blocked, scam, or abort
+  const isDanger =
+    /VERDICT:\s*(BLOCKED|IMPERSONATOR|HIGH_RISK|DANGEROUS)|CRITICAL:\s*Token detected as honeypot|🚫\s*CANNOT SELL|🚨\s*HIGH SCAM|Danger:\s*CRITICAL|Rug score:.*\(CRITICAL\)|Rug score:.*\(HIGH\)|decision:\s*STOP|Recommendation:\s*ABORT/i.test(
+      text
+    );
+
+  if (isDanger) {
+    return {
+      label: "DANGER",
+      icon: "🚨",
+      style: "border-red-500/40 bg-red-500/15 text-red-300",
+    };
+  }
+
+  // If caution, degraded, illiquid, or hold
+  const isCaution =
+    /VERDICT:\s*(ILLIQUID|CAUTION|HOLD)|⚠️|degraded|HIGH RISK|SUSPICIOUS|POOR|MODERATE|Rug score:.*\(MEDIUM\)|Recommendation:\s*(REDUCE_SIZE|HOLD|CAUTION)/i.test(
+      text
+    );
+
+  if (isCaution) {
+    return {
+      label: "CAUTION",
+      icon: "⚠️",
+      style: "border-amber-500/40 bg-amber-500/15 text-amber-300",
+    };
+  }
+
+  return {
+    label: "PASSED",
+    icon: "🛡️",
+    style: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+  };
+}
+
 export default function MiniApp() {
   const [addr, setAddr] = useState("");
   const [selected, setSelected] = useState<string>(CHECKS[0].id);
@@ -881,67 +917,52 @@ export default function MiniApp() {
             </button>
           )}
 
-          {out && (
-            <div className="card flex flex-col gap-3 p-4 border border-white/15 bg-[#0b0e15] shadow-2xl backdrop-blur">
-              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">
-                    {/HONEYPOT|DANGEROUS|CANNOT SELL|BLOCKED|HIGH SCAM/i.test(out)
-                      ? "🚨"
-                      : /CAUTION|HOLD|DEGRADED|HIGH RISK/i.test(out)
-                        ? "⚠️"
-                        : "🛡️"}
-                  </span>
-                  <span className="text-xs font-bold text-white tracking-wide">
-                    {check.label.split("·")[0].trim()} Verdict
+          {out && (() => {
+            const verdictStatus = getVerdictStatus(out);
+            return (
+              <div className="card flex flex-col gap-3 p-4 border border-white/15 bg-[#0b0e15] shadow-2xl backdrop-blur">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{verdictStatus.icon}</span>
+                    <span className="text-xs font-bold text-white tracking-wide">
+                      {check.label.split("·")[0].trim()} Verdict
+                    </span>
+                  </div>
+                  <span className={`pill !px-2.5 !py-0.5 text-[11px] font-bold ${verdictStatus.style}`}>
+                    {verdictStatus.label}
                   </span>
                 </div>
-                <span
-                  className={`pill !px-2.5 !py-0.5 text-[11px] font-bold ${
-                    /HONEYPOT|DANGEROUS|CANNOT SELL|BLOCKED|HIGH SCAM/i.test(out)
-                      ? "border-red-500/40 bg-red-500/15 text-red-300"
-                      : /CAUTION|HOLD|DEGRADED|HIGH RISK/i.test(out)
-                        ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-                        : "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                  }`}
-                >
-                  {/HONEYPOT|DANGEROUS|CANNOT SELL|BLOCKED|HIGH SCAM/i.test(out)
-                    ? "DANGER"
-                    : /CAUTION|HOLD|DEGRADED|HIGH RISK/i.test(out)
-                      ? "CAUTION"
-                      : "PASSED"}
-                </span>
-              </div>
 
-              <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-gray-200">
-                {out}
-              </pre>
+                <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-gray-200">
+                  {out}
+                </pre>
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 text-xs">
-                <button
-                  type="button"
-                  onClick={copyResult}
-                  className="btn-ghost !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  {copied ? "✓ Copied" : "📋 Copy"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    sdk.actions
-                      .composeCast({
-                        text: `${check.label.replace(/^[^A-Za-z0-9]+\s*/, "")} for ${addr.trim().slice(0, 6)}…${addr.trim().slice(-4)} 🛡️\n\n${out.slice(0, 200)}\n\nCheck any Base token 👇`,
-                        embeds: [`https://402.com.tr/app?token=${addr.trim()}&check=${selected}`],
-                      })
-                      .catch(() => {})
-                  }
-                  className="btn-primary !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  ↗ Cast on Farcaster
-                </button>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 text-xs">
+                  <button
+                    type="button"
+                    onClick={copyResult}
+                    className="btn-ghost !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {copied ? "✓ Copied" : "📋 Copy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      sdk.actions
+                        .composeCast({
+                          text: `${check.label.replace(/^[^A-Za-z0-9]+\s*/, "")} for ${addr.trim().slice(0, 6)}…${addr.trim().slice(-4)} 🛡️\n\n${out.slice(0, 200)}\n\nCheck any Base token 👇`,
+                          embeds: [`https://402.com.tr/app?token=${addr.trim()}&check=${selected}`],
+                        })
+                        .catch(() => {})
+                    }
+                    className="btn-primary !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    ↗ Cast on Farcaster
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {previewShown && busy === null && (
             <button onClick={() => (gasMode ? payOnchain() : paidReport())} className="btn-primary !py-2 text-sm cursor-pointer">

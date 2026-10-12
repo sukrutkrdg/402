@@ -82,21 +82,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen antialiased">
         <FarcasterReady />
         <header className="site-header sticky top-0 z-20 border-b backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-            <Link href="/" className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-base-blue to-[#0036aa] shadow-md shadow-base-blue/30">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
+            {/* shrink-0 + nowrap: globals.css sets `* { min-width: 0 }`, so without
+                these the logo is the flex item that gets squeezed in narrow mini-app
+                webviews and "Base · NEAR" breaks one letter per line. The nav is the
+                part that should give way — it scrolls horizontally instead. */}
+            <Link href="/" className="flex shrink-0 items-center gap-2.5">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-base-blue to-[#0036aa] shadow-md shadow-base-blue/30">
                 <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-b from-white to-[#cfddff] text-[8px] font-black leading-none tracking-tighter text-[#0046e6] shadow-inner">
                   402
                 </span>
               </span>
-              <div className="leading-tight">
+              <div className="whitespace-nowrap leading-tight">
                 <div className="text-sm font-bold tracking-tight">x402 Bazaar</div>
                 <div className="text-[10px] uppercase tracking-widest text-gray-500">
                   Base · NEAR
                 </div>
               </div>
             </Link>
-            <nav className="-mx-1 flex max-w-full items-center gap-1.5 overflow-x-auto px-1 text-sm">
+            <nav className="-mx-1 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 text-sm">
               <Link href="/" className="shrink-0 rounded-lg px-3 py-1.5 text-gray-300 hover:bg-white/5 hover:text-white">
                 Marketplace
               </Link>

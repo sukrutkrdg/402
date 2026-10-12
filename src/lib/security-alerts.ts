@@ -151,3 +151,88 @@ export async function sendWebhookPing(sub: SecurityWebhookSubscription): Promise
     };
   }
 }
+
+/**
+ * Retrieve all registered security webhooks, optionally filtered by alert type and token address.
+ */
+export async function getActiveSecurityWebhooks(
+  alertType?: SecurityAlertType,
+  tokenAddress?: string
+): Promise<SecurityWebhookSubscription[]> {
+  const subs: SecurityWebhookSubscription[] = [];
+  if (kvConfigured()) {
+    const ids = await kvSMembers("secwh:active");
+    for (const id of ids) {
+      const raw = await kvGet(`secwh:${id}`);
+      if (raw) {
+        try {
+          subs.push(JSON.parse(raw) as SecurityWebhookSubscription);
+        } catch {}
+      }
+    }
+  } else {
+    subs.push(...Array.from(memorySubscriptions.values()));
+  }
+
+  return subs.filter((sub) => {
+    if (alertType && sub.alertType !== alertType) return false;
+    if (tokenAddress && sub.tokenAddress && sub.tokenAddress.toLowerCase() !== tokenAddress.toLowerCase()) return false;
+    return true;
+  });
+}
+
+/**
+ * Dispatch an onchain security alert to all matching registered webhooks.
+ */
+export async function dispatchSecurityAlert(params: {
+  alertType: SecurityAlertType;
+  tokenAddress: string;
+  data: Record<string, unknown>;
+}): Promise<{ dispatched: number; failed: number }> {
+  const matching = await getActiveSecurityWebhooks(params.alertType, params.tokenAddress);
+  if (matching.length === 0) {
+    return { dispatched: 0, failed: 0 };
+  }
+
+  let dispatched = 0;
+  let failed = 0;
+
+  const payload = JSON.stringify({
+    event: "security_alert",
+    alertType: params.alertType,
+    tokenAddress: params.tokenAddress.toLowerCase(),
+    timestamp: new Date().toISOString(),
+    data: params.data,
+  });
+
+  await Promise.all(
+    matching.map(async (sub) => {
+      try {
+        const safeUrl = await assertSafeWebhook(sub.webhookUrl);
+        const signature = signWebhookPayload(payload, sub.secret);
+        const res = await fetch(safeUrl.toString(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "x402-Bazaar-SecurityAlerts/1.0",
+            "X-Bazaar-Signature": `sha256=${signature}`,
+            "X-Bazaar-Event": sub.alertType,
+          },
+          body: payload,
+          signal: AbortSignal.timeout(5000),
+          redirect: "manual",
+        });
+        if (res.ok) {
+          dispatched++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    })
+  );
+
+  return { dispatched, failed };
+}
+
