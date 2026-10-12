@@ -22,6 +22,7 @@ const PRIMARY_LINKS: NavLinkItem[] = [
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
+  { href: "/publish", label: "💰 Monetize API (90%)" },
   { href: "/dashboard", label: "📈 Dashboard" },
   { href: "/agents", label: "🤖 For Agents" },
   { href: "/playground", label: "🧪 Playground" },
