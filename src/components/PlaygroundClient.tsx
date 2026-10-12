@@ -3,8 +3,10 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import type { ServiceMeta } from "./Marketplace";
+import MultiAgentSandbox from "./MultiAgentSandbox";
 
 export default function PlaygroundClient({ services }: { services: ServiceMeta[] }) {
+  const [mode, setMode] = useState<"single" | "multiagent">("single");
   const [selectedId, setSelectedId] = useState<string>("polymarket-odds");
   const [search, setSearch] = useState("");
   const [activeCodeTab, setActiveCodeTab] = useState<"json" | "curl" | "python" | "typescript">("json");
@@ -166,8 +168,38 @@ console.log(data);`;
         </div>
       </div>
 
-      {/* Grid: Left Service Selector & Form | Right Console Output */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Mode Switcher Tabs */}
+      <div className="flex items-center gap-2 mb-6 bg-[#0a0d14] p-1.5 rounded-xl border border-white/10 w-fit">
+        <button
+          onClick={() => setMode("single")}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+            mode === "single"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+              : "text-gray-400 hover:text-white"
+          }`}
+        >
+          <span>⚡ Single API Runner</span>
+        </button>
+        <button
+          onClick={() => setMode("multiagent")}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+            mode === "multiagent"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+              : "text-gray-400 hover:text-white"
+          }`}
+        >
+          <span>🤖 Multi-Agent EIP-3009 Sandbox</span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            NEW
+          </span>
+        </button>
+      </div>
+
+      {mode === "multiagent" ? (
+        <MultiAgentSandbox services={services} />
+      ) : (
+        /* Grid: Left Service Selector & Form | Right Console Output */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Services list & Input Form */}
         <div className="lg:col-span-5 space-y-4">
           {/* Service Search & Picker */}
@@ -355,6 +387,7 @@ console.log(data);`;
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
