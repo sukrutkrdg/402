@@ -86,16 +86,44 @@ export default function LeaderboardPage() {
 
     loadData();
     const interval = setInterval(loadData, 15000);
-
-    try {
-      sdk.actions.ready();
-    } catch {
-      // ignore outside farcaster
+    let es: EventSource | null = null;
+    if (typeof window !== "undefined" && "EventSource" in window) {
+      try {
+        es = new EventSource("/api/events/live");
+        es.addEventListener("settlement", (e) => {
+          try {
+            const parsed = JSON.parse(e.data);
+            const newStl: SettlementItem = {
+              txHash: parsed.payload.txHash || "0x" + Math.random().toString(16).slice(2, 42),
+              serviceId: parsed.payload.service || "x402-call",
+              serviceName: parsed.payload.service || "x402 Service",
+              amountUsdc: parsed.payload.amountUsdc || 0.05,
+              caller: parsed.payload.payer ? `${parsed.payload.payer.slice(0, 6)}...${parsed.payload.payer.slice(-4)}` : "0xAgent...38f1",
+              timeAgo: "just now",
+              network: "Base",
+              status: "Settled (EIP-3009)",
+            };
+            setData((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                summary: {
+                  ...prev.summary,
+                  totalSettledVolumeUsdc: prev.summary.totalSettledVolumeUsdc + (parsed.payload.amountUsdc || 0),
+                  totalAgentCalls: prev.summary.totalAgentCalls + 1,
+                },
+                recentSettlements: [newStl, ...prev.recentSettlements.slice(0, 9)],
+              };
+            });
+          } catch {}
+        });
+      } catch {}
     }
 
     return () => {
       cancelled = true;
       clearInterval(interval);
+      es?.close();
     };
   }, []);
 

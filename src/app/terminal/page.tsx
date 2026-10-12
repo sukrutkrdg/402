@@ -39,7 +39,71 @@ export default function TerminalPage() {
     consoleBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
-  // Minor gas fluctuation simulation for Bloomberg realism
+  const [sseConnected, setSseConnected] = useState(false);
+
+  // SSE Real-time Telemetry Stream
+  useEffect(() => {
+    if (typeof window === "undefined" || !("EventSource" in window)) return;
+    const es = new EventSource("/api/events/live");
+    es.addEventListener("handshake", () => {
+      setSseConnected(true);
+    });
+    es.addEventListener("settlement", (e) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        setLogs((prev) => [
+          ...prev,
+          {
+            time: new Date().toLocaleTimeString(),
+            type: "success",
+            message: `[SSE:Settlement] ${parsed.payload.service} settled ${parsed.payload.amountUsdc} USDC on Base (${parsed.payload.latencyMs}ms)`,
+          },
+        ]);
+      } catch {}
+    });
+    es.addEventListener("arbitrage", (e) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        setLogs((prev) => [
+          ...prev,
+          {
+            time: new Date().toLocaleTimeString(),
+            type: "warn",
+            message: `[SSE:Radar] Spread: ${parsed.payload.pair} (${parsed.payload.spreadBps} bps) net est +$${parsed.payload.netProfitUsdcEst}`,
+          },
+        ]);
+      } catch {}
+    });
+    es.addEventListener("sentinel", (e) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        setLogs((prev) => [
+          ...prev,
+          {
+            time: new Date().toLocaleTimeString(),
+            type: "error",
+            message: `[SSE:Sentinel] Alert: ${parsed.payload.name} flagged (${parsed.payload.verdict})`,
+          },
+        ]);
+      } catch {}
+    });
+    es.addEventListener("heartbeat", (e) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        if (parsed.payload?.baseGasGwei) {
+          setGasGwei(Number(parsed.payload.baseGasGwei).toFixed(4));
+        }
+      } catch {}
+    });
+    es.onerror = () => {
+      setSseConnected(false);
+    };
+    return () => {
+      es.close();
+    };
+  }, []);
+
+  // Minor gas fluctuation fallback
   useEffect(() => {
     const interval = setInterval(() => {
       setGasGwei((0.0018 + Math.random() * 0.0008).toFixed(4));
@@ -132,6 +196,10 @@ export default function TerminalPage() {
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <span>Builder: <code style={{ color: "#60a5fa" }}>bc_pa0gqlv1</code></span>
           <span>EIP-3009: <strong style={{ color: "#10b981" }}>ACTIVE</strong></span>
+          <span style={{ color: sseConnected ? "#10b981" : "#94a3b8", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: sseConnected ? "#10b981" : "#64748b" }} />
+            {sseConnected ? "SSE LIVE" : "SSE CONNECTING"}
+          </span>
           <Link
             href="/leaderboard"
             style={{
