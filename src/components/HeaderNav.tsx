@@ -14,11 +14,8 @@ interface NavLinkItem {
 
 const PRIMARY_LINKS: NavLinkItem[] = [
   { href: "/", label: "Marketplace" },
-  { href: "/app", label: "🛡️ Check Token" },
-  { href: "/stocks", label: "📊 Stocks" },
-  { href: "/near", label: "Ⓝ NEAR" },
-  { href: "/swap", label: "🔁 Swap" },
-  { href: "/credits", label: "🎟️ Prepaid Credits" },
+  { href: "/credit-line", label: "🏦 Agent Credit Line & Flash Lending", badge: "NEW" },
+  { href: "/sdk", label: "📦 SDK & CLI" },
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
