@@ -18,10 +18,11 @@ const PRIMARY_LINKS: NavLinkItem[] = [
   { href: "/stocks", label: "📊 Stocks" },
   { href: "/near", label: "Ⓝ NEAR" },
   { href: "/swap", label: "🔁 Swap" },
-  { href: "/credits", label: "💳 Credits" },
+  { href: "/credits", label: "🎟️ Prepaid Credits" },
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
+  { href: "/credit-line", label: "🏦 Agent Credit Line & Flash Lending", badge: "NEW" },
   { href: "/sdk", label: "📦 SDK & CLI" },
   { href: "/fleet", label: "🛡️ Fleet Controller" },
   { href: "/workflows", label: "⚡ Agent Workflows" },
@@ -30,7 +31,6 @@ const MORE_LINKS: NavLinkItem[] = [
   { href: "/arena", label: "⚔️ Agent Arena (Flow)", badge: "NEW" },
   { href: "/scout", label: "🎯 Service Scout & Niche Radar", badge: "NEW" },
   { href: "/bounties", label: "⚡ Agent Task Bounties", badge: "NEW" },
-  { href: "/credit", label: "💳 Agent Credit Line", badge: "NEW" },
   { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
   { href: "/radar", label: "📡 Live Arbitrage Radar" },
   { href: "/liquidity", label: "💧 Liquidity Rebalancer" },
@@ -125,7 +125,7 @@ export default function HeaderNav() {
           </button>
 
           {moreOpen && (
-            <div className="absolute right-0 mt-1.5 w-48 rounded-xl border border-white/10 bg-[#0d1017] p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="absolute right-0 mt-1.5 w-64 rounded-xl border border-white/10 bg-[#0d1017] p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-in fade-in slide-in-from-top-1 duration-150">
               {MORE_LINKS.map((item) =>
                 item.external ? (
                   <a
@@ -133,21 +133,31 @@ export default function HeaderNav() {
                     href={item.href}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center rounded-lg px-3 py-2 text-xs text-gray-300 hover:bg-white/10 hover:text-white transition"
+                    className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-gray-300 hover:bg-white/10 hover:text-white transition"
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {item.badge && (
+                      <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded">
+                        {item.badge}
+                      </span>
+                    )}
                   </a>
                 ) : (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center rounded-lg px-3 py-2 text-xs transition ${
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs transition ${
                       isActive(item.href)
                         ? "bg-white/10 text-white font-semibold"
                         : "text-gray-300 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    {item.label}
+                    <span className="truncate">{item.label}</span>
+                    {item.badge && (
+                      <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded shrink-0 ml-1.5">
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 )
               )}
@@ -250,22 +260,32 @@ export default function HeaderNav() {
                         target="_blank"
                         rel="noreferrer"
                         onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/5 p-2.5 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition"
+                        className="flex items-center justify-between gap-1 rounded-xl border border-white/5 bg-white/5 p-2.5 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition"
                       >
-                        <span>{link.label}</span>
+                        <span className="truncate">{link.label}</span>
+                        {link.badge && (
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 rounded shrink-0">
+                            {link.badge}
+                          </span>
+                        )}
                       </a>
                     ) : (
                       <Link
                         key={link.href}
                         href={link.href}
                         onClick={() => setMobileOpen(false)}
-                        className={`flex items-center gap-2 rounded-xl p-2.5 text-xs font-medium border transition ${
+                        className={`flex items-center justify-between gap-1 rounded-xl p-2.5 text-xs font-medium border transition ${
                           isActive(link.href)
                             ? "border-sky-500/40 bg-sky-500/15 text-sky-200"
                             : "border-white/5 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
                         }`}
                       >
-                        <span>{link.label}</span>
+                        <span className="truncate">{link.label}</span>
+                        {link.badge && (
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 rounded shrink-0">
+                            {link.badge}
+                          </span>
+                        )}
                       </Link>
                     )
                   )}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CREDIT_TIERS } from "@/lib/credits";
 import { SERVICES } from "@/lib/services";
 import { Providers } from "../app/providers";
@@ -19,6 +20,19 @@ export default function CreditsPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200">
+        <div>
+          <strong className="text-amber-100 font-semibold block text-sm mb-0.5">💡 Need uncollateralized flash micro-liquidity instead?</strong>
+          <span>This page is for <em>prepaid API credits</em> (prepaid gasless balance). If your agent needs to borrow instant credit without upfront funds based on reputation, use the Credit Line.</span>
+        </div>
+        <Link
+          href="/credit-line"
+          className="whitespace-nowrap px-3 py-1.5 rounded-lg bg-amber-400 text-black font-semibold hover:bg-amber-300 transition text-xs shrink-0"
+        >
+          Agent Credit Line ↗
+        </Link>
+      </div>
+
       <section className="flex flex-col gap-2">
         <span className="pill w-fit">🎟️ Prepaid credits</span>
         <h1 className="text-3xl font-bold tracking-tight">Pay once. Your agent never signs again.</h1>
