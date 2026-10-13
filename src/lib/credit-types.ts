@@ -23,4 +23,6 @@ export interface CreditLoanReceipt {
   status: "ACTIVE" | "REPAID";
   txHash: string;
   basescanUrl: string;
+  creditToken: string;
+  usageInstructions: string;
 }

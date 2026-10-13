@@ -238,18 +238,46 @@ export default function CreditLinePage() {
 
         {/* Feedback Messages */}
         {latestLoan && (
-          <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/40 space-y-2 animate-fadeIn text-xs">
+          <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/40 space-y-3 animate-fadeIn text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-emerald-400 font-bold">🎉 FLASH CREDIT DISBURSED (0-GAS)!</span>
+              <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                <span>🎉</span> FLASH CREDIT DISBURSED (0-GAS)!
+              </span>
               <span className="font-mono text-slate-500">{latestLoan.loanId}</span>
             </div>
             <p className="text-slate-300">
-              Disbursed <strong className="text-emerald-400">${latestLoan.principalUsdc.toFixed(2)} USDC</strong> directly to agent wallet. Total due within 24h:{" "}
+              Granted <strong className="text-emerald-400">${latestLoan.principalUsdc.toFixed(2)} USDC</strong> internal service credit line. Total due within 24h:{" "}
               <strong className="text-amber-300">${latestLoan.totalDueUsdc.toFixed(2)} USDC</strong>.
             </p>
-            <a href={latestLoan.basescanUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline block font-mono">
-              View BaseScan Loan Tx ↗
-            </a>
+
+            {latestLoan.creditToken && (
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-emerald-300 font-semibold">🎟️ Active Gasless Bearer Token (Ready to Use across 225 APIs)</span>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(latestLoan.creditToken)}
+                    className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-mono text-[10px] transition cursor-pointer"
+                  >
+                    Copy Token
+                  </button>
+                </div>
+                <div className="font-mono text-xs text-sky-300 break-all select-all bg-black/40 p-2 rounded border border-white/5">
+                  {latestLoan.creditToken}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Header: <code className="text-amber-300">x-credit-token: {latestLoan.creditToken}</code> — Zero gas, no wallet signature per call!
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1">
+              <a href={latestLoan.basescanUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline block font-mono text-[11px]">
+                View BaseScan Loan Tx ↗
+              </a>
+              <Link href="/playground" className="text-emerald-400 hover:underline font-semibold text-[11px]">
+                Test in API Playground ↗
+              </Link>
+            </div>
           </div>
         )}
 

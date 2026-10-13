@@ -45,7 +45,9 @@ describe("Autonomous Agent Credit Line & Flash Liquidity API (/api/credit/line)"
     expect(json.action).toBe("borrow");
     expect(json.loanReceipt.principalUsdc).toBe(5.0);
     expect(json.loanReceipt.basescanUrl).toContain("basescan.org/tx/");
-    expect(json.liquidityDisbursed.protocol).toBe("x402 (EIP-3009)");
+    expect(json.loanReceipt.creditToken).toMatch(/^ck_[0-9a-f]{36}$/);
+    expect(json.liquidityDisbursed.creditToken).toBe(json.loanReceipt.creditToken);
+    expect(json.liquidityDisbursed.protocol).toContain("EIP-3009");
   });
 
   it("POST action='repay' clears debt and rewards credit score increase", async () => {
