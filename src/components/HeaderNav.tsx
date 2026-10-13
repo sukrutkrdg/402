@@ -29,6 +29,7 @@ const MORE_LINKS: NavLinkItem[] = [
   { href: "/attestations", label: "📜 Base EAS Attestations" },
   { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
   { href: "/radar", label: "📡 Live Arbitrage Radar" },
+  { href: "/liquidity", label: "💧 Liquidity Rebalancer" },
   { href: "/publish", label: "💰 Monetize API (90%)" },
   { href: "/agents", label: "🤖 For Agents & MCP" },
   { href: "/dashboard", label: "📈 Dashboard" },
