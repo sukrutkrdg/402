@@ -28,6 +28,7 @@ const MORE_LINKS: NavLinkItem[] = [
   { href: "/terminal", label: "💻 Agent Terminal" },
   { href: "/attestations", label: "📜 Base EAS Attestations" },
   { href: "/arena", label: "⚔️ Agent Arena (Flow)", badge: "NEW" },
+  { href: "/scout", label: "🎯 Service Scout & Niche Radar", badge: "NEW" },
   { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
   { href: "/radar", label: "📡 Live Arbitrage Radar" },
   { href: "/liquidity", label: "💧 Liquidity Rebalancer" },

@@ -32,6 +32,8 @@
     "simulation": "https://402.com.tr/api/simulate/eip3009",
     "arena_benchmark": "https://402.com.tr/api/arena/benchmark",
     "liquidity_rebalance": "https://402.com.tr/api/liquidity/rebalance",
+    "semantic_resolver": "https://402.com.tr/api/discovery/resolve",
+    "niche_radar": "https://402.com.tr/scout",
     "fleet": "https://402.com.tr/api/fleet",
     "workflows": "https://402.com.tr/api/workflows"
   },
