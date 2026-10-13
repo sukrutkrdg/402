@@ -19,13 +19,19 @@
   "discovery": {
     "catalog_url": "https://402.com.tr/api/catalog",
     "facilitator_url": "https://402.com.tr",
-    "total_services": 143,
+    "total_services": 225,
     "builder_code": "bc_pa0gqlv1"
   },
   "protocols": {
     "mcp": "https://402.com.tr/mcp",
     "elizaos": "@sukrutkrdg/plugin-x402-bazaar",
-    "agentkit": "x402-bazaar-agentkit"
+    "agentkit": "x402-bazaar-agentkit",
+    "cli": "npx x402-bazaar",
+    "python_sdk": "pip install x402-bazaar",
+    "sse_stream": "https://402.com.tr/api/events/live",
+    "simulation": "https://402.com.tr/api/simulate/eip3009",
+    "fleet": "https://402.com.tr/api/fleet",
+    "workflows": "https://402.com.tr/api/workflows"
   },
   "logo_url": "https://402.com.tr/icon",
   "contact_email": "sukrutkrdg@users.noreply.github.com",

@@ -78,6 +78,47 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(){try{var t=localStorage.getItem('theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('light',!d);}catch(e){}})();`,
           }}
         />
+        {/* Universal JSON-LD Structured Schema for AI Agents & Search Crawlers */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@graph": [
+                {
+                  "@type": "WebSite",
+                  "@id": `${SITE_URL}/#website`,
+                  "url": SITE_URL,
+                  "name": "x402 Bazaar",
+                  "description": "Autonomous AI Agent API & Data Marketplace on Base",
+                  "publisher": {
+                    "@type": "Organization",
+                    "name": "x402 Bazaar Facilitators",
+                    "url": SITE_URL,
+                  },
+                },
+                {
+                  "@type": "WebAPI",
+                  "@id": `${SITE_URL}/#webapi`,
+                  "name": "x402 Bazaar API Suite",
+                  "description": "225 pay-per-call microservices for AI agents on Base with EIP-3009 transfer authorizations, zero gas fees, and ERC-8021 builder attribution.",
+                  "documentation": `${SITE_URL}/sdk`,
+                  "provider": {
+                    "@type": "Organization",
+                    "name": "x402 Bazaar",
+                  },
+                },
+                {
+                  "@type": "SoftwareApplication",
+                  "name": "x402-bazaar Developer CLI & Python SDK",
+                  "operatingSystem": "All",
+                  "applicationCategory": "DeveloperApplication",
+                  "softwareVersion": "1.0.0",
+                },
+              ],
+            }),
+          }}
+        />
       </head>
       <body className="min-h-screen antialiased">
         <FarcasterReady />

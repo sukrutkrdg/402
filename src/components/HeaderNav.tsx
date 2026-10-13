@@ -26,6 +26,7 @@ const MORE_LINKS: NavLinkItem[] = [
   { href: "/fleet", label: "🛡️ Fleet Controller" },
   { href: "/workflows", label: "⚡ Agent Workflows" },
   { href: "/terminal", label: "💻 Agent Terminal" },
+  { href: "/attestations", label: "📜 Base EAS Attestations" },
   { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
   { href: "/radar", label: "📡 Live Arbitrage Radar" },
   { href: "/publish", label: "💰 Monetize API (90%)" },
