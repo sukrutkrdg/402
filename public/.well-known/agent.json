@@ -30,6 +30,8 @@
     "python_sdk": "pip install x402-bazaar",
     "sse_stream": "https://402.com.tr/api/events/live",
     "simulation": "https://402.com.tr/api/simulate/eip3009",
+    "arena_benchmark": "https://402.com.tr/api/arena/benchmark",
+    "liquidity_rebalance": "https://402.com.tr/api/liquidity/rebalance",
     "fleet": "https://402.com.tr/api/fleet",
     "workflows": "https://402.com.tr/api/workflows"
   },

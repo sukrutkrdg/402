@@ -36,6 +36,8 @@ export function GET() {
     `- Official CLI Runner: \`npx x402-bazaar status\` | \`npx x402-bazaar audit <address>\` | \`npx x402-bazaar spread\` | \`npx x402-bazaar workflows\``,
     `- Official Python SDK: \`pip install x402-bazaar\` (native LangChain & CrewAI tools in \`x402_bazaar.tools\`)`,
     `- Live SSE Telemetry Feed: GET ${site}/api/events/live (real-time stream of EIP-3009 settlements, arbitrage, and sentinel flags)`,
+    `- Flow Arena x x402 Benchmark: GET/POST ${site}/api/arena/benchmark (Prize per Data Cent skill stat & contender leaderboard)`,
+    `- Aerodrome Liquidity Rebalancer: GET/POST ${site}/api/liquidity/rebalance (Concentrated liquidity tick bounds & 0-gas EIP-3009)`,
     `- Multi-Agent EIP-3009 Sandbox: POST ${site}/api/simulate/eip3009 (simulated 0-gas settlements and verifiable EIP-712 receipts)`,
     `- Fleet Budget Controller: POST ${site}/api/fleet with scoped \`x-fleet-token\` daily quotas and kill-switch`,
     `- Autonomous Workflows Cloud: GET/POST ${site}/api/workflows`,
