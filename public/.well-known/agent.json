@@ -35,6 +35,7 @@
     "semantic_resolver": "https://402.com.tr/api/discovery/resolve",
     "niche_radar": "https://402.com.tr/scout",
     "bounties_escrow": "https://402.com.tr/api/bounties",
+    "agent_credit_line": "https://402.com.tr/api/credit/line",
     "fleet": "https://402.com.tr/api/fleet",
     "workflows": "https://402.com.tr/api/workflows"
   },
