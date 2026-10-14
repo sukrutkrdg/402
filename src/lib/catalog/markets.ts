@@ -22,7 +22,6 @@ import { defiTvl, stablecoinMcap } from "../commodity-data";
 import { cryptoGlobal, cryptoMarkets } from "../crypto-markets";
 import { cryptoTrending, fearGreed } from "../market-sentiment";
 import { polymarketOdds } from "../polymarket";
-import { rwaYieldBenchmark } from "../rwa-yield-benchmark";
 
 export const MARKETS_SERVICES: ServiceDef[] = [
   {
@@ -338,31 +337,5 @@ export const MARKETS_SERVICES: ServiceDef[] = [
       category: "Markets",
       params: [{ name: "query", label: "Market topic, question or slug", placeholder: "fed", required: true }],
       handler: polymarketOdds,
-    },
-  {
-      id: "rwa-yield-benchmark",
-      name: "RWA vs DeFi Yield Benchmark",
-      tagline: "Where should cash sit? Treasury yields vs Base DeFi lending",
-      description:
-        "🆕 Compares institutional risk-free RWA yields (US Treasury 4W / SOFR benchmark ~4.85%) against live onchain Base DeFi lending markets (Morpho Blue cbBTC/USDC, Moonwell Flagship USDC). Computes spread in basis points and produces an actionable allocation recommendation (rwa_favored, defi_favored, balanced) for AI treasuries and yield optimizers. Not financial advice.",
-      price: "$0.02",
-      icon: "⚖️",
-      category: "Markets",
-      params: [],
-      handler: rwaYieldBenchmark,
-    },
-  {
-      id: "base-dex-spread",
-      name: "Base DEX Arbitrage & Spread Oracle",
-      tagline: "Live Aerodrome vs Uniswap v3 net price spread & arb profit",
-      description:
-        "🆕 Compares real-time liquidity and prices across Base's primary DEXes: Aerodrome (AMM / Slipstream) vs Uniswap v3. Calculates gross spread in bps, pool fee-adjusted net arbitrage profitability, optimal routing direction (BUY_AERODROME_SELL_UNISWAP or reverse), and estimated net profit per $1,000 USD. Essential for trading agents and market makers. Pass token= (token contract address).",
-      price: "$0.02",
-      icon: "⚡",
-      category: "Markets",
-      params: [
-        { name: "token", label: "Token address", placeholder: "0x… token address", required: true },
-      ],
-      handler: dexSpread,
     },
 ];

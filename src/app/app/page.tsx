@@ -52,7 +52,6 @@ export const TRENDING_TOKENS = [
 ] as const;
 
 const CHECKS = [
-  { id: "pre-trade-bundle", label: "⚡ Pre-Trade Bundle · Honeypot + Clanker + Spread" },
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize" },
@@ -68,8 +67,6 @@ const CHECKS = [
   { id: "exit-liquidity", label: "🚪 Exit Liquidity" },
   { id: "lp-lock", label: "🔐 LP Lock Details" },
   { id: "token-unlock", label: "📆 LP Unlock Calendar" },
-  { id: "clanker-token-audit", label: "🤖 Clanker Token Audit · v4/v3 authenticity" },
-  { id: "base-dex-spread", label: "⚡ Base DEX Arbitrage · Aerodrome vs Uniswap" },
   { id: "proxy-check", label: "🧩 Proxy / Upgrade Risk" },
   { id: "contract-danger", label: "⚠️ Contract Danger" },
   { id: "token-momentum", label: "📈 Momentum (price/volume)" },
@@ -120,14 +117,6 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     : "";
   const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
   switch (id) {
-    case "pre-trade-bundle": {
-      const v = s(d.verdict).replace(/_/g, " ");
-      const score = s(d.safetyScore);
-      const rec = s(d.recommendation);
-      const summ = s(d.summary);
-      const findings = Array.isArray(d.keyFindings) ? (d.keyFindings as string[]).map((f) => `• ${f}`).join("\n") : "";
-      return `VERDICT: ${v} · Safety Score: ${score}/100\nRecommendation: ${rec}\n\n${summ}${findings ? `\n\n${findings}` : ""}`;
-    }
     case "pre-trade-gate": {
       const rc = (d.receipt ?? {}) as { observedRisks?: string[] };
       const risks = Array.isArray(rc.observedRisks) && rc.observedRisks.length ? rc.observedRisks.map((r) => `• ${r}`).join("\n") : "";
@@ -190,10 +179,6 @@ function formatResult(id: string, d: Record<string, unknown>): string {
       const rc = (d.receipt ?? {}) as { decision?: string; wouldChangeCall?: string };
       return `${rc.decision ? `${rc.decision} · ` : ""}Risk: ${s(d.riskLevel).toUpperCase()} (${s(d.riskScore)}/100)\n${(Array.isArray(d.flags) ? d.flags : []).join(", ") || "no flags"}${rc.wouldChangeCall ? `\n\n↻ ${rc.wouldChangeCall}` : ""}`;
     }
-    case "clanker-token-audit":
-      return `${s(d.verdict).replace("_", " ").toUpperCase()}${d.clankerVersion && d.clankerVersion !== "none" ? ` (${d.clankerVersion})` : ""}\nDeployer: ${s(d.deployerAddress) || "Non-Clanker"}\nLP Locked: ${d.liquidityLocked ? "✅ Locked" : "❌ Unlocked"}\nImpersonator risk: ${d.isImpersonatorRisk ? "🚨 HIGH SCAM RISK" : "None"}\n\n➡️ ${s(d.recommendation)}`;
-    case "base-dex-spread":
-      return `VERDICT: ${s(d.verdict).replace("_", " ")}\nSpread: ${s(d.spreadBps)} bps · Direction: ${s(d.direction)}\nEst. Profit / $1k: $${s(d.estProfitPer1kUsd)}\n\n➡️ ${s(d.recommendation)}`;
     default:
       return JSON.stringify(d, null, 2).slice(0, 800);
   }

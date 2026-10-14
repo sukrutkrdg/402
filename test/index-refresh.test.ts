@@ -110,7 +110,7 @@ describe("index refresh spends inside a ceiling", () => {
     // otherwise be half the bill on its own.
     const payable = services().filter((s) => s.id !== "buy-credits");
     const total = payable.reduce((n, s) => n + priceCents(s.price), 0);
-    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(10);
+    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8);
     // And the daily cap must be able to clear that inside one 21-day cycle, or
     // the refresh silently falls behind the window it exists to stay inside.
     const capCents = Number(cron.match(/MAX_SPEND_CENTS = (\d+)/)?.[1]);

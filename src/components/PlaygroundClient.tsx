@@ -41,12 +41,7 @@ export default function PlaygroundClient({ services }: { services: ServiceMeta[]
     }
     // Specific real defaults for common services
     if (svc.id === "polymarket-odds") defaults.query = "fed";
-    if (svc.id === "agent-provenance") defaults.address = "0x973a31858f4d2125f48c880542da11a2796f12d6";
     if (svc.id === "token-risk" || svc.id === "deep-dd") defaults.address = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
-    if (svc.id === "clanker-token-audit") defaults.address = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
-    if (svc.id === "pre-trade-bundle") defaults.address = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
-    if (svc.id === "base-dex-spread") defaults.token = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
-    if (svc.id === "agent-session-guard") defaults.signer = "0x973a31858f4d2125f48c880542da11a2796f12d6";
     if (svc.id === "farcaster-social-velocity") defaults.query = "HIGHER";
     setParams(defaults);
     setResponse(null);

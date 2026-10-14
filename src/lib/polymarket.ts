@@ -91,7 +91,6 @@ export async function polymarketOdds(params: Record<string, string>) {
         if (Array.isArray(all)) {
           const lower = query.toLowerCase();
           events = all.filter((e) => e.title?.toLowerCase().includes(lower) || e.slug?.toLowerCase().includes(lower));
-          if (events.length === 0 && all.length > 0) events = [all[0]]; // best-effort top market
         }
       }
     }

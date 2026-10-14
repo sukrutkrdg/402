@@ -1,199 +1,102 @@
 /**
- * base-dex-spread — Aerodrome vs Uniswap v3 Real-Time Arbitrage & Spread Oracle.
+ * DEX price spread — is this token priced differently across venues, and why?
  *
- * Compares live liquidity pool prices and depth between Base's primary DEXes:
- * - Aerodrome (Base native AMM / Slipstream)
- * - Uniswap v3 (Base concentrated liquidity)
+ * A token that trades on several Base DEXes should cost about the same on each;
+ * a gap is either an arbitrage window a trading agent can take, or — when it sits
+ * on a thin or stale pool — a mispricing that signals wash/manipulation and a
+ * price no one should trust. token-pools lists the pools; this does the thing an
+ * agent actually needs: compare the price across the LIQUID venues and say which
+ * it is.
  *
- * Calculates:
- * 1. Gross price spread in basis points (bps)
- * 2. Net arbitrage profitability after pool fees (round-trip fee: ~60 bps)
- * 3. Optimal arbitrage direction (BUY_AERODROME_SELL_UNISWAP or reverse)
- * 4. Estimated net profit per $1,000 USD swap
+ * It only compares pools where the queried token is the base asset (so priceUsd
+ * is really this token's price) and that clear a liquidity floor, because a $200
+ * pool "pricing" the token 40% off is noise, not an opportunity. The verdict
+ * separates a real arb window from the thin-pool mispricing that looks identical
+ * on a naive scan.
  */
 
 import "server-only";
-import { getAddress, type Address } from "viem";
 import { dexTokenPairs } from "./upstream-cache";
-import { decisionReceipt } from "./envelope";
 
-export interface DexSpreadResult {
-  tokenAddress: string;
-  hasBothPools: boolean;
-  aerodrome: {
-    poolAddress: string | null;
-    priceUsd: number | null;
-    liquidityUsd: number | null;
-    quoteToken: string | null;
-  } | null;
-  uniswap: {
-    poolAddress: string | null;
-    priceUsd: number | null;
-    liquidityUsd: number | null;
-    quoteToken: string | null;
-  } | null;
-  spreadBps: number;
-  netArbitrageBps: number;
-  direction: "BUY_AERODROME_SELL_UNISWAP" | "BUY_UNISWAP_SELL_AERODROME" | "NO_ARBITRAGE";
-  estProfitPer1kUsd: number;
-  verdict: "PROFITABLE_SPREAD" | "TIGHT_NO_ARB" | "SINGLE_DEX_ONLY" | "NO_POOLS_FOUND";
-  recommendation: string;
-}
-
-interface DexPairItem {
+interface Pair {
   dexId?: string;
   pairAddress?: string;
+  baseToken?: { address?: string; symbol?: string };
+  quoteToken?: { symbol?: string };
   priceUsd?: string;
   liquidity?: { usd?: number };
-  quoteToken?: { symbol?: string };
+  volume?: { h24?: number };
 }
 
-export async function baseDexSpread(params: Record<string, string>) {
-  const rawAddr = (params.token || params.address || "").trim();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(rawAddr)) {
-    throw new Error("Provide a valid 0x… Base token address (token=)");
-  }
-  const address = getAddress(rawAddr);
+const validAddr = (a?: string) => /^0x[0-9a-fA-F]{40}$/.test((a ?? "").trim());
 
-  // 1. Fetch live DEX pools for the token
-  const pairs = await dexTokenPairs<DexPairItem>(address);
-  if (!pairs || pairs.length === 0) {
-    const emptyResult: DexSpreadResult = {
-      tokenAddress: address.toLowerCase(),
-      hasBothPools: false,
-      aerodrome: null,
-      uniswap: null,
-      spreadBps: 0,
-      netArbitrageBps: 0,
-      direction: "NO_ARBITRAGE",
-      estProfitPer1kUsd: 0,
-      verdict: "NO_POOLS_FOUND",
-      recommendation: "No active liquidity pools found on Base for this token.",
-    };
+export async function dexSpread(params: Record<string, string>) {
+  const address = (params.address || params.token || "").trim();
+  if (!validAddr(address)) throw new Error("Provide a valid 0x… token address");
+  const minLiquidityUsd = Math.max(0, Number(params.minLiquidityUsd ?? params.minLiquidity ?? 5000) || 5000);
 
-    return {
-      tokenAddress: address.toLowerCase(),
-      verdict: "NO_POOLS_FOUND",
-      spreadBps: 0,
-      recommendation: emptyResult.recommendation,
-      data: emptyResult,
-      receipt: decisionReceipt({
-        endpoint: "base-dex-spread",
-        params: { token: address.toLowerCase() },
-        degraded: false,
-      }),
-      checkedAt: new Date().toISOString(),
-    };
-  }
+  const raw = await dexTokenPairs<Pair>(address);
+  if (raw === null) throw new Error("Pools fetch failed (DexScreener unavailable) — not charged, retry shortly");
+  const addrLc = address.toLowerCase();
 
-  // Find best Aerodrome and Uniswap pairs (highest liquidity)
-  const aeroPairs = pairs.filter((p) => /aero/i.test(p.dexId || ""));
-  const uniPairs = pairs.filter((p) => /uni/i.test(p.dexId || ""));
+  // Only base-token pools with a real price, then split by the liquidity floor.
+  const priced = (raw || [])
+    .filter((p) => p?.baseToken?.address?.toLowerCase() === addrLc && p.priceUsd && Number(p.priceUsd) > 0)
+    .map((p) => ({
+      dex: p.dexId ?? null,
+      pair: p.pairAddress ?? null,
+      quote: p.quoteToken?.symbol ?? null,
+      priceUsd: Number(p.priceUsd),
+      liquidityUsd: p.liquidity?.usd ?? 0,
+      volume24h: p.volume?.h24 ?? 0,
+    }))
+    .sort((a, b) => b.liquidityUsd - a.liquidityUsd);
 
-  const bestAero = aeroPairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0] || null;
-  const bestUni = uniPairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0] || null;
+  if (priced.length === 0) throw new Error("No priced pool found for this token on Base — it may not be trading yet");
 
-  const aeroPrice = bestAero ? parseFloat(bestAero.priceUsd || "0") : null;
-  const uniPrice = bestUni ? parseFloat(bestUni.priceUsd || "0") : null;
+  const liquid = priced.filter((p) => p.liquidityUsd >= minLiquidityUsd);
+  const venues = (liquid.length >= 1 ? liquid : priced).slice(0, 10);
 
-  const aeroData = bestAero
-    ? {
-        poolAddress: bestAero.pairAddress || null,
-        priceUsd: aeroPrice,
-        liquidityUsd: bestAero.liquidity?.usd || null,
-        quoteToken: bestAero.quoteToken?.symbol || null,
-      }
-    : null;
+  // Spread is computed over the LIQUID set only; a single liquid venue means there
+  // is no cross-DEX price to compare, and the price rests on that one pool.
+  const basis = liquid.length >= 2 ? liquid : [];
+  const prices = basis.map((p) => p.priceUsd);
+  const min = prices.length ? Math.min(...prices) : null;
+  const max = prices.length ? Math.max(...prices) : null;
+  const spreadPct = min && max ? +(((max - min) / min) * 100).toFixed(3) : null;
 
-  const uniData = bestUni
-    ? {
-        poolAddress: bestUni.pairAddress || null,
-        priceUsd: uniPrice,
-        liquidityUsd: bestUni.liquidity?.usd || null,
-        quoteToken: bestUni.quoteToken?.symbol || null,
-      }
-    : null;
+  const cheapest = basis.length ? basis.reduce((a, b) => (b.priceUsd < a.priceUsd ? b : a)) : null;
+  const dearest = basis.length ? basis.reduce((a, b) => (b.priceUsd > a.priceUsd ? b : a)) : null;
 
-  if (!aeroPrice || !uniPrice || aeroPrice <= 0 || uniPrice <= 0) {
-    const singleDex = aeroData ? "Aerodrome" : uniData ? "Uniswap" : "Other DEX";
-    const singleResult: DexSpreadResult = {
-      tokenAddress: address.toLowerCase(),
-      hasBothPools: false,
-      aerodrome: aeroData,
-      uniswap: uniData,
-      spreadBps: 0,
-      netArbitrageBps: 0,
-      direction: "NO_ARBITRAGE",
-      estProfitPer1kUsd: 0,
-      verdict: "SINGLE_DEX_ONLY",
-      recommendation: `Token has liquidity exclusively on ${singleDex}. Opportunity for market-makers to seed dual-pool liquidity.`,
-    };
+  let verdict: "tight" | "arb_window" | "wide" | "single_venue";
+  if (liquid.length < 2) verdict = "single_venue";
+  else if ((spreadPct as number) < 0.5) verdict = "tight";
+  else if ((spreadPct as number) <= 3) verdict = "arb_window";
+  else verdict = "wide";
 
-    return {
-      tokenAddress: address.toLowerCase(),
-      verdict: "SINGLE_DEX_ONLY",
-      spreadBps: 0,
-      recommendation: singleResult.recommendation,
-      data: singleResult,
-      receipt: decisionReceipt({
-        endpoint: "base-dex-spread",
-        params: { token: address.toLowerCase() },
-        degraded: false,
-      }),
-      checkedAt: new Date().toISOString(),
-    };
-  }
-
-  // Calculate gross spread
-  const minPrice = Math.min(aeroPrice, uniPrice);
-  const rawSpread = Math.abs(aeroPrice - uniPrice) / minPrice;
-  const spreadBps = Math.round(rawSpread * 10000);
-
-  // Standard round-trip DEX pool fee: ~30 bps on Aerodrome + ~30 bps on Uniswap = 60 bps total
-  const ROUNDTRIP_FEE_BPS = 60;
-  const netArbitrageBps = Math.max(0, spreadBps - ROUNDTRIP_FEE_BPS);
-
-  let direction: "BUY_AERODROME_SELL_UNISWAP" | "BUY_UNISWAP_SELL_AERODROME" | "NO_ARBITRAGE" = "NO_ARBITRAGE";
-  if (spreadBps > ROUNDTRIP_FEE_BPS) {
-    direction = aeroPrice < uniPrice ? "BUY_AERODROME_SELL_UNISWAP" : "BUY_UNISWAP_SELL_AERODROME";
-  }
-
-  const estProfitPer1kUsd = direction !== "NO_ARBITRAGE" ? Math.round((netArbitrageBps / 10000) * 1000 * 100) / 100 : 0;
-  const verdict: "PROFITABLE_SPREAD" | "TIGHT_NO_ARB" = netArbitrageBps > 10 ? "PROFITABLE_SPREAD" : "TIGHT_NO_ARB";
-
-  const recommendation =
-    verdict === "PROFITABLE_SPREAD"
-      ? `Active ${spreadBps} bps spread (${netArbitrageBps} bps net after fees). Profitable arb: ${direction} (~$${estProfitPer1kUsd.toFixed(2)}/1k USD).`
-      : `Spread is tight (${spreadBps} bps). Below round-trip fee threshold (60 bps). No profitable arbitrage.`;
-
-  const result: DexSpreadResult = {
-    tokenAddress: address.toLowerCase(),
-    hasBothPools: true,
-    aerodrome: aeroData,
-    uniswap: uniData,
-    spreadBps,
-    netArbitrageBps,
-    direction,
-    estProfitPer1kUsd,
-    verdict,
-    recommendation,
-  };
+  // A wide spread where one side is a thin pool is a mispricing, not free money.
+  const thinnestInBasis = basis.length ? Math.min(...basis.map((p) => p.liquidityUsd)) : null;
+  const thinSide = thinnestInBasis !== null && thinnestInBasis < minLiquidityUsd * 2;
 
   return {
-    tokenAddress: address.toLowerCase(),
-    verdict,
-    spreadBps,
-    direction,
-    estProfitPer1kUsd,
-    recommendation,
-    data: result,
-    receipt: decisionReceipt({
-      endpoint: "base-dex-spread",
-      params: { token: address.toLowerCase() },
-      degraded: false,
-    }),
+    address,
+    liquidVenues: liquid.length,
+    totalVenues: priced.length,
+    minLiquidityUsd,
+    spreadPct, // null when fewer than 2 liquid venues
+    cheapest: cheapest ? { dex: cheapest.dex, priceUsd: cheapest.priceUsd, liquidityUsd: cheapest.liquidityUsd } : null,
+    dearest: dearest ? { dex: dearest.dex, priceUsd: dearest.priceUsd, liquidityUsd: dearest.liquidityUsd } : null,
+    venues,
+    verdict, // tight | arb_window | wide | single_venue
+    recommendation:
+      verdict === "single_venue"
+        ? `Only one venue clears $${minLiquidityUsd.toLocaleString("en-US")} liquidity, so there is no cross-DEX price to check — the quote rests entirely on that pool and is as manipulable as that pool is thin.`
+        : verdict === "tight"
+          ? `Prices agree across ${liquid.length} liquid venues (${spreadPct}% spread) — an efficient, trustworthy price.`
+          : verdict === "arb_window"
+            ? `A ${spreadPct}% gap between ${cheapest?.dex} (cheap) and ${dearest?.dex} (dear)${thinSide ? " — but one side is thin, so check depth before assuming it is arbitrageable size" : " — a real arbitrage window at modest size"}.`
+            : `Wide ${spreadPct}% gap across venues. ${thinSide ? "One side is a thin pool, so this is most likely a MISPRICING / wash signal, not free money — do not trust the off-pool price." : "Large and both sides liquid — unusual; confirm with a live quote before acting."}`,
+    note: "Compares a token's price across the Base DEXes it trades on, over a liquidity floor (default $5k), and separates a real arbitrage window from thin-pool mispricing. Prices are DexScreener snapshots — confirm with a live swap quote before trading. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }
-
-export const dexSpread = baseDexSpread;

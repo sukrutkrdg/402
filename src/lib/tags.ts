@@ -51,7 +51,6 @@ const SERVICE_TAGS: Record<string, string[]> = {
   sellability: ["honeypot", "can-i-sell", "sell-tax", "transfer-restriction", "token-safety", "exit"],
   "contract-danger": ["contract-risk", "token-safety", "mint", "pause", "blacklist", "upgradeable", "scam"],
   "pre-trade-gate": ["pre-trade", "token-safety", "honeypot", "rug-check", "trade-gate", "go-no-go"],
-  "pre-trade-bundle": ["pre-trade", "bundle", "composite", "honeypot", "clanker", "dex-spread", "arbitrage", "token-safety"],
   "rug-monitor": ["rug-pull", "liquidity-drop", "monitor", "alert", "webhook", "token-safety"],
   "sign-guard": ["transaction-safety", "calldata", "approval", "sign", "wallet-security", "drainer"],
   "approval-advisor": ["approval", "allowance", "revoke", "wallet-security", "drain-risk"],
@@ -123,14 +122,6 @@ const SERVICE_TAGS: Record<string, string[]> = {
   basename: ["basename", "name-resolution", "base", "primitive"],
   "basename-profile": ["basename", "profile", "name-resolution", "identity"],
   "polymarket-odds": ["polymarket", "prediction-market", "odds", "probabilities", "event-contracts", "oracle"],
-  "agent-provenance": ["ai-agents", "provenance", "virtuals", "agentkit", "eip-7702", "identity", "sybil"],
-  "rwa-yield-benchmark": ["rwa", "yield", "treasury", "sofr", "benchmark", "defi", "morpho", "moonwell"],
-  "pre-trade-alpha-shield": ["alpha-shield", "honeypot", "b20", "seizure", "slippage", "mev", "pre-trade", "security"],
-  "agent-credit-score": ["agent-fico", "credit-score", "postpaid", "eas", "attestation", "trust", "reputation", "solvency"],
-  "agent-full-audit": ["agent-audit", "forensics", "provenance", "wash-trading", "due-diligence", "ai-agents"],
-  "clanker-token-audit": ["clanker", "token-audit", "deployer", "farcaster", "uniswap-v3", "lp-lock", "impersonator", "security"],
-  "base-dex-spread": ["dex-spread", "arbitrage", "aerodrome", "uniswap", "slipstream", "liquidity", "trading", "oracle"],
-  "agent-session-guard": ["session-key", "erc-4337", "eip-7702", "delegate", "guardrails", "spend-cap", "drain-risk", "security"],
   "farcaster-social-velocity": ["farcaster", "warpcast", "social-velocity", "cast-velocity", "bot-spam", "momentum", "sentiment"],
 };
 

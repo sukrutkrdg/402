@@ -36,21 +36,25 @@ export async function nearAccountAge(params: Record<string, string>) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/404/.test(msg)) {
+      let exists: boolean;
       try {
         const rpc = await rpcQuery<{ amount: string; block_height: number }>({
           request_type: "view_account",
           account_id: account,
         });
-        if (rpc.ok) {
-          return {
-            account,
-            verdict: "established",
-            note: "Account exists onchain (confirmed via NEAR RPC) but creation history is not indexed by NearBlocks. Treat with normal diligence.",
-            checkedAt: new Date().toISOString(),
-          };
-        }
+        exists = rpc.ok;
       } catch {
-        /* RPC down or account unknown */
+        throw new Error("NEAR RPC unreachable — not charged, retry shortly");
+      }
+      if (exists) {
+        // Exists, but the indexer has no creation record yet — most often because
+        // the account is brand new. Age is unknown, so don't call it established.
+        return {
+          account,
+          verdict: "unknown_age",
+          note: "Account exists onchain (confirmed via NEAR RPC) but NearBlocks has no creation record yet, which is common for very new accounts. Age unknown — treat it with the caution you'd give a brand-new account.",
+          checkedAt: new Date().toISOString(),
+        };
       }
       return {
         account,

@@ -55,12 +55,11 @@ export async function farcasterSocialVelocity(params: Record<string, string>) {
       signal: AbortSignal.timeout(3500),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      casts = (data.result?.casts || data.casts || []) as typeof casts;
-    }
-  } catch {
-    // If Warpcast rate-limits or is offline, generate graceful synthetic estimation based on onchain presence
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    casts = (data.result?.casts || data.casts || []) as typeof casts;
+  } catch (e) {
+    throw new Error(`Farcaster search unavailable (${(e as Error).message}) — not charged, retry shortly`);
   }
 
   // 2. Compute metrics

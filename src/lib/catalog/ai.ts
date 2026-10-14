@@ -5,10 +5,6 @@
 import type { ServiceDef } from "./types";
 import { aiContractRisk, aiDeepDueDiligence, aiMarketBrief, aiTokenReport, aiTxExplain, aiWalletReport, aiWalletSecurity } from "../ai-report";
 import { aiExtract, aiExtractBatch, aiSummarize, aiTranslate } from "../ai";
-import { agentProvenance } from "../agent-provenance";
-import { agentCreditScore } from "../agent-credit-score";
-import { agentFullAudit } from "../agent-full-audit";
-import { agentSessionGuard } from "../session-guard";
 import { farcasterSocialVelocity } from "../farcaster-velocity";
 
 export const AI_SERVICES: ServiceDef[] = [
@@ -165,66 +161,6 @@ export const AI_SERVICES: ServiceDef[] = [
         { name: "to", label: "Target language", placeholder: "English" },
       ],
       handler: aiTranslate,
-    },
-  {
-      id: "agent-provenance",
-      name: "AI Agent Provenance & Verification",
-      tagline: "Verify autonomous AI agents on Base — Virtuals, AgentKit, EIP-7702",
-      description:
-        "🆕 Before paying, trading with, or copying an onchain agent: Is it an authenticated autonomous AI agent (Virtuals Protocol agent, Coinbase AgentKit, or EIP-7702 delegated wallet), or an unverified human EOA / sybil address? Inspects bytecode, delegation designators, transaction history, and agent framework markers to return a structured safety score and verdict. Pass address= (agent address).",
-      price: "$0.03",
-      icon: "🤖",
-      category: "AI",
-      params: [
-        { name: "address", label: "Agent address to verify", placeholder: "0x… wallet", required: true },
-      ],
-      handler: agentProvenance,
-    },
-  {
-      id: "agent-credit-score",
-      name: "Agent Credit Score & FICO",
-      tagline: "Onchain credit score, trust tier, and postpaid credit limit for AI agents",
-      description:
-        "🆕 Evaluates an onchain AI agent's transaction history, solvency, ETH/USDC reserves, and Builder Code activity to compute a FICO-style credit score (300-850), trust tier (AAA to F), and approved postpaid micro-credit limit on Base. Eligible agents qualify for batch-settled zero-latency API calls and EAS onchain attestations. Pass address= (agent wallet or contract).",
-      price: "$0.04",
-      icon: "💳",
-      category: "AI",
-      params: [
-        { name: "address", label: "Agent address to score", placeholder: "0x… agent wallet", required: true },
-      ],
-      handler: agentCreditScore,
-    },
-  {
-      id: "agent-full-audit",
-      name: "AI Agent Full Forensic Audit",
-      tagline: "Comprehensive provenance, solvency, wash-trading, and safety audit",
-      description:
-        "🆕 Institutional due-diligence for autonomous agents: runs provenance (Virtuals/AgentKit/EIP-7702), financial solvency & credit rating, wash trading / circular transaction detection, and control permissions in one composite call. Collapses the agent risk stack into one verified verdict: VERIFIED_AUTONOMOUS, CONTROLLED_OPERATOR, or HIGH_RISK_BOT. Pass address= (agent address).",
-      price: "$0.06",
-      icon: "🛡️",
-      category: "AI",
-      params: [
-        { name: "address", label: "Agent address to audit", placeholder: "0x… agent address", required: true },
-      ],
-      handler: agentFullAudit,
-    },
-  {
-      id: "agent-session-guard",
-      name: "Agent Session Key & Delegate Guard",
-      tagline: "Audit sub-agent session keys, spend caps, and wildcard drain vectors",
-      description:
-        "🆕 Pre-execution security audit for autonomous agent session keys (ERC-4337) and delegated signers (EIP-7702). Evaluates time-locks (perpetual leak vs bounded session), per-tx spend caps, router target allowlisting (Uniswap/Aerodrome vs unbounded execution), and produces an actionable GO / OVER_PERMISSIVE / DRAIN_RISK verdict before signing. Pass signer= (session key address).",
-      price: "$0.03",
-      icon: "🔐",
-      category: "AI",
-      params: [
-        { name: "signer", label: "Session key / delegate address", placeholder: "0x… session signer", required: true },
-        { name: "account", label: "Agent smart account (optional)", placeholder: "0x… agent wallet" },
-        { name: "allowedTargets", label: "Comma-separated target contracts (optional)", placeholder: "0x…, 0x…" },
-        { name: "spendCapUsd", label: "Spending limit in USD (optional)", placeholder: "100" },
-        { name: "expiryHours", label: "Session lifetime hours (optional)", placeholder: "24" },
-      ],
-      handler: agentSessionGuard,
     },
   {
       id: "farcaster-social-velocity",

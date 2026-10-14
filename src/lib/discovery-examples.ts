@@ -125,7 +125,6 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   "morpho-health": {"wallet":"0x973A31858f4D2125f48C880542DA11a2796f12D6","market":"0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836","pair":"cbBTC/USDC","verdict":"no_borrow","collateral":"0","collateralToken":"0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf","borrowed":"0","recommendation":"This wallet has no position (no collateral, no borrow) in this market.","note":"Reads a Morpho Blue lending position on Base and its liquidation health. Pass wallet= and (optionally) market=; omit market= for cbBTC/USDC. Not financial advice."},
   "pair-info": {"pairAddress":"0x6cDcb1C4A4D1C3C6d054b27AC5B77e89eAFb971d","dexId":"aerodrome","priceUsd":"0.4224","priceChange24h":-3.42,"liquidityUsd":26916842.53,"volume24h":279836.93,"fdv":825830189},
   "portfolio-scan": {"address":"0x973A31858f4D2125f48C880542DA11a2796f12D6","totalUsd":5.79,"holdingsScanned":8,"holdingsTotal":18,"riskyCount":2,"honeypotCount":0,"usdInRiskyTokens":0,"portfolioRisk":"high","holdingsCount":8,"worstOffendersCount":2},
-  "pre-trade-bundle": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","verdict":"SAFE_TO_TRADE","safetyScore":85,"confidence":95,"recommendation":"EXECUTE","summary":"PASSED. Clean contract security, verified deployment lineage, and liquid DEX routing.","findingsCount":3},
   "price-alert": {"registered":true,"alertId":"alrt_7d4e3f9c","token":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","direction":"above","threshold":0.01,"priceAtCreate":0.0072,"fired":false,"expiresInDays":30},
   "revoke-builder": {"token":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","symbol":"USDC","spender":"0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43","wallet":"0x973A31858f4D2125f48C880542DA11a2796f12D6","currentAllowance":"0","isUnlimited":false,"alreadyRevoked":true},
   "rug-monitor": {"registered":true,"id":"3f9c1a2b-7d4e","token":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","baselineLiquidityUsd":412500,"firesWhenLiquidityDropsPct":50,"mode":"webhook","expiresInDays":30},
@@ -155,14 +154,6 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   // shows that pages come back with their text, not the text itself.
   "exa-contents": {"pageCount":1,"requested":1,"maxChars":8000,"upstream":"exa","failedCount":0,"pages":[{"url":"https://github.com/qdrant/qdrant","title":"Qdrant: Open-Source Vector Database","author":null,"publishedDate":"2026-04-18T00:00:00.000Z","chars":7412,"truncated":false,"text":"Qdrant is an open-source vector database and similarity search engine…"}]},
   "polymarket-odds": {"query":"fed","found":true,"title":"Fed Interest Rate Cut in 2026?","slug":"fed-rate-cut-2026","verdict":"moderate_probability","consensusProbability":"72.5%","volumeUsd":"$5,400,000","source":"Polymarket Gamma CLOB"},
-  "agent-provenance": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","isAgent":true,"framework":"eip7702","delegatedTo":"0x36d3cbd83961868398d056efbf50f5ce15528c0d","isContract":false,"txCount":480,"agentSafetyScore":80,"verdict":"delegated_agent"},
-  "rwa-yield-benchmark": {"benchmarkRwaRate":"4.85%","defiUsdcSupplyApy":"5.20%","spreadBps":35,"verdict":"balanced","recommendation":"DeFi and RWA yields are closely aligned (+35 bps spread). Balanced 50/50 diversification recommended."},
-  "pre-trade-alpha-shield": {"address":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","verdict":"EXECUTE","safetyScore":92,"recommendation":"All 5 safety vectors verified clean. Safe for autonomous execution.","data":{"verdict":"EXECUTE","safetyScore":92,"recommendations":{"maxSafeTradeUsd":920,"maxRecommendedSlippageBps":65,"sandwichRisk":"LOW"}}},
-  "agent-credit-score": {"address":"0x973a31858f4d2125f48c880542da11a2796f12d6","creditScore":745,"ratingTier":"AA","postpaidCreditLimitUsd":50,"recommendation":"Approved for Tier AA autonomous credit with $50.00 USD line.","data":{"creditScore":745,"ratingTier":"AA","postpaidCreditLimitUsd":50,"easAttestationEligible":true}},
-  "agent-full-audit": {"agentAddress":"0x973a31858f4d2125f48c880542da11a2796f12d6","verdict":"VERIFIED_AUTONOMOUS","trustScore":85,"recommendation":"Verified autonomous operator with 85/100 trust score and clean transaction record.","data":{"auditVerdict":"VERIFIED_AUTONOMOUS","trustScore":85}},
-  "clanker-token-audit": {"address":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","isClankerDeployed":true,"clankerVersion":"v4.0.0","deployer":"0xE85A59c628F7d27878ACeB4bf3b35733630083a9","isLpLocked":true,"verdict":"GENUINE_CLANKER","recommendation":"Verified genuine autonomous Clanker deployment with locked liquidity."},
-  "base-dex-spread": {"tokenAddress":"0x4ed4e862860bed51a9570b96d89af5e1b0efefed","verdict":"PROFITABLE_SPREAD","spreadBps":78,"direction":"BUY_AERODROME_SELL_UNISWAP","estProfitPer1kUsd":7.8,"recommendation":"Gross spread is 78 bps. Net arb profitable after ~60 bps round-trip fees."},
-  "agent-session-guard": {"signer":"0x973a31858f4d2125f48c880542da11a2796f12d6","verdict":"SECURE_GUARDED","securityScore":90,"isWildcardTarget":false,"isPerpetualSession":false,"isUncappedSpending":false,"recommendation":"Signer is bounded by spend caps and target router allowlists."},
   "farcaster-social-velocity": {"query":"HIGHER","velocityPerHour":42,"socialMomentumScore":88,"verdict":"ORGANIC_VIRAL","summary":"High cast velocity (42/hr) with diverse unique authors (82%) and healthy organic engagement."},
 };
 
@@ -308,8 +299,6 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // The route is quoted OUT of USDC, so quoting into USDC would price nothing.
   "swap-route": { tokenOut: DEGEN, amountUsd: "100" },
   "polymarket-odds": { query: "fed" },
-  "agent-provenance": { address: WALLET },
-  "rwa-yield-benchmark": {},
   // A quote only: the transaction is returned, never sent.
   "base-swap": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   // Same quote, plus a block deadline so the conditional example actually builds
@@ -414,13 +403,6 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // actually there, and has enough text to show what the endpoint returns.
   "url-extract": { url: "https://402.com.tr/agents", maxChars: "40000" },
   "url-to-json": { url: "https://402.com.tr/agents", fields: "title,summary" },
-  "pre-trade-alpha-shield": { address: DEGEN, size: "1000" },
-  "pre-trade-bundle": { address: DEGEN },
-  "agent-credit-score": { address: WALLET },
-  "agent-full-audit": { address: WALLET },
-  "clanker-token-audit": { address: DEGEN },
-  "base-dex-spread": { token: DEGEN },
-  "agent-session-guard": { signer: WALLET },
   "farcaster-social-velocity": { query: "HIGHER" },
 };
 

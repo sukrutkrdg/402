@@ -5,9 +5,6 @@
 import type { ServiceDef } from "./types";
 import { addressIntel, tokenRisk } from "../onchain";
 import { preTradeGate } from "../gate";
-import { preTradeAlphaShield } from "../alpha-shield";
-import { preTradeBundle } from "../pre-trade-bundle";
-import { clankerTokenAudit } from "../clanker-audit";
 import { signGuard } from "../sign-guard";
 import { spendAudit } from "../spend-audit";
 import { agentWalletAudit } from "../agent-wallet-audit";
@@ -99,51 +96,6 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       ],
       handler: preTradeGate,
       noFreeTier: true,
-    },
-  {
-      id: "pre-trade-bundle",
-      name: "Pre-Trade Security & DEX Bundle",
-      tagline: "All-in-one check: Honeypot + Clanker authenticity + Cross-DEX spread",
-      description:
-        "The all-in-one pre-trade intelligence bundle for autonomous trading agents on Base: evaluates contract honeypot & sell tax vulnerability (token-risk), validates Clanker autonomous deployer authenticity & impersonator detection (clanker-token-audit), and analyzes real cross-DEX liquidity spread (base-dex-spread) in a single call. Saves round-trips and returns an explicit EXECUTE, REDUCE_SIZE, or ABORT decision receipt.",
-      price: "$0.05",
-      icon: "⚡",
-      category: "Onchain",
-      params: [
-        { name: "address", label: "Token contract address", placeholder: "0x… token address", required: true },
-      ],
-      handler: preTradeBundle,
-      noFreeTier: true,
-    },
-  {
-      id: "pre-trade-alpha-shield",
-      name: "Pre-Trade Alpha Shield",
-      tagline: "5-Vector Autonomous Trading Shield — Honeypot, B20 Seizure, Tax & Slippage",
-      description:
-        "🆕 The ultimate composite defense for autonomous DeFi trading agents: checks Honeypot/Sellability, Base-native B20 Seizure (burnBlocked) & Policy Registry freeze, mutable Owner Trap Switches, and DEX Liquidity Depth/MEV Sandwich exposure in one sub-second call. Returns an explicit EXECUTE / CAUTION / ABORT verdict with recommended safe trade limit ($USD) and maximum slippage tolerance (bps).",
-      price: "$0.05",
-      icon: "🛡️",
-      category: "Onchain",
-      params: [
-        { name: "address", label: "Token contract address", placeholder: "0x… token contract", required: true },
-        { name: "size", label: "Trade size in USD (optional)", placeholder: "1000" },
-      ],
-      handler: preTradeAlphaShield,
-      noFreeTier: true,
-    },
-  {
-      id: "clanker-token-audit",
-      name: "Clanker Token Authenticity Audit",
-      tagline: "Verify official Clanker v4/v3 deployment & catch impersonator scams",
-      description:
-        "🆕 Verifies whether a Base token was deployed by the official autonomous Clanker deployer (v4.0.0 at 0xE85A59c628F7d27878ACeB4bf3b35733630083a9 or v3.1.0 at 0x2A787b2362021cC3eEa3C24C4748a6cD5B687382). Checks LP fee locker addresses, Uniswap v3 liquidity locking, and catches impersonators claiming to be Clanker-launched memes. Pass address= (token address).",
-      price: "$0.03",
-      icon: "🤖",
-      category: "Onchain",
-      params: [
-        { name: "address", label: "Token contract address", placeholder: "0x… token address", required: true },
-      ],
-      handler: clankerTokenAudit,
     },
   {
       id: "sign-guard",
