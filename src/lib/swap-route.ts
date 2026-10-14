@@ -161,12 +161,18 @@ export async function swapRoute(params: Record<string, string>) {
   }
 
   const highImpact = estImpact >= 10;
+  // "ok" only when the destination token was actually screened and a route
+  // exists; an unscreened token is "unverified", never ok.
   const verdict =
     safety && !safety.canReceiveSafely
       ? "do_not_trade"
-      : highImpact
-        ? "trade_reduces_size"
-        : "ok";
+      : cdp?.liquidityAvailable === false
+        ? "no_route"
+        : highImpact
+          ? "trade_reduces_size"
+          : safety === null
+            ? "unverified"
+            : "ok";
 
   return {
     tokenOut,

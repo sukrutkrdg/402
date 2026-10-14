@@ -55,8 +55,12 @@ async function simulateTransfer(
     if (!res.ok) return { ran: false, note: `Simulation upstream ${res.status}` };
     const j = (await res.json()) as {
       result?: { changes?: Array<{ to?: string; from?: string; rawAmount?: string }>; error?: { message?: string } | string };
+      error?: { message?: string };
     };
-    const sim = j.result || {};
+    // A JSON-RPC error or empty result means the simulation did not run — it is
+    // not evidence that the transfer "succeeds cleanly".
+    if (j.error || !j.result) return { ran: false, note: `Simulation unavailable: ${j.error?.message ?? "empty result"}` };
+    const sim = j.result;
     const err = typeof sim.error === "string" ? sim.error : sim.error?.message;
     if (err) return { ran: true, transferReverts: true, note: `Transfer reverts in simulation: ${err}` };
     // If the recipient received strictly less than sent → transfer is taxed.
@@ -158,7 +162,8 @@ export async function sellability(params: Record<string, string>) {
     };
   }
 
-  const level = !canSell ? "high" : sellTax !== null && sellTax >= 15 ? "medium" : transferPausable ? "medium" : "low";
+  // An exit you can't make at size (or couldn't measure) is not a GO.
+  const level = !canSell ? "high" : sellTax !== null && sellTax >= 15 ? "medium" : transferPausable || canExit === false ? "medium" : "low";
 
   return {
     address: token,
@@ -181,7 +186,7 @@ export async function sellability(params: Record<string, string>) {
     receipt: {
       checked: token,
       endpoint: "sellability",
-      decision: !canSell ? "STOP" : level === "medium" ? "HOLD" : "GO",
+      decision: !canSell ? "STOP" : level === "medium" || canExit === null ? "HOLD" : "GO",
       ...decisionReceipt({
         endpoint: "sellability",
         params: { address: token },

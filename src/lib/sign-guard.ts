@@ -115,6 +115,11 @@ export async function signGuard(params: Record<string, string>) {
   if (granteeSanctioned === true) { observedRisks.push("the spender/recipient is on the OFAC sanctions list"); stop = true; }
   if (sanctionsUnavailable) { observedRisks.push("OFAC sanctions screening was unavailable this call — could not confirm the counterparty is not sanctioned"); hold = true; }
   if (intent?.unlimited) { observedRisks.push(`grants UNLIMITED power (${intent.action}) — the classic wallet-drain vector`); hold = true; }
+  // contract-danger (Sourcify) down is UNKNOWN, not clean: hold, and an unlimited
+  // grant to a contract we couldn't inspect is treated like an unverified one.
+  const destUninspected = !!target && destDangerR.status === "rejected";
+  if (destUninspected) { observedRisks.push("destination contract could not be inspected this call (source registry unavailable)"); hold = true; }
+  if (intent?.unlimited && destUninspected) { observedRisks.push("unlimited approval to a contract that could not be inspected"); stop = true; }
   if (intent?.unlimited && (destUnverified || destCritical)) { observedRisks.push("unlimited approval to an unverified/dangerous contract"); stop = true; }
   if (destCritical) { observedRisks.push(`destination has critical owner powers (${(destDanger?.dangerCategories || []).join(", ")})`); hold = true; }
   if (destUnverified) { observedRisks.push("destination contract source is not verified — you can't inspect what it does"); hold = true; }

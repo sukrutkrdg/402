@@ -911,6 +911,8 @@ export async function b20Gate(params: Record<string, string>) {
   let stop = false, hold = false;
   if (s.paused.transfer) { observedRisks.push("transfers PAUSED right now — you can't move it"); stop = true; }
   if (s.canSeize) { observedRisks.push("issuer can blocklist + burnBlocked() SEIZE your balance"); stop = true; }
+  // Independent of the transfer policies: seizeWithMemo() bypasses them.
+  if (s.seizeArmed) { observedRisks.push("seize policy ARMED — issuer can seizeWithMemo() a holder's balance"); stop = true; }
   if (s.transferGated && !s.canSeize) { observedRisks.push("transfers policy-gated — freezable"); hold = true; }
   if (s.rebase) { observedRisks.push("mutable rebase multiplier — balance can be scaled up/down"); hold = true; }
   if (!s.supplyCapped) { observedRisks.push("uncapped mint — dilution risk"); hold = true; }
@@ -918,7 +920,7 @@ export async function b20Gate(params: Record<string, string>) {
   // If a buyer wallet is given AND the token can seize, check whether THAT wallet
   // is already blocked — a terminal flag specific to the caller.
   let walletStatus: string | null = null;
-  if (validAddr(wallet) && s.canSeize) {
+  if (validAddr(wallet) && (s.canSeize || s.seizeArmed)) {
     const fc = (await b20FreezeCheck({ token: address, wallet })) as { verdict?: string };
     walletStatus = fc.verdict ?? null;
     if (fc.verdict === "BLOCKED") { observedRisks.push("YOUR wallet is ALREADY blocked/seizable on this token"); stop = true; }

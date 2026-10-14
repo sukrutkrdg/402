@@ -53,9 +53,13 @@ export async function preTradeGate(params: Record<string, string>) {
   const unavailable: string[] = [];
   if (!risk) unavailable.push("token-risk");
   else if (!honeypotChecked) unavailable.push("token-risk honeypot source (GoPlus)");
+  else if (risk.degraded === true || risk.riskLevel === "unknown") unavailable.push("token-risk chain reads");
   if (!sell) unavailable.push("sellability");
+  else if (sell.canSell === null || sell.canSell === undefined) unavailable.push("sellability verdict");
   if (!route) unavailable.push("swap-route");
+  else if (route.safetyChecked === false) unavailable.push("swap-route safety screen");
   if (!deploy) unavailable.push("deployer-rep");
+  else if (deployRep === "unknown") unavailable.push("deployer-rep history");
   const degraded = unavailable.length > 0;
 
   const observedRisks: string[] = [];

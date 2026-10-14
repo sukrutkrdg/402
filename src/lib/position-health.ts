@@ -74,6 +74,8 @@ export async function positionHealth(params: Record<string, string>) {
   const watch =
     rugSig.level === "medium" ||
     rugSig.degraded || // couldn't assess rug → don't call the position healthy
+    !rug || // rug check failed outright
+    !exit || // exit check failed → can't say the door is open
     (exit ? (exit.estSellImpactPct ?? 0) >= 5 : false) ||
     (price.liquidityUsd ?? Infinity) < 5000 ||
     (pnlPct !== null && pnlPct <= -50);

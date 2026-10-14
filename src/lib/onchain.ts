@@ -315,12 +315,16 @@ export async function tokenRisk(params: Record<string, string>) {
       ...decisionReceipt({
         endpoint: "token-risk",
         params: { address },
-        degraded: !securityChecked,
-        missing: securityChecked ? [] : ["goplus-security-feed (honeypot/taxes/holders)"],
+        degraded: !securityChecked || rpcBlind,
+        missing: [
+          ...(securityChecked ? [] : ["goplus-security-feed (honeypot/taxes/holders)"]),
+          ...(rpcBlind ? ["base-rpc (token's own ERC-20 reads)"] : []),
+        ],
       }),
-      // Never GO on missing security data — a clean RPC read with no honeypot/tax
-      // check is HOLD, not GO. Only RPC-proven high-risk yields STOP.
-      decision: riskLevel === "high" ? "STOP" : !securityChecked ? "HOLD" : riskLevel === "medium" ? "HOLD" : "GO",
+      // Never GO on missing data — a clean RPC read with no honeypot/tax check,
+      // or a security read with blind RPC, is HOLD, not GO. Only proven
+      // high-risk yields STOP.
+      decision: riskLevel === "high" ? "STOP" : riskLevel === "low" ? "GO" : "HOLD",
       observedRisks: flags,
       notChecked: gp
         ? ["offchain team/social signals", "liquidity depth vs your trade size (use swap-route)", "B20 policy powers (use b20-safety)"]

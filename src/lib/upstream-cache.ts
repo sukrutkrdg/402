@@ -161,8 +161,13 @@ export async function goPlusSecurity<T = Record<string, unknown>>(address: strin
         });
         if (!r.ok) return null;
         const j = (await r.json()) as { result?: Record<string, T> };
-        const row = j.result?.[addr];
-        return row && Object.keys(row as object).length > 0 ? row : null;
+        const row = j.result?.[addr] as Record<string, unknown> | undefined;
+        // GoPlus answers `code: 3` with a partial row (no is_honeypot, no owner
+        // powers) while it is still analysing a token. Downstream, a missing flag
+        // reads as "false", so a partial row would certify a token it never
+        // checked. Treat it as no answer.
+        if (!row || row.is_honeypot === undefined) return null;
+        return row as T;
       } catch {
         return null;
       }
@@ -184,7 +189,10 @@ export async function dexTokenPairs<T = unknown>(address: string): Promise<T[] |
         });
         if (!r.ok) return null;
         const j = (await r.json()) as { pairs?: T[] | null };
-        return j.pairs ?? [];
+        // This endpoint returns pairs from every chain. The same address can be a
+        // liquid token elsewhere (0x4200…0042 is OP on Optimism) and a different
+        // contract on Base, so foreign pools would vouch for a Base token.
+        return (j.pairs ?? []).filter((p) => (p as { chainId?: string }).chainId === "base");
       } catch {
         return null;
       }
