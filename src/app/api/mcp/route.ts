@@ -161,6 +161,14 @@ export function OPTIONS() {
 }
 
 export function GET(req?: NextRequest) {
+  // A spec client opening the SSE stream must get 405, not a 200 JSON body.
+  if (req?.headers.get("accept")?.includes("text/event-stream")) {
+    return Response.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32000, message: "Use POST for the MCP Streamable HTTP transport." } },
+      { status: 405, headers: { ...CORS, Allow: "POST, OPTIONS" } },
+    );
+  }
+
   const format = req?.nextUrl?.searchParams?.get("format")?.toLowerCase();
 
   if (format === "openai" || format === "tools") {

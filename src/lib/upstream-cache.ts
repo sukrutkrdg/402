@@ -167,7 +167,7 @@ export async function goPlusSecurity<T = Record<string, unknown>>(address: strin
         return null;
       }
     },
-    { staleGraceSec: 360, domain: "api.gopluslabs.io" }
+    { staleGraceSec: 0, domain: "api.gopluslabs.io" }
   );
 }
 
@@ -189,11 +189,11 @@ export async function dexTokenPairs<T = unknown>(address: string): Promise<T[] |
         return null;
       }
     },
-    { staleGraceSec: 180, domain: "api.dexscreener.com" }
+    { staleGraceSec: 0, domain: "api.dexscreener.com" }
   );
 }
 
-/** DexScreener pair details by pair address on Base. Cached 45s with 180s stale grace. */
+/** DexScreener pair details by pair address on Base. Cached 45s; no stale fallback — receipts rely on fresh price/liquidity. */
 export async function dexPair<T = unknown>(pairAddress: string): Promise<T | null> {
   const p = pairAddress.toLowerCase();
   return cached<T>(
@@ -210,7 +210,7 @@ export async function dexPair<T = unknown>(pairAddress: string): Promise<T | nul
         return null;
       }
     },
-    { staleGraceSec: 180, domain: "api.dexscreener.com" }
+    { staleGraceSec: 0, domain: "api.dexscreener.com" }
   );
 }
 

@@ -82,14 +82,15 @@ function paramsFrom(request: NextRequest, service: ReturnType<typeof getService>
   const url = new URL(request.url);
   const params: Record<string, string> = {};
   for (const p of service!.params) {
-    // Explicit query params win over body params
-    const v = url.searchParams.get(p.name) ?? attached?.[p.name];
+    // Explicit query params win over body params. Empty strings count as absent,
+    // so handlers' `??` defaults apply and an empty query value can't mask the body.
+    const v = url.searchParams.get(p.name) || attached?.[p.name];
     // Defensive ceiling. Most params are short (addresses etc.) so 2000 is plenty,
     // but the text-AI services legitimately take large inputs — text/texts/text1..N
     // up to ~16K each (ai-extract-batch joins up to ~40K). Those params get a wider
     // cap so the handler's own clamp (16K/6K) is the real limit, not this slice.
     // Without this the paid AI tools silently processed only the first 2000 chars.
-    if (v !== undefined && v !== null) {
+    if (v) {
       const isWideParam = /^(text(s|\d+)?|input|data|content|prompt|document|code|body|payload)$/i.test(p.name);
       const wide = Boolean(attached?.[p.name]) || isWideParam;
       params[p.name] = String(v).slice(0, wide ? 45000 : 2000);
@@ -286,7 +287,10 @@ function handlerErrorResponse(err: unknown, serviceId = "?"): NextResponse {
   const stack = err instanceof Error ? err.stack?.slice(0, 800) : "";
   if (status >= 500) console.error(line, stack);
   else console.warn(line);
-  return NextResponse.json({ error: message }, { status });
+  // Upstream errors can quote a provider URL with its API key in the path
+  // (viem only strips basic-auth). Keep that in the log, not in the response.
+  const safe = message.replace(/https?:\/\/\S+/g, "<upstream>");
+  return NextResponse.json({ error: safe }, { status });
 }
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ service: string }> }) {

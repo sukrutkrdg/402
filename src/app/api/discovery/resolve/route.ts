@@ -113,7 +113,10 @@ export async function POST(req: Request) {
   }
 }
 
-function handleResolve(rawQuery: string) {
+function handleResolve(input: string) {
+  // Every token is scored against the whole catalog; cap the input so a huge body
+  // is not a CPU amplifier.
+  const rawQuery = input.slice(0, 500);
   const siteUrl = getSiteUrl();
 
   if (!rawQuery) {
