@@ -24,7 +24,7 @@ const MAX_BATCH = 20; // cap JSON-RPC batch fan-out so one POST can't amplify to
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const SERVER = { name: "x402-bazaar", version: "0.3.0" };
+const SERVER = { name: "x402-bazaar", version: "0.3.1" };
 const PROTOCOL = "2025-06-18";
 
 const CORS: Record<string, string> = {

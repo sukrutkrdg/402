@@ -15,7 +15,7 @@ import { nearCreditHint } from "@/lib/near-funding";
 export const dynamic = "force-dynamic";
 
 // Keep in step with the published npm package + registry entry.
-const MCP_VERSION = "0.2.9";
+const MCP_VERSION = "0.3.1";
 
 export function GET() {
   const SITE = getSiteUrl();
