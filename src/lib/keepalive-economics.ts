@@ -53,7 +53,8 @@
  */
 
 import "server-only";
-import { kvGet, kvSet, kvIncrBy, kvConfigured } from "./kv";
+import { createHash } from "node:crypto";
+import { kvGet, kvSet, kvIncrBy, kvConfigured, kvHIncrBy, kvHGetAll, kvSAdd, kvSMembers } from "./kv";
 
 const KEY = {
   /** Cents the keepalive has settled against our own endpoints. */
@@ -79,7 +80,54 @@ const KEY = {
   /** From then on, in mills: a $0.002 sale is 2. */
   externalMills: "external:revenue:mills",
   externalCalls: "external:calls",
+  /** Per-service external paid calls (hash serviceId → count), for the public leaderboard. */
+  externalByService: "external:calls:svc",
+  /** When per-service counting began — later than `since`. */
+  externalByServiceSince: "external:calls:svc:since",
+  /** Distinct external payers, as truncated sha256 hashes — never addresses. */
+  externalPayers: "external:payers",
 } as const;
+
+/**
+ * Wallets that are ours besides the server buyer: the owner's test wallet (it
+ * bought the whole catalog once on 2026-10-11) plus any listed in
+ * OWN_PAYER_ADDRESSES (comma-separated). Their purchases are not demand.
+ */
+const OWN_PAYERS = new Set(
+  ["0xfe21a68f21d556a3c4274a44c2fb5410c50cda1c", ...(process.env.OWN_PAYER_ADDRESSES ?? "").split(",")]
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean),
+);
+export const isOwnPayer = (addr: string) => OWN_PAYERS.has(addr.toLowerCase());
+
+const payerHash = (addr: string) => createHash("sha256").update(addr.toLowerCase()).digest("hex").slice(0, 16);
+
+/**
+ * Public, demand-only view for the leaderboard: what outside payers bought.
+ * Counts only — no revenue, no addresses. Our own buyer never enters these keys
+ * (the x402 path filters it before calling recordExternalRevenue).
+ */
+export async function externalLeaderboard(): Promise<{
+  since: string | null;
+  externalCalls: number;
+  distinctPayers: number;
+  services: { id: string; calls: number }[];
+}> {
+  if (!kvConfigured()) return { since: null, externalCalls: 0, distinctPayers: 0, services: [] };
+  const [perServiceSince, bySvc, payers] = await Promise.all([
+    kvGet(KEY.externalByServiceSince),
+    kvHGetAll(KEY.externalByService),
+    kvSMembers(KEY.externalPayers),
+  ]);
+  const services = Object.entries(bySvc)
+    .map(([id, calls]) => ({ id, calls: Number(calls) || 0 }))
+    .filter((s) => s.calls > 0)
+    .sort((a, b) => b.calls - a.calls);
+  // Totals come from the per-service counters only. The older all-time
+  // `external:calls` may include the owner's test wallet (excluded only from
+  // 2026-10-14), so it is not shown publicly.
+  return { since: perServiceSince, externalCalls: services.reduce((n, x) => n + x.calls, 0), distinctPayers: payers.length, services };
+}
 
 /**
  * Record one settlement by somebody else.
@@ -87,11 +135,16 @@ const KEY = {
  * Called from the x402 paid path, which knows the payer address, so "not us" is
  * decided from who actually signed rather than inferred from a total.
  */
-export async function recordExternalRevenue(mills: number): Promise<void> {
+export async function recordExternalRevenue(mills: number, serviceId?: string, payer?: string): Promise<void> {
   if (!kvConfigured() || !Number.isFinite(mills) || mills <= 0) return;
   try {
     if (!(await kvGet(KEY.since))) await kvSet(KEY.since, new Date().toISOString());
     await Promise.all([kvIncrBy(KEY.externalMills, Math.round(mills)), kvIncrBy(KEY.externalCalls, 1)]);
+    if (serviceId) {
+      if (!(await kvGet(KEY.externalByServiceSince))) await kvSet(KEY.externalByServiceSince, new Date().toISOString());
+      await kvHIncrBy(KEY.externalByService, serviceId, 1);
+    }
+    if (payer) await kvSAdd(KEY.externalPayers, payerHash(payer));
   } catch {
     /* the settlement is the point; this is only the books */
   }

@@ -37,7 +37,7 @@ import { saveSample, loadSample } from "@/lib/sample-cache";
 import { exampleInputFor, staticOutputExample } from "@/lib/discovery-examples";
 import { discoveryOutputFor } from "@/lib/morpho-health-output-contract";
 import { priceMills } from "@/lib/price";
-import { recordExternalRevenue } from "@/lib/keepalive-economics";
+import { recordExternalRevenue, isOwnPayer } from "@/lib/keepalive-economics";
 import { translateIsLong } from "@/lib/ai";
 import { exaWantsText, exaContentsIsBatch } from "@/lib/exa";
 import { withPaymentTerms } from "@/lib/challenge-terms";
@@ -655,8 +655,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // into a paid-but-undelivered call.
     try {
       const ourBuyer = getBuyerAddress()?.toLowerCase();
-      if (payer && payer.toLowerCase() !== ourBuyer) {
-        await recordExternalRevenue(priceMills(await effectivePriceFor(service, request)));
+      if (payer && payer.toLowerCase() !== ourBuyer && !isOwnPayer(payer)) {
+        await recordExternalRevenue(priceMills(await effectivePriceFor(service, request)), service.id, payer);
       }
     } catch {
       /* the answer is the point; the ledger is an optimisation */

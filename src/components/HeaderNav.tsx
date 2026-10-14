@@ -27,6 +27,7 @@ const MORE_LINKS: NavLinkItem[] = [
   { href: "/dashboard", label: "📈 Dashboard" },
   { href: "/playground", label: "🧪 Playground" },
   { href: "/stats", label: "📊 Onchain Stats" },
+  { href: "/leaderboard", label: "🏆 Leaderboard" },
   { href: "/status", label: "🟢 System Status" },
   {
     href: "https://docs.cdp.coinbase.com/x402/core-concepts/builder-codes",
