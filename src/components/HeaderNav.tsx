@@ -24,6 +24,7 @@ const PRIMARY_LINKS: NavLinkItem[] = [
 const MORE_LINKS: NavLinkItem[] = [
   { href: "/scout", label: "🎯 Service Scout" },
   { href: "/agents", label: "🤖 For Agents & MCP" },
+  { href: "/fleet", label: "🛰️ Fleet spend limits" },
   { href: "/dashboard", label: "📈 Dashboard" },
   { href: "/playground", label: "🧪 Playground" },
   { href: "/terminal", label: "⌨️ Terminal" },

@@ -22,7 +22,8 @@ import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 import { logUsage, srcHash } from "@/lib/usage";
 import { kvGet, kvSet, kvDel, kvIncrBy, kvSetNx, kvEval, kvConfigured } from "@/lib/kv";
-import { debitCreditMills, refundCreditMills, tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle, bookCreditSale, voidCredits } from "@/lib/credits";
+import { tierPrice, linkCreditOwner, isCreditTokenShape, creditHandle, bookCreditSale, voidCredits } from "@/lib/credits";
+import { chargeCreditToken, childRefusalMessage } from "@/lib/fleet";
 
 /**
  * Calls a minute a single prepaid token may make. Ten a second — comfortably
@@ -299,11 +300,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     const coupon = service.id === "ai-token-report" && price === COUPON_PRICE ? await claimCoupon(req, service) : null;
     if (coupon && !coupon.claimed) price = service.price;
     const mills = priceMills(price);
-    // Debit FIRST (atomic DECRBY, fail-closed): this both charges and reserves in
-    // one step, so two concurrent calls can't each pass a cheap pre-check and get a
-    // free call on the race. An underfunded/unknown token is refunded inside
-    // debitCredit and reported here.
-    const debit = await debitCreditMills(creditToken, mills);
+    // Debit FIRST (one atomic script, fail-closed): this both charges and reserves
+    // in one step, so two concurrent calls can't each pass a cheap pre-check and
+    // get a free call on the race. A fleet child token is charged to its parent's
+    // balance, with the child's status, allowlist, per-call max and daily cap
+    // enforced inside the same script — see chargeCreditToken in lib/fleet.
+    const debit = await chargeCreditToken(creditToken, service.id, mills);
     if (!debit.ok && debit.reason === "bad_token") {
       // Unknown token: counted per IP, so rotating tokens meets the same wall as no token.
       const ip = clientIp(req);
@@ -318,6 +320,23 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       // This is a price wall too — log it as a challenge so the funnel counts
       // credit-exhausted callers, not just x402 walk-aways.
       await logUsage(service.id, false, srcHash(clientIp(req)), req.headers.get("user-agent") || "", req.headers.get("referer") || "", false, false, true);
+      if ("capMills" in debit) {
+        // A fleet child refused by its owner's policy. Never charged, and never told
+        // to "buy more": the limit is the point, and a 402 would invite an agent to
+        // route around it by paying another way.
+        const m = childRefusalMessage(debit.reason, debit.spentTodayMills, debit.capMills);
+        return NextResponse.json(
+          {
+            error: m.error,
+            reason: debit.reason,
+            service: service.id,
+            priceUsd: +(mills / 1000).toFixed(3),
+            charged: false,
+            fleet: { spentTodayUsd: +(debit.spentTodayMills / 1000).toFixed(3), dailyCapUsd: +(debit.capMills / 1000).toFixed(3) },
+          },
+          { status: m.status },
+        );
+      }
       return NextResponse.json(
         {
           error: debit.reason === "insufficient" ? "Insufficient credits" : "Invalid or unusable credit token",
@@ -334,7 +353,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
       const p = paramsFrom(req, service);
       data = withBaseReceipt(await timed(service.id, () => service.handler(p)), service.id, p);
     } catch (err) {
-      await refundCreditMills(creditToken, mills); // charged but never delivered → give it back
+      await debit.refund(); // charged but never delivered → give it back (to the parent, for a child)
       if (coupon?.claimed) await kvSet(coupon.key, "1", 3600).catch(() => {}); // and the discount with it
       return handlerErrorResponse(err, service.id);
     }
@@ -346,7 +365,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // because our core data feed was unavailable — is delivered but NOT billed.
     // Give the debit back and tell the caller via `x-refunded`.
     const refunded = isRefundable(data);
-    if (refunded) await refundCreditMills(creditToken, mills);
+    if (refunded) await debit.refund();
     if (refunded && coupon?.claimed) await kvSet(coupon.key, "1", 3600).catch(() => {});
     const remainingMills = refunded ? debit.remainingMills + mills : debit.remainingMills;
     return NextResponse.json(
@@ -359,6 +378,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         // sub-cent services, and the buyer should see that rather than discover it.
         chargedUsd: refunded ? 0 : +(mills / 1000).toFixed(3),
         creditBalanceUsd: +(remainingMills / 1000).toFixed(3),
+        // A child sees what it may still spend (the lower of the parent's balance
+        // and today's cap headroom), never the parent's whole balance.
+        ...(debit.fleet
+          ? { fleet: { spentTodayUsd: +((debit.fleet.spentTodayMills - (refunded ? mills : 0)) / 1000).toFixed(3), dailyCapUsd: +(debit.fleet.capMills / 1000).toFixed(3) } }
+          : {}),
         ...(refunded ? { refunded: true, refundReason: "Refusal (core data feed unavailable) — not billed per this check's refundRule." } : {}),
       }, service.id),
       { headers: { "x-credit-balance": String(Math.floor(remainingMills / 10)), "x-paid-via": "credits", ...(refunded ? { "x-refunded": "true" } : {}) } },

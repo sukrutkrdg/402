@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { creditStatus } from "@/lib/credits";
+import { childSummary } from "@/lib/fleet";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,19 @@ export async function GET(req: NextRequest) {
   }
 
   const { cents, expiresInDays } = await creditStatus(token);
+  // A fleet child holds no balance of its own; tell it its limits instead of a
+  // misleading "0". Only the holder of the exact token gets this answer.
+  const child = cents > 0 ? null : await childSummary(token);
+  if (child) {
+    return NextResponse.json(
+      {
+        fleetChild: child,
+        howToSpend:
+          "This is a fleet child token: it spends from its owner's balance, within the daily cap and limits shown. Send it as `x-credit-token` on any paid call it is allowed to make.",
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  }
   // An unknown token and a spent one are deliberately indistinguishable: both
   // are simply "no balance", so this cannot be used to test whether a guessed
   // token exists.

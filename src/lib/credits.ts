@@ -570,3 +570,170 @@ async function fracOf(token: string): Promise<number> {
   if (!kvConfigured() || !/^ck_[0-9a-f]{36}$/.test(t)) return 0;
   return (await kvGetNumber(fracKeyFor(t)).catch(() => 0)) || 0;
 }
+
+
+// ─── Fleet: child tokens that draw from a parent's balance ──────────────────
+//
+// A child token holds no money. It is a spending policy (status, daily cap,
+// per-call max, service allowlist) pointing at a parent balance, so issuing one
+// mints nothing and the liability ledger is untouched: when a child spends, the
+// PARENT's balance falls and `credits:spent` rises exactly as if the parent had
+// made the call. Management lives in src/lib/fleet.ts; the two functions that
+// move money live here, beside the balance keys they move.
+//
+// The policy check and the debit are one script. Checking first and debiting
+// second would let a call that read "active" just before a pause still spend
+// after it, and let N concurrent calls each see headroom under the cap and all
+// spend. Inside one EVAL the record, the day's spend counter and the parent's
+// balance are read and written together, on the primary — a pause written a
+// moment ago is what the very next call sees, never a replica's older copy.
+//
+// The money part of both scripts is DEBIT_MILLS_LUA / REFUND_MILLS_LUA verbatim,
+// wrapped in a local function, so a child spends and is refunded by exactly
+// the arithmetic a parent is.
+
+/**
+ * KEYS: parent balance, parent remainder, child record, child day-spend.
+ * ARGV: mills, parent handle, service id, spend TTL seconds.
+ * → [code, parent balance cents, parent remainder mills, spent today mills, cap mills]
+ * code ≥ 0: cents taken (as DEBIT_MILLS_LUA). -1 parent underfunded, -2 parent
+ * balance gone, -3 daily cap, -4 over per-call max, -5 not on allowlist,
+ * -6 paused, -7 no such child (deleted, expired, or not this parent's).
+ */
+export const CHILD_DEBIT_LUA = `
+local rec = redis.call('HMGET', KEYS[3], 'parent', 'status', 'allow', 'max', 'cap')
+if (not rec[1]) or rec[1] ~= ARGV[2] then return {-7, 0, 0, 0, 0} end
+local cap = tonumber(rec[5] or '0') or 0
+local spent = tonumber(redis.call('GET', KEYS[4]) or '0') or 0
+if rec[2] ~= 'active' then return {-6, 0, 0, spent, cap} end
+local allow = rec[3] or ''
+if allow ~= '' and not string.find(allow, ',' .. ARGV[3] .. ',', 1, true) then return {-5, 0, 0, spent, cap} end
+local mills = tonumber(ARGV[1])
+local max = tonumber(rec[4] or '0') or 0
+if max > 0 and mills > max then return {-4, 0, 0, spent, cap} end
+if spent + mills > cap then return {-3, 0, 0, spent, cap} end
+local function debit()
+${DEBIT_MILLS_LUA}
+end
+local r = debit()
+if r[1] >= 0 then
+  spent = redis.call('INCRBY', KEYS[4], mills)
+  redis.call('EXPIRE', KEYS[4], tonumber(ARGV[4]))
+end
+return {r[1], r[2], r[3], spent, cap}
+`;
+
+/**
+ * KEYS: parent balance, parent remainder, guard, child day-spend. ARGV: mills.
+ * → as REFUND_MILLS_LUA. The parent's money and the child's cap counter are
+ * restored together and under the same once-guard, so a retried refund can
+ * neither pay twice nor un-count the cap twice.
+ */
+export const CHILD_REFUND_LUA = `
+local function refund()
+${REFUND_MILLS_LUA}
+end
+local r = refund()
+if r[1] ~= -9 then
+  local s = tonumber(redis.call('GET', KEYS[4]) or '0') or 0
+  local back = math.min(s, tonumber(ARGV[1]))
+  if back > 0 then redis.call('DECRBY', KEYS[4], back) end
+end
+return r
+`;
+
+export type ChildRefusal = "paused" | "not_allowed" | "over_call_max" | "daily_cap" | "revoked" | "parent_empty" | "parent_gone";
+
+export interface ChildDebit {
+  ok: boolean;
+  /** What this child can still spend right now: the lower of the parent's balance and today's cap headroom. */
+  remainingMills: number;
+  spentTodayMills: number;
+  capMills: number;
+  reason?: "no_kv" | ChildRefusal;
+}
+
+const CHILD_CODES: Record<number, ChildRefusal> = {
+  [-1]: "parent_empty",
+  [-2]: "parent_gone",
+  [-3]: "daily_cap",
+  [-4]: "over_call_max",
+  [-5]: "not_allowed",
+  [-6]: "paused",
+  [-7]: "revoked",
+};
+
+const HANDLE = /^[0-9a-f]{24}$/;
+
+/**
+ * Charge a child call to its parent's balance, after enforcing the child's
+ * policy in the same atomic step. `recordKey` and `spendKey` come from
+ * src/lib/fleet.ts; the parent is named by its handle and its balance key is
+ * built here, so no other module ever spells a `credit:` key.
+ */
+export async function debitChildMills(a: {
+  parentHandle: string;
+  recordKey: string;
+  spendKey: string;
+  serviceId: string;
+  mills: number;
+  spendTtlSeconds: number;
+}): Promise<ChildDebit> {
+  const none = { ok: false, remainingMills: 0, spentTodayMills: 0, capMills: 0, reason: "no_kv" as const };
+  if (!kvConfigured() || !HANDLE.test(a.parentHandle)) return none;
+  const bal = `credit:${a.parentHandle}`;
+  const r = await kvEval<number[]>(
+    CHILD_DEBIT_LUA,
+    [bal, `${bal}:mills`, a.recordKey, a.spendKey],
+    [a.mills, a.parentHandle, a.serviceId, a.spendTtlSeconds],
+  );
+  if (!Array.isArray(r)) return none;
+  const [code, cents, rest, spent, cap] = r.map(Number);
+  if (code < 0) {
+    return { ok: false, remainingMills: 0, spentTodayMills: spent, capMills: cap, reason: CHILD_CODES[code] ?? "revoked" };
+  }
+  await Promise.all([kvIncrBy(LEDGER.spentCents, code), kvIncrBy(LEDGER.spentCalls, 1)]).catch(() => {
+    /* the debit above is the money; this is only the books */
+  });
+  return {
+    ok: true,
+    remainingMills: Math.max(0, Math.min(cents * 10 - rest, cap - spent)),
+    spentTodayMills: spent,
+    capMills: cap,
+  };
+}
+
+/** Undo a debitChildMills exactly once: money back to the parent, the spend back off the child's day. */
+export async function refundChildMills(a: { parentHandle: string; spendKey: string; mills: number }): Promise<void> {
+  if (!kvConfigured() || !HANDLE.test(a.parentHandle)) return;
+  const bal = `credit:${a.parentHandle}`;
+  const guard = `refund:${crypto.randomUUID()}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await kvEval<number[]>(CHILD_REFUND_LUA, [bal, `${bal}:mills`, guard, a.spendKey], [a.mills]).catch(() => null);
+    if (Array.isArray(r)) {
+      const cents = Number(r[0]);
+      if (cents >= 0) await Promise.all([kvIncrBy(LEDGER.spentCents, -cents), kvIncrBy(LEDGER.spentCalls, -1)]).catch(() => {});
+      return; // applied now (cents ≥ 0) or proven already applied (-9)
+    }
+    await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
+  }
+  console.error(`[credits] child refund of ${a.mills} mills could not be confirmed for ${bal}`);
+  try {
+    await kvLPush("credits:refunds:stuck", JSON.stringify({ token: bal, cents: a.mills / 10, mills: a.mills, child: a.spendKey, at: new Date().toISOString() }), 500);
+  } catch {
+    /* nothing left to try */
+  }
+}
+
+/**
+ * Is this a live parent balance — a token we minted whose balance key still
+ * exists? Asked with EVAL so the primary answers: a token minted a second ago
+ * must not look unknown because a replica has not caught up. Child tokens have
+ * no balance key of their own, so they always answer false.
+ */
+export async function isLiveCreditBalance(token: string): Promise<boolean> {
+  const t = (token || "").trim();
+  if (!kvConfigured() || !isCreditTokenShape(t)) return false;
+  const r = await kvEval<number>("return redis.call('EXISTS', KEYS[1])", [keyFor(t)], []);
+  return Number(r) === 1;
+}

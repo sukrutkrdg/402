@@ -57,6 +57,16 @@ export default function CreditsPage() {
             180 days. Re-buying tops up the same way.
           </li>
         </ul>
+        <p className="text-sm text-gray-400">
+          <strong className="text-gray-200">Running many agents?</strong> Give each one its own child token
+          instead of your main one. Children spend from your balance — nothing extra to buy — under a daily cap,
+          an optional per-call limit and service allowlist you set. Pausing or deleting one stops it on its
+          very next call.{" "}
+          <a className="text-sky-400 hover:underline" href="/fleet">
+            Manage a fleet
+          </a>
+          .
+        </p>
         <p className="text-xs text-gray-500">
           Prefer to script it? The same purchase works headlessly over x402:{" "}
           <code className="text-sky-300">/api/x402/buy-credits?tier=0.25|1|5|20</code>

@@ -65,7 +65,8 @@ describe("prepaid callers are metered by token, not by address", () => {
 
   it("decides how to meter before it spends a KV round trip on the token", () => {
     const rlAt = code.indexOf("rateLimitKv");
-    const debitAt = code.indexOf("debitCreditMills(");
+    // The debit goes through chargeCreditToken (parent or fleet child).
+    const debitAt = code.indexOf("chargeCreditToken(");
     expect(rlAt).toBeGreaterThan(0);
     expect(debitAt).toBeGreaterThan(rlAt);
   });
