@@ -1,0 +1,217 @@
+{
+ "_recorded": "Real /api/catalog, 2026-10-14, trimmed to 3 services",
+ "status": 200,
+ "headers": {
+  "Content-Type": "application/json"
+ },
+ "body": {
+  "name": "x402 Bazaar",
+  "description": "Pay-per-call API marketplace for agents on Base and NEAR. Call any endpoint over HTTP; pay a USDC micro-payment via x402 on Base, or with a credit token bought from NEAR (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
+  "x402Version": 2,
+  "protocol": "x402",
+  "network": "eip155:8453",
+  "asset": "USDC",
+  "builderCode": "bc_pa0gqlv1",
+  "baseUrl": "https://402.com.tr",
+  "docs": "https://402.com.tr/agents",
+  "payment": {
+   "how": "GET the endpoint; on 402 read the accepts[] (price, payTo, asset, network), pay a USDC micro-payment via x402, and retry with the x-payment header. Libraries (@x402/fetch) do this automatically.",
+   "freeTier": "1 free call per service per day per IP (full result) — ASK for it with ?free=1 or the header x-402-free: 1; a request without that flag returns the 402 challenge. After the daily call is used the same flag returns a preview (headline only) with an 'unlock' message. Services with freeTier:false (AI/metered) are always paid.",
+   "credits": "Prepaid alternative: one x402 settlement on /api/x402/buy-credits (tier=0.25|1|5|20 USD; $5/$20 carry a bonus) returns a bearer creditToken (shown once). Send it as the x-credit-token header on any paid call — the price is debited from your balance, no per-call signature or settlement. Responses carry paidVia:'credits', creditBalanceUsd, and the x-credit-balance header (cents). Balance lasts 180 days.",
+   "near": {
+    "chainSignatures": {
+     "how": "NEAR Chain Signatures",
+     "summary": "A NEAR account can control an EVM address through Chain Signatures and sign the x402 payment (EIP-3009 USDC authorization on Base, eip155:8453) directly. Nothing NEAR-specific on our side: it is the standard x402 flow, the payer just signs through the NEAR MPC signer. The derived address needs USDC on Base; gas is paid by the facilitator."
+    },
+    "nearIntentsCredits": {
+     "how": "NEAR Intents (1Click) → prepaid credits",
+     "summary": "No USDC on Base? Buy a credit pack with any asset NEAR Intents routes (NEAR, USDC on NEAR, BTC, SOL, …). It is swapped to USDC on Base for us; you get an x-credit-token that works on every paid endpoint with no per-call signature.",
+     "start": "https://402.com.tr/api/credits/near/quote"
+    }
+   }
+  },
+  "errors": {
+   "200": "Success — full result (paid or free call), or a preview when the free tier is used up (preview:true).",
+   "400": "Bad input (e.g. missing/invalid address). You were NOT charged.",
+   "402": "Payment required — pay per accepts[] and retry with x-payment. The body may include a 'sample' (preview of a recent real response), 'freeCall' and 'noWalletNeeded' hints. With an x-credit-token, a 402 means the balance is too low (body has balanceUsd + topUp).",
+   "429": "Rate limited — back off and retry after the retry-after header.",
+   "502": "Upstream data provider failed. You were NOT charged; retry later."
+  },
+  "responseFields": {
+   "sinceLastCheck": "token-risk / rug-score: how the score moved since this token was last checked from your network.",
+   "receipt": "Every PAID response carries a decision receipt — see the decisionReceipt block for its schema. It's how you verify decision quality and route work here by default.",
+   "upgrade": "a discounted follow-up offer (e.g. paying token-risk earns ai-token-report at $0.05 for 1h on the same token).",
+   "paidVia": "'credits' when the call was debited from a prepaid balance instead of an x402 settlement."
+  },
+  "decisionReceipt": {
+   "description": "Every paid response carries a `receipt`: a machine-verifiable record of what was evaluated, under which logic, and how sure the answer is. Present on x402-settled and x-credit-token calls; omitted on free-tier previews.",
+   "fields": {
+    "endpoint": "the check that produced this verdict (e.g. token-risk)",
+    "inputHash": "sha256: + 32 hex of the canonical {endpoint+inputs}; addresses lowercased, keys sorted, so identical inputs hash identically — dedupe/cache/provenance",
+    "policyVersion": "endpoint@semver of the decision logic; bumped when scoring/rules change so you can detect policy drift between calls",
+    "decision": "GO | HOLD | STOP | REFUSE (verdict checks only); REFUSE = a non-decision, see confidence/refusal",
+    "confidence": "{ band: high|medium|low, basis } — low when our core feed was unavailable, medium when secondary signals were missing, high when every input was consulted (verdict checks)",
+    "refusal": "{ reason, missing } | null — structured non-decision; null on a real verdict (verdict checks)",
+    "refundable": "boolean — whether this call qualifies for a refund (a refusal is never billed, on either payment path) (verdict checks)",
+    "refundRule": "the enforced rule: a refusal (confidence=low, core feed down) is auto-refunded on the credit path, and returned as 502 on the x402 path so the payment never settles; both stamp x-refunded:true. Full-confidence verdicts are final (verdict checks)"
+   },
+   "tiers": {
+    "full": {
+     "services": [
+      "token-risk",
+      "rug-score",
+      "sellability",
+      "pre-trade-gate",
+      "b20-safety",
+      "sanctions",
+      "sanctions-name",
+      "email-verify",
+      "domain-check",
+      "counterparty-check",
+      "address-trust"
+     ],
+     "carries": [
+      "endpoint",
+      "inputHash",
+      "policyVersion",
+      "decision",
+      "confidence",
+      "refusal",
+      "refundable",
+      "refundRule"
+     ]
+    },
+    "baseline": {
+     "services": "every other paid service",
+     "carries": [
+      "endpoint",
+      "inputHash",
+      "policyVersion"
+     ]
+    }
+   },
+   "refund": {
+    "rule": "refusal (core feed unavailable) is never billed",
+    "credits": "the debit is auto-refunded; 200 with paidVia:'credits-refunded'",
+    "x402": "returned as HTTP 502 so the payment is never settled; body carries paidVia:'not-settled' and the full receipt",
+    "header": "x-refunded: true"
+   },
+   "policyVersions": {
+    "token-risk": "1.2.0",
+    "rug-score": "1.1.0",
+    "sellability": "1.0.0",
+    "pre-trade-gate": "1.0.0",
+    "b20-safety": "1.0.0",
+    "deep-dd": "1.0.0",
+    "sanctions": "1.0.0",
+    "sanctions-name": "1.0.0",
+    "email-verify": "1.0.0",
+    "domain-check": "1.0.0",
+    "counterparty-check": "1.0.0",
+    "address-trust": "1.0.0"
+   },
+   "docs": "https://github.com/sukrutkrdg/402/blob/main/docs/decision-receipt.md"
+  },
+  "services": [
+   {
+    "id": "token-risk",
+    "name": "Token Risk Check",
+    "description": "Pass a token contract address and get a risk score + flags (ERC-20 conformance, ownership renounce, upgradeable proxy) computed live from Base. Built for trading bots and agents that vet tokens before buying.",
+    "category": "Onchain",
+    "tags": [
+     "security",
+     "token-safety",
+     "honeypot",
+     "rug-pull",
+     "rug-check",
+     "scam",
+     "contract-risk",
+     "onchain",
+     "evm",
+     "wallet-intel",
+     "data",
+     "base",
+     "x402"
+    ],
+    "requiresAI": false,
+    "price": "$0.03",
+    "freeTier": false,
+    "method": "GET",
+    "x402": true,
+    "endpoint": "https://402.com.tr/api/x402/token-risk",
+    "input": {
+     "address": {
+      "type": "string",
+      "required": true,
+      "description": "Token contract address",
+      "in": "query",
+      "example": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed"
+     }
+    }
+   },
+   {
+    "id": "gas-oracle",
+    "name": "Gas Oracle",
+    "description": "Returns current Base gas fees (baseFee, maxPriorityFee) and three tiered suggestions (slow, normal, fast) in Gwei, derived live from the Base RPC. Built for agents that time or cost-estimate transactions.",
+    "category": "Onchain",
+    "tags": [
+     "onchain",
+     "evm",
+     "wallet-intel",
+     "security",
+     "data",
+     "gas",
+     "oracle",
+     "base",
+     "x402"
+    ],
+    "requiresAI": false,
+    "price": "$0.01",
+    "freeTier": true,
+    "method": "GET",
+    "x402": true,
+    "endpoint": "https://402.com.tr/api/x402/gas-oracle",
+    "input": {}
+   },
+   {
+    "id": "ai-translate",
+    "name": "AI Translate",
+    "description": "LLM-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. Priced by length: $0.03 to 2,000 characters, $0.08 above — the 402 challenge quotes the price for the text you sent. No API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users.",
+    "category": "AI",
+    "tags": [
+     "ai",
+     "llm",
+     "analysis",
+     "report",
+     "inference",
+     "data",
+     "translate",
+     "base",
+     "x402"
+    ],
+    "requiresAI": true,
+    "price": "$0.03",
+    "freeTier": false,
+    "method": "GET",
+    "x402": true,
+    "endpoint": "https://402.com.tr/api/x402/ai-translate",
+    "input": {
+     "text": {
+      "type": "string",
+      "required": true,
+      "description": "Text to translate",
+      "in": "query",
+      "example": "Your withdrawal is being processed and should arrive within one business day."
+     },
+     "to": {
+      "type": "string",
+      "required": false,
+      "description": "Target language",
+      "in": "query",
+      "example": "Turkish"
+     }
+    }
+   }
+  ]
+ }
+}

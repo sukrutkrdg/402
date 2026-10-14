@@ -1,0 +1,194 @@
+{
+ "_recorded": "Real response, 2026-10-14: GET https://402.com.tr/api/x402/token-risk?address=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed (no payment)",
+ "status": 402,
+ "headers": {
+  "Content-Type": "application/json",
+  "Payment-Required": "eyJ4NDAyVmVyc2lvbiI6MiwiZXJyb3IiOiJQYXltZW50IHJlcXVpcmVkIiwicmVzb3VyY2UiOnsidXJsIjoiaHR0cHM6Ly80MDIuY29tLnRyL2FwaS94NDAyL3Rva2VuLXJpc2siLCJkZXNjcmlwdGlvbiI6IlBhc3MgYSB0b2tlbiBjb250cmFjdCBhZGRyZXNzIGFuZCBnZXQgYSByaXNrIHNjb3JlICsgZmxhZ3MgKEVSQy0yMCBjb25mb3JtYW5jZSwgb3duZXJzaGlwIHJlbm91bmNlLCB1cGdyYWRlYWJsZSBwcm94eSkgY29tcHV0ZWQgbGl2ZSBmcm9tIEJhc2UuIEJ1aWx0IGZvciB0cmFkaW5nIGJvdHMgYW5kIGFnZW50cyB0aGF0IHZldCB0b2tlbnMgYmVmb3JlIGJ1eWluZy4iLCJtaW1lVHlwZSI6ImFwcGxpY2F0aW9uL2pzb24iLCJzZXJ2aWNlTmFtZSI6IlRva2VuIFJpc2sgQ2hlY2siLCJ0YWdzIjpbInNlY3VyaXR5IiwidG9rZW4tc2FmZXR5IiwiaG9uZXlwb3QiLCJydWctcHVsbCIsInJ1Zy1jaGVjayIsInNjYW0iLCJjb250cmFjdC1yaXNrIiwib25jaGFpbiIsImV2bSIsIndhbGxldC1pbnRlbCIsImRhdGEiLCJiYXNlIiwieDQwMiJdfSwiYWNjZXB0cyI6W3sic2NoZW1lIjoiZXhhY3QiLCJuZXR3b3JrIjoiZWlwMTU1Ojg0NTMiLCJhbW91bnQiOiIzMDAwMCIsImFzc2V0IjoiMHg4MzM1ODlmQ0Q2ZURiNkUwOGY0YzdDMzJENGY3MWI1NGJkQTAyOTEzIiwicGF5VG8iOiIweDk3M2EzMTg1OGY0ZDIxMjVmNDhjODgwNTQyZGExMWEyNzk2ZjEyZDYiLCJtYXhUaW1lb3V0U2Vjb25kcyI6MzAwLCJleHRyYSI6eyJuYW1lIjoiVVNEIENvaW4iLCJ2ZXJzaW9uIjoiMiJ9fV0sImV4dGVuc2lvbnMiOnsiYnVpbGRlci1jb2RlIjp7ImluZm8iOnsiYSI6ImJjX3BhMGdxbHYxIn0sInNjaGVtYSI6eyIkc2NoZW1hIjoiaHR0cHM6Ly9qc29uLXNjaGVtYS5vcmcvZHJhZnQvMjAyMC0xMi9zY2hlbWEiLCJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJhIjp7InR5cGUiOiJzdHJpbmciLCJwYXR0ZXJuIjoiXlthLXowLTlfXXsxLDMyfSQiLCJkZXNjcmlwdGlvbiI6IkFwcCBidWlsZGVyIGNvZGUifSwidyI6eyJ0eXBlIjoic3RyaW5nIiwicGF0dGVybiI6Il5bYS16MC05X117MSwzMn0kIiwiZGVzY3JpcHRpb24iOiJXYWxsZXQgYnVpbGRlciBjb2RlIn0sInMiOnsidHlwZSI6ImFycmF5IiwiaXRlbXMiOnsidHlwZSI6InN0cmluZyIsInBhdHRlcm4iOiJeW2EtejAtOV9dezEsMzJ9JCJ9LCJkZXNjcmlwdGlvbiI6IlNlcnZpY2UgYnVpbGRlciBjb2RlcyJ9fSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX0sImJhemFhciI6eyJpbmZvIjp7ImlucHV0Ijp7InR5cGUiOiJodHRwIiwicXVlcnlQYXJhbXMiOnsiYWRkcmVzcyI6IjB4NGVkNEU4NjI4NjBiZUQ1MWE5NTcwYjk2ZDg5YUY1RTFCMEVmZWZlZCJ9LCJtZXRob2QiOiJHRVQiLCJwYXRoUGFyYW1zIjp7fX0sIm91dHB1dCI6eyJ0eXBlIjoianNvbiIsImV4YW1wbGUiOnsiYWRkcmVzcyI6IjB4NGVkNEU4NjI4NjBiZUQ1MWE5NTcwYjk2ZDg5YUY1RTFCMEVmZWZlZCIsImlzQ29udHJhY3QiOnRydWUsInJpc2tTY29yZSI6NTAsInJpc2tMZXZlbCI6Im1lZGl1bSIsImRlZ3JhZGVkIjpmYWxzZSwidXBncmFkZWFibGVQcm94eSI6ZmFsc2UsInNlY3VyaXR5Q2hlY2tlZCI6dHJ1ZSwiY2hhaW5SZWFkIjp0cnVlfX19LCJzY2hlbWEiOnsiJHNjaGVtYSI6Imh0dHBzOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LzIwMjAtMTIvc2NoZW1hIiwidHlwZSI6Im9iamVjdCIsInByb3BlcnRpZXMiOnsiaW5wdXQiOnsidHlwZSI6Im9iamVjdCIsInByb3BlcnRpZXMiOnsidHlwZSI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwIn0sIm1ldGhvZCI6eyJ0eXBlIjoic3RyaW5nIiwiZW51bSI6WyJHRVQiXX0sInF1ZXJ5UGFyYW1zIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImFkZHJlc3MiOnsidHlwZSI6InN0cmluZyIsImRlc2NyaXB0aW9uIjoiVG9rZW4gY29udHJhY3QgYWRkcmVzcyJ9fSwicmVxdWlyZWQiOlsiYWRkcmVzcyJdfSwicGF0aFBhcmFtcyI6eyJ0eXBlIjoib2JqZWN0In19LCJyZXF1aXJlZCI6WyJ0eXBlIiwibWV0aG9kIl0sImFkZGl0aW9uYWxQcm9wZXJ0aWVzIjpmYWxzZX0sIm91dHB1dCI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJ0eXBlIjp7InR5cGUiOiJzdHJpbmcifSwiZXhhbXBsZSI6eyJ0eXBlIjoib2JqZWN0In19LCJyZXF1aXJlZCI6WyJ0eXBlIl19fSwicmVxdWlyZWQiOlsiaW5wdXQiXX19fX0="
+ },
+ "body": {
+  "x402Version": 2,
+  "error": "Payment required",
+  "resource": {
+   "url": "https://402.com.tr/api/x402/token-risk",
+   "description": "Pass a token contract address and get a risk score + flags (ERC-20 conformance, ownership renounce, upgradeable proxy) computed live from Base. Built for trading bots and agents that vet tokens before buying.",
+   "mimeType": "application/json",
+   "serviceName": "Token Risk Check",
+   "tags": [
+    "security",
+    "token-safety",
+    "honeypot",
+    "rug-pull",
+    "rug-check",
+    "scam",
+    "contract-risk",
+    "onchain",
+    "evm",
+    "wallet-intel",
+    "data",
+    "base",
+    "x402"
+   ]
+  },
+  "accepts": [
+   {
+    "scheme": "exact",
+    "network": "eip155:8453",
+    "amount": "30000",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "payTo": "0x973a31858f4d2125f48c880542da11a2796f12d6",
+    "maxTimeoutSeconds": 300,
+    "extra": {
+     "name": "USD Coin",
+     "version": "2"
+    }
+   }
+  ],
+  "extensions": {
+   "builder-code": {
+    "info": {
+     "a": "bc_pa0gqlv1"
+    },
+    "schema": {
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "string",
+       "pattern": "^[a-z0-9_]{1,32}$",
+       "description": "App builder code"
+      },
+      "w": {
+       "type": "string",
+       "pattern": "^[a-z0-9_]{1,32}$",
+       "description": "Wallet builder code"
+      },
+      "s": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_]{1,32}$"
+       },
+       "description": "Service builder codes"
+      }
+     },
+     "additionalProperties": false
+    }
+   },
+   "bazaar": {
+    "info": {
+     "input": {
+      "type": "http",
+      "queryParams": {
+       "address": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed"
+      },
+      "method": "GET",
+      "pathParams": {}
+     },
+     "output": {
+      "type": "json",
+      "example": {
+       "address": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
+       "isContract": true,
+       "riskScore": 50,
+       "riskLevel": "medium",
+       "degraded": false,
+       "upgradeableProxy": false,
+       "securityChecked": true,
+       "chainRead": true
+      }
+     }
+    },
+    "schema": {
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "type": "object",
+     "properties": {
+      "input": {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "http"
+        },
+        "method": {
+         "type": "string",
+         "enum": [
+          "GET"
+         ]
+        },
+        "queryParams": {
+         "type": "object",
+         "properties": {
+          "address": {
+           "type": "string",
+           "description": "Token contract address"
+          }
+         },
+         "required": [
+          "address"
+         ]
+        },
+        "pathParams": {
+         "type": "object"
+        }
+       },
+       "required": [
+        "type",
+        "method"
+       ],
+       "additionalProperties": false
+      },
+      "output": {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string"
+        },
+        "example": {
+         "type": "object"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      }
+     },
+     "required": [
+      "input"
+     ]
+    },
+    "routeTemplate": ":var1"
+   }
+  },
+  "sample": {
+   "note": "Preview of a real response — a paid call returns the full report (all signals, details & recommendation).",
+   "data": {
+    "address": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
+    "isContract": true,
+    "riskScore": 50,
+    "riskLevel": "medium",
+    "degraded": false,
+    "upgradeableProxy": false,
+    "securityChecked": true,
+    "chainRead": true
+   }
+  },
+  "prepaidCredits": "One x402 settlement on /api/x402/buy-credits?tier=0.25|1|5|20 mints a bearer credit token; send it as the x-credit-token header and later calls debit the balance — no wallet or signature per call after that first purchase.",
+  "alternatives": [
+   {
+    "action": "buy-credits",
+    "recommended": true,
+    "method": "POST",
+    "url": "https://402.com.tr/api/x402/buy-credits?tier=0.25",
+    "priceUsdc": "0.25",
+    "then": "Send the returned token as the `x-credit-token` header on this and any paid call; each debits its price from the balance — no per-call signature.",
+    "gives": "≈8 calls at this service's price from one settlement; lowest-friction start."
+   },
+   {
+    "action": "pay-x402",
+    "method": "GET",
+    "url": "https://402.com.tr/api/x402/token-risk?address=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
+    "gives": "Pay this exact call now over x402 — see the `accepts` array for scheme/amount/asset/payTo."
+   }
+  ]
+ }
+}

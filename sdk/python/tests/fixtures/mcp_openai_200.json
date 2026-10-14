@@ -1,0 +1,65 @@
+{
+ "_recorded": "Real /api/mcp?format=openai, 2026-10-14, trimmed to 3 tools",
+ "status": 200,
+ "headers": {
+  "Content-Type": "application/json"
+ },
+ "body": {
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "token_risk",
+     "description": "Pre-trade safety score for any Base token — Pass a token contract address and get a risk score + flags (ERC-20 conformance, ownership renounce, upgradeable proxy) computed live from Base. Built for trading bots and agents that vet tokens before buying. Required input: address. Priced $0.03 per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "address": {
+        "type": "string",
+        "description": "Token contract address"
+       }
+      },
+      "required": [
+       "address"
+      ]
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "gas_oracle",
+     "description": "Live Base gas estimates — slow / normal / fast — Returns current Base gas fees (baseFee, maxPriorityFee) and three tiered suggestions (slow, normal, fast) in Gwei, derived live from the Base RPC. Built for agents that time or cost-estimate transactions. Priced $0.01 per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.",
+     "parameters": {
+      "type": "object",
+      "properties": {}
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "ai_translate",
+     "description": "Translate up to 6K chars to any language — LLM-quality translation as a pay-per-call primitive: send text= (up to 6K characters) and to= any language, get only the translation back — no notes, no wrapper prose, safe to pipe straight into the next step. Priced by length: $0.03 to 2,000 characters, $0.08 above — the 402 challenge quotes the price for the text you sent. No API key or subscription. Built for agents localizing content, parsing foreign-language sources, or serving multilingual users. Required input: text. Priced $0.03 per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "text": {
+        "type": "string",
+        "description": "Text to translate"
+       },
+       "to": {
+        "type": "string",
+        "description": "Target language"
+       }
+      },
+      "required": [
+       "text"
+      ]
+     }
+    }
+   }
+  ],
+  "count": 3
+ }
+}

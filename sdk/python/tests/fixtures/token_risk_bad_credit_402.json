@@ -1,0 +1,14 @@
+{
+ "_recorded": "Real response, 2026-10-14: token-risk with x-credit-token set to an unknown (all-zero) ck_ token",
+ "status": 402,
+ "headers": {
+  "Content-Type": "application/json"
+ },
+ "body": {
+  "error": "Invalid or unusable credit token",
+  "service": "token-risk",
+  "priceUsd": 0.03,
+  "balanceUsd": 0,
+  "topUp": "Buy more at /api/x402/buy-credits (tier=0.25|1|5|20), or omit x-credit-token to pay per-call via x402."
+ }
+}

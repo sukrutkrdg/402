@@ -1,0 +1,26 @@
+{
+ "_recorded": "Real response, 2026-10-14: GET https://402.com.tr/api/x402/gas-oracle?free=1",
+ "status": 200,
+ "headers": {
+  "Content-Type": "application/json",
+  "X-Free-Remaining": "0",
+  "X-Free-Tier": "true"
+ },
+ "body": {
+  "service": "gas-oracle",
+  "builderCode": "bc_pa0gqlv1",
+  "data": {
+   "baseFeeGwei": "0.005",
+   "maxPriorityFeeGwei": "0.001",
+   "suggested": {
+    "slow": "0.0008",
+    "normal": "0.001",
+    "fast": "0.0015"
+   },
+   "blockNumber": "52584168",
+   "checkedAt": "2026-10-14T06:01:24.081Z"
+  },
+  "freeTier": true,
+  "freeRemaining": 0
+ }
+}

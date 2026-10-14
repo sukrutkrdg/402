@@ -1,0 +1,10 @@
+{
+ "_recorded": "Real response, 2026-10-14: GET https://402.com.tr/api/x402/no-such-service",
+ "status": 404,
+ "headers": {
+  "Content-Type": "application/json"
+ },
+ "body": {
+  "error": "Unknown service: no-such-service"
+ }
+}

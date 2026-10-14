@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bazaar402"
+version = "0.1.0"
+description = "Python client for x402 Bazaar (402.com.tr): pay-per-call APIs for agents, paid with x402 (USDC on Base) or a prepaid credit token."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Şükrü Küçük" }]
+keywords = ["x402", "402", "base", "usdc", "pay-per-call", "agents", "api"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+  "Typing :: Typed",
+]
+# Free-tier and credit-token callers need nothing but requests. The wallet
+# stack (Coinbase's x402 package + eth-account) is only pulled in by [wallet].
+dependencies = ["requests>=2.31"]
+
+[project.optional-dependencies]
+wallet = ["x402[evm,extensions]>=2.25,<3"]
+langchain = ["langchain-core>=0.3"]
+test = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://402.com.tr"
+Repository = "https://github.com/sukrutkrdg/402"
+Source = "https://github.com/sukrutkrdg/402/tree/main/sdk/python"
+Catalog = "https://402.com.tr/api/catalog"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bazaar402"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/bazaar402", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: hits https://402.com.tr (read-only, never pays); run with -m live"]
+addopts = "-m 'not live'"
