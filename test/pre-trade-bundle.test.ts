@@ -94,7 +94,7 @@ import { preTradeBundle } from "@/lib/pre-trade-bundle";
 import { preTradeGate } from "@/lib/gate";
 import { b20Gate } from "@/lib/b20-safety";
 import { ownerPowers } from "@/lib/owner-powers";
-import { dumpRisk } from "@/lib/dump-risk";
+import { dumpRiskCore } from "@/lib/dump-risk";
 import { clankerTokenAudit } from "@/lib/clanker-audit";
 import { isRefundable } from "@/lib/envelope";
 
@@ -355,7 +355,7 @@ describe("pre-trade-bundle — field shapes of each dependency", () => {
   });
 
   it("dump-risk: verdict, aggregateLiquidityUsd, poolsCounted, marketCapUsd, topDumpableHolder.percentOfSupply, impact pcts", async () => {
-    const d = await dumpRisk({ address: DEGEN });
+    const d = await dumpRiskCore({ address: DEGEN });
     expect(d.verdict).toBe("resilient");
     expect(d.aggregateLiquidityUsd).toBe(4_000_000);
     expect(d.poolsCounted).toBe(1);

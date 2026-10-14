@@ -34,14 +34,14 @@ import { decisionReceipt } from "./envelope";
 import { preTradeGate } from "./gate";
 import { b20Gate } from "./b20-safety";
 import { ownerPowers } from "./owner-powers";
-import { dumpRisk } from "./dump-risk";
+import { dumpRiskCore, usdStablecoin } from "./dump-risk";
 import { clankerTokenAudit } from "./clanker-audit";
 import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
 
 export type GateOut = Awaited<ReturnType<typeof preTradeGate>>;
 export type B20GateOut = Awaited<ReturnType<typeof b20Gate>>;
 export type OwnerPowersOut = Awaited<ReturnType<typeof ownerPowers>>;
-export type DumpRiskOut = Awaited<ReturnType<typeof dumpRisk>>;
+export type DumpRiskOut = Awaited<ReturnType<typeof dumpRiskCore>>;
 export type ClankerOut = Awaited<ReturnType<typeof clankerTokenAudit>>;
 
 const ENDPOINT = "pre-trade-bundle";
@@ -219,12 +219,14 @@ export async function preTradeBundle(params: Record<string, string>) {
   // warm-up read lets the rest hit the shared cache. Its result is not used:
   // a failed warm-up just means each check tries (and reports) on its own.
   await Promise.allSettled([goPlusSecurity(address), dexTokenPairs(address)]);
+  // A redeemable USD stablecoin has no whale-dump exit to model (see dump-risk).
+  const stable = usdStablecoin(address);
 
   const [gateR, b20R, ownerR, dumpR, clankerR] = await Promise.allSettled([
     preTradeGate(tradeSizeUsd !== null ? { address, amountUsd: String(tradeSizeUsd) } : { address }),
     b20Gate({ address }),
     ownerPowers({ address }),
-    dumpRisk({ address }),
+    stable ? Promise.resolve(null) : dumpRiskCore({ address }),
     clankerTokenAudit({ address }),
   ]);
 
@@ -246,7 +248,11 @@ export async function preTradeBundle(params: Record<string, string>) {
     preTradeGate: viewGate(gateR.value),
     b20Gate: b20R.status === "fulfilled" ? viewB20(b20R.value) : failed(b20R),
     ownerPowers: ownerR.status === "fulfilled" ? viewOwner(ownerR.value) : failed(ownerR),
-    dumpRisk: dumpR.status === "fulfilled" ? viewDump(dumpR.value) : failed(dumpR),
+    dumpRisk: stable
+      ? { status: "not_applicable", decision: "not_applicable", saw: { stablecoin: stable.symbol }, reason: `${stable.symbol} is a redeemable USD stablecoin — exit is redemption, not a DEX dump; check stablecoin-peg` }
+      : dumpR.status === "fulfilled" && dumpR.value
+        ? viewDump(dumpR.value)
+        : failed(dumpR),
   };
   const GATING: Array<[keyof typeof checks, string]> = [
     ["preTradeGate", "pre-trade-gate"],

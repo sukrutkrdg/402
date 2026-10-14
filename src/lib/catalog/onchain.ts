@@ -351,7 +351,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Dump Risk (Exit Liquidity)",
       tagline: "If the big holders sell, can liquidity absorb it?",
       description:
-        "\"Top holder owns 18%\" is meaningless without the other half: 18% of what, against how deep a pool. This values the largest LIVE holders' bags (GoPlus %s × market cap; pools/locked/burn excluded) and dumps them through aggregate Base liquidity with the conservative constant-product model. Returns the price impact if the top holder — and the top 3 — exit, and a verdict from resilient to exit_trap (where their exit is your crater). Heuristic; a locked bag can unlock. Not financial advice.",
+        "\"Top holder owns 18%\" means nothing without: 18% of what, against how deep a pool. Values the largest live holders' bags (GoPlus % × Base supply × price; pools, lending, bridges, vaults, lockers, burn excluded; exchanges reported apart) and dumps them through every Base pool the token is in, constant-product. Impact if the top holder and top 3 exit; verdict resilient → exit_trap. USD stablecoins: not_applicable (see stablecoin-peg). Heuristic; not financial advice.",
       price: "$0.04",
       icon: "🏃",
       category: "Onchain",

@@ -26,6 +26,7 @@ import { getAddress } from "viem";
 import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
 import { labelHolder, type HolderClass } from "./known-addresses";
 import { probeVaultsForToken } from "./address-probe";
+import { USD_STABLES } from "./stablecoin-peg";
 
 interface GpHolder { address?: string; tag?: string; is_contract?: number | string; is_locked?: number | string; percent?: string }
 type Gp = Record<string, unknown> & { holders?: GpHolder[] };
@@ -34,6 +35,7 @@ interface Pair {
   baseToken?: { address?: string };
   quoteToken?: { address?: string };
   priceUsd?: string;
+  priceNative?: string;
   liquidity?: { usd?: number };
   fdv?: number;
   marketCap?: number;
@@ -61,10 +63,11 @@ interface Holder {
   reason: string;
 }
 
-export async function dumpRisk(params: Record<string, string>) {
+export async function dumpRiskCore(params: Record<string, string>) {
   const raw = (params.address || params.token || "").trim();
   if (!validAddr(raw)) throw new Error("Provide a valid 0x… token address");
   const address = getAddress(raw);
+
 
   const [gp, pairs] = await Promise.all([
     goPlusSecurity<Gp>(address),
@@ -80,12 +83,28 @@ export async function dumpRisk(params: Record<string, string>) {
 
   const addrLc = address.toLowerCase();
   const base = (pairs || []).filter((p) => p?.baseToken?.address?.toLowerCase() === addrLc);
-  const aggLiquidityUsd = base.reduce((s, p) => s + (p.liquidity?.usd ?? 0), 0);
-  const priceUsd = base.map((p) => Number(p.priceUsd)).find((n) => Number.isFinite(n) && n > 0) ?? null;
-  // Prefer circulating market cap; fall back to FDV. Needed to value a % bag in USD.
-  const marketCap = base.map((p) => p.marketCap).find((n) => n && n > 0)
-    ?? base.map((p) => p.fdv).find((n) => n && n > 0)
-    ?? null;
+  // A token can be sold into every pool it sits in, including the ones where it
+  // is the QUOTE side. Counting base-side pools only read USDC's exit liquidity
+  // on Base as ~$0.45M when its quote-side pools held ~$47M (2026-10-14).
+  const quote = (pairs || []).filter((p) => p?.quoteToken?.address?.toLowerCase() === addrLc);
+  const aggLiquidityUsd = [...base, ...quote].reduce((s, p) => s + (p.liquidity?.usd ?? 0), 0);
+  // Price from a base-side pool; else derive it from a quote-side one
+  // (priceUsd is the base token's USD price, priceNative its price in the quote).
+  const priceUsd =
+    base.map((p) => Number(p.priceUsd)).find((n) => Number.isFinite(n) && n > 0) ??
+    quote.map((p) => Number(p.priceUsd) / Number(p.priceNative)).find((n) => Number.isFinite(n) && n > 0) ??
+    null;
+  // GoPlus holder percentages are shares of the supply ON BASE, so a bag is
+  // valued against Base supply × price. DexScreener's market cap is the token's
+  // global figure — for a multichain token like USDC it was ~16× Base supply,
+  // which inflated every bag by the same factor. Fall back to it only when the
+  // Base supply is unknown.
+  const baseSupply = num(gp.total_supply);
+  const baseSupplyUsd = baseSupply > 0 && priceUsd ? baseSupply * priceUsd : null;
+  const dexCap = base.map((p) => p.marketCap).find((n) => n && n > 0) ?? null;
+  const dexFdv = base.map((p) => p.fdv).find((n) => n && n > 0) ?? null;
+  const marketCap = baseSupplyUsd ?? dexCap ?? dexFdv ?? null;
+  const marketCapBasis = baseSupplyUsd ? "base_supply" : dexCap ? "circulating" : dexFdv ? "fdv" : null;
 
   // Every pool this token sits in — as base OR quote — is the liquidity itself,
   // not a holder that can sell into it. (v4 pool ids are not addresses; v4
@@ -176,7 +195,8 @@ export async function dumpRisk(params: Record<string, string>) {
     poolsCounted: base.length,
     priceUsd,
     marketCapUsd: marketCap ?? null,
-    marketCapBasis: marketCap ? (base.some((p) => p.marketCap) ? "circulating" : "fdv") : null,
+    marketCapBasis, // base_supply (GoPlus Base supply × price) | circulating | fdv
+    exitLiquiditySides: { baseSidePools: base.length, quoteSidePools: quote.length },
     topDumpableHolder: topHolder
       ? { address: topHolder.address, percentOfSupply: topHolder.percent, bagUsd: topBagUsd, isContract: topHolder.isContract, label: topHolder.label, kind: topHolder.kind }
       : null,
@@ -198,4 +218,30 @@ export async function dumpRisk(params: Record<string, string>) {
     note: "Exit-liquidity read: GoPlus holder %s valued against DexScreener market cap, then dumped through aggregate pool liquidity with the conservative constant-product model price-impact uses. Excluded as non-dumpable: this token's own pools, sourced lending/DEX/bridge/locker/burn addresses (known-address registry, source per holder), ERC-4626 vaults for this token and GoPlus-locked holders. Exchange wallets are reported separately; unknown contracts stay dumpable (a team multisig can sell). Heuristic — a locked bag can unlock. Not a price feed, not financial advice.",
     checkedAt: new Date().toISOString(),
   };
+}
+
+/** The USD stablecoin this address is, if any (USDC, USDT, DAI, USDbC on Base). */
+export function usdStablecoin(address: string) {
+  return USD_STABLES.find((s) => s.address.toLowerCase() === address.toLowerCase()) ?? null;
+}
+
+/**
+ * Paid entry point. A redeemable USD stablecoin is not exited by selling a bag
+ * into a DEX pool — the issuer redeems it 1:1, so "the top holder dumps it"
+ * models nothing real (USDC read exit_trap on a holder share of its Base
+ * supply). Its exit risk is the peg, which stablecoin-peg measures.
+ */
+export async function dumpRisk(params: Record<string, string>) {
+  const raw = (params.address || params.token || "").trim();
+  const stable = validAddr(raw) ? usdStablecoin(raw) : null;
+  if (stable) {
+    return {
+      address: getAddress(raw),
+      verdict: "not_applicable" as const,
+      stablecoin: stable.symbol,
+      recommendation: `${stable.symbol} is a redeemable USD stablecoin: holders exit through the issuer, not by selling into DEX pools, so a whale-dump model doesn't apply. Its exit risk is the peg — check stablecoin-peg.`,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  return dumpRiskCore(params);
 }

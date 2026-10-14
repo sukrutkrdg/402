@@ -19,7 +19,7 @@ import "server-only";
 import { tokenPrice } from "./onchain-extra";
 
 /** Major USD-pegged stablecoins on Base, by DEX-priced contract. */
-const USD_STABLES: Array<{ symbol: string; name: string; address: string }> = [
+export const USD_STABLES: Array<{ symbol: string; name: string; address: string }> = [
   { symbol: "USDC", name: "USD Coin", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
   { symbol: "USDT", name: "Tether USD", address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2" },
   { symbol: "DAI", name: "Dai", address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb" },

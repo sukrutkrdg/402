@@ -13,7 +13,7 @@ const { ucMock, probeMock } = vi.hoisted(() => ({
 vi.mock("@/lib/upstream-cache", () => ucMock);
 vi.mock("@/lib/address-probe", () => probeMock);
 
-import { dumpRisk } from "@/lib/dump-risk";
+import { dumpRisk, dumpRiskCore } from "@/lib/dump-risk";
 
 const TOKEN = "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed";
 
@@ -45,7 +45,7 @@ describe("dump-risk — known holders", () => {
       ]),
     );
     ucMock.dexTokenPairs.mockResolvedValue(dex(300_000, 5_000_000)); // 30% would be 1.5M into 150k reserve
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.verdict).not.toBe("exit_trap");
     expect(r.topDumpableHolder?.address).toBe("0xaaa");
     const ex = r.excludedAsNonDumpable.find((h) => h.address === MORPHO);
@@ -63,7 +63,7 @@ describe("dump-risk — known holders", () => {
       ]),
     );
     ucMock.dexTokenPairs.mockResolvedValue(dex(2_000_000, 1_000_000));
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.excludedAsNonDumpable.find((h) => h.address === BITHUMB)).toBeUndefined();
     expect(r.cexHolders).toHaveLength(1);
     expect(r.cexHolders[0].label).toContain("cex (pooled user funds)");
@@ -76,7 +76,7 @@ describe("dump-risk — known holders", () => {
   it("an unknown contract stays dumpable, labelled 'unknown contract'", async () => {
     ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: UNKNOWN_CONTRACT, percent: "0.30", is_contract: 1 }]));
     ucMock.dexTokenPairs.mockResolvedValue(dex(300_000, 5_000_000));
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.topDumpableHolder?.address).toBe(UNKNOWN_CONTRACT);
     expect(r.topDumpableHolder?.label).toBe("unknown contract");
     expect(r.verdict).toBe("exit_trap");
@@ -94,7 +94,7 @@ describe("dump-risk — known holders", () => {
     ucMock.dexTokenPairs.mockResolvedValue([
       { pairAddress: PAIR, baseToken: { address: TOKEN.toLowerCase() }, priceUsd: "0.01", liquidity: { usd: 2_000_000 }, marketCap: 1_000_000 },
     ]);
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     const ex = r.excludedAsNonDumpable.find((h) => h.address === PAIR);
     expect(ex?.kind).toBe("dex pool");
     expect(r.topDumpableHolder?.address).toBe("0xaaa");
@@ -110,7 +110,7 @@ describe("dump-risk — known holders", () => {
       ]),
     );
     ucMock.dexTokenPairs.mockResolvedValue(dex(2_000_000, 1_000_000));
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.excludedAsNonDumpable.find((h) => h.address === UNKNOWN_CONTRACT)?.kind).toBe("vault");
   });
 
@@ -118,7 +118,7 @@ describe("dump-risk — known holders", () => {
     probeMock.probeVaultsForToken.mockRejectedValue(new Error("rpc down"));
     ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: UNKNOWN_CONTRACT, percent: "0.30", is_contract: 1 }]));
     ucMock.dexTokenPairs.mockResolvedValue(dex(300_000, 5_000_000));
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.topDumpableHolder?.address).toBe(UNKNOWN_CONTRACT);
   });
 });
@@ -127,7 +127,7 @@ describe("dump-risk", () => {
   it("resilient when the biggest live holder is tiny vs liquidity", async () => {
     ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.02" }])); // 2% of supply
     ucMock.dexTokenPairs.mockResolvedValue(dex(2_000_000, 1_000_000)); // bag=20k, reserve=1M
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     // 20000/(1,000,000+20,000) ≈ 1.96%
     expect(r.topHolderDumpImpactPct).toBeLessThan(5);
     expect(r.verdict).toBe("resilient");
@@ -136,7 +136,7 @@ describe("dump-risk", () => {
   it("exit_trap when a whale's bag dwarfs the pool", async () => {
     ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.30" }])); // 30%
     ucMock.dexTokenPairs.mockResolvedValue(dex(300_000, 5_000_000)); // bag=1.5M, reserve=150k
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     // 1,500,000/(150,000+1,500,000) ≈ 91%
     expect(r.topHolderDumpImpactPct).toBeGreaterThan(50);
     expect(r.verdict).toBe("exit_trap");
@@ -152,7 +152,7 @@ describe("dump-risk", () => {
       ]),
     );
     ucMock.dexTokenPairs.mockResolvedValue(dex(1_000_000, 1_000_000));
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.topDumpableHolder?.address).toBe("0xwhale");
     expect(r.excludedAsNonDumpable.length).toBe(3);
   });
@@ -160,14 +160,14 @@ describe("dump-risk", () => {
   it("no_liquidity when there is no pool", async () => {
     ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.10" }]));
     ucMock.dexTokenPairs.mockResolvedValue([]);
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.verdict).toBe("no_liquidity");
   });
 
   it("unknown when no market cap is available to value the bag", async () => {
     ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.10" }]));
     ucMock.dexTokenPairs.mockResolvedValue([{ baseToken: { address: TOKEN.toLowerCase() }, priceUsd: "0.01", liquidity: { usd: 500_000 } }]);
-    const r = await dumpRisk({ address: TOKEN });
+    const r = await dumpRiskCore({ address: TOKEN });
     expect(r.verdict).toBe("unknown");
     expect(r.topHolderDumpImpactPct).toBeNull();
   });
@@ -182,5 +182,46 @@ describe("dump-risk", () => {
     ucMock.goPlusSecurity.mockResolvedValue(null);
     ucMock.dexTokenPairs.mockResolvedValue(null);
     await expect(dumpRisk({ address: TOKEN })).rejects.toThrow(/not charged/);
+  });
+});
+
+describe("dump-risk — valuation on Base", () => {
+  it("values bags against Base supply × price, not the global market cap, and counts quote-side pools", async () => {
+    // USDC on 2026-10-14: Base supply ~4.39B vs DexScreener global cap ~72.9B;
+    // base-side pools ~0.45M of liquidity, quote-side pools ~47M.
+    ucMock.goPlusSecurity.mockResolvedValue({
+      holder_count: 9,
+      total_supply: "4389517403.88",
+      holders: [{ address: "0x1111111111111111111111111111111111111111", percent: "0.0001" }],
+    });
+    ucMock.dexTokenPairs.mockResolvedValue([
+      { baseToken: { address: TOKEN.toLowerCase() }, quoteToken: { address: "0xq" }, priceUsd: "1.0", liquidity: { usd: 450_000 }, marketCap: 72_900_000_000 },
+      { baseToken: { address: "0xweth" }, quoteToken: { address: TOKEN.toLowerCase() }, priceUsd: "2500", priceNative: "2500", liquidity: { usd: 46_600_000 } },
+    ]);
+    const r = await dumpRiskCore({ address: TOKEN });
+    expect(r.marketCapBasis).toBe("base_supply");
+    expect(Math.round(r.marketCapUsd! / 1e6)).toBe(4390);
+    expect(r.aggregateLiquidityUsd).toBeGreaterThan(47_000_000);
+    expect(r.exitLiquiditySides).toEqual({ baseSidePools: 1, quoteSidePools: 1 });
+    // 0.01% of 4.39B = ~$439k into ~$23.5M reserve → ~1.8% impact
+    expect(r.topHolderDumpImpactPct).toBeLessThan(5);
+    expect(r.verdict).toBe("resilient");
+  });
+
+  it("falls back to DexScreener's cap when Base supply is unknown, and says so", async () => {
+    ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0x2222222222222222222222222222222222222222", percent: "0.01" }]));
+    ucMock.dexTokenPairs.mockResolvedValue(dex(1_000_000, 10_000_000));
+    const r = await dumpRiskCore({ address: TOKEN });
+    expect(r.marketCapBasis).toBe("circulating");
+    expect(r.marketCapUsd).toBe(10_000_000);
+  });
+});
+
+describe("dump-risk — stablecoins", () => {
+  it("answers not_applicable for a redeemable USD stablecoin without calling the feeds", async () => {
+    const r = await dumpRisk({ address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" });
+    expect(r.verdict).toBe("not_applicable");
+    expect(r.recommendation).toMatch(/stablecoin-peg/);
+    expect(ucMock.goPlusSecurity).not.toHaveBeenCalled();
   });
 });
