@@ -5,7 +5,6 @@ import type { Connector } from "wagmi";
 import StatusBar, { useStatus } from "./StatusBar";
 import { useX402Pay, PICK_WALLET } from "@/lib/x402-wallet";
 import OnrampButton from "./OnrampButton";
-import LiveActivityBanner from "./LiveActivityBanner";
 import AgentIntegrationModal from "./AgentIntegrationModal";
 import ServiceCodeModal from "./ServiceCodeModal";
 
@@ -459,7 +458,6 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
 
   return (
     <div className="flex flex-col gap-10">
-      <LiveActivityBanner onOpenModal={() => setAgentModalOpen(true)} />
       <AgentIntegrationModal isOpen={agentModalOpen} onClose={() => setAgentModalOpen(false)} />
 
       {/* B20 launch banner */}

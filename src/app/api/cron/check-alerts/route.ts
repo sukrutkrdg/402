@@ -29,7 +29,6 @@ import {
 import { kvConfigured } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
 import { checkRugMonitors } from "@/lib/rug-monitor";
-import { getActiveSecurityWebhooks } from "@/lib/security-alerts";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ---- Auth check ----
@@ -164,20 +163,5 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     /* best-effort */
   }
 
-  let securityWebhooksCount = 0;
-  try {
-    const secSubs = await getActiveSecurityWebhooks();
-    securityWebhooksCount = secSubs.length;
-  } catch {
-    /* best-effort */
-  }
-
-  return NextResponse.json({
-    checked,
-    fired,
-    rugWatch: rug,
-    securityWebhooksActive: securityWebhooksCount,
-    errors,
-    ...(kvWarning ? { kvWarning } : {}),
-  });
+  return NextResponse.json({ checked, fired, rugWatch: rug, errors, ...(kvWarning ? { kvWarning } : {}) });
 }

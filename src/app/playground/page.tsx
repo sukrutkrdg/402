@@ -4,7 +4,7 @@ import type { ServiceMeta } from "@/components/Marketplace";
 
 export const metadata = {
   title: "API Playground & AI Console — x402 Bazaar",
-  description: "Test and inspect all 225 x402 Bazaar micro-services live in your browser. Generate cURL, Python, and TypeScript code in real time.",
+  description: "Test and inspect every x402 Bazaar service live in your browser. Generate cURL, Python, and TypeScript code in real time.",
 };
 
 export default function PlaygroundPage() {

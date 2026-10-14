@@ -42,31 +42,22 @@ export default function AgentIntegrationModal({
     2
   );
 
-  const elizaosSnippet = `// ⚡ Official ElizaOS (ai16z) Action Plugin for x402 Bazaar
-import { elizaX402Plugin } from "@x402/bazaar-sdk";
+  const elizaosSnippet = `// Community ElizaOS plugin for x402 Bazaar
+// npm i @sukrutkrdg/plugin-x402-bazaar
+import { x402BazaarPlugin } from "@sukrutkrdg/plugin-x402-bazaar";
 
-// Register in your ElizaOS character runtime:
-runtime.registerPlugin(elizaX402Plugin);
+// Add it to your character's plugins:
+plugins: [x402BazaarPlugin]`;
 
-// Your autonomous agent now automatically runs:
-// - PRE_TRADE_CHECK (Honeypot, B20 Seizure, Slippage)
-// - CHECK_AGENT_CREDIT (Agent FICO, Postpaid Credit Limit)
-// - POLYMARKET_PREDICTION (Live Event Odds & Probability)`;
+  const pythonSnippet = `# Plain HTTP from Python: every service answers 402 with its price,
+# then accepts an x402 payment (or ?free=1 where the free tier applies).
+import requests
 
-  const pythonSnippet = `# ⚡ 1-Line Python SDK (pip install x402-bazaar)
-from x402 import Bazaar
+r = requests.get("${siteUrl}/api/x402/token-risk",
+                 params={"address": "0x4ed4e862860bed51a9570b96d89af5e1b0efefed", "free": "1"})
+print(r.status_code, r.json())`;
 
-bazaar = Bazaar(site_url="${siteUrl}")
-
-# Run Pre-Trade Alpha Shield before any swap
-shield = bazaar.call("pre-trade-alpha-shield", address="0x4ed4e862860bed51a9570b96d89af5e1b0efefed")
-print("Verdict:", shield["verdict"]) # EXECUTE, CAUTION, or ABORT
-
-# Check Agent Credit & FICO score on Base
-credit = bazaar.call("agent-credit-score", address="0x50ec051c512da5047b41e8c78c2e6ba804be8505")
-print("Agent FICO:", credit["creditScore"], "Tier:", credit["ratingTier"])`;
-
-  const langchainSnippet = `# 1-line LangChain / OpenAI Tools integration for all 228 x402 Bazaar tools
+  const langchainSnippet = `# 1-line LangChain / OpenAI Tools integration for every x402 Bazaar tool
 import requests
 from langchain_core.tools import StructuredTool
 
@@ -80,12 +71,12 @@ print(f"Loaded {len(tools_manifest)} autonomous Web3 tools ready for LangChain/C
   const crewaiSnippet = `from crewai import Agent, Task, Crew
 import requests
 
-# Load full 228-tool capability set directly from x402 Bazaar
+# Load the full tool set directly from x402 Bazaar
 tools = requests.get("${siteUrl}/api/mcp?format=openai").json()["tools"]
 
 market_agent = Agent(
     role="Base & DeFi Intelligence Specialist",
-    goal="Screen token risk, verify agent provenance, and check Polymarket odds",
+    goal="Screen token risk, and check Polymarket odds",
     backstory="Autonomous agent equipped with live x402 Bazaar onchain micro-tools",
     tools=tools,
     verbose=True
@@ -167,7 +158,7 @@ market_agent = Agent(
               tab === "python" ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20" : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
           >
-            🐍 Python SDK
+            🐍 Python
           </button>
           <button
             onClick={() => setTab("langchain")}
@@ -201,17 +192,17 @@ market_agent = Agent(
           )}
           {tab === "elizaos" && (
             <span>
-              Install <code className="text-purple-300 font-mono">@x402/bazaar-sdk</code> and register the action plugin directly into your ElizaOS character runtime.
+              Install <code className="text-purple-300 font-mono">@sukrutkrdg/plugin-x402-bazaar</code> and add it to your character&apos;s plugins.
             </span>
           )}
           {tab === "python" && (
             <span>
-              Use the official lightweight Python client for LangChain, AutoGen, LlamaIndex, or raw scripts.
+              No SDK needed: call any service over HTTP and pay with any x402 client.
             </span>
           )}
           {tab === "langchain" && (
             <span>
-              Load all 228 tool definitions in OpenAI function calling schema in a single HTTP request.
+              Load every tool definition in OpenAI function calling schema in a single HTTP request.
             </span>
           )}
           {tab === "crewai" && (

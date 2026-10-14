@@ -93,7 +93,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   "description": "Autonomous AI Agent API & Data Marketplace on Base",
                   "publisher": {
                     "@type": "Organization",
-                    "name": "x402 Bazaar Facilitators",
+                    "name": "x402 Bazaar",
                     "url": SITE_URL,
                   },
                 },
@@ -101,8 +101,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   "@type": "WebAPI",
                   "@id": `${SITE_URL}/#webapi`,
                   "name": "x402 Bazaar API Suite",
-                  "description": "225 pay-per-call microservices for AI agents on Base with EIP-3009 transfer authorizations, zero gas fees, and ERC-8021 builder attribution.",
-                  "documentation": `${SITE_URL}/sdk`,
+                  "description": "Pay-per-call microservices for AI agents on Base and NEAR, paid with x402 (USDC), with ERC-8021 builder attribution.",
+                  "documentation": `${SITE_URL}/agents`,
                   "provider": {
                     "@type": "Organization",
                     "name": "x402 Bazaar",

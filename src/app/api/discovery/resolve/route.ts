@@ -24,8 +24,6 @@ interface ResolveMatch {
   };
 }
 
-import { NICHE_SCOUT_FEEDS, type NicheScoutFeed } from "@/lib/niche-scout";
-export { NICHE_SCOUT_FEEDS, type NicheScoutFeed };
 
 const QUERY_STOPWORDS = new Set([
   "i", "me", "my", "need", "to", "check", "from", "on", "a", "an", "the", "in", "for", "with", "is", "of", "and", "or", "how", "what", "can", "please", "get", "want", "find", "arbitrary"
@@ -124,7 +122,6 @@ function handleResolve(rawQuery: string) {
         status: "ok",
         message: "Pass ?q=<query> or POST { query } to resolve any agent intent to an x402 endpoint.",
         totalIndexedServices: SERVICES.length,
-        nicheScoutFeeds: NICHE_SCOUT_FEEDS,
         builderCode: BUILDER_CODE,
       },
       {
@@ -175,12 +172,6 @@ function handleResolve(rawQuery: string) {
     };
   });
 
-  // Check if query matches any niche unlisted feeds
-  const matchedNiche = NICHE_SCOUT_FEEDS.filter(
-    (n) =>
-      tokens.some((t) => n.title.toLowerCase().includes(t) || n.description.toLowerCase().includes(t))
-  );
-
   return NextResponse.json(
     {
       status: "ok",
@@ -189,7 +180,6 @@ function handleResolve(rawQuery: string) {
       resolved: topMatches.length > 0,
       bestMatch: topMatches[0] || null,
       alternatives: topMatches.slice(1),
-      matchedNicheFeeds: matchedNiche,
       directExecutionSnippet: topMatches[0]
         ? {
             curl: `curl -H "x-payment: <eip3009_auth>" "${topMatches[0].endpointUrl}"`,
@@ -199,8 +189,8 @@ function handleResolve(rawQuery: string) {
         : null,
       autonomousDiscoveryNote:
         topMatches.length > 0
-          ? "Target service located in 225-service catalog. Ready for 0-gas EIP-3009 autonomous settlement."
-          : "No exact native service match. Niche scout queued this intent for automatic upstream bounty indexing.",
+          ? `Matched in the ${SERVICES.length}-service catalog. Call it with an x402 payment, or ?free=1 where the free tier applies.`
+          : "No matching service in the catalog.",
     },
     {
       status: 200,

@@ -5,9 +5,6 @@
   },
   "version": "0.1.0",
   "private": true,
-  "bin": {
-    "x402-bazaar": "./bin/x402-bazaar.js"
-  },
   "description": "Pay-per-call API marketplace for agents on Base and NEAR, with x402 Builder Codes (onchain attribution).",
   "scripts": {
     "dev": "next dev",

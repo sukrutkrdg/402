@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { GET, POST, NICHE_SCOUT_FEEDS } from "../src/app/api/discovery/resolve/route";
+import { GET, POST } from "../src/app/api/discovery/resolve/route";
 
 describe("Autonomous Semantic Resolver & Niche Service Scout (/api/discovery/resolve)", () => {
-  it("GET without query returns catalog stats and tracked niche feeds", async () => {
+  it("GET without query returns catalog stats", async () => {
     const req = new Request("http://localhost:3000/api/discovery/resolve");
     const res = await GET(req as any);
     expect(res.status).toBe(200);
@@ -11,11 +11,9 @@ describe("Autonomous Semantic Resolver & Niche Service Scout (/api/discovery/res
     const json = await res.json();
     expect(json.status).toBe("ok");
     expect(json.totalIndexedServices).toBeGreaterThanOrEqual(200);
-    expect(Array.isArray(json.nicheScoutFeeds)).toBe(true);
-    expect(json.nicheScoutFeeds.length).toBeGreaterThanOrEqual(5);
   });
 
-  it("GET with semantic query 'honeypot token check' resolves to clanker/rug audit service", async () => {
+  it("GET with semantic query 'honeypot token check' resolves to a token-risk service", async () => {
     const req = new Request("http://localhost:3000/api/discovery/resolve?q=honeypot+token+check");
     const res = await GET(req as any);
     expect(res.status).toBe(200);
@@ -27,7 +25,7 @@ describe("Autonomous Semantic Resolver & Niche Service Scout (/api/discovery/res
     expect(json.bestMatch.confidenceScore).toBeGreaterThan(30);
     expect(json.bestMatch.endpointUrl).toContain("/api/x402/");
     expect(json.directExecutionSnippet.curl).toContain("curl -H");
-    expect(json.directExecutionSnippet.python).toContain("BazaarClient");
+    expect(json.directExecutionSnippet.typescript).toContain("@x402/fetch");
   });
 
   it("POST resolves arbitrary natural language agent intent", async () => {
@@ -49,7 +47,7 @@ describe("Autonomous Semantic Resolver & Niche Service Scout (/api/discovery/res
     expect(json.bestMatch.priceCents).toBeGreaterThan(0);
   });
 
-  it("matches niche tracked feeds when agent queries niche topics", async () => {
+  it("resolves a prediction-market query to polymarket-odds", async () => {
     const req = new Request("http://localhost:3000/api/discovery/resolve?q=polymarket+prediction+odds");
     const res = await GET(req as any);
     expect(res.status).toBe(200);
@@ -57,6 +55,5 @@ describe("Autonomous Semantic Resolver & Niche Service Scout (/api/discovery/res
     const json = await res.json();
     expect(json.resolved).toBe(true);
     expect(json.bestMatch.serviceId).toBe("polymarket-odds");
-    expect(json.matchedNicheFeeds.length).toBeGreaterThanOrEqual(1);
   });
 });

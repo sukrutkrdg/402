@@ -63,13 +63,10 @@ query${service.id.replace(/[^a-zA-Z0-9]/g, "")}();`;
   // Python Snippet
   const pySnippet = `# ⚡ Call ${service.name} from Python
 import requests
-from eth_account import Account
-# pip install x402-client requests
 
 endpoint = "${endpointUrl}"
 params = ${JSON.stringify(queryParams, null, 4)}
 
-# Automatic HTTP 402 micro-payment handler
 res = requests.get(endpoint, params=params, headers={"Accept": "application/json"})
 
 if res.status_code == 200:
@@ -77,7 +74,7 @@ if res.status_code == 200:
     print("✓ Success:", data)
 elif res.status_code == 402:
     print("x402 Payment Required:", res.headers.get("x402-payment-required"))
-    # Settle using x402-client on Base mainnet
+    # Pay with any x402 client (https://docs.cdp.coinbase.com/x402), then retry
 `;
 
   // MCP Tool Config

@@ -22,19 +22,7 @@ const PRIMARY_LINKS: NavLinkItem[] = [
 ];
 
 const MORE_LINKS: NavLinkItem[] = [
-  { href: "/credit-line", label: "🏦 Agent Credit Line & Flash Lending", badge: "NEW" },
-  { href: "/sdk", label: "📦 SDK & CLI" },
-  { href: "/fleet", label: "🛡️ Fleet Controller" },
-  { href: "/workflows", label: "⚡ Agent Workflows" },
-  { href: "/terminal", label: "💻 Agent Terminal" },
-  { href: "/attestations", label: "📜 Base EAS Attestations" },
-  { href: "/arena", label: "⚔️ Agent Arena (Flow)", badge: "NEW" },
-  { href: "/scout", label: "🎯 Service Scout & Niche Radar", badge: "NEW" },
-  { href: "/bounties", label: "⚡ Agent Task Bounties", badge: "NEW" },
-  { href: "/leaderboard", label: "🏆 Leaderboard & Metrics" },
-  { href: "/radar", label: "📡 Live Arbitrage Radar" },
-  { href: "/liquidity", label: "💧 Liquidity Rebalancer" },
-  { href: "/publish", label: "💰 Monetize API (90%)" },
+  { href: "/scout", label: "🎯 Service Scout" },
   { href: "/agents", label: "🤖 For Agents & MCP" },
   { href: "/dashboard", label: "📈 Dashboard" },
   { href: "/playground", label: "🧪 Playground" },

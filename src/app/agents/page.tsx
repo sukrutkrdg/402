@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { SERVICES } from "@/lib/services";
 import { getSiteUrl } from "@/lib/config";
 import { nearCreditsOn } from "@/lib/near-funding";
@@ -62,57 +61,6 @@ export default function AgentsPage() {
             HTTP endpoints directly) and your agent gets onchain data + AI reports it can pay for
             per-call, right alongside its Base Account actions. No keys held, gasless for the payer.
           </p>
-        </div>
-      </section>
-
-      {/* 🚀 Framework Plugins & Publisher Ecosystem */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="card p-4 flex flex-col justify-between border-purple-500/30 bg-purple-500/10 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-purple-300">🤖 ElizaOS (ai16z)</span>
-              <span className="pill !px-2 !py-0.5 text-[10px] border-purple-400 bg-purple-400/20 text-purple-200">Official</span>
-            </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              Equip your ElizaOS character with pre-trade risk checks, Base swaps, and 100+ x402 tools.
-            </p>
-          </div>
-          <div className="rounded-lg bg-black/50 p-2 font-mono text-[11px] text-purple-200 border border-purple-500/20 select-all">
-            npm i @sukrutkrdg/plugin-x402-bazaar
-          </div>
-        </div>
-
-        <div className="card p-4 flex flex-col justify-between border-sky-500/30 bg-sky-500/10 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-sky-300">🟦 Coinbase AgentKit</span>
-              <span className="pill !px-2 !py-0.5 text-[10px] border-sky-400 bg-sky-400/20 text-sky-200">Base Native</span>
-            </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              Official action provider for Coinbase AgentKit on Base. Gasless micro-payments per action.
-            </p>
-          </div>
-          <div className="rounded-lg bg-black/50 p-2 font-mono text-[11px] text-sky-200 border border-sky-500/20 select-all">
-            npm i x402-bazaar-agentkit
-          </div>
-        </div>
-
-        <div className="card p-4 flex flex-col justify-between border-emerald-500/30 bg-emerald-500/10 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-300">💰 Monetize Your API</span>
-              <span className="pill !px-2 !py-0.5 text-[10px] border-emerald-400 bg-emerald-400/20 text-emerald-200">Earn 90%</span>
-            </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              Publish any HTTP API to x402 Bazaar. AI agents pay per-call in USDC to your Base wallet.
-            </p>
-          </div>
-          <Link
-            href="/publish"
-            className="btn-primary !py-2 text-xs font-bold text-center w-full"
-          >
-            Open Publisher Portal →
-          </Link>
         </div>
       </section>
 
