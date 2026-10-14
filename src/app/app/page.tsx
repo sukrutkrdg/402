@@ -52,6 +52,7 @@ export const TRENDING_TOKENS = [
 ] as const;
 
 const CHECKS = [
+  { id: "pre-trade-bundle", label: "🧰 Pre-Trade Bundle · 5 checks, one verdict" },
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety" },
   { id: "b20-safety", label: "🆕 B20 Safety · freeze/seize" },
@@ -117,6 +118,15 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     : "";
   const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
   switch (id) {
+    case "pre-trade-bundle": {
+      const label: Record<string, string> = { preTradeGate: "Gate", b20Gate: "B20", ownerPowers: "Owner powers", dumpRisk: "Dump risk", clankerTokenAudit: "Clanker" };
+      const checks = (d.checks ?? {}) as Record<string, { status?: string; decision?: string | null }>;
+      const rows = Object.entries(checks).map(([k, c]) => `• ${label[k] ?? k}: ${s(c.status).replace(/_/g, " ")}${c.decision ? ` (${c.decision})` : ""}`).join("\n");
+      const unv = Array.isArray(d.unverified) ? (d.unverified as Array<{ check?: string }>) : [];
+      const sz = (d.sizing ?? {}) as { recommendedMaxSizeUsd?: number | null };
+      const pos = Array.isArray(d.positives) ? (d.positives as string[]).map((p) => `✅ ${p}`).join("\n") : "";
+      return `${s(d.decision)}${d.degraded ? " · ⚠️ not every check could run (not charged)" : ""}\n${rows}${unv.length ? `\nUnverified: ${unv.map((u) => u.check).join(", ")}` : ""}${typeof sz.recommendedMaxSizeUsd === "number" ? `\nMax size (≤2% impact): $${sz.recommendedMaxSizeUsd.toLocaleString("en-US")}` : ""}${pos ? `\n${pos}` : ""}\n\n➡️ ${s(d.recommendation)}`;
+    }
     case "pre-trade-gate": {
       const rc = (d.receipt ?? {}) as { observedRisks?: string[] };
       const risks = Array.isArray(rc.observedRisks) && rc.observedRisks.length ? rc.observedRisks.map((r) => `• ${r}`).join("\n") : "";

@@ -5,6 +5,7 @@
 import type { ServiceDef } from "./types";
 import { addressIntel, tokenRisk } from "../onchain";
 import { preTradeGate } from "../gate";
+import { preTradeBundle } from "../pre-trade-bundle";
 import { signGuard } from "../sign-guard";
 import { spendAudit } from "../spend-audit";
 import { agentWalletAudit } from "../agent-wallet-audit";
@@ -96,6 +97,22 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
         { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
       ],
       handler: preTradeGate,
+      noFreeTier: true,
+    },
+  {
+      id: "pre-trade-bundle",
+      name: "Pre-Trade Bundle",
+      tagline: "Five pre-trade checks, one GO / HOLD / STOP",
+      description:
+        "Runs pre-trade-gate (risk, sellability, route, deployer), b20-gate (seize/freeze/pause; N/A for non-B20 tokens), owner-powers and dump-risk in parallel on a Base token, with clanker-token-audit as provenance that never moves the verdict. Returns GO/HOLD/STOP, what each check saw, an unverified list, a max size held to 2% impact on the exit-liquidity read, and a receipt. GO only if every applicable check ran clean; if a gating check could not run there is no GO and no charge.",
+      price: "$0.15",
+      icon: "🧰",
+      category: "Onchain",
+      params: [
+        { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+        { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
+      ],
+      handler: preTradeBundle,
       noFreeTier: true,
     },
   {

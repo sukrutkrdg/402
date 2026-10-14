@@ -54,6 +54,9 @@ export async function dumpRisk(params: Record<string, string>) {
   if (!gp || !Array.isArray(gp.holders) || gp.holders.length === 0) {
     throw new Error("No holder data for this token (GoPlus) — not charged, retry shortly");
   }
+  // A failed pool read is not an empty pool. Folding null into [] answered
+  // "no_liquidity — untradeable" (and billed it) whenever DexScreener was down.
+  if (pairs === null) throw new Error("Pool data unavailable (DexScreener) — not charged, retry shortly");
 
   const addrLc = address.toLowerCase();
   const base = (pairs || []).filter((p) => p?.baseToken?.address?.toLowerCase() === addrLc);

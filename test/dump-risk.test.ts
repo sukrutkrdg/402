@@ -76,6 +76,12 @@ describe("dump-risk", () => {
     expect(r.topHolderDumpImpactPct).toBeNull();
   });
 
+  it("a DexScreener outage is not 'no liquidity' — throws, not charged", async () => {
+    ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.10" }]));
+    ucMock.dexTokenPairs.mockResolvedValue(null);
+    await expect(dumpRisk({ address: TOKEN })).rejects.toThrow(/DexScreener.*not charged/);
+  });
+
   it("does not charge when both sources are down", async () => {
     ucMock.goPlusSecurity.mockResolvedValue(null);
     ucMock.dexTokenPairs.mockResolvedValue(null);
