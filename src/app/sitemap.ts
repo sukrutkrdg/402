@@ -17,5 +17,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${site}/stocks/first-corporate-action`, lastModified: now, priority: 0.9 },
     { url: `${site}/credits`, lastModified: now, priority: 0.8 },
     { url: `${site}/dashboard`, lastModified: now, priority: 0.5 },
+    { url: `${site}/app`, lastModified: now, priority: 0.8 },
+    { url: `${site}/scout`, lastModified: now, priority: 0.6 },
+    { url: `${site}/playground`, lastModified: now, priority: 0.6 },
+    { url: `${site}/workflows`, lastModified: now, priority: 0.7 },
+    { url: `${site}/terminal`, lastModified: now, priority: 0.5 },
+    { url: `${site}/fleet`, lastModified: now, priority: 0.7 },
+    { url: `${site}/radar`, lastModified: now, priority: 0.6 },
+    { url: `${site}/leaderboard`, lastModified: now, priority: 0.6 },
   ];
 }

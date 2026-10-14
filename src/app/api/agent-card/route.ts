@@ -40,6 +40,16 @@ export function GET() {
       llms: `${SITE}/llms.txt`,
       mcp: "npx x402-bazaar-mcp",
     },
+    // Platform features beyond single paid calls. All JSON; credit-token paths
+    // take the token in the x-credit-token header.
+    platform: {
+      workflows: { list: `${SITE}/api/workflows`, run: `${SITE}/api/workflows/run`, about: "Up to 5 paid services in one request, debited per step from a credit token; stops (uncharged) after a failure or a STOP decision." },
+      fleet: { manage: `${SITE}/api/credits/fleet`, about: "Child credit tokens that spend from one balance under a daily cap, per-call max and service allowlist, with a pause switch." },
+      radar: `${SITE}/api/radar`,
+      leaderboard: `${SITE}/api/leaderboard`,
+      liveEvents: `${SITE}/api/events/live`,
+      reliability: `${SITE}/api/status`,
+    },
     // Decision quality, not just payment success — how an agent decides to route
     // work here by default. Full schema in the catalog under `decisionReceipt`.
     decisionReceipt: {
@@ -52,7 +62,7 @@ export function GET() {
     tryExample: `${SITE}/api/x402/token-risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
     // The 3 tools most agents should bind first, and the B20 suite grouped into 5
     // fronts so a tool-binding client isn't lost among ~20 similar B20 skills.
-    startHere: ["pre-trade-gate", "b20-gate", "sign-guard"],
+    startHere: ["pre-trade-gate", "pre-trade-bundle", "b20-gate", "sign-guard"],
     b20Suite: {
       about: "Base-native B20 tokens: protocol-level freeze/seize/pause powers no ERC-20 tool can see.",
       gate: ["b20-authenticity", "b20-gate", "b20-transfer-preflight", "b20-batch"],

@@ -62,6 +62,19 @@ One Next.js app plays all three roles in the x402 flow:
   (sponsored via CDP Paymaster; one-signature Revoke All on smart wallets).
 - **Attribution dashboard** (`/dashboard`): paste any Base settlement tx hash; we read its calldata
   and decode the `a` / `w` / `s` Builder Codes straight from chain (no DB, no trust).
+- **Workflows** (`/workflows`, `POST /api/workflows/run`): up to five paid services in one request,
+  each step debited from a prepaid credit token exactly like a direct call; a failed step is
+  refunded and nothing after a failure or a STOP decision is called or charged. `/terminal` runs the
+  same endpoints from a command line in the browser.
+- **Fleet** (`/fleet`, `/api/credits/fleet`): child credit tokens that spend from one balance under a
+  daily cap, per-call maximum and service allowlist, with a pause switch that applies on the next
+  call. Nothing new is minted.
+- **Radar** (`/radar`, `/api/radar`) and a live event stream (`/api/events/live`): cross-DEX spreads
+  for liquid Base tokens and alerts that actually fired — recorded events only.
+- **Leaderboard** (`/leaderboard`): services ranked by paid calls from outside payers, our own
+  purchases excluded, counts only.
+- **Alerts**: price and rug (liquidity-pull) monitors checked every 10 minutes; webhook deliveries
+  are HMAC-signed and retried.
 
 ## Agents on NEAR
 

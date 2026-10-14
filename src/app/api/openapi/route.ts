@@ -85,6 +85,123 @@ export function GET() {
     };
   }
 
+  // Platform endpoints that are not single paid services. Prepaid-credit paths
+  // take the token in the x-credit-token header, never the URL.
+  const creditHeader = { name: "x-credit-token", in: "header", required: true, schema: { type: "string" }, description: "Prepaid credit token (ck_…)" };
+  paths["/api/workflows"] = {
+    get: {
+      operationId: "workflows_list",
+      summary: "Workflow templates and their quotes",
+      description: "Lists built-in multi-step templates (e.g. pre-buy: token-risk → sellability → swap-route). Add template=<id>&quote=1 plus the template's inputs to price one run.",
+      parameters: [
+        { name: "template", in: "query", schema: { type: "string" } },
+        { name: "quote", in: "query", schema: { type: "string", enum: ["1"] } },
+      ],
+      responses: { "200": { description: "Templates with steps, inputs and quoted price" } },
+    },
+  };
+  paths["/api/workflows/run"] = {
+    post: {
+      operationId: "workflows_run",
+      summary: "Run up to 5 paid services in one request, paid from a credit token",
+      description:
+        "Each step is a normal paid call debited from the credit token; a failed step is refunded, and steps after a failure, an empty balance or a STOP decision (stopOnStop, default on) are neither called nor charged. Refused up front if the balance is below the quote. Params may reference earlier answers, e.g. \"$1.data.address\".",
+      parameters: [creditHeader],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                template: { type: "string" },
+                input: { type: "object", additionalProperties: { type: "string" } },
+                steps: { type: "array", maxItems: 5, items: { type: "object", required: ["service"], properties: { service: { type: "string" }, params: { type: "object" } } } },
+                stopOnStop: { type: "boolean", default: true },
+                dryRun: { type: "boolean", default: false },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": { description: "Per-step status, chargedUsd, decision and output; completed:false with haltReason when a run stops early" },
+        "400": { description: "Invalid steps, params or references — nothing charged" },
+        "402": { description: "Missing/invalid token or balance below the quote — nothing charged" },
+      },
+    },
+  };
+  paths["/api/credits/fleet"] = {
+    get: {
+      operationId: "fleet_list",
+      summary: "List child tokens of a credit token, with today's spend",
+      parameters: [creditHeader],
+      responses: { "200": { description: "Children with label, status, caps and spentTodayUsd" }, "401": { description: "Missing or unknown parent token" } },
+    },
+    post: {
+      operationId: "fleet_create",
+      summary: "Create a child token that spends from the parent balance under a daily cap",
+      description: "No new money is minted. The child token is returned once. Paused, capped, over-max or not-allowed calls get 403 and are not charged.",
+      parameters: [creditHeader],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["label", "dailyCapUsd"],
+              properties: {
+                label: { type: "string" },
+                dailyCapUsd: { type: "number" },
+                perCallMaxUsd: { type: "number" },
+                allow: { type: "array", items: { type: "string" }, description: "Service ids this child may call" },
+              },
+            },
+          },
+        },
+      },
+      responses: { "201": { description: "Child created; childToken shown once" }, "400": { description: "Invalid input" }, "401": { description: "Missing or unknown parent token" } },
+    },
+  };
+  paths["/api/credits/fleet/{id}"] = {
+    patch: {
+      operationId: "fleet_set_status",
+      summary: "Pause or resume a child token (takes effect on its next call)",
+      parameters: [creditHeader, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["status"], properties: { status: { type: "string", enum: ["paused", "active"] } } } } } },
+      responses: { "200": { description: "Updated" }, "404": { description: "No such child for this parent" } },
+    },
+    delete: {
+      operationId: "fleet_delete",
+      summary: "Delete a child token",
+      parameters: [creditHeader, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      responses: { "200": { description: "Deleted" }, "404": { description: "No such child for this parent" } },
+    },
+  };
+  paths["/api/radar"] = {
+    get: {
+      operationId: "radar",
+      summary: "Cross-DEX spreads for liquid Base tokens and alerts that actually fired (free)",
+      responses: { "200": { description: "spreads.rows (no_data where a token could not be read) and recently fired alerts" } },
+    },
+  };
+  paths["/api/leaderboard"] = {
+    get: {
+      operationId: "leaderboard",
+      summary: "Services ranked by paid calls from outside payers (free)",
+      description: "Counted at settlement with our own purchases excluded. Counts only — no revenue, no addresses.",
+      responses: { "200": { description: "since, externalCalls, distinctPayers, services[]" } },
+    },
+  };
+  paths["/api/events/live"] = {
+    get: {
+      operationId: "events_live",
+      summary: "Server-sent events: recorded outside paid calls and alert firings",
+      description: "Closes after 55 seconds; reconnect with Last-Event-ID. Only recorded events are sent.",
+      responses: { "200": { description: "text/event-stream", content: { "text/event-stream": {} } } },
+    },
+  };
+
   return Response.json(
     {
       openapi: "3.1.0",
