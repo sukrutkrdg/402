@@ -42,6 +42,3 @@ _*.md
 
 # hero/OG image render artifact
 scripts/.hero.svg
-
-# nested workspace folder
-402/

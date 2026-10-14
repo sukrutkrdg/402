@@ -38,7 +38,6 @@
   "exclude": [
     "node_modules",
     "examples",
-    "mcp", "integrations",
-    "402"
+    "mcp", "integrations"
   ]
 }
