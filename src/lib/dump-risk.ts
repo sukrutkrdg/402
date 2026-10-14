@@ -7,11 +7,15 @@
  * same 18% worth $2M over a $300k pool is a trap where the holder's exit is YOUR
  * entry at a crater. This puts the two numbers together.
  *
- *   holders (GoPlus) → top holders, their % of supply, and whether each is a pool,
- *     a locked/burn address or a live wallet (only live wallets can actually dump).
+ *   holders (GoPlus) → top holders, their % of supply, and what each one IS:
+ *     a sourced protocol address (lending / DEX / bridge / locker / burn — see
+ *     known-addresses.ts), one of this token's own pools, an ERC-4626 vault for
+ *     it, an exchange wallet, an unknown contract or a plain wallet. Only the
+ *     last three can actually dump; exchange wallets are pooled user funds and
+ *     reported separately rather than treated as "the top holder".
  *   pools (DexScreener) → aggregate Base liquidity + market cap to value the bag.
  *   impact → the same conservative constant-product math price-impact uses, applied
- *     to the largest DUMPABLE holder and to the top three combined.
+ *     to the largest DUMPABLE non-exchange holder and to the top three combined.
  *
  * Heuristic and conservative; GoPlus %s and DexScreener snapshots. Not a price
  * feed, not financial advice.
@@ -20,11 +24,15 @@
 import "server-only";
 import { getAddress } from "viem";
 import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
+import { labelHolder, type HolderClass } from "./known-addresses";
+import { probeVaultsForToken } from "./address-probe";
 
 interface GpHolder { address?: string; tag?: string; is_contract?: number | string; is_locked?: number | string; percent?: string }
 type Gp = Record<string, unknown> & { holders?: GpHolder[] };
 interface Pair {
+  pairAddress?: string;
   baseToken?: { address?: string };
+  quoteToken?: { address?: string };
   priceUsd?: string;
   liquidity?: { usd?: number };
   fdv?: number;
@@ -40,6 +48,18 @@ const NON_DUMPABLE_TAG = /lock|burn|null|pair|pool|uniswap|aerodrome|sushi|panca
 
 /** Conservative constant-product executed-vs-spot loss for a `size` USD trade against a `reserve` USD side. */
 const cpImpact = (size: number, reserve: number) => (reserve <= 0 ? 1 : size / (reserve + size));
+
+interface Holder {
+  address: string | null;
+  percent: number;
+  tag: string | null;
+  isContract: boolean;
+  dumpable: boolean;
+  label: string;
+  kind: HolderClass;
+  source: string;
+  reason: string;
+}
 
 export async function dumpRisk(params: Record<string, string>) {
   const raw = (params.address || params.token || "").trim();
@@ -67,13 +87,50 @@ export async function dumpRisk(params: Record<string, string>) {
     ?? base.map((p) => p.fdv).find((n) => n && n > 0)
     ?? null;
 
-  const holders = gp.holders.map((h) => {
+  // Every pool this token sits in — as base OR quote — is the liquidity itself,
+  // not a holder that can sell into it. (v4 pool ids are not addresses; v4
+  // liquidity sits in the PoolManager, which the registry covers.)
+  const pairAddresses = new Set(
+    (pairs || [])
+      .filter((p) => p?.baseToken?.address?.toLowerCase() === addrLc || p?.quoteToken?.address?.toLowerCase() === addrLc)
+      .map((p) => (p.pairAddress ?? "").toLowerCase())
+      .filter((a) => /^0x[0-9a-f]{40}$/.test(a)),
+  );
+
+  const rows = gp.holders.map((h) => {
     const addr = String(h.address ?? "").toLowerCase();
-    const locked = isTrue(h.is_locked) || BURN.has(addr) || NON_DUMPABLE_TAG.test(h.tag ?? "");
-    return { address: h.address ?? null, percent: +(num(h.percent) * 100).toFixed(2), tag: h.tag || null, isContract: isTrue(h.is_contract), dumpable: !locked };
+    const goPlusNonDumpable = isTrue(h.is_locked) || BURN.has(addr) || NON_DUMPABLE_TAG.test(h.tag ?? "");
+    return { h, addr, goPlusNonDumpable, isContract: isTrue(h.is_contract) };
+  });
+  // A contract holder that is neither sourced nor one of this token's pools may
+  // be an ERC-4626 vault for it. A failed read leaves it dumpable.
+  const probe = rows
+    .filter((r) => r.isContract && !r.goPlusNonDumpable && !pairAddresses.has(r.addr) && labelHolder(r.addr).kind === "wallet")
+    .map((r) => r.addr);
+  const vaultsForToken = probe.length ? await probeVaultsForToken(address, probe).catch(() => new Set<string>()) : new Set<string>();
+
+  const holders: Holder[] = rows.map(({ h, addr, goPlusNonDumpable, isContract }) => {
+    const l = labelHolder(addr, { pairAddresses, vaultsForToken, goPlusNonDumpable, goPlusTag: h.tag || null, isContract });
+    return {
+      address: h.address ?? null,
+      percent: +(num(h.percent) * 100).toFixed(2),
+      tag: h.tag || null,
+      isContract,
+      dumpable: !l.nonDumpable,
+      label: l.label,
+      kind: l.kind,
+      source: l.source,
+      reason: l.reason,
+    };
   });
 
-  const dumpable = holders.filter((h) => h.dumpable).sort((a, b) => b.percent - a.percent);
+  // Exchange wallets stay dumpable — an exchange can sell deposits — but they
+  // are many users' funds, not one holder's decision. The verdict is taken on
+  // the largest NON-exchange dumpable holder; exchange share is context.
+  const dumpableAll = holders.filter((h) => h.dumpable).sort((a, b) => b.percent - a.percent);
+  const cexHolders = dumpableAll.filter((h) => h.kind === "cex");
+  const cexPct = +cexHolders.reduce((s, h) => s + h.percent, 0).toFixed(2);
+  const dumpable = dumpableAll.filter((h) => h.kind !== "cex");
   const topHolder = dumpable[0] ?? null;
   const top3Pct = +dumpable.slice(0, 3).reduce((s, h) => s + h.percent, 0).toFixed(2);
 
@@ -95,6 +152,23 @@ export async function dumpRisk(params: Record<string, string>) {
   else verdict = "exit_trap";
 
   const usd = (n: number | null) => (n == null ? "?" : `$${Math.round(n).toLocaleString("en-US")}`);
+  const who = topHolder ? `, ${topHolder.label}` : "";
+  const cexNote = cexHolders.length
+    ? ` Exchange wallets hold ${cexPct}% (${cexHolders.map((h) => h.label.replace(/ — cex \(pooled user funds\)$/, "")).join(", ")}) — pooled user funds, not counted as the top holder, though an exchange can sell deposits.`
+    : "";
+  const base_rec =
+    verdict === "no_liquidity"
+      ? "No DEX liquidity found — ANY sell craters the price and you likely can't exit at all. Treat as untradeable until a real pool exists."
+      : verdict === "unknown"
+        ? `Top live holder owns ${topHolder?.percent ?? "?"}% of supply over ${usd(aggLiquidityUsd)} liquidity, but no market cap is available to value the bag — can't quantify the dump. Treat concentration as unresolved.`
+        : verdict === "resilient"
+          ? `The largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) dumping would move price ~${topImpactPct}% against ${usd(aggLiquidityUsd)} of liquidity — the pool absorbs it. Healthy exit liquidity.`
+          : verdict === "absorbable"
+            ? `Largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) dumping ≈ ${topImpactPct}% impact; top 3 together ≈ ${top3ImpactPct}%. Absorbable but real — don't be the last one out if they start selling.`
+            : verdict === "fragile"
+              ? `⚠️ Largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) could move price ~${topImpactPct}% on exit; top 3 ≈ ${top3ImpactPct}%. Thin exit liquidity — a single whale sets the floor. Size small and watch these wallets.`
+              : `🛑 EXIT TRAP: the largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) dumping is ~${topImpactPct}% impact against only ${usd(aggLiquidityUsd)} of liquidity. Their exit is your crater — this is where the bag-holder gets left. Avoid or treat as pure gamble.`;
+
   return {
     address,
     holderCount: gp.holder_count !== undefined ? Number(gp.holder_count) : null,
@@ -103,25 +177,25 @@ export async function dumpRisk(params: Record<string, string>) {
     priceUsd,
     marketCapUsd: marketCap ?? null,
     marketCapBasis: marketCap ? (base.some((p) => p.marketCap) ? "circulating" : "fdv") : null,
-    topDumpableHolder: topHolder ? { address: topHolder.address, percentOfSupply: topHolder.percent, bagUsd: topBagUsd, isContract: topHolder.isContract } : null,
+    topDumpableHolder: topHolder
+      ? { address: topHolder.address, percentOfSupply: topHolder.percent, bagUsd: topBagUsd, isContract: topHolder.isContract, label: topHolder.label, kind: topHolder.kind }
+      : null,
     top3DumpablePct: top3Pct,
     topHolderDumpImpactPct: topImpactPct, // selling the whole bag, conservative constant-product
     top3DumpImpactPct: top3ImpactPct,
-    excludedAsNonDumpable: holders.filter((h) => !h.dumpable).map((h) => ({ address: h.address, percent: h.percent, tag: h.tag })),
+    excludedAsNonDumpable: holders
+      .filter((h) => !h.dumpable)
+      .map((h) => ({ address: h.address, percent: h.percent, tag: h.tag, label: h.label, kind: h.kind, reason: h.reason, source: h.source })),
+    // Exchange wallets: dumpable (the exchange can sell deposits) but pooled user
+    // funds, so never "the top holder". Reported as context.
+    cexHolders: cexHolders.map((h) => ({ address: h.address, percent: h.percent, label: h.label, source: h.source })),
+    cexConcentrationPct: cexPct,
+    // Every top holder with its label: a sourced registry name or a generic class
+    // (dex pool / vault / unknown contract / unlabelled wallet) — never a guess.
+    holderLabels: holders.map((h) => ({ address: h.address, percent: h.percent, label: h.label, kind: h.kind, dumpable: h.dumpable, source: h.source })),
     verdict, // resilient | absorbable | fragile | exit_trap | no_liquidity | unknown
-    recommendation:
-      verdict === "no_liquidity"
-        ? "No DEX liquidity found — ANY sell craters the price and you likely can't exit at all. Treat as untradeable until a real pool exists."
-        : verdict === "unknown"
-          ? `Top live holder owns ${topHolder?.percent ?? "?"}% of supply over ${usd(aggLiquidityUsd)} liquidity, but no market cap is available to value the bag — can't quantify the dump. Treat concentration as unresolved.`
-          : verdict === "resilient"
-            ? `The largest live holder (${topHolder?.percent}%, ~${usd(topBagUsd)}) dumping would move price ~${topImpactPct}% against ${usd(aggLiquidityUsd)} of liquidity — the pool absorbs it. Healthy exit liquidity.`
-            : verdict === "absorbable"
-              ? `Largest live holder (${topHolder?.percent}%, ~${usd(topBagUsd)}) dumping ≈ ${topImpactPct}% impact; top 3 together ≈ ${top3ImpactPct}%. Absorbable but real — don't be the last one out if they start selling.`
-              : verdict === "fragile"
-                ? `⚠️ Largest live holder (${topHolder?.percent}%, ~${usd(topBagUsd)}) could move price ~${topImpactPct}% on exit; top 3 ≈ ${top3ImpactPct}%. Thin exit liquidity — a single whale sets the floor. Size small and watch these wallets.`
-                : `🛑 EXIT TRAP: the largest live holder (${topHolder?.percent}%, ~${usd(topBagUsd)}) dumping is ~${topImpactPct}% impact against only ${usd(aggLiquidityUsd)} of liquidity. Their exit is your crater — this is where the bag-holder gets left. Avoid or treat as pure gamble.`,
-    note: "Exit-liquidity read: GoPlus holder %s (pools / locked / burn excluded as non-dumpable) valued against DexScreener market cap, then dumped through aggregate pool liquidity with the conservative constant-product model price-impact uses. Heuristic — a locked bag can unlock, a contract holder may be a treasury that can sell. Not a price feed, not financial advice.",
+    recommendation: verdict === "no_liquidity" ? base_rec : base_rec + cexNote,
+    note: "Exit-liquidity read: GoPlus holder %s valued against DexScreener market cap, then dumped through aggregate pool liquidity with the conservative constant-product model price-impact uses. Excluded as non-dumpable: this token's own pools, sourced lending/DEX/bridge/locker/burn addresses (known-address registry, source per holder), ERC-4626 vaults for this token and GoPlus-locked holders. Exchange wallets are reported separately; unknown contracts stay dumpable (a team multisig can sell). Heuristic — a locked bag can unlock. Not a price feed, not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

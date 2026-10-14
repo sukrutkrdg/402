@@ -258,6 +258,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "price-impact": { address: DEGEN, size: "5000", side: "buy" },
   // Can liquidity absorb the big holders of a real Base token?
   "dump-risk": { address: DEGEN },
+  // What is USDC's largest Base holder? (Morpho Blue — a lending market, not a whale.)
+  "address-label": { address: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb" },
   // What mutable powers does a real Base token's owner still hold?
   "owner-powers": { address: DEGEN },
   // Is a real Base token's supply being inflated, and how fast?

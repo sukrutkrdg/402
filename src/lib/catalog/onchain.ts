@@ -18,6 +18,7 @@ import { holderOverlap, tokenAge } from "../token-cohort";
 import { addressPoisoning, sanctionedExposure } from "../wallet-forensics";
 import { priceImpact } from "../price-impact";
 import { dumpRisk } from "../dump-risk";
+import { describeAddress } from "../address-probe";
 import { ownerPowers } from "../owner-powers";
 import { supplyInflation } from "../supply-inflation";
 import { activityTrend } from "../activity-trend";
@@ -356,6 +357,18 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       category: "Onchain",
       params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
       handler: dumpRisk,
+    },
+  {
+      id: "address-label",
+      name: "Address Label (What Is This Base Address?)",
+      tagline: "Protocol, exchange, bridge, locker — or just a wallet?",
+      description:
+        "What is this Base address? Matches a sourced registry of known protocol, exchange, bridge, locker and burn addresses (each with the docs/deployments/Basescan source it came from), then reads the chain: contract vs EOA (EIP-7702 delegation shown), ERC-4626 vault (asset()), Safe multisig (getThreshold), DEX pool interface (token0/token1). Unmatched addresses are reported as unlabelled, never guessed.",
+      price: "$0.005",
+      icon: "🏷️",
+      category: "Onchain",
+      params: [{ name: "address", label: "Base address to identify", placeholder: "0x… any address", required: true }],
+      handler: describeAddress,
     },
   {
       id: "owner-powers",

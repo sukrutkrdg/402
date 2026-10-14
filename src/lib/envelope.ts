@@ -51,7 +51,9 @@ export const POLICY_VERSION: Record<string, string> = {
   // 2.x: factory-record detection; 1.x (owner()/bytecode heuristics) was withdrawn.
   "clanker-token-audit": "2.0.0",
   // 2.x: composite of the hardened gates, fail-closed; 1.x (score-based) was withdrawn.
-  "pre-trade-bundle": "2.0.0",
+  // 2.1: dump-risk excludes sourced lending/DEX/bridge/locker holders and the
+  // token's own pools/vaults, and judges the largest non-exchange holder.
+  "pre-trade-bundle": "2.1.0",
 };
 
 /** Confidence in the verdict, derived from how complete the inputs were. */

@@ -13,6 +13,7 @@ import "server-only";
 import { getAddress } from "viem";
 import { cdpSql } from "./covalent";
 import { dexTokenPairs } from "./upstream-cache";
+import { knownLabel } from "./known-addresses";
 
 interface Pair {
   pairAddress?: string;
@@ -62,7 +63,17 @@ export async function whaleFlow(params: Record<string, string>) {
     const dir = pools.has(to) ? "to_pool" : pools.has(from) ? "from_pool" : "wallet_to_wallet";
     if (dir === "to_pool") toPools += v;
     if (dir === "from_pool") fromPools += v;
-    return { time: r.block_timestamp ?? null, from: p.from ?? null, to: p.to ?? null, valueRaw: (p.value ?? "0"), direction: dir, txHash: r.transaction_hash ?? null };
+    return {
+      time: r.block_timestamp ?? null,
+      from: p.from ?? null,
+      to: p.to ?? null,
+      valueRaw: (p.value ?? "0"),
+      direction: dir,
+      txHash: r.transaction_hash ?? null,
+      // Sourced registry labels for the counterparties — display only; direction is unchanged.
+      fromLabel: knownLabel(from).label,
+      toLabel: knownLabel(to).label,
+    };
   });
 
   // Net token flow toward pools (sell pressure) vs away (accumulation), as a ratio.

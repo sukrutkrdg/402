@@ -13,6 +13,7 @@
 import "server-only";
 import { goPlusSecurity } from "./upstream-cache";
 import { getAddress } from "viem";
+import { knownLabel, lookupKnown } from "./known-addresses";
 
 interface GpHolder {
   address?: string;
@@ -70,12 +71,16 @@ export async function holderForensics(params: Record<string, string>) {
     const addr = (h.address ?? "").toLowerCase();
     const pct = num(h.percent) * 100;
     const burn = BURN.has(addr);
-    const infra = isInfra(h.tag) || (isTrue(h.is_contract) && isTrue(h.is_locked));
+    // A sourced registry match counts as infra on the same terms as a GoPlus
+    // infra tag (this module already treats CEX/LP/bridge as benign) — except a
+    // protocol treasury, which can sell and stays a contract/wallet.
+    const known = lookupKnown(addr);
+    const infra = isInfra(h.tag) || (isTrue(h.is_contract) && isTrue(h.is_locked)) || (!!known && known.kind !== "protocol-treasury");
     let kind: "burn" | "infra" | "contract" | "wallet" = "wallet";
     if (burn) kind = "burn";
     else if (infra) kind = "infra";
     else if (isTrue(h.is_contract)) kind = "contract";
-    return { address: h.address ?? null, percent: +pct.toFixed(2), tag: h.tag || null, kind };
+    return { address: h.address ?? null, percent: +pct.toFixed(2), tag: h.tag || null, kind, ...knownLabel(addr) };
   });
 
   const top10Pct = +classified.reduce((s, h) => s + h.percent, 0).toFixed(2);

@@ -90,6 +90,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "sanctions-name": ["sanctions", "ofac", "name-screening", "compliance", "aml"],
   "compliance-check": ["compliance", "sanctions", "counterparty", "screening", "send-safety"],
   "address-trust": ["counterparty", "address-reputation", "trust", "send-safety", "screening"],
+  "address-label": ["address-label", "known-address", "exchange-wallet", "protocol", "bridge", "erc-4626", "holder-analysis", "counterparty"],
   "address-intel": ["address-lookup", "counterparty", "wallet-intel", "eoa", "contract"],
   "first-funder": ["provenance", "funding-source", "sybil", "counterparty", "wallet-age"],
   "counterparty-check": ["counterparty", "supplier", "due-diligence", "kyb", "business-verification"],

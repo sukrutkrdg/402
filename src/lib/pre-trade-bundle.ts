@@ -143,9 +143,13 @@ export function viewDump(d: DumpRiskOut): CheckView {
     poolsCounted: d.poolsCounted,
     marketCapUsd: d.marketCapUsd,
     topDumpableHolderPct: d.topDumpableHolder?.percentOfSupply ?? null,
+    topDumpableHolderLabel: d.topDumpableHolder?.label ?? null,
     topHolderDumpImpactPct: d.topHolderDumpImpactPct,
     top3DumpImpactPct: d.top3DumpImpactPct,
+    excludedAsNonDumpable: d.excludedAsNonDumpable.map((h) => `${h.label} ${h.percent}%`),
+    cexConcentrationPct: d.cexConcentrationPct,
   };
+  const who = d.topDumpableHolder ? ` (${d.topDumpableHolder.percentOfSupply}%, ${d.topDumpableHolder.label})` : "";
   switch (d.verdict) {
     // HOLD, not STOP: the evidence is "DexScreener indexes no Base pool", which
     // can also mean a pool it does not track (seen on a live Clanker v4 token
@@ -156,9 +160,9 @@ export function viewDump(d: DumpRiskOut): CheckView {
     case "exit_trap":
     case "fragile":
     case "absorbable":
-      return { status: "risk", decision: d.verdict, saw, reason: `largest live holder exiting would move price ~${d.topHolderDumpImpactPct}% against $${d.aggregateLiquidityUsd.toLocaleString("en-US")} of liquidity` };
+      return { status: "risk", decision: d.verdict, saw, reason: `largest live holder${who} exiting would move price ~${d.topHolderDumpImpactPct}% against $${d.aggregateLiquidityUsd.toLocaleString("en-US")} of liquidity` };
     case "resilient":
-      return { status: "clean", decision: d.verdict, saw, reason: `largest live holder exiting moves price ~${d.topHolderDumpImpactPct}% — the pools absorb it` };
+      return { status: "clean", decision: d.verdict, saw, reason: `largest live holder${who} exiting moves price ~${d.topHolderDumpImpactPct}% — the pools absorb it` };
     case "unknown":
       return { status: "unverified", decision: d.verdict, saw, reason: "no market cap available to value the holder bags — dump impact could not be quantified" };
     default:

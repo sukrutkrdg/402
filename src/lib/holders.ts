@@ -7,6 +7,7 @@
 import "server-only";
 import { goPlusSecurity } from "./upstream-cache";
 import { getAddress } from "viem";
+import { knownLabel } from "./known-addresses";
 
 const isTrue = (v: unknown) => v === "1" || v === 1 || v === true;
 const num = (v: unknown) => {
@@ -44,6 +45,8 @@ export async function holderDistribution(params: Record<string, string>) {
     tag: h.tag || null,
     isContract: h.is_contract !== undefined ? isTrue(h.is_contract) : null,
     isLocked: h.is_locked !== undefined ? isTrue(h.is_locked) : null,
+    // Sourced registry label (lending / dex / bridge / cex / locker / burn …) or null. Display only.
+    ...knownLabel(h.address),
   }));
   const top10Pct = Math.round(topHolders.reduce((s, h) => s + h.percent, 0) * 100) / 100;
 
