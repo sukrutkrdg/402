@@ -13,6 +13,7 @@
 
 import "server-only";
 import { assertSafeWebhook } from "./alerts";
+import { deliverWebhook, MAX_DELIVERY_ATTEMPTS, newWebhookSecret } from "./webhook-delivery";
 import { dexTokenPairs } from "./upstream-cache";
 import { kvSet, kvGet, kvSAdd, kvSRem, kvSMembers, kvConfigured } from "./kv";
 
@@ -29,6 +30,12 @@ export interface RugWatch {
   firedAt?: string;
   firedDropPct?: number;
   firedLiquidityUsd?: number;
+  /** HMAC signing secret for deliveries (absent on monitors registered before signing). */
+  secret?: string;
+  /** Delivery bookkeeping: a fired monitor stays active until delivered or out of attempts. */
+  deliveryAttempts?: number;
+  delivered?: boolean;
+  lastDeliveryError?: string;
 }
 
 /**
@@ -85,6 +92,7 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
       currentLiquidityUsd: current !== null ? +current.toFixed(0) : null,
       dropPct: dropNow, firesAtDropPct: w.dropPct,
       firedAt: w.firedAt ?? null, firedLiquidityUsd: w.firedLiquidityUsd ?? null,
+      ...(w.webhook && w.fired ? { webhookDelivered: !!w.delivered, deliveryAttempts: w.deliveryAttempts ?? 0 } : {}),
       verdict,
       ...(dropNow === null ? { degraded: true } : {}),
       note: w.fired
@@ -119,6 +127,7 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
     dropPct,
     createdAt: new Date().toISOString(),
     fired: false,
+    ...(url ? { secret: newWebhookSecret() } : {}),
   };
   await kvSet(`rugwatch:${id}`, JSON.stringify(watch), TTL);
   await kvSAdd("rugwatch:active", id);
@@ -131,11 +140,36 @@ export async function registerRugMonitor(params: Record<string, string>): Promis
     firesWhenLiquidityDropsPct: dropPct,
     webhook: watch.webhook || null,
     mode: watch.webhook ? "webhook" : "poll",
+    // Shown once. Verify deliveries: HMAC-SHA256(secret, `${x-402-timestamp}.${rawBody}`)
+    // must equal the hex in `x-402-signature: sha256=<hex>`.
+    ...(watch.secret ? { webhookSecret: watch.secret, signature: "x-402-signature: sha256=HMAC_SHA256(webhookSecret, `${x-402-timestamp}.${rawBody}`)" } : {}),
     expiresInDays: 30,
     note: watch.webhook
       ? `We'll POST your webhook if ${token}'s liquidity falls ${dropPct}%+ from the $${watch.baselineLiquidityUsd.toLocaleString()} baseline.`
       : `Poll mode (no webhook): re-check anytime by calling this service with check=${watch.id}. We fire when liquidity falls ${dropPct}%+ from $${watch.baselineLiquidityUsd.toLocaleString()}.`,
   };
+}
+
+/** Deliver a fired monitor's webhook; keep it active for a retry if delivery failed. */
+async function deliverRug(w: RugWatch): Promise<void> {
+  const res = await deliverWebhook(
+    w.webhook,
+    {
+      type: "rug_warning",
+      id: w.id,
+      token: w.token,
+      baselineLiquidityUsd: w.baselineLiquidityUsd,
+      currentLiquidityUsd: w.firedLiquidityUsd,
+      dropPct: w.firedDropPct,
+      firedAt: w.firedAt,
+    },
+    w.secret,
+  );
+  w.deliveryAttempts = (w.deliveryAttempts ?? 0) + 1;
+  w.delivered = res.ok;
+  w.lastDeliveryError = res.ok ? undefined : res.error;
+  await kvSet(`rugwatch:${w.id}`, JSON.stringify(w), TTL);
+  if (res.ok || w.deliveryAttempts >= MAX_DELIVERY_ATTEMPTS) await kvSRem("rugwatch:active", w.id);
 }
 
 /** Cron entry point — check all active rug-watches, fire webhooks on liquidity collapse. */
@@ -156,8 +190,13 @@ export async function checkRugMonitors(): Promise<{ checked: number; fired: numb
       await kvSRem("rugwatch:active", id);
       continue;
     }
+    // A fired monitor whose webhook delivery failed stays active and is retried.
     if (w.fired) {
-      await kvSRem("rugwatch:active", id);
+      if (w.webhook && !w.delivered && (w.deliveryAttempts ?? 0) < MAX_DELIVERY_ATTEMPTS) {
+        await deliverRug(w);
+      } else {
+        await kvSRem("rugwatch:active", id);
+      }
       continue;
     }
     let current: number | null;
@@ -172,35 +211,17 @@ export async function checkRugMonitors(): Promise<{ checked: number; fired: numb
     if (current === null) continue;
     const dropPct = w.baselineLiquidityUsd > 0 ? 100 * (1 - current / w.baselineLiquidityUsd) : 0;
     if (dropPct >= w.dropPct) {
-      // Deliver only if a webhook was set (poll-mode monitors just record state).
-      if (w.webhook) {
-      try {
-        await assertSafeWebhook(w.webhook);
-        await fetch(w.webhook, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            type: "rug_warning",
-            token: w.token,
-            baselineLiquidityUsd: w.baselineLiquidityUsd,
-            currentLiquidityUsd: +current.toFixed(0),
-            dropPct: +dropPct.toFixed(1),
-            firedAt: new Date().toISOString(),
-          }),
-          redirect: "manual",
-          signal: AbortSignal.timeout(8000),
-        });
-      } catch {
-        /* delivery best-effort */
-      }
-      }
       w.fired = true;
       w.firedAt = new Date().toISOString();
       w.firedDropPct = +dropPct.toFixed(1);
       w.firedLiquidityUsd = +current.toFixed(0);
-      await kvSet(`rugwatch:${w.id}`, JSON.stringify(w), TTL);
-      await kvSRem("rugwatch:active", w.id);
       fired++;
+      // Poll-mode monitors just record state; webhook monitors deliver (and retry).
+      if (w.webhook) await deliverRug(w);
+      else {
+        await kvSet(`rugwatch:${w.id}`, JSON.stringify(w), TTL);
+        await kvSRem("rugwatch:active", w.id);
+      }
     }
   }
   return { checked: ids.length, fired };

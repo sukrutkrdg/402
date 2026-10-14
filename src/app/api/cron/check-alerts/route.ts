@@ -24,11 +24,38 @@ import {
   getAlert,
   markFired,
   fetchTokenPrice,
-  assertSafeWebhook,
+  saveAlert,
+  type Alert,
 } from "@/lib/alerts";
+import { deliverWebhook, MAX_DELIVERY_ATTEMPTS } from "@/lib/webhook-delivery";
 import { kvConfigured } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
 import { checkRugMonitors } from "@/lib/rug-monitor";
+
+/** Deliver a fired alert's webhook; keep it active for a retry if delivery failed. */
+async function deliverAlert(alert: Alert, errors: string[]): Promise<void> {
+  const res = await deliverWebhook(
+    alert.webhook,
+    {
+      type: "price_alert",
+      alertId: alert.id,
+      token: alert.token,
+      direction: alert.direction,
+      threshold: alert.threshold,
+      currentPrice: alert.firedPrice,
+      priceAtCreate: alert.priceAtCreate,
+      createdAt: alert.createdAt,
+      firedAt: alert.firedAt,
+    },
+    alert.secret,
+  );
+  alert.deliveryAttempts = (alert.deliveryAttempts ?? 0) + 1;
+  alert.delivered = res.ok;
+  alert.lastDeliveryError = res.ok ? undefined : res.error;
+  await saveAlert(alert);
+  if (res.ok || alert.deliveryAttempts >= MAX_DELIVERY_ATTEMPTS) await markFired(alert.id, alert.firedPrice);
+  if (!res.ok) errors.push(`${alert.id}: webhook delivery attempt ${alert.deliveryAttempts} failed — ${res.error}`);
+}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // ---- Auth check ----
@@ -73,9 +100,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       continue;
     }
 
-    // Skip if somehow already fired (shouldn't normally appear in active set).
+    // A fired alert stays active only while its webhook delivery is being retried.
     if (alert.fired) {
-      await markFired(id);
+      if (alert.webhook && !alert.delivered && (alert.deliveryAttempts ?? 0) < MAX_DELIVERY_ATTEMPTS) {
+        await deliverAlert(alert, errors);
+      } else {
+        await markFired(id, alert.firedPrice);
+      }
       continue;
     }
 
@@ -97,62 +128,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         : currentPrice <= alert.threshold;
 
     if (!crossed) continue;
+    fired++;
 
     // Poll-mode alerts (no webhook) just record fired state for the caller to read.
     if (!alert.webhook) {
       await markFired(id, currentPrice);
-      fired++;
       continue;
     }
 
-    // Re-validate webhook right before delivery (DNS-rebinding / TOCTOU defense).
-    try {
-      await assertSafeWebhook(alert.webhook);
-    } catch (err) {
-      errors.push(`${id}: webhook blocked — ${err instanceof Error ? err.message : String(err)}`);
-      await markFired(id, currentPrice);
-      continue;
-    }
-
-    // ---- Fire webhook ----
-    const payload = {
-      alertId: alert.id,
-      token: alert.token,
-      direction: alert.direction,
-      threshold: alert.threshold,
-      currentPrice,
-      priceAtCreate: alert.priceAtCreate,
-      createdAt: alert.createdAt,
-      firedAt: new Date().toISOString(),
-    };
-
-    try {
-      const webhookRes = await fetch(alert.webhook, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(8000),
-        // Never follow redirects — a 3xx to an internal host would bypass the
-        // SSRF allowlist that only validated the original URL.
-        redirect: "manual",
-      });
-
-      if (!webhookRes.ok) {
-        errors.push(
-          `${id}: webhook returned ${webhookRes.status} — alert still fired`,
-        );
-      }
-    } catch (err) {
-      // Webhook failure is logged but does NOT block marking as fired —
-      // we do not want to re-fire indefinitely on a bad endpoint.
-      errors.push(
-        `${id}: webhook POST failed — ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    // Mark fired and remove from active set regardless of webhook outcome.
-    await markFired(id, currentPrice);
-    fired++;
+    alert.fired = true;
+    alert.firedAt = new Date().toISOString();
+    alert.firedPrice = currentPrice;
+    await deliverAlert(alert, errors);
   }
 
   // Also process rug-watch monitors (liquidity-collapse warnings).

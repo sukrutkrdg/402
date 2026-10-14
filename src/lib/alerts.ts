@@ -11,6 +11,7 @@
  *   alerts:active     — set of ids that have not yet fired / expired
  */
 
+import { newWebhookSecret } from "./webhook-delivery";
 import "server-only";
 import net from "node:net";
 import { lookup } from "node:dns/promises";
@@ -88,6 +89,11 @@ export interface Alert {
   fired: boolean;
   firedAt?: string;
   firedPrice?: number;
+  /** HMAC signing secret for deliveries (absent on alerts registered before signing). */
+  secret?: string;
+  deliveryAttempts?: number;
+  delivered?: boolean;
+  lastDeliveryError?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +256,7 @@ export async function registerAlert(
     priceAtCreate: currentPrice,
     createdAt,
     fired: false,
+    ...(webhook ? { secret: newWebhookSecret() } : {}),
   };
 
   try {
@@ -267,6 +274,9 @@ export async function registerAlert(
     currentPrice,
     webhook: webhook || null,
     mode: webhook ? "webhook" : "poll",
+    // Shown once. Verify deliveries: HMAC-SHA256(secret, `${x-402-timestamp}.${rawBody}`)
+    // must equal the hex in `x-402-signature: sha256=<hex>`.
+    ...(alert.secret ? { webhookSecret: alert.secret, signature: "x-402-signature: sha256=HMAC_SHA256(webhookSecret, `${x-402-timestamp}.${rawBody}`)" } : {}),
     message: webhook
       ? "Alert registered. You'll receive a webhook POST when crossed."
       : `Alert registered (poll mode). Re-check anytime by calling this service with check=${id}.`,
@@ -313,6 +323,11 @@ export async function markFired(id: string, firedPrice?: number): Promise<void> 
   await kvSRem("alerts:active", id);
   // NOTE: we intentionally do NOT kvDel here — the 1-hour TTL above keeps the
   // fired alert briefly inspectable, then it expires on its own.
+}
+
+/** Persist an alert's state without touching the active set. */
+export async function saveAlert(alert: Alert): Promise<void> {
+  await kvSet(`alert:${alert.id}`, JSON.stringify(alert), ALERT_TTL);
 }
 
 /** Convenience re-export of the price helper for use in the cron route. */

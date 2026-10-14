@@ -874,7 +874,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Rug Early-Warning Monitor",
       tagline: "Get alerted the moment liquidity is pulled",
       description:
-        "Pay once to watch a Base token's liquidity. We snapshot a baseline and, on each monitor run, POST your webhook if liquidity collapses (a liquidity pull — the actual moment of a rug). Not price moving — the pool being drained out from under you. Expires after 30 days.",
+        "Pay once to watch a Base token's liquidity. We snapshot a baseline and, every 10 minutes, POST your webhook if liquidity collapses (a liquidity pull — the actual moment of a rug). Not price moving — the pool being drained out from under you. Deliveries are HMAC-signed (secret returned once at registration) and retried up to 3 times. Expires after 30 days.",
       price: "$0.10",
       icon: "🚨",
       category: "Onchain",
@@ -916,7 +916,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Token Price Alert",
       tagline: "Webhook when a Base token crosses your target",
       description:
-        "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A polling cron (daily by default; configurable to ~minutes) checks DexScreener and POSTs your webhook when it crosses. Expires after 30 days. Or omit the webhook and poll with check=<id>: the verdict is THRESHOLD_MET, ok, FIRED, or unknown when the price feed could not be read.",
+        "Pay once to register a price-threshold alert on any Base token. Supply target price, direction (above/below), and an https webhook URL. A cron checks DexScreener every 10 minutes and POSTs your webhook when it crosses — HMAC-signed (secret returned once at registration), retried up to 3 times. Expires after 30 days. Or omit the webhook and poll with check=<id>: the verdict is THRESHOLD_MET, ok, FIRED, or unknown when the price feed could not be read.",
       price: "$0.05",
       icon: "🔔",
       category: "Onchain",
