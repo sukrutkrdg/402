@@ -31,6 +31,7 @@ import { deliverWebhook, MAX_DELIVERY_ATTEMPTS } from "@/lib/webhook-delivery";
 import { kvConfigured } from "@/lib/kv";
 import { safeEqual } from "@/lib/secure";
 import { checkRugMonitors } from "@/lib/rug-monitor";
+import { recordAlertFiring } from "@/lib/live-events";
 
 /** Deliver a fired alert's webhook; keep it active for a retry if delivery failed. */
 async function deliverAlert(alert: Alert, errors: string[]): Promise<void> {
@@ -129,6 +130,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (!crossed) continue;
     fired++;
+    // Public echo for /radar and the live feed: token, direction, measured move
+    // since creation, time. Not the alert id, webhook or secret.
+    await recordAlertFiring({
+      type: "price_alert",
+      token: alert.token,
+      direction: alert.direction,
+      changePct: alert.priceAtCreate > 0 ? (100 * (currentPrice - alert.priceAtCreate)) / alert.priceAtCreate : null,
+    });
 
     // Poll-mode alerts (no webhook) just record fired state for the caller to read.
     if (!alert.webhook) {

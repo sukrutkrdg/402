@@ -16,6 +16,7 @@ import { assertSafeWebhook } from "./alerts";
 import { deliverWebhook, MAX_DELIVERY_ATTEMPTS, newWebhookSecret } from "./webhook-delivery";
 import { dexTokenPairs } from "./upstream-cache";
 import { kvSet, kvGet, kvSAdd, kvSRem, kvSMembers, kvConfigured } from "./kv";
+import { recordAlertFiring } from "./live-events";
 
 const TTL = 60 * 60 * 24 * 30; // 30 days
 
@@ -216,6 +217,9 @@ export async function checkRugMonitors(): Promise<{ checked: number; fired: numb
       w.firedDropPct = +dropPct.toFixed(1);
       w.firedLiquidityUsd = +current.toFixed(0);
       fired++;
+      // Public echo for /radar and the live feed: token, type, measured drop, time.
+      // Not the monitor id, not the webhook, not the secret.
+      await recordAlertFiring({ type: "rug_warning", token: w.token, changePct: -w.firedDropPct });
       // Poll-mode monitors just record state; webhook monitors deliver (and retry).
       if (w.webhook) await deliverRug(w);
       else {

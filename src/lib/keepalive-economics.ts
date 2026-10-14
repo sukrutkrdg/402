@@ -55,6 +55,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { kvGet, kvSet, kvIncrBy, kvConfigured, kvHIncrBy, kvHGetAll, kvSAdd, kvSMembers } from "./kv";
+import { recordPaidCall } from "./live-events";
 
 const KEY = {
   /** Cents the keepalive has settled against our own endpoints. */
@@ -148,6 +149,8 @@ export async function recordExternalRevenue(mills: number, serviceId?: string, p
   } catch {
     /* the settlement is the point; this is only the books */
   }
+  // The live feed's copy: service id + price + time only — the payer never goes in.
+  if (serviceId) await recordPaidCall(serviceId, mills);
 }
 
 /**

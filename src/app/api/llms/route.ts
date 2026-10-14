@@ -34,6 +34,7 @@ export function GET() {
     "## Discovery",
     "- Agent frameworks: Coinbase AgentKit — `npm i x402-bazaar-agentkit` (x402BazaarActionProvider); ElizaOS — `npm i @sukrutkrdg/plugin-x402-bazaar` (x402BazaarPlugin). Both: pre-trade check, swap on Base, cross-chain swap, any service by id.",
     `- Reliability: ${site}/api/status — per-endpoint success rate and latency over the last 7 days, measured on real calls.`,
+    `- Radar (free, JSON): ${site}/api/radar — cross-DEX price spreads for a fixed watchlist of liquid Base tokens (same logic as dex-spread, cached 60s; unreadable tokens are marked no_data, not 0) plus price/liquidity alerts that actually fired. Live SSE feed of recorded paid calls and alert firings: ${site}/api/events/live (closes after 55s; reconnect with Last-Event-ID).`,
     `- Machine-readable catalog (JSON): ${site}/.well-known/x402`,
     `- OpenAPI spec: ${site}/openapi.json`,
     `- Agent docs + ready-to-run MCP server: ${site}/agents`,
