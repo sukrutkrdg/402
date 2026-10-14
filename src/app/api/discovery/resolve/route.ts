@@ -185,7 +185,7 @@ function handleResolve(input: string) {
       alternatives: topMatches.slice(1),
       directExecutionSnippet: topMatches[0]
         ? {
-            curl: `curl -H "x-payment: <eip3009_auth>" "${topMatches[0].endpointUrl}"`,
+            curl: `curl -H "PAYMENT-SIGNATURE: <x402 payment payload>" "${topMatches[0].endpointUrl}"`,
             python: `from x402_bazaar import BazaarClient\nclient = BazaarClient()\nres = client.call("${topMatches[0].serviceId}")`,
             typescript: `import { x402Fetch } from "@x402/fetch";\nconst res = await x402Fetch("${topMatches[0].endpointUrl}");`,
           }

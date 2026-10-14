@@ -92,7 +92,7 @@ export function mcpToolList(): McpTool[] {
 
     return {
       name: s.id.replace(/-/g, "_"),
-      description: `${s.tagline} — ${blurb}${reqNote} Priced ${s.price} per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls, or get 1 free call/day per tool. No wallet or API key required.`,
+      description: `${s.tagline} — ${blurb}${reqNote} Priced ${s.price} per call over x402 on Base; send a prepaid x-credit-token header for unlimited calls${s.category !== "AI" && !s.noFreeTier ? ", or get 1 free call/day per tool" : " (no free tier on this tool)"}. No API key required.`,
       inputSchema: { type: "object" as const, properties, ...(required.length ? { required } : {}) },
       outputSchema: OUTPUT_SCHEMA,
       annotations: {
