@@ -121,12 +121,19 @@ X402_CREDIT_TOKEN=ck_your_token npx x402-bazaar-mcp
 AGENT_PRIVATE_KEY=0xYOUR_PRIVATE_KEY npx x402-bazaar-mcp
 ```
 
+In wallet mode the key only ever signs for requests to `https://402.com.tr`, paying the
+Bazaar's own address in USDC on Base, at or under `X402_MAX_PRICE_USD`. These are fixed in
+the package (or set by those env vars) — never taken from the catalog or from a 402 — so a
+catalog entry or a 402 that points anywhere else is called unpaid.
+
 ### Environment variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `X402_CREDIT_TOKEN` | no | — | Prepaid credit token (`ck_…`) from `buy-credits`. Sent as `x-credit-token`; debits your balance per call. No wallet needed. **Recommended paid mode.** |
 | `AGENT_PRIVATE_KEY` | no | — | Hex private key for a Base wallet holding USDC. `0x` prefix optional. Used only if no credit token is set. |
+| `X402_MAX_PRICE_USD` | no | `1` | Wallet mode: the most a single call may cost. A 402 asking for more is not signed. Raise it on purpose to buy larger credit packs from a wallet. |
+| `X402_PAY_ORIGIN` / `X402_PAY_TO` | no | `https://402.com.tr` / the Bazaar's payout address | Wallet mode: the only origin the wallet pays, and the only address it pays to. |
 | `X402_BAZAAR_CATALOG` | no | `https://402.com.tr/api/catalog` | Override the catalog URL (useful for local dev). |
 
 With none of the above set, the server runs on the **free tier**.

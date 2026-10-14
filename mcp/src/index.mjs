@@ -21,6 +21,7 @@
  *   X402_BAZAAR_CATALOG – catalog URL (default: https://402.com.tr/api/catalog)
  */
 
+import { payableTarget, payPolicy, PAY_ORIGIN } from "./pay-guard.mjs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -30,7 +31,7 @@ import { z } from "zod";
 
 // Keep in step with package.json and server.json — all three are published and
 // a stale one here is what the MCP registry reports.
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 // ---------------------------------------------------------------------------
 // 1. Config + payment mode
@@ -74,6 +75,9 @@ async function getPayingFetch() {
   // without this line carries the facilitator's code and nothing else, so a
   // wallet-mode call through this package used to erase its own attribution.
   client.registerExtension(new BuilderCodeClientExtension(BUILDER_CODE));
+  // Only ever pay 402.com.tr's own address, in Base USDC, under the price cap
+  // (see pay-guard.mjs). A requirement that fails this is never signed.
+  client.registerPolicy(payPolicy);
   _payingFetch = wrapFetchWithPayment(fetch, client);
   return _payingFetch;
 }
@@ -93,6 +97,12 @@ async function payAwareFetch(target, opts = {}) {
     });
   }
   if (HAS_WALLET) {
+    // A catalog entry pointing at another host is called unpaid: the wallet
+    // signs nothing for origins other than PAY_ORIGIN.
+    if (!payableTarget(target)) {
+      log(`not paying ${String(target)} — wallet mode only pays ${PAY_ORIGIN}`);
+      return fetch(target, opts);
+    }
     const pay = await getPayingFetch();
     return pay(target, opts);
   }
@@ -177,7 +187,10 @@ function registerService(service) {
       title: service.name ?? toolName,
       description,
       inputSchema: inputShape,
-      outputSchema: OUTPUT_SHAPE,
+      // passthrough at the root: answers also carry builderCode, receipt,
+      // paidVia, preview and unlock, and a strict root made clients that
+      // validate structuredContent reject every successful call (#7).
+      outputSchema: z.object(OUTPUT_SHAPE).passthrough(),
       annotations: {
         title: service.name ?? toolName,
         readOnlyHint: !mutates,
