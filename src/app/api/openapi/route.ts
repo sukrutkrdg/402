@@ -185,6 +185,15 @@ export function GET() {
       responses: { "200": { description: "spreads.rows (no_data where a token could not be read) and recently fired alerts" } },
     },
   };
+  paths["/api/scout/latest"] = {
+    get: {
+      operationId: "scout_latest",
+      summary: "Latest automated scans of new Base tokens (free)",
+      description: "What our scan computed for each new token (flags, level, sources answered/missing), with a re-check link. A row is a scan result at a point in time, not a verdict that a token is a scam.",
+      parameters: [{ name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 50 } }],
+      responses: { "200": { description: "scans[]" }, "429": { description: "Rate limited" } },
+    },
+  };
   paths["/api/leaderboard"] = {
     get: {
       operationId: "leaderboard",

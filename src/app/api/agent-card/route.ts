@@ -46,6 +46,7 @@ export function GET() {
       workflows: { list: `${SITE}/api/workflows`, run: `${SITE}/api/workflows/run`, about: "Up to 5 paid services in one request, debited per step from a credit token; stops (uncharged) after a failure or a STOP decision." },
       fleet: { manage: `${SITE}/api/credits/fleet`, about: "Child credit tokens that spend from one balance under a daily cap, per-call max and service allowlist, with a pause switch." },
       radar: `${SITE}/api/radar`,
+      latestScans: `${SITE}/api/scout/latest`,
       leaderboard: `${SITE}/api/leaderboard`,
       liveEvents: `${SITE}/api/events/live`,
       reliability: `${SITE}/api/status`,
