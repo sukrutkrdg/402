@@ -108,6 +108,7 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   "commerce-escrow": {"escrow":"0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff","mode":"payer","windowDays":90,"truncated":true,"paymentCount":0,"inEscrowCount":0,"reclaimableCount":0,"paymentsCount":0,"verdict":"no_activity"},
   "commerce-operator-audit": {"operator":"0x973A31858f4D2125f48C880542DA11a2796f12D6","escrow":"0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff","windowDays":90,"truncated":true,"paymentCount":0,"distinctPayers":0,"distinctReceivers":0,"tokensCount":0,"totalAuthorized":"0","totalCaptured":"0","totalFees":"0","totalRefunded":"0","captureRatePct":0,"reclaimRatePct":0,"verdict":"no_activity"},
   "contract-abi": {"address":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","verified":true,"matchType":"full","functionsCount":5,"eventsCount":2,"abiItemCount":9},
+  "clanker-token-audit": {"address":"0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb","verdict":"clanker_verified","isClanker":true,"clankerVersion":"v0","factory":"0x250c9FB2b411B48273f69879007803790A6AeA47","symbol":"CLANKER","isContract":true,"liquidityLocked":null,"sourcesCount":6},
   "contract-danger": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","verified":true,"dangerLevel":"high","dangerCategoriesCount":2,"dangerCount":7,"dangersCount":7,"functionCount":38},
   "deep-dd": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","verdict":"caution","safetyScore":52,"confidence":"high","liquidityAssessment":"Moderate liquidity at $1.05M with low exit impact (0.95%) on a $5k trade, but concentrated among 19 LP holders with 0% locked LP creates withdrawal risk.","holderAssessment":"Highly concentrated: top holder controls 22.4%, top 10 hold 61.7% of supply across 1.18M accounts. Medium concentration risk with several contract-based address…","factorsCount":5,"risksCount":5,"positivesCount":5,"model":"claude-haiku-4-5"},
   "file-slot": {"key":"agent/7d/14c6e935bc5537bc437f4efb/report.csv","bytes":20480,"contentType":"text/csv","ttlDays":7,"guidance":"Upload within the 15-minute window, then hand the retrieval URL to whoever needs the file. Anyone holding that URL can read it, so treat it as the credential it…","disclaimer":"Retention is enforced by the bucket's lifecycle policy, not by this call: the object is scheduled to expire after the requested window, and is not guaranteed to…"},
@@ -398,6 +399,9 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // declared example answered "No LP holders found", i.e. an error, for anyone
   // who followed it. DEGEN has real pools.
   "lp-lock": { address: DEGEN },
+  // $CLANKER is itself a Clanker launch (v0), so the example shows a
+  // verification. DEGEN would only ever answer not_clanker.
+  "clanker-token-audit": { address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb" },
   "token-unlock": { address: DEGEN },
   // example.com/article is a 404. A declared URL has to be a page that is
   // actually there, and has enough text to show what the endpoint returns.

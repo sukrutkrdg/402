@@ -51,6 +51,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   sellability: ["honeypot", "can-i-sell", "sell-tax", "transfer-restriction", "token-safety", "exit"],
   "contract-danger": ["contract-risk", "token-safety", "mint", "pause", "blacklist", "upgradeable", "scam"],
   "pre-trade-gate": ["pre-trade", "token-safety", "honeypot", "rug-check", "trade-gate", "go-no-go"],
+  "clanker-token-audit": ["clanker", "token-launch", "launch-verification", "provenance", "lp-lock", "farcaster", "memecoin"],
   "rug-monitor": ["rug-pull", "liquidity-drop", "monitor", "alert", "webhook", "token-safety"],
   "sign-guard": ["transaction-safety", "calldata", "approval", "sign", "wallet-security", "drainer"],
   "approval-advisor": ["approval", "allowance", "revoke", "wallet-security", "drain-risk"],

@@ -34,6 +34,7 @@ import { holderForensics } from "../holder-forensics";
 import { proxyCheck } from "../proxy";
 import { contractDanger } from "../contract-danger";
 import { lpLock } from "../lp-lock";
+import { clankerTokenAudit } from "../clanker-audit";
 import { deployerReputation } from "../deployer-rep";
 import { baseSwap } from "../base-swap";
 import { bridgeRoute } from "../bridge-route";
@@ -605,6 +606,18 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       category: "Onchain",
       params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
       handler: lpLock,
+    },
+  {
+      id: "clanker-token-audit",
+      name: "Clanker Launch Verification",
+      tagline: "Was this Base token really launched through Clanker?",
+      description:
+        "Reads the deployment records of Clanker's own factories on Base (v4 tokenDeploymentInfo, v3.1/v3/v2 deploymentInfoForToken; v0/v1 via the factory's TokenCreated in the deploy receipt) to verify a launch: version, factory, requester, pool, and whether the LP position NFTs are held by Clanker's locker. Cross-checked with clanker.world. Returns clanker_verified, not_clanker or unknown; RPC failure is not charged.",
+      price: "$0.03",
+      icon: "🤖",
+      category: "Onchain",
+      params: [{ name: "address", label: "Token contract address", placeholder: "0x… token", required: true }],
+      handler: clankerTokenAudit,
     },
   {
       id: "deployer-rep",

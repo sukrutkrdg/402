@@ -48,6 +48,8 @@ export const POLICY_VERSION: Record<string, string> = {
   "domain-check": "1.0.0",
   "counterparty-check": "1.0.0",
   "address-trust": "1.0.0",
+  // 2.x: factory-record detection; 1.x (owner()/bytecode heuristics) was withdrawn.
+  "clanker-token-audit": "2.0.0",
 };
 
 /** Confidence in the verdict, derived from how complete the inputs were. */
