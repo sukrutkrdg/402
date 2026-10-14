@@ -3,6 +3,27 @@
  * listed Base tokens, scores each for rug risk using our own services, and posts
  * notable ones to a Telegram channel. "An agent that works for you 24/7."
  *
+ * Every token it actually scans is also recorded (src/lib/live-events.ts,
+ * `scout:results`) exactly as computed — sell-side flags, rug-score level/score/
+ * signals, which sources answered and which did not, and the EAS attestation tx
+ * when one was published — for /radar, the live feed and /api/scout/latest.
+ * Recording is best-effort and can never break the run.
+ *
+ * Scanning and recording run whether or not Telegram is configured; posting and
+ * the EAS attestation (which always accompanied a public post) need Telegram.
+ *
+ * Schedule (vercel.json): every 4h at :15 — "15 0,4,8,12,16,20 * * *", 6 runs/day (was
+ * once a day). Cost per run, upper bound: 3 feed calls (GeckoTerminal + 2
+ * DexScreener) + up to 20 tokens × ~11 upstream calls (2 GoPlus — our direct
+ * sell-side check plus the 90s-cached one shared by token-risk/holders — ~8 Base
+ * RPC reads, 1 DexScreener) ≈ 225 calls, and ~9 KV commands per token (seen
+ * marker, upstream caches, LPUSH/LTRIM/EXPIRE of the record) ≈ 180. Per day:
+ * ≈ 1,350 free-tier upstream calls and ≈ 1,100 KV commands — the per-run burst
+ * (≈ 40 GoPlus calls, sequential) is unchanged, only spread over more runs.
+ * Side effects scale too: at most 4 Telegram posts and 4 EAS attestations
+ * (Base gas, fractions of a cent each) per run, so ≤ 24/day instead of ≤ 4.
+ * Tokens are deduped for 7 days, so more runs mean fresher scans, not rescans.
+ *
  * Auth: Authorization: Bearer ${CRON_SECRET}
  * Env:  TELEGRAM_BOT_TOKEN (reused), TELEGRAM_SCOUT_CHAT (channel/chat id to post to)
  */
@@ -13,19 +34,27 @@ import { rugScore } from "@/lib/scores";
 import { safeEqual } from "@/lib/secure";
 import { kvGet, kvSet } from "@/lib/kv";
 import { attestScam } from "@/lib/eas-attest";
+import { recordScan, type ScanInput } from "@/lib/live-events";
 
 export const dynamic = "force-dynamic";
 
-const BOT = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT = process.env.TELEGRAM_SCOUT_CHAT;
+/** Tokens scanned per run at most (after the 7-day seen-dedup). */
+const SCOUT_MAX_SCANS = 20;
+/** Telegram posts per run at most. */
+const SCOUT_MAX_POSTS = 4;
 
-async function post(text: string) {
-  if (!BOT || !CHAT) return;
+function telegram() {
+  const bot = process.env.TELEGRAM_BOT_TOKEN;
+  const chat = process.env.TELEGRAM_SCOUT_CHAT;
+  return bot && chat ? { bot, chat } : null;
+}
+
+async function post(tg: { bot: string; chat: string }, text: string) {
   try {
-    await fetch(`https://api.telegram.org/bot${BOT}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${tg.bot}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: CHAT, text, parse_mode: "HTML", disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: tg.chat, text, parse_mode: "HTML", disable_web_page_preview: true }),
       signal: AbortSignal.timeout(8000),
     });
   } catch {
@@ -78,26 +107,72 @@ async function scamCheck(address: string): Promise<Scam | null> {
   }
 }
 
+type Scored = {
+  rugScore?: number;
+  level?: string;
+  degraded?: boolean;
+  signals?: string[];
+  sources?: string[];
+  sourcesMissing?: string[];
+  inputs?: { liquidityUsd?: number | null };
+};
+
+/** The scan record, built only from what this scan computed. */
+function scanRecord(addr: string, scam: Scam | null, scored: Scored | null, rugRan: boolean, attestationTx: string | null): ScanInput {
+  const sources: string[] = scam ? ["goplus-sell-side"] : [];
+  const sourcesMissing: string[] = scam ? [] : ["goplus-sell-side"];
+  if (scored) {
+    sources.push(...(scored.sources ?? []));
+    sourcesMissing.push(...(scored.sourcesMissing ?? []));
+  } else if (rugRan) {
+    sourcesMissing.push("rug-score");
+  }
+  const verdict: ScanInput["verdict"] = scam?.isScam ? "sell_side_flags" : scored ? "scored" : "not_scored";
+  return {
+    token: addr,
+    symbol: scam?.symbol ?? null,
+    verdict,
+    level: scored && typeof scored.level === "string" ? scored.level : null,
+    score: scored && typeof scored.rugScore === "number" ? scored.rugScore : null,
+    sellSideFlags: scam?.reasons ?? [],
+    riskSignals: scored?.signals ?? [],
+    sources,
+    sourcesMissing,
+    // A sell-side hit is a complete answer for what it claims; otherwise the scan
+    // is degraded when the rug score could not run or itself reported degraded.
+    degraded: verdict === "sell_side_flags" ? false : scored ? scored.degraded === true : true,
+    attestationTx,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: "CRON_SECRET not set" }, { status: 401 });
   const provided = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
   if (!safeEqual(provided, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!BOT || !CHAT) {
-    return NextResponse.json({ skipped: "TELEGRAM_SCOUT_CHAT not configured", posted: 0 });
-  }
+  const tg = telegram();
 
   let tokens: Array<{ tokenAddress?: string | null; description?: string | null }> = [];
   try {
     const data = (await newTokens({})) as { tokens?: typeof tokens };
     tokens = data.tokens ?? [];
   } catch {
-    return NextResponse.json({ error: "new-tokens unavailable", posted: 0 });
+    return NextResponse.json({ error: "new-tokens unavailable", posted: 0, recorded: 0 });
   }
 
   let posted = 0;
-  for (const t of tokens.slice(0, 20)) {
+  let recorded = 0;
+  let scannedNow = 0;
+  const record = async (input: ScanInput) => {
+    try {
+      if (await recordScan(input)) recorded++;
+    } catch {
+      /* recording must never break the scout */
+    }
+  };
+
+  for (const t of tokens.slice(0, SCOUT_MAX_SCANS)) {
     const addr = t.tokenAddress;
     if (!addr || !/^0x[0-9a-fA-F]{40}$/.test(addr)) continue;
 
@@ -105,44 +180,44 @@ export async function GET(req: NextRequest) {
     const seenKey = `scout:seen:${addr.toLowerCase()}`;
     if (await kvGet(seenKey)) continue;
     await kvSet(seenKey, "1", 60 * 60 * 24 * 7);
+    scannedNow++;
 
     // FIRST: is it an outright scam we can showcase catching? (honeypot / can't-sell
     // / extreme tax). This is the marketing gold — "we caught it before you aped in".
     const scam = await scamCheck(addr);
     if (scam?.isScam) {
-      const sym = scam.symbol ? `$${esc(scam.symbol)}` : "This new token";
-      const scamType = scam.honeypot ? "honeypot" : scam.reasons[0]?.includes("sell tax") ? "extreme_tax" : "unsellable";
-      // Publish a verifiable on-chain attestation to Base EAS (best-effort).
-      const att = await attestScam({ token: addr, symbol: scam.symbol, scamType, reasons: scam.reasons });
-      const caught = [
-        `🚨 <b>CAUGHT: ${scam.honeypot ? "honeypot" : "unsellable token"} on Base</b>`,
-        ``,
-        `${sym} — flagged before you could ape in.`,
-        ...scam.reasons.slice(0, 4).map((r) => `🔴 ${esc(r)}`),
-        `<code>${esc(addr)}</code>`,
-        ``,
-        ...(att ? [`📜 On-chain proof: <a href="${esc(att.scanUrl)}">Base EAS attestation</a>`] : []),
-        `x402 Bazaar flagged this in one call. Check ANY Base token before you buy 👇`,
-        `402.com.tr/app · <a href="https://t.me/Bazaar402_bot">@Bazaar402_bot</a>`,
-      ];
-      await post(caught.join("\n"));
-      posted++;
-      if (posted >= 4) break;
+      let att: Awaited<ReturnType<typeof attestScam>> = null;
+      if (tg) {
+        const sym = scam.symbol ? `$${esc(scam.symbol)}` : "This new token";
+        const scamType = scam.honeypot ? "honeypot" : scam.reasons[0]?.includes("sell tax") ? "extreme_tax" : "unsellable";
+        // Publish a verifiable on-chain attestation to Base EAS (best-effort).
+        att = await attestScam({ token: addr, symbol: scam.symbol, scamType, reasons: scam.reasons });
+        const caught = [
+          `🚨 <b>CAUGHT: ${scam.honeypot ? "honeypot" : "unsellable token"} on Base</b>`,
+          ``,
+          `${sym} — flagged before you could ape in.`,
+          ...scam.reasons.slice(0, 4).map((r) => `🔴 ${esc(r)}`),
+          `<code>${esc(addr)}</code>`,
+          ``,
+          ...(att ? [`📜 On-chain proof: <a href="${esc(att.scanUrl)}">Base EAS attestation</a>`] : []),
+          `x402 Bazaar flagged this in one call. Check ANY Base token before you buy 👇`,
+          `402.com.tr/app · <a href="https://t.me/Bazaar402_bot">@Bazaar402_bot</a>`,
+        ];
+        await post(tg, caught.join("\n"));
+        posted++;
+      }
+      await record(scanRecord(addr, scam, null, false, att?.txHash ?? null));
+      if (posted >= SCOUT_MAX_POSTS) break;
       continue;
     }
 
-    type Scored = {
-      rugScore?: number;
-      level?: string;
-      signals?: string[];
-      inputs?: { liquidityUsd?: number | null };
-    };
     let scored: Scored | null = null;
     try {
       scored = (await rugScore({ address: addr })) as unknown as Scored;
     } catch {
       scored = null;
     }
+    await record(scanRecord(addr, scam, scored, true, null));
 
     // Signal gate — only post what's worth a subscriber's attention:
     //   a high rug risk (warning value) OR meaningful liquidity (worth knowing).
@@ -151,7 +226,7 @@ export async function GET(req: NextRequest) {
     // Only post genuinely high-risk tokens — no clean-token noise. The channel is
     // a risk/scam feed, not a new-listing firehose. (CAUGHT scams are handled above.)
     const notable = Boolean(scored) && scored!.level === "high";
-    if (!notable) continue;
+    if (!notable || !tg) continue;
 
     const emoji = scored?.level === "high" ? "🔴" : scored?.level === "medium" ? "🟡" : "🟢";
     const lines = [
@@ -164,10 +239,16 @@ export async function GET(req: NextRequest) {
     if (t.description) lines.push(esc(String(t.description).slice(0, 140)));
     lines.push(`🔗 Check any token: <a href="https://t.me/Bazaar402_bot">@Bazaar402_bot</a> · 402.com.tr`);
 
-    await post(lines.join("\n"));
+    await post(tg, lines.join("\n"));
     posted++;
-    if (posted >= 4) break; // cap per run
+    if (posted >= SCOUT_MAX_POSTS) break; // cap per run
   }
 
-  return NextResponse.json({ scanned: tokens.length, posted });
+  return NextResponse.json({
+    scanned: tokens.length,
+    scannedNow,
+    recorded,
+    posted,
+    ...(tg ? {} : { telegram: "not configured — scanned and recorded, nothing posted" }),
+  });
 }

@@ -83,12 +83,25 @@ export async function rugScore(params: Record<string, string>) {
   const degraded = !securityChecked;
   if (degraded) signals.push("security feed unavailable — honeypot/tax not checked");
 
+  // Which inputs actually answered this call, and which were asked but did not.
+  const sources: string[] = [];
+  const sourcesMissing: string[] = [];
+  if (risk) {
+    const rs = Array.isArray(risk.sources) ? risk.sources : [];
+    sources.push(...rs);
+    if (!securityChecked) sourcesMissing.push("goplus");
+  } else sourcesMissing.push("base-rpc", "goplus");
+  (holders ? sources : sourcesMissing).push("goplus-holders");
+  (price ? sources : sourcesMissing).push("dexscreener");
+
   return {
     address,
     rugScore: score,
     level, // high | medium | low | unknown (unknown = security feed unavailable)
     degraded,
     signals,
+    sources,
+    sourcesMissing,
     inputs: {
       top10HolderPct: top10,
       lockedLpPct: lockedLp,

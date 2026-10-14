@@ -5,15 +5,19 @@
  * snapshot for 60s, so polling faster would only re-read the same numbers) and
  * holds an EventSource on /api/events/live while the tab is visible. The server
  * closes each stream after 55s and EventSource reconnects on its own.
+ *
+ * Scout scans are shown as "our scan at <time> computed <verdict/flags>" with a
+ * re-check link — never as a statement that a token is a scam.
  */
 
 import { useEffect, useState } from "react";
 import type { RadarSnapshot, RadarRow } from "@/lib/radar";
-import type { AlertEvent, LiveEvent } from "@/lib/live-events";
+import type { AlertEvent, LiveEvent, PublicScan, ScanEvent } from "@/lib/live-events";
 
 interface RadarResponse {
   spreads: RadarSnapshot | null;
   alerts: AlertEvent[];
+  scans: PublicScan[];
   method: { spreads: string; alerts: string; scanFlags: string };
 }
 
@@ -92,6 +96,80 @@ function AlertLine({ e }: { e: AlertEvent }) {
   );
 }
 
+const LEVEL_CLS: Record<string, string> = {
+  high: "text-rose-400",
+  medium: "text-amber-300",
+  low: "text-emerald-400",
+  unknown: "text-gray-400",
+};
+
+/** What the scan computed, in words — "flagged" is about our check, not a claim about the token. */
+function scanSummary(s: Pick<ScanEvent, "verdict" | "level" | "score">): { text: string; cls: string } {
+  if (s.verdict === "sell_side_flags") return { text: "sell-side flags", cls: "text-rose-400" };
+  if (s.verdict === "not_scored") return { text: "not scored", cls: "text-gray-400" };
+  const lvl = s.level ?? "unknown";
+  return { text: `risk ${lvl}${s.score === null ? "" : ` · ${s.score}/100`}`, cls: LEVEL_CLS[lvl] ?? "text-gray-400" };
+}
+
+const scanFlags = (s: Pick<ScanEvent, "sellSideFlags" | "riskSignals">) => [...s.sellSideFlags, ...s.riskSignals];
+
+function ScanLine({ e }: { e: ScanEvent }) {
+  const sum = scanSummary(e);
+  const flags = scanFlags(e);
+  return (
+    <span>
+      <span className="text-sky-300">Scout scan</span>{" "}
+      <a className="font-mono hover:underline" href={`https://basescan.org/token/${e.token}`} target="_blank" rel="noreferrer">
+        {e.symbol ? `${e.symbol} ` : ""}
+        {short(e.token)}
+      </a>{" "}
+      — our scan computed <span className={sum.cls}>{sum.text}</span>
+      {flags.length ? `: ${flags.slice(0, 3).join(", ")}` : ""}
+      {e.degraded ? " (partial check)" : ""}.{" "}
+      <a className="text-sky-400 hover:underline" href={`/api/x402/rug-score?address=${e.token}&free=1`}>
+        re-check
+      </a>
+    </span>
+  );
+}
+
+function ScanRow({ s }: { s: PublicScan }) {
+  const sum = scanSummary(s);
+  const flags = scanFlags(s);
+  return (
+    <tr className="border-t border-white/5 align-top">
+      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500" title={s.at}>
+        {dateTime(s.at)}
+      </td>
+      <td className="px-4 py-3">
+        <a className="font-mono text-xs hover:underline" href={`https://basescan.org/token/${s.token}`} target="_blank" rel="noreferrer">
+          {s.symbol ? <span className="mr-1 font-sans text-sm">{s.symbol}</span> : null}
+          {short(s.token)}
+        </a>
+      </td>
+      <td className={`whitespace-nowrap px-4 py-3 text-xs ${sum.cls}`}>
+        {sum.text}
+        {s.degraded ? <span className="ml-1 text-amber-300" title="Not every check answered; no low risk is certified">· partial</span> : null}
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-300">{flags.length ? flags.join(" · ") : <span className="text-gray-500">none raised</span>}</td>
+      <td className="px-4 py-3 text-xs text-gray-400">
+        {s.sources.join(", ") || "—"}
+        {s.sourcesMissing.length ? <span className="block text-amber-300/80">no answer: {s.sourcesMissing.join(", ")}</span> : null}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-xs">
+        <a className="text-sky-400 hover:underline" href={s.recheck}>
+          re-check
+        </a>
+        {s.attestationUrl ? (
+          <a className="ml-2 text-gray-400 hover:underline" href={s.attestationUrl} target="_blank" rel="noreferrer">
+            EAS
+          </a>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
 function FeedLine({ e }: { e: LiveEvent }) {
   if (e.kind === "paid_call") {
     return (
@@ -100,6 +178,7 @@ function FeedLine({ e }: { e: LiveEvent }) {
       </span>
     );
   }
+  if (e.kind === "scan") return <ScanLine e={e} />;
   return <AlertLine e={e} />;
 }
 
@@ -133,6 +212,7 @@ function LivePanel() {
       });
       es.addEventListener("paid_call", add as EventListener);
       es.addEventListener("alert", add as EventListener);
+      es.addEventListener("scan", add as EventListener);
     };
     const shut = () => {
       es?.close();
@@ -161,8 +241,8 @@ function LivePanel() {
       {events.length === 0 ? (
         <p className="text-sm text-gray-400">
           {recorded === 0
-            ? "Nothing recorded yet. This feed shows only real events — paid calls by outside agents and alerts that fired — so it stays empty until one happens."
-            : "No events since you opened this page. Only real paid calls and alert firings appear here."}
+            ? "Nothing recorded yet. This feed shows only real events — paid calls by outside agents, alerts that fired and our scout's scans — so it stays empty until one happens."
+            : "No events since you opened this page. Only real paid calls, alert firings and scout scans appear here."}
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5 text-sm">
@@ -268,6 +348,39 @@ export default function RadarClient() {
           </ul>
         )}
         {data && <p className="mt-3 text-xs text-gray-500">{data.method.alerts}</p>}
+      </section>
+
+      <section className="card overflow-x-auto p-0">
+        <div className="px-4 pt-4">
+          <h2 className="text-lg font-semibold">Latest scans</h2>
+        </div>
+        {!data ? (
+          <p className="p-4 text-sm text-gray-400">{failed ? "No data — could not be read right now." : "Loading…"}</p>
+        ) : data.scans.length === 0 ? (
+          <p className="p-4 text-sm text-gray-400">
+            No scans recorded yet. Our scout scans newly listed Base tokens every 4 hours; each scan appears here as it
+            was computed.
+          </p>
+        ) : (
+          <table className="mt-2 w-full text-sm">
+            <thead className="text-left text-xs uppercase tracking-wider text-gray-500">
+              <tr>
+                <th className="px-4 py-2">Scanned</th>
+                <th className="px-4 py-2">Token</th>
+                <th className="px-4 py-2">Our scan computed</th>
+                <th className="px-4 py-2">Flags at scan time</th>
+                <th className="px-4 py-2">Sources</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.scans.map((s) => (
+                <ScanRow key={s.id} s={s} />
+              ))}
+            </tbody>
+          </table>
+        )}
+        {data && <p className="px-4 py-3 text-xs text-gray-500">{data.method.scanFlags}</p>}
       </section>
 
       <LivePanel />

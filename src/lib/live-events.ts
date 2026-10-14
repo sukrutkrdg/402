@@ -10,6 +10,13 @@
  *                   alert firings.
  *   radar:alerts  — newest first, cap 50. Alert firings only, so a burst of paid
  *                   calls cannot push them off the radar page.
+ *   scout:results — newest first, cap 200, 30-day TTL refreshed on write. One
+ *                   row per token the token-scout cron actually scanned: what
+ *                   the scan computed (sell-side flags, rug-score level/score/
+ *                   signals), which sources answered and which did not, and the
+ *                   EAS attestation tx when the cron published one. Kept in its
+ *                   own list so a scout run (up to 20 scans) cannot push paid
+ *                   calls and alerts out of live:events; readFeed merges the two.
  *
  * What is stored is deliberately small and fixed. A paid call is service id +
  * price + time — never the payer. An alert firing is the token contract, the
@@ -18,17 +25,26 @@
  * and a webhook URL identifies the customer). Readers re-build every event from
  * a whitelist, so a field that slipped into storage still never leaves.
  *
+ * A scan row is a record of OUR check at a point in time — "our scan at T
+ * flagged X" — not a verdict that a token is a scam; consumers present it that
+ * way and link to a fresh re-check.
+ *
  * Every write is best-effort: these lists describe a settlement or a firing that
  * has already happened, and must never be able to break it.
  */
 
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { kvLPush, kvLRange } from "./kv";
+import { kvExpire, kvLPush, kvLRange } from "./kv";
 
-export const LIVE_KEYS = { feed: "live:events", alerts: "radar:alerts" } as const;
+export const LIVE_KEYS = { feed: "live:events", alerts: "radar:alerts", scans: "scout:results" } as const;
 export const FEED_CAP = 100;
 export const ALERTS_CAP = 50;
+export const SCANS_CAP = 200;
+/** The list expires if the scout stops writing for this long, so a dead cron cannot leave old scans looking current. */
+export const SCANS_TTL_SEC = 60 * 60 * 24 * 30;
+/** At most this many scans take part in the merged live feed, so one scout run cannot crowd it. */
+export const FEED_SCANS = 10;
 
 export interface PaidCallEvent {
   kind: "paid_call";
@@ -51,11 +67,48 @@ export interface AlertEvent {
   at: string;
 }
 
-export type LiveEvent = PaidCallEvent | AlertEvent;
+export type ScanLevel = "high" | "medium" | "low" | "unknown";
+
+export interface ScanEvent {
+  kind: "scan";
+  id: string;
+  token: string;
+  /** Symbol as GoPlus reported it during the scan; null when it did not answer. */
+  symbol: string | null;
+  /**
+   * sell_side_flags: GoPlus reported honeypot / cannot-sell-all / sell tax >=30% (the rug score is not run then).
+   * scored: the rug score ran (level/score below).
+   * not_scored: no sell-side hit and the rug score could not be computed.
+   */
+  verdict: "sell_side_flags" | "scored" | "not_scored";
+  /** Rug-score level as computed; null when the rug score was not run or failed. */
+  level: ScanLevel | null;
+  /** Rug score 0-100 as computed; null when not run or failed. */
+  score: number | null;
+  /** GoPlus sell-side findings, verbatim from the scan. */
+  sellSideFlags: string[];
+  /** Rug-score signals, verbatim from the scan. */
+  riskSignals: string[];
+  /** Sources that answered during this scan. */
+  sources: string[];
+  /** Sources the scan asked that did not answer. */
+  sourcesMissing: string[];
+  /** True when the scan could not check everything it normally checks (no "low" can be certified). */
+  degraded: boolean;
+  /** Base EAS attestation tx, only when the cron actually published one. */
+  attestationTx: string | null;
+  at: string;
+}
+
+export type LiveEvent = PaidCallEvent | AlertEvent | ScanEvent;
 
 const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const TOKEN = /^0x[0-9a-fA-F]{40}$/;
 const EVENT_ID = /^[0-9a-z]{1,12}-[0-9a-f]{6}$/;
+const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
+const SOURCE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const LEVELS: ReadonlySet<string> = new Set(["high", "medium", "low", "unknown"]);
+const VERDICTS: ReadonlySet<string> = new Set(["sell_side_flags", "scored", "not_scored"]);
 
 /** `<ms base36>-<6 hex>` — sortable by time, unique enough to dedupe on reconnect. */
 function newId(atMs: number): string {
@@ -114,6 +167,52 @@ export async function recordAlertFiring(
   }
 }
 
+/** A free-text flag as our own code wrote it: printable, bounded. Anything else is dropped. */
+function cleanText(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
+  return t || null;
+}
+function cleanList(v: unknown, maxItems: number, maxLen: number, re?: RegExp): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    const t = cleanText(x, maxLen);
+    if (t && (!re || re.test(t)) && !out.includes(t)) out.push(t);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+/** What one token-scout scan computed. Built by the cron from its own results. */
+export interface ScanInput {
+  token: string;
+  symbol: string | null;
+  verdict: ScanEvent["verdict"];
+  level: string | null;
+  score: number | null;
+  sellSideFlags: string[];
+  riskSignals: string[];
+  sources: string[];
+  sourcesMissing: string[];
+  degraded: boolean;
+  attestationTx: string | null;
+}
+
+/** Record one token-scout scan. Never throws — the scan already happened; this is only its record. */
+export async function recordScan(input: ScanInput, now = Date.now()): Promise<ScanEvent | null> {
+  try {
+    const ev = sanitizeEvent({ ...input, kind: "scan", id: newId(now), at: new Date(now).toISOString() });
+    if (!ev || ev.kind !== "scan") return null;
+    await kvLPush(LIVE_KEYS.scans, JSON.stringify(ev), SCANS_CAP);
+    await kvExpire(LIVE_KEYS.scans, SCANS_TTL_SEC);
+    return ev;
+  } catch {
+    return null;
+  }
+}
+
 /** Re-build an event from the whitelist; anything malformed is dropped, never repaired into something else. */
 export function sanitizeEvent(raw: unknown): LiveEvent | null {
   if (!raw || typeof raw !== "object") return null;
@@ -134,6 +233,29 @@ export function sanitizeEvent(raw: unknown): LiveEvent | null {
     const direction = r.direction === "above" || r.direction === "below" ? r.direction : undefined;
     return { kind: "alert", id, type, token, changePct: finite(r.changePct), ...(direction && type === "price_alert" ? { direction } : {}), at };
   }
+  if (r.kind === "scan") {
+    const token = typeof r.token === "string" && TOKEN.test(r.token) ? r.token.toLowerCase() : null;
+    const verdict = typeof r.verdict === "string" && VERDICTS.has(r.verdict) ? (r.verdict as ScanEvent["verdict"]) : null;
+    if (!token || !verdict) return null;
+    const level = typeof r.level === "string" && LEVELS.has(r.level) ? (r.level as ScanLevel) : null;
+    const score = finite(r.score);
+    return {
+      kind: "scan",
+      id,
+      token,
+      symbol: cleanText(r.symbol, 32),
+      verdict,
+      level,
+      score: score === null ? null : Math.max(0, Math.min(100, Math.round(score))),
+      sellSideFlags: cleanList(r.sellSideFlags, 10, 120),
+      riskSignals: cleanList(r.riskSignals, 12, 120),
+      sources: cleanList(r.sources, 8, 32, SOURCE),
+      sourcesMissing: cleanList(r.sourcesMissing, 8, 32, SOURCE),
+      degraded: r.degraded === true,
+      attestationTx: typeof r.attestationTx === "string" && TX_HASH.test(r.attestationTx) ? r.attestationTx.toLowerCase() : null,
+      at,
+    };
+  }
   return null;
 }
 
@@ -150,9 +272,26 @@ function parseList(rows: string[]): LiveEvent[] {
   return out;
 }
 
-/** Most recent feed events, newest first. */
+/**
+ * Most recent feed events, newest first: paid calls and alert firings from
+ * live:events merged with the newest scout scans (at most FEED_SCANS of them).
+ */
 export async function readFeed(limit = 30): Promise<LiveEvent[]> {
-  return parseList(await kvLRange(LIVE_KEYS.feed, 0, Math.max(0, limit - 1)));
+  const n = Math.max(0, limit - 1);
+  const [feed, scans] = await Promise.all([
+    kvLRange(LIVE_KEYS.feed, 0, n),
+    kvLRange(LIVE_KEYS.scans, 0, Math.min(n, FEED_SCANS - 1)).catch(() => [] as string[]),
+  ]);
+  return [...parseList(feed), ...parseList(scans)]
+    .sort((a, b) => eventTimeMs(b.id) - eventTimeMs(a.id))
+    .slice(0, limit);
+}
+
+/** Most recent scout scans, newest first. */
+export async function readScans(limit = 20): Promise<ScanEvent[]> {
+  return parseList(await kvLRange(LIVE_KEYS.scans, 0, Math.max(0, limit - 1))).filter(
+    (e): e is ScanEvent => e.kind === "scan",
+  );
 }
 
 /** Most recent alert firings, newest first. */
@@ -177,4 +316,31 @@ export function readFeedShared(maxAgeMs = 4000, limit = 30): Promise<LiveEvent[]
 /** Test hook. */
 export function resetFeedShare(): void {
   shared = null;
+}
+
+/** A scan as served publicly: the whitelisted record plus where to re-run the check and see the attestation. */
+export interface PublicScan extends Omit<ScanEvent, "kind"> {
+  /** Re-run the same rug score now (free daily trial on the paid endpoint). */
+  recheck: string;
+  attestationUrl: string | null;
+}
+
+export function publicScan(e: ScanEvent): PublicScan {
+  return {
+    id: e.id,
+    token: e.token,
+    symbol: e.symbol,
+    verdict: e.verdict,
+    level: e.level,
+    score: e.score,
+    sellSideFlags: e.sellSideFlags,
+    riskSignals: e.riskSignals,
+    sources: e.sources,
+    sourcesMissing: e.sourcesMissing,
+    degraded: e.degraded,
+    attestationTx: e.attestationTx,
+    at: e.at,
+    recheck: `/api/x402/rug-score?address=${e.token}&free=1`,
+    attestationUrl: e.attestationTx ? `https://base.easscan.org/attestation/tx/${e.attestationTx}` : null,
+  };
 }
