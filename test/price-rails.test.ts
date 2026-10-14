@@ -18,7 +18,10 @@ import { readFileSync } from "node:fs";
  * "is the number right today" — it is that there is exactly one place the
  * number can come from.
  */
-const src = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8");
+const src = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8") +
+  // The price rules moved to a shared module (the workflow quote reads them too);
+  // appended last, so effectivePriceFor runs to the end of this text.
+  "\n" + readFileSync(new URL("../src/lib/effective-price.ts", import.meta.url), "utf8");
 const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
 describe("one price, both rails", () => {
@@ -46,7 +49,7 @@ describe("one price, both rails", () => {
   it("no rail re-derives a per-service price on its own", () => {
     // Each of these appearing outside effectivePriceFor means a second source of
     // truth has grown back.
-    const fn = code.slice(code.indexOf("async function effectivePriceFor("), code.indexOf("async function attachRetention"));
+    const fn = code.slice(code.indexOf("async function effectivePriceFor("), code.length);
     const outside = code.replace(fn, "");
     expect(outside, "url-to-json mode uplift belongs in the shared function").not.toMatch(/\$0\.06/);
     expect(outside, "ai-token-report coupon price belongs there too").not.toMatch(/effectivePrice = "\$0\.05"/);

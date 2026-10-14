@@ -22,7 +22,10 @@ import { SERVICES } from "@/lib/services";
  * challenge and missed the credit rail, and a $0.25 pack bought $1.10 of model
  * spend (see test/price-rails.test.ts).
  */
-const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8");
+const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8") +
+  // The price rules moved to a shared module (the workflow quote reads them too);
+  // appended last, so effectivePriceFor runs to the end of this text.
+  "\n" + readFileSync(new URL("../src/lib/effective-price.ts", import.meta.url), "utf8");
 const code = route.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
 describe("translateIsLong", () => {
@@ -67,7 +70,7 @@ describe("the price and the tier come from the same place", () => {
   it("prices it inside the one shared function, so both rails see it", () => {
     const fn = code.slice(
       code.indexOf("async function effectivePriceFor("),
-      code.indexOf("async function attachRetention"),
+      code.length,
     );
     expect(fn).toMatch(/service\.id === "ai-translate"/);
     expect(fn).toMatch(/\$0\.08/);

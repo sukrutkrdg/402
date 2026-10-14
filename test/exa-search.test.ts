@@ -129,7 +129,10 @@ describe("margin discipline", () => {
 });
 
 describe("the tier test lives in one place", () => {
-  const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8") +
+  // The price rules moved to a shared module (the workflow quote reads them too);
+  // appended last, so effectivePriceFor runs to the end of this text.
+  "\n" + readFileSync(new URL("../src/lib/effective-price.ts", import.meta.url), "utf8");
   const code = route.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
   it("reads true only for the affirmative spellings", () => {
@@ -140,7 +143,7 @@ describe("the tier test lives in one place", () => {
   it("prices the tier inside the one shared function, so both rails see it", () => {
     const fn = code.slice(
       code.indexOf("async function effectivePriceFor("),
-      code.indexOf("async function attachRetention"),
+      code.length,
     );
     expect(fn).toMatch(/service\.id === "exa-search"/);
     expect(fn).toMatch(/exaWantsText\(/);
@@ -150,7 +153,7 @@ describe("the tier test lives in one place", () => {
   it("does not re-derive the tier anywhere else in the route", () => {
     const fn = code.slice(
       code.indexOf("async function effectivePriceFor("),
-      code.indexOf("async function attachRetention"),
+      code.length,
     );
     expect(code.replace(fn, "")).not.toMatch(/exaWantsText\(/);
   });
@@ -242,9 +245,12 @@ describe("exa-contents is priced per page, because Exa bills it that way", () =>
   });
 
   it("prices the batch tier in the shared function, keyed on the declared param", () => {
-    const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8");
+    const route = readFileSync(new URL("../src/app/api/x402/[service]/route.ts", import.meta.url), "utf8") +
+  // The price rules moved to a shared module (the workflow quote reads them too);
+  // appended last, so effectivePriceFor runs to the end of this text.
+  "\n" + readFileSync(new URL("../src/lib/effective-price.ts", import.meta.url), "utf8");
     const code = route.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    const fn = code.slice(code.indexOf("async function effectivePriceFor("), code.indexOf("async function attachRetention"));
+    const fn = code.slice(code.indexOf("async function effectivePriceFor("), code.length);
     expect(fn).toMatch(/service\.id === "exa-contents"/);
     expect(fn).toMatch(/exaContentsIsBatch\(/);
     expect(fn).toMatch(/\$0\.008/);

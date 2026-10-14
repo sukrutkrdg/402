@@ -26,6 +26,8 @@ const MORE_LINKS: NavLinkItem[] = [
   { href: "/agents", label: "🤖 For Agents & MCP" },
   { href: "/dashboard", label: "📈 Dashboard" },
   { href: "/playground", label: "🧪 Playground" },
+  { href: "/terminal", label: "⌨️ Terminal" },
+  { href: "/workflows", label: "🔗 Workflows" },
   { href: "/stats", label: "📊 Onchain Stats" },
   { href: "/leaderboard", label: "🏆 Leaderboard" },
   { href: "/radar", label: "📡 Radar" },
