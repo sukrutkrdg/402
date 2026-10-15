@@ -52,6 +52,8 @@ export interface RadarRow {
   verdict: "tight" | "arb_window" | "wide" | "single_venue" | null;
   liquidVenues: number | null;
   totalVenues: number | null;
+  /** Liquid-but-thin venues far from the market price, left out of spreadBps. */
+  thinOutliers: number | null;
   cheapest: { dex: string | null; priceUsd: number; liquidityUsd: number } | null;
   dearest: { dex: string | null; priceUsd: number; liquidityUsd: number } | null;
   venues: RadarVenue[];
@@ -74,7 +76,7 @@ function toRow(t: { symbol: string; address: string }, r: PromiseSettledResult<S
     const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
     return {
       symbol: t.symbol, address: t.address, status: "no_data", reason: msg.slice(0, 200),
-      spreadBps: null, verdict: null, liquidVenues: null, totalVenues: null,
+      spreadBps: null, verdict: null, liquidVenues: null, totalVenues: null, thinOutliers: null,
       cheapest: null, dearest: null, venues: [], checkedAt: now,
     };
   }
@@ -88,6 +90,7 @@ function toRow(t: { symbol: string; address: string }, r: PromiseSettledResult<S
     verdict: v.verdict,
     liquidVenues: v.liquidVenues,
     totalVenues: v.totalVenues,
+    thinOutliers: v.thinOutliers.length,
     cheapest: v.cheapest,
     dearest: v.dearest,
     venues: v.venues.slice(0, 5).map((p) => ({ dex: p.dex, quote: p.quote, priceUsd: p.priceUsd, liquidityUsd: p.liquidityUsd })),
@@ -109,7 +112,7 @@ let inflight: Promise<RadarSnapshot | null> | null = null;
 /** Cached snapshot (60s, shared through KV); concurrent misses on one instance share a single computation. */
 export async function radarSpreads(): Promise<RadarSnapshot | null> {
   if (!inflight) {
-    inflight = cached<RadarSnapshot>("radar:spreads:v1", RADAR_CACHE_SEC, () => computeRadarSpreads(), {
+    inflight = cached<RadarSnapshot>("radar:spreads:v2", RADAR_CACHE_SEC, () => computeRadarSpreads(), {
       staleGraceSec: 0,
     }).finally(() => {
       inflight = null;

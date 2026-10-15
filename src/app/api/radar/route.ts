@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 const RADAR_SCANS = 25;
 
 const RADAR_METHOD = {
-  spreads: `Per token: DexScreener pools on Base where the token is the base asset, compared across venues with at least $5,000 liquidity (the dex-spread service's logic). spreadBps is null when fewer than two venues clear that floor, and every number is null when the token could not be read (status "no_data"). Snapshot cached ${RADAR_CACHE_SEC}s.`,
+  spreads: `Per token: DexScreener pools on Base where the token is the base asset, compared across venues with at least $5,000 liquidity (the dex-spread service's logic). A thin pool priced more than 3% from the liquidity-weighted median is set aside rather than allowed to set the spread (thinOutliers counts them). spreadBps is null when fewer than two venues remain, and every number is null when the token could not be read (status "no_data"). Snapshot cached ${RADAR_CACHE_SEC}s.`,
   alerts:
     "Price alerts and rug-watch monitors registered by our customers, recorded when our cron saw the threshold crossed (checked every 10 minutes). A rug_warning means a watched pool's liquidity fell past the subscriber's threshold — a measured liquidity move, not a verdict that the token is a scam. Alert ids, webhooks and subscribers are never shown.",
   scanFlags:
