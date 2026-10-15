@@ -100,6 +100,8 @@ const OWN_PAYERS = new Set(
     .filter(Boolean),
 );
 export const isOwnPayer = (addr: string) => OWN_PAYERS.has(addr.toLowerCase());
+/** The same list, published in the agent card so outside counters can exclude it. */
+export const ownPayerWallets = () => [...OWN_PAYERS];
 
 const payerHash = (addr: string) => createHash("sha256").update(addr.toLowerCase()).digest("hex").slice(0, 16);
 

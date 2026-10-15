@@ -7,6 +7,7 @@
 import { SERVICES } from "@/lib/services";
 import { getSiteUrl, getConfig } from "@/lib/config";
 import { nearFunding } from "@/lib/near-funding";
+import { ownPayerWallets } from "@/lib/keepalive-economics";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,14 @@ export function GET() {
     // Other ways to fund the Base payment above — the challenge itself does not
     // change. Kept outside `payments` so a client that binds on it sees one rail.
     fundingOptions: { near: nearFunding(SITE) },
+    // Our own buyer wallets. We pay our own routes for tests and to keep discovery
+    // listings current; a payment from these to payTo is us, not demand. Published
+    // so outside demand counters can exclude it (no standard field exists yet).
+    selfPurchaseWallets: {
+      network: "eip155:8453",
+      addresses: ownPayerWallets(),
+      about: "Payments from these wallets to payTo are the seller buying its own routes (tests, listing refresh). Exclude them when counting demand.",
+    },
     discovery: {
       catalog: `${SITE}/.well-known/x402`,
       openapi: `${SITE}/openapi.json`,
