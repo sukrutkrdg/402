@@ -39,8 +39,15 @@ export default function TerminalClient({ commands, templates }: { commands: Term
   const [histIdx, setHistIdx] = useState(-1);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setToken(loadSessionToken()), []);
-  useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [lines]);
+  useEffect(() => {
+    setToken(loadSessionToken());
+  }, []);
+  // Braces matter: Chrome's scrollIntoView now returns a Promise, and an effect
+  // that returns one hands React a non-function "cleanup" — the page crashed on
+  // the first command.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [lines]);
 
   const print = (...ls: Line[]) => setLines((prev) => [...prev, ...ls]);
   const out = (text: string) => print({ kind: "out", text });

@@ -106,7 +106,9 @@ export default function NearCreditsClient({ tiers }: { tiers: Tier[] }) {
   const [status, setStatus] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<Claimed | null>(null);
 
-  useEffect(() => setOrder(load()), []);
+  useEffect(() => {
+    setOrder(load());
+  }, []);
 
   // Poll while an order is open. 1Click settles in tens of seconds once the
   // deposit lands; every 5s is what its own docs suggest.
