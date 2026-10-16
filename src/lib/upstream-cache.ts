@@ -14,7 +14,7 @@
  *    extending IP rate-limit bans.
  */
 
-import { goPlusHeaders, invalidateGoPlusToken } from "./goplus-auth";
+import { goPlusHeaders, invalidateGoPlusToken, noteAuthedGoPlusCall } from "./goplus-auth";
 import "server-only";
 import { kvGet, kvSet } from "./kv";
 
@@ -175,6 +175,7 @@ async function goPlusSecurityOnce<T>(addr: string): Promise<T | null> {
         const url = `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`;
         // Our registered app's quota when configured (goplus-auth.ts), anonymous otherwise.
         let headers = await goPlusHeaders();
+        if (headers.authorization) noteAuthedGoPlusCall();
         let r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
         // A rate limit or a 5xx is usually gone a second later: one retry.
         if (r.status === 429 || r.status >= 500) {

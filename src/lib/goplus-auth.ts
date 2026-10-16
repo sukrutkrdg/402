@@ -26,6 +26,15 @@ let inflight: Promise<string | null> | null = null;
 let backoffUntil = 0;
 /** Why the last token attempt ended as it did — for /api/status, never the token itself. */
 let lastOutcome: "app" | "not_configured" | "refused" | "unreachable" = "not_configured";
+/** When a data call last rejected our token (4012) and fell back to anonymous. */
+let lastDataRejectionAt: number | null = null;
+/** Data calls that went out with our token since this instance started. */
+let authedDataCalls = 0;
+
+/** Count a data call that carried our token (upstream-cache calls this). */
+export function noteAuthedGoPlusCall(): void {
+  authedDataCalls++;
+}
 
 function creds(): { key: string; secret: string } | null {
   const key = (process.env.GOPLUS_APP_KEY || process.env.GOPLUS_API_KEY || "").trim();
@@ -85,16 +94,19 @@ export async function goPlusHeaders(): Promise<Record<string, string>> {
  * How we reach GoPlus right now: "app" (our registered quota) or "anonymous"
  * with the reason. Tries for a token if none is cached. Safe to publish.
  */
-export async function goPlusAuthState(): Promise<{ mode: "app" | "anonymous"; reason?: string }> {
+export async function goPlusAuthState(): Promise<{ mode: "app" | "anonymous"; reason?: string; authedDataCalls?: number; lastDataRejectionAt?: string | null }> {
   if (!creds()) return { mode: "anonymous", reason: "GOPLUS_APP_KEY / GOPLUS_APP_SECRET not set" };
   const t = await goPlusToken();
-  if (t) return { mode: "app" };
+  // Per serverless instance: a sanity signal that data calls carry the token
+  // and GoPlus accepts it there, not a global counter.
+  if (t) return { mode: "app", authedDataCalls, lastDataRejectionAt: lastDataRejectionAt ? new Date(lastDataRejectionAt).toISOString() : null };
   return { mode: "anonymous", reason: lastOutcome === "refused" ? "GoPlus refused the app credentials" : "GoPlus token endpoint unreachable" };
 }
 
 /** Drop a token GoPlus rejected, so the next call fetches a fresh one. */
 export function invalidateGoPlusToken(): void {
   cached = null;
+  lastDataRejectionAt = Date.now();
 }
 
 /** Test hook. */
@@ -103,4 +115,6 @@ export function resetGoPlusAuth(): void {
   inflight = null;
   backoffUntil = 0;
   lastOutcome = "not_configured";
+  lastDataRejectionAt = null;
+  authedDataCalls = 0;
 }

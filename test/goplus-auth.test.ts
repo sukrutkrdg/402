@@ -60,7 +60,8 @@ describe("goPlusAuthState", () => {
     vi.stubEnv("GOPLUS_APP_SECRET", "s");
     vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ code: 1, result: { access_token: "secret-token", expires_in: 3600 } }) })));
     const st = await goPlusAuthState();
-    expect(st).toEqual({ mode: "app" });
+    expect(st.mode).toBe("app");
+    expect(st.lastDataRejectionAt).toBeNull();
     expect(JSON.stringify(st)).not.toContain("secret-token");
   });
 });
