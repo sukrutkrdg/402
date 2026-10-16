@@ -43,3 +43,24 @@ describe("goplus-auth", () => {
     expect(await goPlusHeaders()).toEqual({});
   });
 });
+
+describe("goPlusAuthState", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    resetGoPlusAuth();
+  });
+  it("reports the mode and why, never the token", async () => {
+    const { goPlusAuthState } = await import("@/lib/goplus-auth");
+    resetGoPlusAuth();
+    vi.stubEnv("GOPLUS_APP_KEY", "");
+    vi.stubEnv("GOPLUS_API_KEY", "");
+    expect((await goPlusAuthState()).mode).toBe("anonymous");
+    vi.stubEnv("GOPLUS_APP_KEY", "k");
+    vi.stubEnv("GOPLUS_APP_SECRET", "s");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ code: 1, result: { access_token: "secret-token", expires_in: 3600 } }) })));
+    const st = await goPlusAuthState();
+    expect(st).toEqual({ mode: "app" });
+    expect(JSON.stringify(st)).not.toContain("secret-token");
+  });
+});

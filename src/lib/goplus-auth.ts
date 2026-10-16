@@ -24,6 +24,8 @@ let cached: { token: string; until: number } | null = null;
 let inflight: Promise<string | null> | null = null;
 /** After a failed token call, stay anonymous for a while instead of retrying on every request. */
 let backoffUntil = 0;
+/** Why the last token attempt ended as it did — for /api/status, never the token itself. */
+let lastOutcome: "app" | "not_configured" | "refused" | "unreachable" = "not_configured";
 
 function creds(): { key: string; secret: string } | null {
   const key = (process.env.GOPLUS_APP_KEY || process.env.GOPLUS_API_KEY || "").trim();
@@ -50,14 +52,17 @@ async function fetchToken(): Promise<string | null> {
     const token = j?.code === 1 ? j.result?.access_token : undefined;
     if (!token) {
       backoffUntil = Date.now() + 5 * 60_000;
+      lastOutcome = "refused";
       return null;
     }
+    lastOutcome = "app";
     // Refresh a minute early; assume an hour if GoPlus does not say.
     const ttlMs = Math.max(60, (j?.result?.expires_in ?? 3600) - 60) * 1000;
     cached = { token, until: Date.now() + ttlMs };
     return token;
   } catch {
     backoffUntil = Date.now() + 60_000;
+    lastOutcome = "unreachable";
     return null;
   }
 }
@@ -76,6 +81,17 @@ export async function goPlusHeaders(): Promise<Record<string, string>> {
   return t ? { authorization: `Bearer ${t}` } : {};
 }
 
+/**
+ * How we reach GoPlus right now: "app" (our registered quota) or "anonymous"
+ * with the reason. Tries for a token if none is cached. Safe to publish.
+ */
+export async function goPlusAuthState(): Promise<{ mode: "app" | "anonymous"; reason?: string }> {
+  if (!creds()) return { mode: "anonymous", reason: "GOPLUS_APP_KEY / GOPLUS_APP_SECRET not set" };
+  const t = await goPlusToken();
+  if (t) return { mode: "app" };
+  return { mode: "anonymous", reason: lastOutcome === "refused" ? "GoPlus refused the app credentials" : "GoPlus token endpoint unreachable" };
+}
+
 /** Drop a token GoPlus rejected, so the next call fetches a fresh one. */
 export function invalidateGoPlusToken(): void {
   cached = null;
@@ -86,4 +102,5 @@ export function resetGoPlusAuth(): void {
   cached = null;
   inflight = null;
   backoffUntil = 0;
+  lastOutcome = "not_configured";
 }

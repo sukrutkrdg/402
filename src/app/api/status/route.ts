@@ -7,11 +7,12 @@
 import { NextResponse } from "next/server";
 import { readHealth, readFailures } from "@/lib/health";
 import { SERVICES } from "@/lib/services";
+import { goPlusAuthState } from "@/lib/goplus-auth";
 
 export const revalidate = 300;
 
 export async function GET() {
-  const [h, failures] = await Promise.all([readHealth(7), readFailures()]);
+  const [h, failures, goplus] = await Promise.all([readHealth(7), readFailures(), goPlusAuthState()]);
   const visible = new Set(SERVICES.filter((s) => !s.hidden).map((s) => s.id));
   const services = h.services
     .filter((s) => visible.has(s.service))
@@ -26,6 +27,8 @@ export async function GET() {
       window: { from: h.from, to: h.to, days: 7 },
       overall: { calls: services.reduce((s, x) => s + x.calls, 0), successPct: ok + fail ? +((ok / (ok + fail)) * 100).toFixed(1) : null },
       method: "Recorded on every handler run. successPct = answered ÷ (answered + our failures); a refused input (400) is the caller's and not counted. Latency is the bucket holding the median / 90th-percentile answered call. recentFailureReasons: the most frequent of the last 200 failures across all services, as the caller saw them.",
+      // How the security feed is reached: our registered quota, or the shared anonymous one.
+      upstreams: { goplus },
       services,
       notCalledThisWeek: [...visible].filter((id) => !services.some((s) => s.service === id)).sort(),
     },
