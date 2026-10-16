@@ -32,7 +32,10 @@
  */
 
 import "server-only";
+import { createPublicClient } from "viem";
+import { base } from "viem/chains";
 import { baseSwap } from "./base-swap";
+import { baseTransport } from "./base-transport";
 
 /** The comparison operators Base accepts on a predicate. */
 const ALLOWED_OPS = new Set(["<", "<=", "=", "!=", ">", ">="]);
@@ -145,10 +148,36 @@ export function buildValidityPredicates(params: Record<string, string>): Predica
   return preds;
 }
 
+/**
+ * A beforeBlock that has already passed builds a transaction Base will never
+ * include, and nothing about the envelope says so: the agent submits it and
+ * waits. Our own published example asked for block 50,000,000 when Base was past
+ * 52.6M. Refuse it (as the caller's input, before anything is charged) and
+ * report the block we read. If the chain cannot be read, the envelope is still
+ * built and says the deadline went unchecked.
+ */
+export async function checkDeadline(params: Record<string, string>): Promise<{ currentBlock: string | null; deadlineChecked: boolean }> {
+  if (!params.beforeBlock) return { currentBlock: null, deadlineChecked: false };
+  let current: bigint;
+  try {
+    current = await createPublicClient({ chain: base, transport: baseTransport(6000, true) }).getBlockNumber();
+  } catch {
+    return { currentBlock: null, deadlineChecked: false };
+  }
+  const deadline = BigInt(toHexQuantity(params.beforeBlock, "beforeBlock"));
+  if (deadline <= current) {
+    throw new Error(
+      `beforeBlock ${deadline} has already passed: Base is at block ${current}. A deadline must be ahead of the current block (Base makes about 5 blocks a second).`,
+    );
+  }
+  return { currentBlock: current.toString(), deadlineChecked: true };
+}
+
 export async function baseSwapValidity(params: Record<string, string>) {
   // Validate the conditions FIRST — a malformed predicate must fail before any 0x
   // call, so a bad condition is never charged.
   const validity = buildValidityPredicates(params);
+  const deadlineCheck = await checkDeadline(params);
 
   const swap = await baseSwap(params);
   const endpoint = sequencerEndpoint();
@@ -172,6 +201,7 @@ export async function baseSwapValidity(params: Record<string, string>) {
 
   return {
     chain: "base" as const,
+    ...deadlineCheck,
     checkedAt: swap.checkedAt,
     router: swap.router,
     conditional: true,

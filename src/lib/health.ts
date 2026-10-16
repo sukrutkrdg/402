@@ -20,6 +20,11 @@ import { isRefundable } from "./envelope";
 /** The HTTP status a handler error deserves: the caller's input (400), an upstream (502), or ours (500). */
 export function errorStatus(message: string): 400 | 502 | 500 {
   const m = message.toLowerCase();
+  // Our own "come back later" wording wins over everything below. "No holder
+  // data for this token (GoPlus) — not charged, retry shortly" matched the
+  // "no …data" input rule, so a GoPlus outage on dump-risk read as the caller's
+  // mistake and /status never showed it.
+  if (/retry shortly|retry in a minute|try again shortly|unavailable/.test(m)) return 502;
   // "must be", "too large/long", "choose one of", "not a" and "unsupported" are
   // the caller's input talking: retrying the same input can only fail again.
   // Word boundaries matter: "provide" must not catch "data provider unavailable"

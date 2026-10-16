@@ -727,7 +727,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
         { name: "buy", label: "Token you buy", placeholder: "ETH", required: true },
         { name: "amount", label: "Amount you sell", placeholder: "100", required: true },
         { name: "taker", label: "Your wallet (signs the swap)", placeholder: "0x…", required: true },
-        { name: "beforeBlock", label: "Deadline: before this block (recommended)", placeholder: "50000000" },
+        { name: "beforeBlock", label: "Deadline: before this block (recommended)", placeholder: "e.g. current block + 300" },
         { name: "fromBlock", label: "Earliest block (optional)", placeholder: "0" },
         { name: "flashblockIndex", label: "Flashblock index (optional)", placeholder: "0" },
         { name: "minNativeBalanceWei", label: "Min taker ETH balance in wei (optional)", placeholder: "0x…" },
@@ -750,7 +750,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       icon: "⏱️",
       category: "Onchain",
       params: [
-        { name: "beforeBlock", label: "Deadline: before this block (recommended)", placeholder: "50000000" },
+        { name: "beforeBlock", label: "Deadline: before this block (recommended)", placeholder: "e.g. current block + 300" },
         { name: "fromBlock", label: "Earliest block (optional)", placeholder: "0" },
         { name: "flashblockIndex", label: "Flashblock index (optional)", placeholder: "0" },
         { name: "flashblockIndexOp", label: "Flashblock operator (optional, default =)", placeholder: "=" },

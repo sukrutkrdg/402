@@ -148,17 +148,36 @@ export async function cached<T>(
   return null;
 }
 
+const goPlusInflight = new Map<string, Promise<unknown>>();
+
 /** GoPlus token-security row for a Base token (honeypot/taxes/holders/LP…). null on failure. */
 export async function goPlusSecurity<T = Record<string, unknown>>(address: string): Promise<T | null> {
   const addr = address.toLowerCase();
+  // One request per token at a time. pre-trade-bundle runs four checks on the
+  // same token in parallel and each one asked GoPlus separately; under that
+  // burst GoPlus answers some of them non-OK, the check reads "feed
+  // unavailable", and the bundle refuses. owner-powers, token-risk and
+  // sellability failed 5 of 14 calls in a day that way while each passed alone.
+  const inflight = goPlusInflight.get(addr) as Promise<T | null> | undefined;
+  if (inflight) return inflight;
+  const p = goPlusSecurityOnce<T>(addr).finally(() => goPlusInflight.delete(addr));
+  goPlusInflight.set(addr, p);
+  return p;
+}
+
+async function goPlusSecurityOnce<T>(addr: string): Promise<T | null> {
   return cached<T>(
     `gp:${addr}`,
     90,
     async () => {
       try {
-        const r = await fetch(`https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`, {
-          signal: AbortSignal.timeout(8000),
-        });
+        const url = `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`;
+        let r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        // A rate limit or a 5xx is usually gone a second later: one retry.
+        if (r.status === 429 || r.status >= 500) {
+          await new Promise((res) => setTimeout(res, 1200));
+          r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        }
         if (!r.ok) return null;
         const j = (await r.json()) as { result?: Record<string, T> };
         const row = j.result?.[addr] as Record<string, unknown> | undefined;

@@ -310,10 +310,17 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "base-swap": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   // Same quote, plus a block deadline so the conditional example actually builds
   // a (non-empty) validity set. The tx is returned, never sent.
-  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", fromBlock: "0", beforeBlock: "50000000" },
+  //
+  // The deadline has to stay ahead of Base for years: 999,999,999 is about six
+  // years out at five blocks a second; the 50,000,000 used before had passed by
+  // October. The empty values switch off what the label rules would otherwise
+  // declare: the storage operator's placeholder (">=") is a real value, and a
+  // storage condition without its address throws — neither endpoint answered
+  // its own example once.
+  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "999999999", storageOp: "", flashblockIndexOp: "" },
   // A block deadline alone is a valid, runnable condition set; no signedTx so the
   // envelope comes back with a placeholder. Nothing is sent.
-  "validity-build": { fromBlock: "0", beforeBlock: "50000000" },
+  "validity-build": { beforeBlock: "999999999", storageOp: "", flashblockIndexOp: "" },
   // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.

@@ -16,7 +16,7 @@
  */
 
 import "server-only";
-import { buildValidityPredicates, sequencerEndpoint } from "./base-swap-validity";
+import { buildValidityPredicates, checkDeadline, sequencerEndpoint } from "./base-swap-validity";
 
 /** A signed, serialized tx is 0x + an even number of hex chars. We do not decode
  *  or re-sign it — it is the caller's, passed straight through to the envelope. */
@@ -34,6 +34,7 @@ export async function validityBuild(params: Record<string, string>) {
   // else, so a bad condition is never charged.
   const validity = buildValidityPredicates(params);
   const signedTx = normalizeSignedTx(params.signedTx || params.rawTx || params.signedRawTransaction);
+  const deadlineCheck = await checkDeadline(params);
   const endpoint = sequencerEndpoint();
 
   const txField = signedTx ?? "0x<SIGNED_RAW_TRANSACTION>";
@@ -50,6 +51,7 @@ export async function validityBuild(params: Record<string, string>) {
     chain: "base" as const,
     conditional: true,
     conditionCount: validity.length,
+    ...deadlineCheck,
     validity,
     submit: { method: "base_sendRawTransactionValidity", endpoint, rpcRequest },
     signedTxProvided: signedTx !== null,

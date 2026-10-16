@@ -4,8 +4,22 @@
  * passthrough/validation and the JSON-RPC envelope shape.
  */
 
-import { describe, it, expect } from "vitest";
-import { validityBuild } from "@/lib/validity-tx";
+import { describe, it, expect, vi } from "vitest";
+
+// The deadline check reads Base's current block. Pin it, so the tests never hit
+// the network and the "already passed" case is deterministic.
+const chain = vi.hoisted(() => ({ block: 1_000_000n, fail: false }));
+vi.mock("viem", async (orig) => ({
+  ...(await orig<typeof import("viem")>()),
+  createPublicClient: () => ({
+    getBlockNumber: async () => {
+      if (chain.fail) throw new Error("rpc down");
+      return chain.block;
+    },
+  }),
+}));
+
+const { validityBuild } = await import("@/lib/validity-tx");
 
 describe("validity-build", () => {
   it("returns a placeholder envelope when no signedTx is given", async () => {
@@ -30,6 +44,28 @@ describe("validity-build", () => {
 
   it("refuses a build with no condition at all (shares the swap builder's guard)", async () => {
     await expect(validityBuild({})).rejects.toThrow(/at least one condition/i);
+  });
+
+  it("refuses a deadline that has already passed, naming the current block", async () => {
+    await expect(validityBuild({ beforeBlock: "999999" })).rejects.toThrow(/already passed.*1000000/);
+    await expect(validityBuild({ beforeBlock: "1000000" })).rejects.toThrow(/already passed/);
+  });
+
+  it("builds anyway when the chain cannot be read, and says the deadline went unchecked", async () => {
+    chain.fail = true;
+    try {
+      const r = await validityBuild({ beforeBlock: "999999" });
+      expect(r.deadlineChecked).toBe(false);
+      expect(r.currentBlock).toBeNull();
+    } finally {
+      chain.fail = false;
+    }
+  });
+
+  it("reports the block it checked against", async () => {
+    const r = await validityBuild({ beforeBlock: "1157000" });
+    expect(r.deadlineChecked).toBe(true);
+    expect(r.currentBlock).toBe("1000000");
   });
 
   it("flags the missing deadline in steps when only a non-deadline condition is set", async () => {

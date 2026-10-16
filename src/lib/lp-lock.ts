@@ -47,7 +47,11 @@ export async function lpLock(params: Record<string, string>) {
   const address = reqAddr(params.address || "");
 
   const gp = (await goPlusSecurity<{ lp_holders?: LpHolder[]; lp_total_supply?: string; holder_count?: string | number }>(address)) ?? undefined;
-  if (!gp) throw new Error("No LP data for this token");
+  // null means GoPlus gave no usable row — an outage or a rate limit far more
+  // often than a token without liquidity. Reported as ours (502, not charged)
+  // so /status counts it; "no LP data" read as the caller's input error and
+  // hid a failing upstream behind 100% success.
+  if (!gp) throw new Error("Security feed unavailable (GoPlus) — not charged, retry shortly");
 
   const lps = Array.isArray(gp.lp_holders) ? gp.lp_holders : [];
   if (lps.length === 0) throw new Error("No LP holders found (token may have no DEX pool)");
