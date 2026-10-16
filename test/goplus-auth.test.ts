@@ -18,13 +18,13 @@ describe("goplus-auth", () => {
     expect(goPlusSign("mBOMg20QW11BbtyH4Zh0", 1647847498, "V6aRfxlPJwN3ViJSIFSCdxPvneajuJsh")).toBe("7293d385b9225b3c3f232b76ba97255d0e21063e");
   });
 
-  it("fetches one token, caches it, and sends it as Bearer", async () => {
+  it("fetches one token, caches it, and sends it bare (what GoPlus accepts)", async () => {
     const f = vi.fn(async () => ({ json: async () => ({ code: 1, result: { access_token: "tok123", expires_in: 3600 } }) }));
     vi.stubGlobal("fetch", f);
     const [a, b] = await Promise.all([goPlusToken(), goPlusToken()]);
     expect(a).toBe("tok123");
     expect(b).toBe("tok123");
-    expect(await goPlusHeaders()).toEqual({ authorization: "Bearer tok123" });
+    expect(await goPlusHeaders()).toEqual({ authorization: "tok123" });
     expect(f).toHaveBeenCalledTimes(1);
     const body = JSON.parse((f.mock.calls[0] as unknown as [string, { body: string }])[1].body);
     expect(body.app_key).toBe("mBOMg20QW11BbtyH4Zh0");
@@ -78,13 +78,13 @@ describe("header form after a refusal", () => {
     vi.unstubAllGlobals();
     resetGoPlusAuth();
   });
-  it("Bearer, then the bare token, then off for an hour — one token request throughout", async () => {
+  it("bare, then Bearer, then off for an hour — one token request throughout", async () => {
     const { invalidateGoPlusToken } = await import("@/lib/goplus-auth");
     const f = vi.fn(async () => ({ json: async () => ({ code: 1, result: { access_token: "tok", expires_in: 3600 } }) }));
     vi.stubGlobal("fetch", f);
-    expect(await goPlusHeaders()).toEqual({ authorization: "Bearer tok" });
-    invalidateGoPlusToken();
     expect(await goPlusHeaders()).toEqual({ authorization: "tok" });
+    invalidateGoPlusToken();
+    expect(await goPlusHeaders()).toEqual({ authorization: "Bearer tok" });
     invalidateGoPlusToken();
     expect(await goPlusHeaders()).toEqual({});
     expect(await goPlusHeaders()).toEqual({});

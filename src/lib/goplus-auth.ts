@@ -7,7 +7,7 @@
  * gets its own quota.
  *
  * Auth is app_key + app_secret: sign = sha1(app_key + time + app_secret), POST
- * /api/v1/token, then send `Authorization: Bearer <access_token>`. An X-API-KEY
+ * /api/v1/token, then send `Authorization: <access_token>` (bare; see style). An X-API-KEY
  * header is silently ignored by GoPlus (tested 2026-10-16: a wrong key answered
  * the same as the right one), so the key alone does nothing.
  *
@@ -33,12 +33,13 @@ const OK_KEY = "goplus:auth:lastAcceptedAt";
 const REJECT_KEY = "goplus:auth:lastRejectedAt";
 let okWrittenAt = 0;
 /**
- * How to send the token. GoPlus documents "Bearer <token>", but the token it
- * issued on 2026-10-16 was refused (4012) on data calls in that form. On a
- * refusal we try the bare token once; if that is refused too, the token is not
- * used for an hour and calls stay anonymous — never a token request per call.
+ * How to send the token. GoPlus documents "Bearer <token>", but measured on
+ * 2026-10-16 its data endpoints refuse that (4012) and accept the bare token.
+ * So the bare token goes first; on a refusal we try Bearer once; if that is
+ * refused too, the token is not used for an hour and calls stay anonymous —
+ * never a token request per call.
  */
-let style: "bearer" | "raw" | "off" = "bearer";
+let style: "bearer" | "raw" | "off" = "raw";
 let styleOffUntil = 0;
 
 /** A data call carried our token and GoPlus answered code 1. One KV write per instance per 10 minutes. */
@@ -96,11 +97,11 @@ export async function goPlusToken(): Promise<string | null> {
   return inflight;
 }
 
-/** Headers for a GoPlus request: Bearer when we have a token, nothing otherwise. */
+/** Headers for a GoPlus request: our token when we have one (form per `style`), nothing otherwise. */
 export async function goPlusHeaders(): Promise<Record<string, string>> {
   if (style === "off") {
     if (Date.now() < styleOffUntil) return {};
-    style = "bearer";
+    style = "raw";
   }
   const t = await goPlusToken();
   if (!t) return {};
@@ -138,8 +139,8 @@ export async function goPlusAuthState(): Promise<{
 /** GoPlus refused the token on a data call: try the other form, then stop using it for an hour. */
 export function invalidateGoPlusToken(): void {
   kvSet(REJECT_KEY, `${Date.now()}:${style}`, 7 * 86400).catch(() => {});
-  if (style === "bearer") {
-    style = "raw"; // keep the token: it may be fine in the other form
+  if (style === "raw") {
+    style = "bearer"; // keep the token: it may be fine in the other form
     return;
   }
   style = "off";
@@ -154,6 +155,6 @@ export function resetGoPlusAuth(): void {
   backoffUntil = 0;
   lastOutcome = "not_configured";
   okWrittenAt = 0;
-  style = "bearer";
+  style = "raw";
   styleOffUntil = 0;
 }
