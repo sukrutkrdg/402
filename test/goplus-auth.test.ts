@@ -66,3 +66,28 @@ describe("goPlusAuthState", () => {
     expect(JSON.stringify(st)).not.toContain("secret-token");
   });
 });
+
+describe("header form after a refusal", () => {
+  beforeEach(() => {
+    resetGoPlusAuth();
+    vi.stubEnv("GOPLUS_APP_KEY", "k");
+    vi.stubEnv("GOPLUS_APP_SECRET", "s");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    resetGoPlusAuth();
+  });
+  it("Bearer, then the bare token, then off for an hour — one token request throughout", async () => {
+    const { invalidateGoPlusToken } = await import("@/lib/goplus-auth");
+    const f = vi.fn(async () => ({ json: async () => ({ code: 1, result: { access_token: "tok", expires_in: 3600 } }) }));
+    vi.stubGlobal("fetch", f);
+    expect(await goPlusHeaders()).toEqual({ authorization: "Bearer tok" });
+    invalidateGoPlusToken();
+    expect(await goPlusHeaders()).toEqual({ authorization: "tok" });
+    invalidateGoPlusToken();
+    expect(await goPlusHeaders()).toEqual({});
+    expect(await goPlusHeaders()).toEqual({});
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});

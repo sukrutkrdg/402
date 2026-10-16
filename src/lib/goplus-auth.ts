@@ -32,12 +32,20 @@ let lastOutcome: "app" | "not_configured" | "refused" | "unreachable" = "not_con
 const OK_KEY = "goplus:auth:lastAcceptedAt";
 const REJECT_KEY = "goplus:auth:lastRejectedAt";
 let okWrittenAt = 0;
+/**
+ * How to send the token. GoPlus documents "Bearer <token>", but the token it
+ * issued on 2026-10-16 was refused (4012) on data calls in that form. On a
+ * refusal we try the bare token once; if that is refused too, the token is not
+ * used for an hour and calls stay anonymous — never a token request per call.
+ */
+let style: "bearer" | "raw" | "off" = "bearer";
+let styleOffUntil = 0;
 
 /** A data call carried our token and GoPlus answered code 1. One KV write per instance per 10 minutes. */
 export function noteGoPlusTokenAccepted(): void {
   if (Date.now() - okWrittenAt < 10 * 60_000) return;
   okWrittenAt = Date.now();
-  kvSet(OK_KEY, String(Date.now()), 7 * 86400).catch(() => {});
+  kvSet(OK_KEY, `${Date.now()}:${style}`, 7 * 86400).catch(() => {});
 }
 
 function creds(): { key: string; secret: string } | null {
@@ -90,8 +98,18 @@ export async function goPlusToken(): Promise<string | null> {
 
 /** Headers for a GoPlus request: Bearer when we have a token, nothing otherwise. */
 export async function goPlusHeaders(): Promise<Record<string, string>> {
+  if (style === "off") {
+    if (Date.now() < styleOffUntil) return {};
+    style = "bearer";
+  }
   const t = await goPlusToken();
-  return t ? { authorization: `Bearer ${t}` } : {};
+  if (!t) return {};
+  return { authorization: style === "raw" ? t : `Bearer ${t}` };
+}
+
+/** Which header form GoPlus accepted last (for /api/status). */
+export function goPlusHeaderStyle(): string {
+  return style;
 }
 
 /**
@@ -107,15 +125,26 @@ export async function goPlusAuthState(): Promise<{
   if (!creds()) return { mode: "anonymous", reason: "GOPLUS_APP_KEY / GOPLUS_APP_SECRET not set" };
   const t = await goPlusToken();
   if (!t) return { mode: "anonymous", reason: lastOutcome === "refused" ? "GoPlus refused the app credentials" : "GoPlus token endpoint unreachable" };
-  const iso = (v: string | null) => (v && Number(v) > 0 ? new Date(Number(v)).toISOString() : null);
+  // Stored as "<ms>:<header form>".
+  const iso = (v: string | null) => {
+    const [ms, form] = String(v ?? "").split(":");
+    return Number(ms) > 0 ? `${new Date(Number(ms)).toISOString()}${form ? ` (${form})` : ""}` : null;
+  };
   const [ok, rej] = await Promise.all([kvGet(OK_KEY).catch(() => null), kvGet(REJECT_KEY).catch(() => null)]);
   return { mode: "app", tokenLastAcceptedAt: iso(ok), tokenLastRejectedAt: iso(rej) };
 }
 
 /** Drop a token GoPlus rejected, so the next call fetches a fresh one. */
+/** GoPlus refused the token on a data call: try the other form, then stop using it for an hour. */
 export function invalidateGoPlusToken(): void {
+  kvSet(REJECT_KEY, `${Date.now()}:${style}`, 7 * 86400).catch(() => {});
+  if (style === "bearer") {
+    style = "raw"; // keep the token: it may be fine in the other form
+    return;
+  }
+  style = "off";
+  styleOffUntil = Date.now() + 60 * 60_000;
   cached = null;
-  kvSet(REJECT_KEY, String(Date.now()), 7 * 86400).catch(() => {});
 }
 
 /** Test hook. */
@@ -125,4 +154,6 @@ export function resetGoPlusAuth(): void {
   backoffUntil = 0;
   lastOutcome = "not_configured";
   okWrittenAt = 0;
+  style = "bearer";
+  styleOffUntil = 0;
 }

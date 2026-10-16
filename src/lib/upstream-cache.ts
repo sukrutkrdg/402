@@ -183,7 +183,8 @@ async function goPlusSecurityOnce<T>(addr: string): Promise<T | null> {
         }
         if (!r.ok) return null;
         let j = (await r.json()) as { code?: number; result?: Record<string, T> };
-        // A token GoPlus no longer accepts (4012): drop it and ask once without.
+        // GoPlus refused the token (4012): switch header form (goplus-auth) and
+        // answer this call anonymously.
         if (j.code === 4012 && headers.authorization) {
           invalidateGoPlusToken();
           headers = {};
