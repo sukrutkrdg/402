@@ -225,3 +225,36 @@ describe("dump-risk — stablecoins", () => {
     expect(ucMock.goPlusSecurity).not.toHaveBeenCalled();
   });
 });
+
+describe("dump-risk — exit days (1.1)", () => {
+  function dexVol(liquidityUsd: number, marketCap: number, volume24h: number) {
+    return [{ baseToken: { address: TOKEN.toLowerCase() }, priceUsd: "0.01", liquidity: { usd: liquidityUsd }, volume: { h24: volume24h }, marketCap }];
+  }
+
+  it("a bag under three days of volume, on real liquidity, is fragile rather than an exit trap (AERO)", async () => {
+    ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.02" }]));
+    // 2% of $1.8B = $36M against $64M liquidity (~53% one-shot impact), $40M/day volume.
+    ucMock.dexTokenPairs.mockResolvedValue(dexVol(64_000_000, 1_800_000_000, 40_000_000));
+    const r = await dumpRiskCore({ address: TOKEN });
+    expect(r.topHolderDumpImpactPct).toBeGreaterThanOrEqual(50);
+    expect(r.topHolderExitDays).toBeLessThan(3);
+    expect(r.verdict).toBe("fragile");
+    expect(r.recommendation).toMatch(/not a trap/);
+  });
+
+  it("a fresh token stays an exit trap however busy its volume looks (volume is cheap to fake)", async () => {
+    ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.60" }]));
+    ucMock.dexTokenPairs.mockResolvedValue(dexVol(20_000, 2_000_000, 5_000_000));
+    const r = await dumpRiskCore({ address: TOKEN });
+    expect(r.topHolderExitDays).toBeLessThan(3);
+    expect(r.verdict).toBe("exit_trap");
+  });
+
+  it("a large bag that is many days of volume stays an exit trap even on deep liquidity", async () => {
+    ucMock.goPlusSecurity.mockResolvedValue(gp([{ address: "0xaaa", percent: "0.20" }]));
+    ucMock.dexTokenPairs.mockResolvedValue(dexVol(2_000_000, 100_000_000, 100_000));
+    const r = await dumpRiskCore({ address: TOKEN });
+    expect(r.topHolderExitDays).toBeGreaterThan(3);
+    expect(r.verdict).toBe("exit_trap");
+  });
+});

@@ -18,6 +18,8 @@ import { base } from "viem/chains";
 import { getConfig, USDC_BASE } from "./config";
 import { baseTransport } from "./base-transport";
 import { classifyCode } from "./primitives";
+import { ADMIN_FLAGS, establishedContext, type EstablishedContext } from "./established";
+import { labelHolder } from "./known-addresses";
 
 const DEAD = new Set([
   "0x0000000000000000000000000000000000000000",
@@ -168,16 +170,31 @@ export async function tokenRisk(params: Record<string, string>) {
     const topHolderPct = Array.isArray(gp.holders) && gp.holders[0]
       ? num((gp.holders[0] as GoPlus).percent) * 100
       : null;
+    // Concentration is about holders who can SELL. A lending market, a DEX, a
+    // bridge escrow, a locker or a burn sink holding half the supply is not one
+    // party's bag — cbBTC read top_holder_over_50pct on its lending deposits.
+    // Same registry and GoPlus tags dump-risk uses; unknown holders stay counted.
+    const liveHolders = Array.isArray(gp.holders)
+      ? (gp.holders as GoPlus[]).filter((h) => {
+          const addr = String(h.address ?? "").toLowerCase();
+          const goPlusNonDumpable =
+            isTrue(h.is_locked) || /^0x0{40}$|^0x0{36}dead$/.test(addr) || /lock|burn|null|pair|pool|uniswap|aerodrome|sushi|pancake|dead/i.test(String(h.tag ?? ""));
+          return !labelHolder(addr, { goPlusNonDumpable, goPlusTag: (h.tag as string) || null, isContract: isTrue(h.is_contract) }).nonDumpable;
+        })
+      : [];
+    const topLiveHolderPct = liveHolders[0] ? num(liveHolders[0].percent) * 100 : Array.isArray(gp.holders) ? 0 : null;
 
     // --- Deeper holder/LP analysis ---
 
     // top10HolderPct: sum of percent for first up to 10 holders (×100, rounded to 2 dp)
     let top10HolderPct: number | null = null;
+    let top10LiveHolderPct: number | null = null;
     if (Array.isArray(gp.holders) && gp.holders.length > 0) {
       const slice = (gp.holders as GoPlus[]).slice(0, 10);
       top10HolderPct = Math.round(
         slice.reduce((acc, h) => acc + num(h.percent), 0) * 100 * 100,
       ) / 100;
+      top10LiveHolderPct = Math.round(liveHolders.slice(0, 10).reduce((acc, h) => acc + num(h.percent), 0) * 100 * 100) / 100;
     }
 
     // lockedLpPct: sum of percent where is_locked truthy OR holder is a burn/dead address (×100)
@@ -218,13 +235,13 @@ export async function tokenRisk(params: Record<string, string>) {
     if (isTrue(gp.can_take_back_ownership)) { flags.push("can_take_back_ownership"); score += 25; }
     if (isTrue(gp.hidden_owner)) { flags.push("hidden_owner"); score += 20; }
     if (isTrue(gp.is_blacklisted)) { flags.push("has_blacklist"); score += 15; }
-    if (topHolderPct !== null && topHolderPct >= 50) { flags.push("top_holder_over_50pct"); score += 20; }
+    if (topLiveHolderPct !== null && topLiveHolderPct >= 50) { flags.push("top_holder_over_50pct"); score += 20; }
 
     // --- New deeper flags (deduplicated via check before push) ---
     if (creatorPct !== null && creatorPct >= 5 && !flags.includes("creator_holds_significant")) {
       flags.push("creator_holds_significant"); score += 10;
     }
-    if (top10HolderPct !== null && top10HolderPct >= 70 && !flags.includes("concentrated_holders")) {
+    if (top10LiveHolderPct !== null && top10LiveHolderPct >= 70 && !flags.includes("concentrated_holders")) {
       flags.push("concentrated_holders"); score += 15;
     }
     if (Array.isArray(gp.lp_holders) && lockedLpPct !== null && lockedLpPct < 50 && !flags.includes("lp_not_locked")) {
@@ -251,6 +268,10 @@ export async function tokenRisk(params: Record<string, string>) {
       lpHolderCount: gp.lp_holder_count !== undefined ? Number(gp.lp_holder_count) : null,
       // --- New deeper fields ---
       top10HolderPct,
+      // The same two figures over holders that can sell (registry/GoPlus-tagged
+      // lending, DEX, bridge, locker and burn addresses left out). Flags use these.
+      topLiveHolderPct: topLiveHolderPct !== null ? Math.round(topLiveHolderPct * 100) / 100 : null,
+      top10LiveHolderPct,
       lockedLpPct,
       creatorPct,
       isInDex,
@@ -264,6 +285,29 @@ export async function tokenRisk(params: Record<string, string>) {
       creatorAddress: gp.creator_address !== undefined ? String(gp.creator_address) : null,
       creatorBalance: gp.creator_balance !== undefined ? String(gp.creator_balance) : null,
     };
+  }
+
+  // Established tokens: admin controls are context, not risk (see established.ts).
+  // Only ADMIN_FLAGS move; every other flag keeps its points. Never applied when
+  // the token is a honeypot, an airdrop scam, or hides/reclaims its owner.
+  const ADMIN_POINTS: Record<(typeof ADMIN_FLAGS)[number], number> = {
+    owner_not_renounced: 15,
+    mintable: 15,
+    lp_not_locked: 20,
+    upgradeable_proxy: 15,
+  };
+  let establishedCtx: EstablishedContext | null = null;
+  let contextFlags: string[] = [];
+  if (gp && !rpcBlind) {
+    const disqualified = flags.filter((f) => ["honeypot", "airdrop_scam", "cannot_sell_all", "hidden_owner", "can_take_back_ownership"].includes(f));
+    const holders = gp.holder_count !== undefined ? Number(gp.holder_count) : null;
+    establishedCtx = await establishedContext(address, Number.isFinite(holders) ? holders : null, disqualified);
+    if (establishedCtx.established) {
+      contextFlags = flags.filter((f) => (ADMIN_FLAGS as readonly string[]).includes(f));
+      for (const f of contextFlags) score -= ADMIN_POINTS[f as (typeof ADMIN_FLAGS)[number]];
+      for (const f of contextFlags) flags.splice(flags.indexOf(f), 1);
+      score = Math.max(score, 0);
+    }
   }
 
   score = Math.min(score, 100);
@@ -296,7 +340,11 @@ export async function tokenRisk(params: Record<string, string>) {
     chainRead: !rpcBlind, // false → the token's own ERC-20 fields were unreadable
     degraded: !securityChecked || rpcBlind,
     flags,
-    sources: gp ? ["base-rpc", "goplus"] : ["base-rpc"],
+    // Admin controls that are scored on a fresh token but are context on an
+    // established one (owner kept, mintable, LP not locked, upgradeable).
+    contextFlags,
+    established: establishedCtx,
+    sources: gp ? ["base-rpc", "goplus", ...(establishedCtx?.liquidityUsd != null ? ["dexscreener"] : [])] : ["base-rpc"],
     coverage: rpcBlind
       ? "Neither source answered: the token's own ERC-20 reads failed and no risk band can be asserted from this call. Retry."
       : gp
@@ -331,7 +379,7 @@ export async function tokenRisk(params: Record<string, string>) {
         : ["GoPlus security feed unavailable this call: honeypot/taxes/holders NOT checked", "offchain team/social signals", "liquidity depth vs trade size"],
       wouldChangeCall: security?.isHoneypot
         ? "Nothing — honeypot flag is terminal; do not trade."
-        : !renounced
+        : !renounced && !establishedCtx?.established
           ? "Ownership renounce, or owner privileges proven inert; re-check before size."
           : "Material change in liquidity, taxes or holder concentration; re-check if stale > 1h.",
       // Machine-readable staleness hint — riskier tokens go stale faster; agents

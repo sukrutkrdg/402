@@ -81,8 +81,14 @@ export async function deployerReputation(params: Record<string, string>) {
     score += 12;
     signals.push("Ownership is renounced — the creator can't change the contract.");
   } else if (renounced === false) {
-    score -= 10;
-    signals.push("Ownership is NOT renounced — the creator retains control.");
+    // On an established token a kept owner is how the issuer runs it (Circle on
+    // USDC), not a rug lever — the same demotion token-risk applies.
+    if (risk.established?.established) {
+      signals.push(`Ownership is retained, as is normal for an established token (${risk.established.basis}).`);
+    } else {
+      score -= 10;
+      signals.push("Ownership is NOT renounced — the creator retains control.");
+    }
   }
 
   if ((risk.flags || []).length > 0) {

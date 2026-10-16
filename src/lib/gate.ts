@@ -68,7 +68,11 @@ export async function preTradeGate(params: Record<string, string>) {
   if (riskScore !== null && riskScore >= 70) observedRisks.push("high token-risk score");
   if (impact !== null && impact >= 10) observedRisks.push(`price impact ${impact}% at this size`);
   if (/high[_-]?risk|scam|serial/.test(deployRep)) observedRisks.push(`deployer: ${deployRep}`);
-  if ((risk?.ownership as { renounced?: boolean } | undefined)?.renounced === false) observedRisks.push("ownership not renounced");
+  // A kept owner is a HOLD reason on a fresh token, and context on an established
+  // one (token-risk 1.3, established.ts) — USDC answered HOLD here, in our own
+  // published example.
+  const established = (risk?.established as { established?: boolean } | null | undefined)?.established === true;
+  if ((risk?.ownership as { renounced?: boolean } | undefined)?.renounced === false && !established) observedRisks.push("ownership not renounced");
   if (degraded) observedRisks.push(`unverified: ${unavailable.join(", ")}`);
 
   // Decision: any terminal flag → STOP; material risks OR an unverified check →
@@ -82,6 +86,12 @@ export async function preTradeGate(params: Record<string, string>) {
     address,
     tradeSizeUsd,
     decision, // GO | HOLD | STOP
+    // token-risk judged it established (>=50k holders, >=$1M Base DEX liquidity):
+    // admin controls are context, not a HOLD reason.
+    established,
+    // The token has no owner()/getOwner() at all, read from the chain (not from
+    // GoPlus, which can omit owner_address on a partial row).
+    ownerless: (risk?.ownership as { owner?: string | null } | undefined)?.owner === null,
     ...(degraded ? { degraded: true, unverifiedChecks: unavailable } : {}),
     receipt: {
       checked: address,
@@ -96,7 +106,14 @@ export async function preTradeGate(params: Record<string, string>) {
       }),
       observedRisks,
       checks: {
-        tokenRisk: risk ? { score: riskScore, level: risk.riskLevel } : "unavailable",
+        tokenRisk: risk
+          ? {
+              score: riskScore,
+              level: risk.riskLevel,
+              ...(Array.isArray(risk.contextFlags) && risk.contextFlags.length ? { contextFlags: risk.contextFlags } : {}),
+              ...(risk.established ? { established: (risk.established as { basis?: string }).basis } : {}),
+            }
+          : "unavailable",
         sellable: sell ? { canSell: sell.canSell, sellTaxPct: sellTax } : "unavailable",
         route: route ? { estPriceImpactPct: impact, verdict: route.verdict } : "unavailable",
         deployer: deploy ? { reputation: deploy.reputation, score: deploy.reputationScore } : "unavailable",

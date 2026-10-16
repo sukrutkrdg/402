@@ -35,6 +35,8 @@ const state = vi.hoisted(() => ({
   goplus: null as Record<string, unknown> | null | "down",
   pairs: [] as unknown[] | "down",
   clankerApiDown: false,
+  /** When set, owner() answers this address instead of reverting. */
+  ownerOnChain: null as string | null,
 }));
 
 vi.mock("viem", async (orig) => {
@@ -67,6 +69,7 @@ vi.mock("viem", async (orig) => {
         if (functionName === "totalSupply") return 10n ** 27n;
         if (functionName === "symbol") return "TKN";
         if (functionName === "name") return "Token";
+        if (functionName === "owner" && state.ownerOnChain) return state.ownerOnChain;
         throw revert(); // owner()/getOwner() absent, unknown views revert
       },
       getTransactionReceipt: async ({ hash }: { hash: string }) => {
@@ -165,6 +168,7 @@ beforeEach(() => {
   state.goplus = cleanGoPlus();
   state.pairs = deepPools(DEGEN);
   state.clankerApiDown = false;
+  state.ownerOnChain = null;
   wire(DEGEN);
   gateSubchecksClean();
   return () => {
@@ -346,12 +350,23 @@ describe("pre-trade-bundle — field shapes of each dependency", () => {
     const { owner_address: _o, ...noOwner } = cleanGoPlus();
     void _o;
     state.goplus = noOwner;
+    // The chain says there IS an owner: GoPlus simply omitted the field.
+    state.ownerOnChain = "0x1111111111111111111111111111111111111111";
     const o = await ownerPowers({ address: DEGEN });
     expect(o.verdict).toBe("renounced_clean"); // the dependency's own reading
     expect(o.ownerAddress).toBeNull();
     const r = await preTradeBundle({ address: DEGEN });
     expect(r.checks.ownerPowers.status).toBe("unverified");
     expect(r.decision).toBe("HOLD");
+  });
+
+  it("owner-powers: no owner field AND no owner() on chain, on an established token, is ownerless (clean)", async () => {
+    const { owner_address: _o, ...noOwner } = cleanGoPlus();
+    void _o;
+    state.goplus = { ...noOwner, holder_count: "200000" };
+    const r = await preTradeBundle({ address: DEGEN });
+    expect(r.checks.ownerPowers.status).toBe("clean");
+    expect(r.checks.ownerPowers.reason).toMatch(/no owner\(\)/);
   });
 
   it("dump-risk: verdict, aggregateLiquidityUsd, poolsCounted, marketCapUsd, topDumpableHolder.percentOfSupply, impact pcts", async () => {

@@ -36,10 +36,13 @@ export type Decision = "go" | "hold" | "stop";
 /** Decision-logic version per endpoint. Bump when a check's scoring/rules change,
  * so an agent can detect that the policy behind a verdict moved between calls. */
 export const POLICY_VERSION: Record<string, string> = {
-  "token-risk": "1.2.0",
+  // 1.3: on an established token (>=50k holders and >=$1M Base DEX liquidity)
+  // owner/mint/LP-lock/proxy flags are context, not scored risk.
+  "token-risk": "1.3.0",
   "rug-score": "1.1.0",
   "sellability": "1.0.0",
-  "pre-trade-gate": "1.0.0",
+  // 1.1: a kept owner is not a HOLD reason on an established token.
+  "pre-trade-gate": "1.1.0",
   "b20-safety": "1.0.0",
   "deep-dd": "1.0.0",
   "sanctions": "1.0.0",
@@ -53,7 +56,10 @@ export const POLICY_VERSION: Record<string, string> = {
   // 2.x: composite of the hardened gates, fail-closed; 1.x (score-based) was withdrawn.
   // 2.1: dump-risk excludes sourced lending/DEX/bridge/locker holders and the
   // token's own pools/vaults, and judges the largest non-exchange holder.
-  "pre-trade-bundle": "2.1.0",
+  // 2.2: token-risk 1.3 (established tokens) and dump-risk 1.1 (a bag under
+  // three days of volume is fragile, not an exit trap).
+  "pre-trade-bundle": "2.2.0",
+  "dump-risk": "1.1.0",
 };
 
 /** Confidence in the verdict, derived from how complete the inputs were. */
@@ -220,6 +226,9 @@ export interface TokenRiskResult {
   securityChecked?: boolean;
   degraded?: boolean;
   sources?: string[];
+  /** Admin flags demoted to context because the token is established (token-risk 1.3+). */
+  contextFlags?: string[];
+  established?: { established: boolean; holders: number | null; liquidityUsd: number | null; basis: string } | null;
 }
 
 /** Did tokenRisk actually consult the security feed? Tolerant of older outputs. */

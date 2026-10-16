@@ -27,6 +27,7 @@ import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
 import { labelHolder, type HolderClass } from "./known-addresses";
 import { probeVaultsForToken } from "./address-probe";
 import { USD_STABLES } from "./stablecoin-peg";
+import { ESTABLISHED_LIQUIDITY_USD } from "./established";
 
 interface GpHolder { address?: string; tag?: string; is_contract?: number | string; is_locked?: number | string; percent?: string }
 type Gp = Record<string, unknown> & { holders?: GpHolder[] };
@@ -37,6 +38,7 @@ interface Pair {
   priceUsd?: string;
   priceNative?: string;
   liquidity?: { usd?: number };
+  volume?: { h24?: number };
   fdv?: number;
   marketCap?: number;
 }
@@ -49,6 +51,10 @@ const BURN = new Set(["0x0000000000000000000000000000000000000000", "0x000000000
 const NON_DUMPABLE_TAG = /lock|burn|null|pair|pool|uniswap|aerodrome|sushi|pancake|dead/i;
 
 /** Conservative constant-product executed-vs-spot loss for a `size` USD trade against a `reserve` USD side. */
+/** A bag the market turns over in fewer days than this is not an exit trap, however
+ *  large its one-shot impact. */
+export const EXIT_TRAP_MIN_DAYS = 3;
+
 const cpImpact = (size: number, reserve: number) => (reserve <= 0 ? 1 : size / (reserve + size));
 
 interface Holder {
@@ -162,13 +168,27 @@ export async function dumpRiskCore(params: Record<string, string>) {
   const topImpactPct = topBagUsd != null ? +(cpImpact(topBagUsd, reserve) * 100).toFixed(1) : null;
   const top3ImpactPct = top3BagUsd != null ? +(cpImpact(top3BagUsd, reserve) * 100).toFixed(1) : null;
 
+  // The impact model sells the whole bag at once into the pools. On a token
+  // that trades heavily that overstates the trap: a holder can leave over a few
+  // days without cratering it. AERO read exit_trap on a $38M bag that is about a
+  // day of its Base DEX volume. Days of 24h volume to exit is reported, and a bag
+  // the market turns over in under EXIT_TRAP_MIN_DAYS caps the verdict at fragile.
+  const volume24hUsd = [...base, ...quote].reduce((s, p) => s + (Number(p.volume?.h24) || 0), 0);
+  const topHolderExitDays = topBagUsd != null && volume24hUsd > 0 ? +(topBagUsd / volume24hUsd).toFixed(2) : null;
+
   let verdict: "resilient" | "absorbable" | "fragile" | "exit_trap" | "no_liquidity" | "unknown";
   if (aggLiquidityUsd <= 0) verdict = "no_liquidity";
   else if (topImpactPct == null) verdict = "unknown";
   else if (topImpactPct < 5) verdict = "resilient";
   else if (topImpactPct < 20) verdict = "absorbable";
   else if (topImpactPct < 50) verdict = "fragile";
-  else verdict = "exit_trap";
+  // Only on real liquidity: on a fresh token volume is cheap to fake (wash
+  // trading), and a 98%-impact bag on a $20k pool is a trap however busy it looks.
+  else verdict =
+    topHolderExitDays != null && topHolderExitDays < EXIT_TRAP_MIN_DAYS && aggLiquidityUsd >= ESTABLISHED_LIQUIDITY_USD
+      ? "fragile"
+      : "exit_trap";
+  const cappedByVolume = verdict === "fragile" && topImpactPct != null && topImpactPct >= 50;
 
   const usd = (n: number | null) => (n == null ? "?" : `$${Math.round(n).toLocaleString("en-US")}`);
   const who = topHolder ? `, ${topHolder.label}` : "";
@@ -184,7 +204,9 @@ export async function dumpRiskCore(params: Record<string, string>) {
           ? `The largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) dumping would move price ~${topImpactPct}% against ${usd(aggLiquidityUsd)} of liquidity — the pool absorbs it. Healthy exit liquidity.`
           : verdict === "absorbable"
             ? `Largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) dumping ≈ ${topImpactPct}% impact; top 3 together ≈ ${top3ImpactPct}%. Absorbable but real — don't be the last one out if they start selling.`
-            : verdict === "fragile"
+            : cappedByVolume
+              ? `⚠️ Largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) selling all at once would move price ~${topImpactPct}% against ${usd(aggLiquidityUsd)} of liquidity, but that bag is ~${topHolderExitDays} day(s) of this token's ${usd(volume24hUsd)} daily Base DEX volume — an exit spread over a few days is absorbed. Fragile to a panic dump, not a trap.`
+              : verdict === "fragile"
               ? `⚠️ Largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) could move price ~${topImpactPct}% on exit; top 3 ≈ ${top3ImpactPct}%. Thin exit liquidity — a single whale sets the floor. Size small and watch these wallets.`
               : `🛑 EXIT TRAP: the largest live holder (${topHolder?.percent}%${who}, ~${usd(topBagUsd)}) dumping is ~${topImpactPct}% impact against only ${usd(aggLiquidityUsd)} of liquidity. Their exit is your crater — this is where the bag-holder gets left. Avoid or treat as pure gamble.`;
 
@@ -202,6 +224,8 @@ export async function dumpRiskCore(params: Record<string, string>) {
       : null,
     top3DumpablePct: top3Pct,
     topHolderDumpImpactPct: topImpactPct, // selling the whole bag, conservative constant-product
+    volume24hUsd: Math.round(volume24hUsd),
+    topHolderExitDays, // the top bag in days of 24h Base DEX volume; under 3, on >= $1M liquidity, caps exit_trap at fragile
     top3DumpImpactPct: top3ImpactPct,
     excludedAsNonDumpable: holders
       .filter((h) => !h.dumpable)

@@ -34,7 +34,8 @@ import { decisionReceipt } from "./envelope";
 import { preTradeGate } from "./gate";
 import { b20Gate } from "./b20-safety";
 import { ownerPowers } from "./owner-powers";
-import { dumpRiskCore, usdStablecoin } from "./dump-risk";
+import { dumpRiskCore, usdStablecoin, EXIT_TRAP_MIN_DAYS } from "./dump-risk";
+import { ESTABLISHED_LIQUIDITY_USD } from "./established";
 import { clankerTokenAudit } from "./clanker-audit";
 import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
 
@@ -108,7 +109,7 @@ export function viewB20(b: B20GateOut): CheckView {
   return { status: "unverified", decision: String(b.decision), saw, reason: "b20-gate returned no recognisable decision" };
 }
 
-export function viewOwner(o: OwnerPowersOut): CheckView {
+export function viewOwner(o: OwnerPowersOut, established = false, ownerlessOnChain = false): CheckView {
   const saw = {
     verdict: o.verdict,
     ownerAddress: o.ownerAddress,
@@ -121,6 +122,12 @@ export function viewOwner(o: OwnerPowersOut): CheckView {
   if (o.verdict === "owner_controlled_danger") {
     return { status: "stop", decision: o.verdict, saw, reason: `owner holds a critical power: ${o.powers.filter((p) => p.severity === "critical").map((p) => p.flag).join(", ")}` };
   }
+  // An established token's issuer keeping mint/pause/blacklist (Circle on USDC)
+  // is how it is run, the same demotion token-risk 1.3 applies. weaponizable
+  // (a trap power such as a raisable sell tax) is never demoted.
+  if (o.verdict === "limited_controls" && established) {
+    return { status: "clean", decision: o.verdict, saw, reason: `issuer controls on an established token, reported as context: ${o.powers.map((p) => p.flag).join(", ") || "ownership kept"}` };
+  }
   if (o.verdict === "weaponizable" || o.verdict === "limited_controls") {
     return { status: "risk", decision: o.verdict, saw, reason: `mutable owner controls remain: ${o.powers.map((p) => p.flag).join(", ") || "ownership not renounced"}` };
   }
@@ -129,6 +136,12 @@ export function viewOwner(o: OwnerPowersOut): CheckView {
     // is_open_source as null. A clean verdict built on either absence is a
     // verdict on fields GoPlus did not send.
     if (o.ownerAddress === null || o.ownerAddress === undefined || o.isOpenSource === null) {
+      // An absent owner field is only "no owner" when the chain agrees: the
+      // token has no owner()/getOwner() (WETH is a predeploy with none), and it
+      // is established. GoPlus alone omitting the field proves nothing.
+      if (established && ownerlessOnChain) {
+        return { status: "clean", decision: o.verdict, saw, reason: "no owner: the contract has no owner()/getOwner() on chain, and the token is established" };
+      }
       return { status: "unverified", decision: o.verdict, saw, reason: "GoPlus row lacked owner_address or is_open_source — 'renounced, no powers' was not actually observed" };
     }
     return { status: "clean", decision: o.verdict, saw, reason: "ownership renounced with no reclaim path and no mutable trap powers" };
@@ -146,6 +159,7 @@ export function viewDump(d: DumpRiskOut): CheckView {
     topDumpableHolderLabel: d.topDumpableHolder?.label ?? null,
     topHolderDumpImpactPct: d.topHolderDumpImpactPct,
     top3DumpImpactPct: d.top3DumpImpactPct,
+    topHolderExitDays: d.topHolderExitDays,
     excludedAsNonDumpable: d.excludedAsNonDumpable.map((h) => `${h.label} ${h.percent}%`),
     cexConcentrationPct: d.cexConcentrationPct,
   };
@@ -157,9 +171,26 @@ export function viewDump(d: DumpRiskOut): CheckView {
     // is never GO; STOP is kept for terminal onchain evidence.
     case "no_liquidity":
       return { status: "risk", decision: d.verdict, saw, reason: "no Base DEX liquidity indexed for this token (DexScreener) — an exit is not demonstrated" };
-    case "exit_trap":
     case "fragile":
     case "absorbable":
+      // A bag the market turns over in under EXIT_TRAP_MIN_DAYS, on a token with
+      // real liquidity, is an exit that is absorbed when spread out. WETH read
+      // HOLD here because its largest holder selling everything AT ONCE would
+      // move price 12% — a twentieth of a day of its volume.
+      if (
+        d.topHolderExitDays != null &&
+        d.topHolderExitDays < EXIT_TRAP_MIN_DAYS &&
+        d.aggregateLiquidityUsd >= ESTABLISHED_LIQUIDITY_USD
+      ) {
+        return {
+          status: "clean",
+          decision: d.verdict,
+          saw,
+          reason: `largest live holder${who} is ~${d.topHolderExitDays} day(s) of this token's Base DEX volume over $${d.aggregateLiquidityUsd.toLocaleString("en-US")} of liquidity — absorbed unless dumped at once (one-shot impact ~${d.topHolderDumpImpactPct}%)`,
+        };
+      }
+    // falls through
+    case "exit_trap":
       return { status: "risk", decision: d.verdict, saw, reason: `largest live holder${who} exiting would move price ~${d.topHolderDumpImpactPct}% against $${d.aggregateLiquidityUsd.toLocaleString("en-US")} of liquidity` };
     case "resilient":
       return { status: "clean", decision: d.verdict, saw, reason: `largest live holder${who} exiting moves price ~${d.topHolderDumpImpactPct}% — the pools absorb it` };
@@ -247,7 +278,7 @@ export async function preTradeBundle(params: Record<string, string>) {
   const checks: Record<"preTradeGate" | "b20Gate" | "ownerPowers" | "dumpRisk", CheckView> = {
     preTradeGate: viewGate(gateR.value),
     b20Gate: b20R.status === "fulfilled" ? viewB20(b20R.value) : failed(b20R),
-    ownerPowers: ownerR.status === "fulfilled" ? viewOwner(ownerR.value) : failed(ownerR),
+    ownerPowers: ownerR.status === "fulfilled" ? viewOwner(ownerR.value, gateR.value.established === true, gateR.value.ownerless === true) : failed(ownerR),
     dumpRisk: stable
       ? { status: "not_applicable", decision: "not_applicable", saw: { stablecoin: stable.symbol }, reason: `${stable.symbol} is a redeemable USD stablecoin — exit is redemption, not a DEX dump; check stablecoin-peg` }
       : dumpR.status === "fulfilled" && dumpR.value
