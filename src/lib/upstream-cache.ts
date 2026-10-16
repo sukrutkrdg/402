@@ -181,6 +181,10 @@ async function goPlusSecurityOnce<T>(addr: string): Promise<T | null> {
           await new Promise((res) => setTimeout(res, 1200));
           r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
         }
+        if (!r.ok && headers.authorization) {
+          // Our quota may be what is exhausted: try the shared anonymous one.
+          r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        }
         if (!r.ok) return null;
         let j = (await r.json()) as { code?: number; result?: Record<string, T> };
         // GoPlus refused the token (4012): switch header form (goplus-auth) and
@@ -193,6 +197,12 @@ async function goPlusSecurityOnce<T>(addr: string): Promise<T | null> {
           j = (await r.json()) as { code?: number; result?: Record<string, T> };
         } else if (j.code === 1 && headers.authorization) {
           noteGoPlusTokenAccepted();
+        } else if (headers.authorization && (j.code === undefined || j.code > 3)) {
+          // Any other refusal on our token (a used-up free quota, an account
+          // problem): this call goes out anonymously, as it did before the key.
+          r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return null;
+          j = (await r.json()) as { code?: number; result?: Record<string, T> };
         }
         const row = j.result?.[addr] as Record<string, unknown> | undefined;
         // GoPlus answers `code: 3` with a partial row (no is_honeypot, no owner
