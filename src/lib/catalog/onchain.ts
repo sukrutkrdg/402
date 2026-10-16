@@ -76,7 +76,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Token Risk Check",
       tagline: "Pre-trade safety score for any Base token",
       description:
-        "Pass a token contract address and get a risk score + flags (ERC-20 conformance, ownership renounce, upgradeable proxy) computed live from Base. Built for trading bots and agents that vet tokens before buying.",
+        "Use when an agent asks \"is this Base token safe?\" before buying, holding or listing it. One scam/rug check read live from Base RPC + GoPlus: honeypot, buy/sell tax, hidden or reclaimable owner, pausable transfers, blacklist, holder concentration (sellable holders only), LP lock and upgradeable proxy. Returns a 0-100 score, flags and a GO/HOLD/STOP receipt. On established tokens (50k+ holders, $1M+ liquidity) admin controls are context, not risk.",
       price: "$0.03",
       icon: "🛡️",
       category: "Onchain",
@@ -89,7 +89,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Pre-Trade Gate",
       tagline: "One call before you trade — GO / HOLD / STOP",
       description:
-        "The single call an agent makes before touching a Base token: token risk + sellability (honeypot/tax) + route/price-impact + deployer reputation, collapsed into one GO/HOLD/STOP verdict with an auditable receipt. Cheaper than the four checks à la carte. This is the tool to bind first.",
+        "Use before an agent buys or swaps into a Base token: one call runs token-risk (scam/rug flags), sellability (honeypot, tax), swap route and price impact for your size, and deployer reputation, then returns one GO/HOLD/STOP verdict with an auditable receipt. GO only when every check ran clean; a feed outage is HOLD, never GO. Established tokens (USDC, WETH, cbBTC) are not held for normal issuer controls. Cheaper than the four checks separately. Bind this tool first.",
       price: "$0.10",
       icon: "🚦",
       category: "Onchain",
@@ -430,7 +430,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Safe to Send",
       tagline: "Is this address safe to send, approve or sign to?",
       description:
-        "🆕 Before your agent sends, approves or signs to an address: one GO/REVIEW/STOP verdict. Screens OFAC sanctions, Coinbase/Basename identity, wallet vs contract, how long the address has existed, and whether contract logic can be swapped AFTER you send. Every factor returns what it found and what it could not read — a check that did not run never reads as clean, so GO means everything material was actually screened. Not financial advice.",
+        "Before your agent sends, approves or signs to an address — a wallet risk check with one GO/REVIEW/STOP verdict. Screens OFAC sanctions, Coinbase/Basename identity, wallet vs contract, how long the address has existed, and whether contract logic can be swapped AFTER you send. Every factor returns what it found and what it could not read — a check that did not run never reads as clean, so GO means everything material was actually screened. Not financial advice.",
       price: "$0.03",
       icon: "🛡️",
       category: "Onchain",
@@ -577,7 +577,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Sellability Check",
       tagline: "Can you actually SELL it — or is it a honeypot?",
       description:
-        "The hard honeypot question, answered three ways: security simulation (honeypot, cannot-sell-all, sell/buy tax, transfer-pausable), a LIVE transfer simulation we run ourselves from a real holder (reverts/taxed?), and exit liquidity. Returns a hard canSell verdict with reasons. Selling is where rugs hide — check before you buy.",
+        "Use when an agent must know it can SELL a Base token before it buys: the honeypot check, answered three ways. Security simulation (honeypot, cannot-sell-all, sell/buy tax, pausable transfers), a live transfer simulation we run ourselves from a real holder (does it revert, is it taxed?), and exit liquidity. Returns a hard canSell verdict with reasons. Selling is where rugs hide.",
       price: "$0.08",
       icon: "🔒",
       category: "Onchain",
@@ -1038,7 +1038,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Sanctions Check",
       tagline: "Is this address OFAC-sanctioned?",
       description:
-        "Checks an address against the OFAC SDN list of sanctioned digital-currency addresses. Built for compliance agents and bots that must screen counterparties before transacting. Direct-address match; list refreshed regularly. No API key required.",
+        "Use before an agent pays, receives from or onboards a wallet: an OFAC sanctions / AML screen of the address against the US Treasury SDN list of sanctioned digital-currency addresses. Direct-address match with a GO/STOP receipt, for compliance agents and payment bots that must screen counterparties before transacting. For many addresses at once use sanctions-batch; for a person or company name use sanctions-name. No API key.",
       price: "$0.02",
       icon: "⚖️",
       category: "Onchain",
@@ -1098,7 +1098,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Rug Probability Score",
       tagline: "One 0-100 risk gate (security + holders + liquidity)",
       description:
-        "Deterministic 0-100 rug-probability score combining security flags, holder concentration, LP lock and liquidity depth — with the exact signals that drove it. A fast numeric gate for trading agents. Higher = riskier.",
+        "Use when a trading agent wants one number for \"will this Base token rug?\": a deterministic 0-100 rug-pull probability from security flags (honeypot, tax, owner powers), holder concentration, LP lock and liquidity depth, with the exact signals that drove it and the sources that did not answer. Higher = riskier; a missing feed reads unknown, never low.",
       price: "$0.03",
       icon: "📉",
       category: "Onchain",
