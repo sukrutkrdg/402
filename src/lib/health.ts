@@ -14,7 +14,7 @@
 
 import "server-only";
 import { after } from "next/server";
-import { kvHIncrBy, kvHGetAll, ttlDue, kvExpire } from "./kv";
+import { kvHIncrBy, kvHGetAll, ttlDue, kvExpire, kvLPush, kvLRange } from "./kv";
 import { isRefundable } from "./envelope";
 
 /** The HTTP status a handler error deserves: the caller's input (400), an upstream (502), or ours (500). */
@@ -74,17 +74,82 @@ function recordLater(service: string, outcome: Outcome, ms: number): Promise<voi
   }
 }
 
+/**
+ * Why our side failed, newest first: one shared list of FAILURES_KEEP entries.
+ *
+ * The counts alone said near-pre-trade-gate failed 17 of 97 calls a day and
+ * nothing said why: Cloudflare replaces a 5xx body and the runtime log keeps a
+ * week at best. Only failures are written (Upstash bills per command), and only
+ * what the caller was already told: the error message with URLs scrubbed, cut
+ * to 160 characters. No input, no address, no payer.
+ */
+const FAILURES_KEY = "health:failures";
+const FAILURES_KEEP = 200;
+
+export function failureLine(service: string, message: string, at = Date.now()): string {
+  const m = message.replace(/https?:\/\/\S+/g, "<upstream>").replace(/\s+/g, " ").trim().slice(0, 160);
+  return JSON.stringify({ s: service, at, m });
+}
+
+async function recordFailure(service: string, message: string): Promise<void> {
+  try {
+    await kvLPush(FAILURES_KEY, failureLine(service, message), FAILURES_KEEP);
+  } catch {
+    /* bookkeeping never breaks a call */
+  }
+}
+
+function recordFailureLater(service: string, message: string): Promise<void> {
+  try {
+    after(() => recordFailure(service, message));
+    return Promise.resolve();
+  } catch {
+    return recordFailure(service, message);
+  }
+}
+
+/** Recent failure reasons per service: the most frequent first, with a count and the latest time. */
+export async function readFailures(): Promise<Record<string, Array<{ reason: string; count: number; lastAt: string }>>> {
+  const rows = await kvLRange(FAILURES_KEY, 0, FAILURES_KEEP - 1).catch(() => [] as string[]);
+  const by = new Map<string, Map<string, { count: number; lastAt: number }>>();
+  for (const r of rows) {
+    try {
+      const { s, at, m } = JSON.parse(r) as { s: string; at: number; m: string };
+      const svc = by.get(s) ?? new Map();
+      const e = svc.get(m) ?? { count: 0, lastAt: 0 };
+      e.count++;
+      e.lastAt = Math.max(e.lastAt, at);
+      svc.set(m, e);
+      by.set(s, svc);
+    } catch {
+      /* skip a malformed row */
+    }
+  }
+  const out: Record<string, Array<{ reason: string; count: number; lastAt: string }>> = {};
+  for (const [s, reasons] of by) {
+    out[s] = [...reasons.entries()]
+      .sort((a, b) => b[1].count - a[1].count || b[1].lastAt - a[1].lastAt)
+      .slice(0, 3)
+      .map(([reason, e]) => ({ reason, count: e.count, lastAt: new Date(e.lastAt).toISOString() }));
+  }
+  return out;
+}
+
 /** Run a service handler, recording how it went. Rethrows unchanged. */
 export async function timed<T>(service: string, run: () => Promise<T>): Promise<T> {
   const t = Date.now();
   try {
     const out = await run();
     // A refusal (core feed down, not billed) answered, but the service did not work.
-    await recordLater(service, isRefundable(out) ? "fail" : "ok", Date.now() - t);
+    const refused = isRefundable(out);
+    await recordLater(service, refused ? "fail" : "ok", Date.now() - t);
+    if (refused) await recordFailureLater(service, "refused: a core data feed was unavailable (not billed)");
     return out;
   } catch (e) {
-    const status = errorStatus(e instanceof Error ? e.message : "");
+    const message = e instanceof Error ? e.message : "";
+    const status = errorStatus(message);
     await recordLater(service, status === 400 ? "input" : "fail", Date.now() - t);
+    if (status !== 400) await recordFailureLater(service, message || "unknown error");
     throw e;
   }
 }
