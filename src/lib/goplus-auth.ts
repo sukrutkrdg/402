@@ -17,6 +17,7 @@
 
 import "server-only";
 import { createHash } from "node:crypto";
+import { kvGet, kvSet } from "./kv";
 
 const TOKEN_URL = "https://api.gopluslabs.io/api/v1/token";
 
@@ -26,14 +27,17 @@ let inflight: Promise<string | null> | null = null;
 let backoffUntil = 0;
 /** Why the last token attempt ended as it did — for /api/status, never the token itself. */
 let lastOutcome: "app" | "not_configured" | "refused" | "unreachable" = "not_configured";
-/** When a data call last rejected our token (4012) and fell back to anonymous. */
-let lastDataRejectionAt: number | null = null;
-/** Data calls that went out with our token since this instance started. */
-let authedDataCalls = 0;
+/** KV keys shared by every instance: when a data call last succeeded on our
+ *  token, and when one was last rejected (4012) and fell back to anonymous. */
+const OK_KEY = "goplus:auth:lastAcceptedAt";
+const REJECT_KEY = "goplus:auth:lastRejectedAt";
+let okWrittenAt = 0;
 
-/** Count a data call that carried our token (upstream-cache calls this). */
-export function noteAuthedGoPlusCall(): void {
-  authedDataCalls++;
+/** A data call carried our token and GoPlus answered code 1. One KV write per instance per 10 minutes. */
+export function noteGoPlusTokenAccepted(): void {
+  if (Date.now() - okWrittenAt < 10 * 60_000) return;
+  okWrittenAt = Date.now();
+  kvSet(OK_KEY, String(Date.now()), 7 * 86400).catch(() => {});
 }
 
 function creds(): { key: string; secret: string } | null {
@@ -94,19 +98,24 @@ export async function goPlusHeaders(): Promise<Record<string, string>> {
  * How we reach GoPlus right now: "app" (our registered quota) or "anonymous"
  * with the reason. Tries for a token if none is cached. Safe to publish.
  */
-export async function goPlusAuthState(): Promise<{ mode: "app" | "anonymous"; reason?: string; authedDataCalls?: number; lastDataRejectionAt?: string | null }> {
+export async function goPlusAuthState(): Promise<{
+  mode: "app" | "anonymous";
+  reason?: string;
+  tokenLastAcceptedAt?: string | null;
+  tokenLastRejectedAt?: string | null;
+}> {
   if (!creds()) return { mode: "anonymous", reason: "GOPLUS_APP_KEY / GOPLUS_APP_SECRET not set" };
   const t = await goPlusToken();
-  // Per serverless instance: a sanity signal that data calls carry the token
-  // and GoPlus accepts it there, not a global counter.
-  if (t) return { mode: "app", authedDataCalls, lastDataRejectionAt: lastDataRejectionAt ? new Date(lastDataRejectionAt).toISOString() : null };
-  return { mode: "anonymous", reason: lastOutcome === "refused" ? "GoPlus refused the app credentials" : "GoPlus token endpoint unreachable" };
+  if (!t) return { mode: "anonymous", reason: lastOutcome === "refused" ? "GoPlus refused the app credentials" : "GoPlus token endpoint unreachable" };
+  const iso = (v: string | null) => (v && Number(v) > 0 ? new Date(Number(v)).toISOString() : null);
+  const [ok, rej] = await Promise.all([kvGet(OK_KEY).catch(() => null), kvGet(REJECT_KEY).catch(() => null)]);
+  return { mode: "app", tokenLastAcceptedAt: iso(ok), tokenLastRejectedAt: iso(rej) };
 }
 
 /** Drop a token GoPlus rejected, so the next call fetches a fresh one. */
 export function invalidateGoPlusToken(): void {
   cached = null;
-  lastDataRejectionAt = Date.now();
+  kvSet(REJECT_KEY, String(Date.now()), 7 * 86400).catch(() => {});
 }
 
 /** Test hook. */
@@ -115,6 +124,5 @@ export function resetGoPlusAuth(): void {
   inflight = null;
   backoffUntil = 0;
   lastOutcome = "not_configured";
-  lastDataRejectionAt = null;
-  authedDataCalls = 0;
+  okWrittenAt = 0;
 }

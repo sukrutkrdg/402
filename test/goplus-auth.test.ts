@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+vi.mock("@/lib/kv", () => ({ kvGet: vi.fn(async () => null), kvSet: vi.fn(async () => undefined) }));
 import { goPlusSign, goPlusToken, goPlusHeaders, resetGoPlusAuth } from "@/lib/goplus-auth";
 
 /** GoPlus app auth: sha1(app_key + time + app_secret) → access token → Bearer. Never breaks a call. */
@@ -61,7 +62,7 @@ describe("goPlusAuthState", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ code: 1, result: { access_token: "secret-token", expires_in: 3600 } }) })));
     const st = await goPlusAuthState();
     expect(st.mode).toBe("app");
-    expect(st.lastDataRejectionAt).toBeNull();
+    expect(st.tokenLastRejectedAt).toBeNull();
     expect(JSON.stringify(st)).not.toContain("secret-token");
   });
 });
