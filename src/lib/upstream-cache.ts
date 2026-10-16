@@ -14,6 +14,7 @@
  *    extending IP rate-limit bans.
  */
 
+import { goPlusHeaders, invalidateGoPlusToken } from "./goplus-auth";
 import "server-only";
 import { kvGet, kvSet } from "./kv";
 
@@ -172,14 +173,24 @@ async function goPlusSecurityOnce<T>(addr: string): Promise<T | null> {
     async () => {
       try {
         const url = `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`;
-        let r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        // Our registered app's quota when configured (goplus-auth.ts), anonymous otherwise.
+        let headers = await goPlusHeaders();
+        let r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
         // A rate limit or a 5xx is usually gone a second later: one retry.
         if (r.status === 429 || r.status >= 500) {
           await new Promise((res) => setTimeout(res, 1200));
-          r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
         }
         if (!r.ok) return null;
-        const j = (await r.json()) as { result?: Record<string, T> };
+        let j = (await r.json()) as { code?: number; result?: Record<string, T> };
+        // A token GoPlus no longer accepts (4012): drop it and ask once without.
+        if (j.code === 4012 && headers.authorization) {
+          invalidateGoPlusToken();
+          headers = {};
+          r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return null;
+          j = (await r.json()) as { code?: number; result?: Record<string, T> };
+        }
         const row = j.result?.[addr] as Record<string, unknown> | undefined;
         // GoPlus answers `code: 3` with a partial row (no is_honeypot, no owner
         // powers) while it is still analysing a token. Downstream, a missing flag

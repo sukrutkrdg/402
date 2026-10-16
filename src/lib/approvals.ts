@@ -25,6 +25,7 @@
 
 import "server-only";
 import { dexTokenPairs } from "./upstream-cache";
+import { goPlusHeaders } from "./goplus-auth";
 
 const API = "https://api.gopluslabs.io/api/v2/token_approval_security/8453";
 /** Most wallets sit far under this; the cap bounds the price fan-out below. */
@@ -81,7 +82,7 @@ export async function tokenApprovals(params: Record<string, string>) {
 
   let rows: GoPlusRow[];
   try {
-    const r = await fetch(`${API}?addresses=${address}`, { signal: AbortSignal.timeout(10000) });
+    const r = await fetch(`${API}?addresses=${address}`, { headers: await goPlusHeaders(), signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error(`GoPlus responded ${r.status}`);
     const j = (await r.json()) as { code?: number; message?: string; result?: GoPlusRow[] | null };
     // code 1 = ok, 2 = partial data. Anything else is a failure, and a failure
