@@ -112,6 +112,14 @@ describe("morpho-health output contract", () => {
     expect(missingRequired(out!.example as Record<string, unknown>, REQUIRED)).toEqual([]);
   });
 
+  it("stamps the same checkedAt on every request, so the paid retry echoes the challenge", async () => {
+    // A per-request stamp made every purchase fail with extension_echo_mismatch.
+    const raw = staticOutputExample("morpho-health");
+    const a = JSON.stringify(discoveryOutputFor("morpho-health", raw));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(JSON.stringify(discoveryOutputFor("morpho-health", raw))).toBe(a);
+  });
+
   it("does not alter discovery output for other services", () => {
     const example = { pair: "BTC-USD" };
     expect(discoveryOutputFor("token-risk", example)).toEqual({ example });

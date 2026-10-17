@@ -89,9 +89,17 @@ export function openApi200For(serviceId: string): {
 /**
  * Bazaar `output` block. Schema is the inner handler payload so it stays valid
  * against the existing discovery example. A missing checkedAt on the static
- * shop-window example is stamped at declaration time (that file forbids frozen
- * timestamps).
+ * shop-window example gets a FIXED stamp.
+ *
+ * It used to be stamped with the time of each request. The declaration is part
+ * of the payment requirements the buyer echoes back, so the paid retry, built a
+ * second later, never matched the challenge: every purchase was refused with
+ * extension_echo_mismatch and the service could not be bought at all (found on
+ * our own paid sweep, 2026-10-17). A declaration must be identical between the
+ * 402 and the retry.
  */
+const EXAMPLE_CHECKED_AT = "2026-10-17T00:00:00.000Z";
+
 export function discoveryOutputFor(
   serviceId: string,
   example: Record<string, unknown> | undefined,
@@ -101,7 +109,7 @@ export function discoveryOutputFor(
       example && typeof example.checkedAt === "string"
         ? example
         : example
-          ? { checkedAt: new Date().toISOString(), ...example }
+          ? { checkedAt: EXAMPLE_CHECKED_AT, ...example }
           : undefined;
     return {
       ...(stamped ? { example: stamped } : {}),
