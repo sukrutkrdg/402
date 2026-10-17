@@ -15,6 +15,8 @@ vi.mock("@/lib/onchain", () => ({ tokenRisk: tokenRiskMock }));
 vi.mock("@/lib/sellability", () => ({ sellability: sellabilityMock }));
 vi.mock("@/lib/swap-route", () => ({ swapRoute: swapRouteMock }));
 vi.mock("@/lib/deployer-rep", () => ({ deployerReputation: deployerMock }));
+const { guardMock } = vi.hoisted(() => ({ guardMock: vi.fn(() => ({ available: false, reason: "test" })) }));
+vi.mock("@/lib/liquidity-guard", () => ({ buildLiquidityGuard: async () => guardMock() }));
 
 import { preTradeGate } from "@/lib/gate";
 
@@ -104,5 +106,31 @@ describe("pre-trade-gate — GO only when everything was actually checked", () =
 
   it("rejects a garbage trade size instead of emitting NaN", async () => {
     await expect(preTradeGate({ address: TOKEN, amountUsd: "banana" })).rejects.toThrow(/positive number/);
+  });
+});
+
+describe("pre-trade-gate enforce (Cobalt liquidity guard)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("passes the guard through on GO", async () => {
+    cleanChecks();
+    guardMock.mockReturnValueOnce({ available: true, validity: [{ type: "storage", params: {} }] } as never);
+    const r = (await preTradeGate({ address: TOKEN })) as unknown as { decision: string; enforce: { available: boolean } };
+    expect(r.decision).toBe("GO");
+    expect(r.enforce.available).toBe(true);
+  });
+
+  it("offers no guard on STOP — there is no trade to protect", async () => {
+    cleanChecks();
+    sellabilityMock.mockResolvedValue({ canSell: false, sellTaxPct: 100 });
+    guardMock.mockReturnValueOnce({ available: true, validity: [] } as never);
+    const r = (await preTradeGate({ address: TOKEN })) as unknown as { decision: string; enforce: { available: boolean } };
+    expect(r.decision).toBe("STOP");
+    expect(r.enforce.available).toBe(false);
+  });
+
+  it("refuses an out-of-range drop tolerance as the caller's input", async () => {
+    cleanChecks();
+    await expect(preTradeGate({ address: TOKEN, maxLiquidityDropPct: "95" })).rejects.toThrow(/between 1 and 90/);
   });
 });

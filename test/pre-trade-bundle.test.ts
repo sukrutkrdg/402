@@ -92,6 +92,8 @@ const { sellabilityMock, swapRouteMock, deployerMock } = vi.hoisted(() => ({
 vi.mock("@/lib/sellability", () => ({ sellability: sellabilityMock }));
 vi.mock("@/lib/swap-route", () => ({ swapRoute: swapRouteMock }));
 vi.mock("@/lib/deployer-rep", () => ({ deployerReputation: deployerMock }));
+const { guardMock } = vi.hoisted(() => ({ guardMock: vi.fn(() => ({ available: false, reason: "test" })) }));
+vi.mock("@/lib/liquidity-guard", () => ({ buildLiquidityGuard: async () => guardMock() }));
 
 import { preTradeBundle } from "@/lib/pre-trade-bundle";
 import { preTradeGate } from "@/lib/gate";

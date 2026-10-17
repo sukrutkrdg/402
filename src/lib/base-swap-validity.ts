@@ -253,7 +253,7 @@ export async function baseSwapValidity(params: Record<string, string>) {
     `Sign the transaction below with ${swap.transaction.from} (EIP-1559 recommended) — but DO NOT broadcast it with eth_sendRawTransaction.`,
     `Instead POST this JSON-RPC request to Base's sequencer (${endpoint}), replacing 0x<SIGNED_RAW_TRANSACTION> with your signed serialized tx. The response is the 32-byte tx hash.`,
     `Base holds it until every condition holds, then includes it. If the deadline block (${beforeBlock}) arrives first, it is never included — no stuck order to cancel.`,
-    `Submit within ${deadlineCheck.expiresInSeconds ?? 60} s: Base only accepts a deadline at most 60 s out. If it lapses, call again for a fresh deadline and quote.`,
+    `Submit within ${deadlineCheck.expiresInSeconds ?? 60} s: Base only accepts a deadline at most 60 s out. If it lapses, call again for a fresh deadline and quote and sign again — Base ignores a resubmitted identical signed tx after expiry (measured 2026-10-17); change any fee field.`,
   ];
 
   return {

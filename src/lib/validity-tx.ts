@@ -61,7 +61,7 @@ export async function validityBuild(params: Record<string, string>) {
         : "Sign your transaction (EIP-1559 recommended), then replace 0x<SIGNED_RAW_TRANSACTION> in the request below with the signed serialized tx. Do NOT broadcast it normally.",
       `POST the JSON-RPC request to Base's sequencer (${endpoint}). The response is the 32-byte tx hash.`,
       `Base holds it until every condition holds, then includes it. If the deadline block (${beforeBlock}) arrives first it is never included — no stuck order to cancel.`,
-      `Submit within ${deadlineCheck.expiresInSeconds ?? 60} s: Base only accepts a deadline at most 60 s out${deadlineCheck.deadlineAutoSet ? " (none was given, so we set one)" : ""}. If it lapses, call again for a fresh deadline.`,
+      `Submit within ${deadlineCheck.expiresInSeconds ?? 60} s: Base only accepts a deadline at most 60 s out${deadlineCheck.deadlineAutoSet ? " (none was given, so we set one)" : ""}. If it lapses, call again for a fresh deadline and sign again — Base ignores a resubmitted identical signed tx after expiry (measured 2026-10-17); change any fee field.`,
     ],
     priceConditionNote:
       "A 'price ≥ X' condition is a storage predicate on your pool's slot — supplied by you, because a predicate reads a raw slot and cannot call a view function, and slot layouts differ by pool. We validate and forward it; we do not derive a slot from a price.",

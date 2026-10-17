@@ -13,6 +13,7 @@ import { tokenRisk } from "./onchain";
 import { sellability } from "./sellability";
 import { swapRoute } from "./swap-route";
 import { deployerReputation } from "./deployer-rep";
+import { buildLiquidityGuard, type GuardResult } from "./liquidity-guard";
 
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
@@ -25,12 +26,24 @@ export async function preTradeGate(params: Record<string, string>) {
 
   // Run the four checks; tolerate individual upstream failures (never block the
   // whole gate because one provider hiccuped — surface what we could read).
+  const maxDrop = Number(params.maxLiquidityDropPct ?? params.maxDropPct ?? 20);
+  if (!Number.isFinite(maxDrop) || maxDrop < 1 || maxDrop > 90) throw new Error("maxLiquidityDropPct must be between 1 and 90");
+  // The enforceable condition is built alongside the checks and bounded in time,
+  // so it never slows the verdict past what the checks already take.
+  let guardTimer: ReturnType<typeof setTimeout> | undefined;
+  const guardP: Promise<GuardResult> = Promise.race([
+    buildLiquidityGuard(address, maxDrop),
+    new Promise<GuardResult>((r) => {
+      guardTimer = setTimeout(() => r({ available: false, reason: "guard build timed out this call" }), 7000);
+    }),
+  ]).finally(() => clearTimeout(guardTimer));
   const [riskR, sellR, routeR, deployR] = await Promise.allSettled([
     tokenRisk({ address }),
     sellability({ address }),
     swapRoute({ tokenOut: address, amountUsd }),
     deployerReputation({ address }),
   ]);
+  const guard = await guardP;
 
   const risk = riskR.status === "fulfilled" ? (riskR.value as Record<string, unknown>) : null;
   const sell = sellR.status === "fulfilled" ? (sellR.value as Record<string, unknown>) : null;
@@ -93,6 +106,11 @@ export async function preTradeGate(params: Record<string, string>) {
     // GoPlus, which can omit owner_address on a partial row).
     ownerless: (risk?.ownership as { owner?: string | null } | undefined)?.owner === null,
     ...(degraded ? { degraded: true, unverifiedChecks: unavailable } : {}),
+    // The verdict is true when read; the trade lands seconds later. `enforce` is
+    // a Cobalt validity condition that makes Base itself refuse to include the
+    // trade if the pool is drained in between. Not offered on STOP: there is no
+    // trade to protect.
+    enforce: decision === "STOP" ? { available: false, reason: "decision is STOP — do not trade" } : guard,
     receipt: {
       checked: address,
       at: new Date().toISOString(),
