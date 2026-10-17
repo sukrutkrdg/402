@@ -72,10 +72,16 @@ export async function cryptoGlobal(_params: Record<string, string>) {
   if (!d?.total_market_cap?.usd) throw new Error("Market overview returned an unexpected shape — not charged");
 
   const dom = d.market_cap_percentage ?? {};
+  // CoinGecko's aggregate volume can carry a bad exchange feed: on 2026-10-17 it
+  // read $225 trillion a day against a $2.75T market. A day's volume above ten
+  // times the whole market cap is not a market, so it is withheld and said so.
+  const vol = d.total_volume?.usd;
+  const volumeAnomalous = vol != null && vol > d.total_market_cap.usd * 10;
   return {
     totalMarketCapUsd: Math.round(d.total_market_cap.usd),
     totalMarketCapT: +(d.total_market_cap.usd / 1e12).toFixed(3),
-    volume24hUsd: d.total_volume?.usd != null ? Math.round(d.total_volume.usd) : null,
+    volume24hUsd: vol != null && !volumeAnomalous ? Math.round(vol) : null,
+    ...(volumeAnomalous ? { volumeNote: `Upstream 24h volume ($${Math.round(vol / 1e12)}T) exceeds 10× total market cap — a bad exchange feed upstream; withheld.` } : {}),
     marketCapChange24hPct: d.market_cap_change_percentage_24h_usd != null ? +d.market_cap_change_percentage_24h_usd.toFixed(2) : null,
     dominancePct: { btc: dom.btc != null ? +dom.btc.toFixed(2) : null, eth: dom.eth != null ? +dom.eth.toFixed(2) : null },
     activeCoins: d.active_cryptocurrencies ?? null,

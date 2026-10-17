@@ -54,6 +54,32 @@ describe("polymarket-odds", () => {
     expect(res.note).toContain("No active prediction market found");
   });
 
+  it("never answers a keyword with an unrelated or ended market", async () => {
+    // 2026-10-17: "fed" answered "Kraken IPO by ___?", a market that ended in 2025.
+    const kraken = { title: "Kraken IPO by ___ ?", slug: "kraken-ipo-in-2025", endDate: "2025-12-31T12:00:00Z", markets: [] };
+    const fedEnded = { title: "Fed decision in September?", slug: "fed-sept", closed: true, markets: [] };
+    const fedLive = {
+      title: "Fed decision in December?",
+      slug: "fed-decision-in-december",
+      markets: [{ outcomes: JSON.stringify(["Yes", "No"]), outcomePrices: JSON.stringify(["0.6", "0.4"]), endDate: "2099-12-10T00:00:00Z" }],
+    };
+    vi.spyOn(global, "fetch").mockImplementation(async (u) => {
+      const url = String(u);
+      if (url.includes("slug=")) return { ok: true, json: async () => [] } as Response;
+      if (url.includes("public-search")) return { ok: true, json: async () => ({ events: [kraken, fedEnded, fedLive] }) } as Response;
+      return { ok: true, json: async () => [kraken] } as Response;
+    });
+    const res = (await polymarketOdds({ query: "fed" })) as any;
+    expect(res.title).toBe("Fed decision in December?");
+  });
+
+  it("says not found rather than returning an unrelated market", async () => {
+    const kraken = { title: "Kraken IPO by ___ ?", slug: "kraken-ipo", markets: [] };
+    vi.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => [kraken] } as Response);
+    const res = (await polymarketOdds({ query: "fed" })) as any;
+    expect(res.found).toBe(false);
+  });
+
   it("throws clean not-charged error when upstream is unreachable", async () => {
     vi.spyOn(global, "fetch").mockRejectedValue(new Error("Network connection reset"));
 

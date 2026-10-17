@@ -12,11 +12,14 @@
 
 import "server-only";
 import { dexTokenPairs } from "./upstream-cache";
+import { deepestPool, selfToken } from "./dex-pool";
 import { getAddress } from "viem";
 
 interface DexPair {
   baseToken?: { address?: string; symbol?: string };
+  quoteToken?: { address?: string; symbol?: string };
   priceUsd?: string;
+  priceNative?: string;
   liquidity?: { usd?: number };
   dexId?: string;
   url?: string;
@@ -45,13 +48,13 @@ export async function exitLiquidity(params: Record<string, string>) {
   // illiquid when we simply couldn't reach the data provider.
   const allPairs = await dexTokenPairs<DexPair>(address);
   if (allPairs === null) throw new Error("Liquidity data provider unavailable — try again shortly");
-  const pairs = allPairs.filter((p) => p.baseToken?.address?.toLowerCase() === address.toLowerCase());
-  if (pairs.length === 0) throw new Error("No liquidity pool found for this token on Base");
-
-  // Deepest pool drives whether you can actually exit.
-  const best = pairs.reduce((top, p) => ((p.liquidity?.usd ?? 0) > (top.liquidity?.usd ?? 0) ? p : top), pairs[0]);
-  const liquidityUsd = best.liquidity?.usd ?? 0;
-  const price = parseFloat(best.priceUsd ?? "") || null;
+  // Deepest pool drives whether you can actually exit — on either side of the
+  // pair: a quote-side token (USDC, WETH) keeps its depth in pools it quotes.
+  const deep = deepestPool(allPairs, address);
+  if (!deep) throw new Error("No liquidity pool found for this token on Base");
+  const best = deep.pair;
+  const liquidityUsd = deep.liquidityUsd;
+  const price = deep.priceUsd;
   // One side of a ~50/50 pool ≈ half total USD liquidity — the reserve a trade hits.
   const reserveUsd = liquidityUsd / 2;
 
@@ -70,7 +73,7 @@ export async function exitLiquidity(params: Record<string, string>) {
 
   return {
     address,
-    symbol: best.baseToken?.symbol ?? null,
+    symbol: selfToken(best, address)?.symbol ?? null,
     tradeSizeUsd: size,
     priceUsd: price,
     liquidityUsd: +liquidityUsd.toFixed(0),

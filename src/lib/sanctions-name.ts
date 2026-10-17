@@ -263,10 +263,26 @@ export interface Screening {
  */
 const MAX_PARTIALS = 200;
 
+/**
+ * Words that say what kind of company something is, not which one. A partial
+ * match made only of these is not a match: "Acme Trading LLC" was held for
+ * review on 100 listed parties like "ACS TRADING LLC" (2026-10-17), sharing
+ * nothing but "TRADING LLC" — so every trading company in the world was a HOLD.
+ */
+const GENERIC = new Set([
+  "LLC", "LTD", "LIMITED", "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "PLC", "LLP", "LP",
+  "SA", "SAS", "SARL", "SRL", "SPA", "AG", "GMBH", "BV", "NV", "AB", "AS", "OY", "PTE", "PTY", "BHD", "SDN",
+  "JSC", "PJSC", "OJSC", "CJSC", "OOO", "ZAO", "OAO", "FZE", "FZCO", "FZC", "DMCC", "SHPK", "DOO",
+  "TRADING", "TRADE", "GROUP", "HOLDING", "HOLDINGS", "INTERNATIONAL", "INTL", "GLOBAL", "GENERAL",
+  "INDUSTRIES", "INDUSTRY", "ENTERPRISES", "ENTERPRISE", "SERVICES", "SERVICE", "SOLUTIONS", "IMPORT", "EXPORT",
+  "THE", "AND", "OF", "DE", "LA", "EL", "AL",
+]);
+
 export function screen(entries: Entry[], query: string): Screening {
   const norm = normalizeName(query);
   const qTokens = norm.split(" ").filter((t) => t.length > 1);
   const singleToken = qTokens.length < 2;
+  const distinctive = qTokens.filter((t) => !GENERIC.has(t));
 
   const matches: Match[] = [];
   let partialsSeen = 0;
@@ -274,7 +290,12 @@ export function screen(entries: Entry[], query: string): Screening {
     let kind: MatchKind | null = null;
     if (e.norm === norm) kind = "exact";
     else if (!singleToken && qTokens.every((t) => e.tokens.includes(t))) kind = "strong";
-    else if (!singleToken && qTokens.filter((t) => e.tokens.includes(t)).length === qTokens.length - 1) {
+    else if (
+      !singleToken &&
+      qTokens.filter((t) => e.tokens.includes(t)).length === qTokens.length - 1 &&
+      // At least one distinctive word in common, when the query has any.
+      (distinctive.length === 0 || distinctive.some((t) => e.tokens.includes(t)))
+    ) {
       kind = "partial";
     } else if (singleToken && e.tokens.includes(qTokens[0] ?? norm)) kind = "partial";
     if (!kind) continue;

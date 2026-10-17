@@ -18,6 +18,8 @@ import { createPublicClient, getAddress, type Address } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 import { cdpSql } from "./covalent";
+import { dexTokenPairs } from "./upstream-cache";
+import { lookupKnown } from "./known-addresses";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 const validAddr = (a?: string) => /^0x[0-9a-fA-F]{40}$/.test((a ?? "").trim());
@@ -51,14 +53,40 @@ export async function washTrading(params: Record<string, string>) {
   const rMap = new Map(receivers.map((r) => [r.a ?? "", Number(r.c)]));
   // Round-trippers: addresses heavy on BOTH sides. Their min(sent,received) is
   // transfer volume that went out and came back — the wash shape.
-  const roundTrip: Array<{ address: string; sent: number; received: number }> = [];
+  const dual: Array<{ address: string; sent: number; received: number }> = [];
   for (const [a, sent] of sMap) {
     const received = rMap.get(a) ?? 0;
-    if (a && received > 0 && sent > 0) roundTrip.push({ address: a, sent, received });
+    if (a && received > 0 && sent > 0) dual.push({ address: a, sent, received });
   }
-  roundTrip.sort((x, y) => Math.min(y.sent, y.received) - Math.min(x.sent, x.received));
-  const roundTripVol = roundTrip.reduce((s, r) => s + Math.min(r.sent, r.received), 0);
-  const roundTripPct = +((roundTripVol / total) * 100).toFixed(1);
+  // A pool, router, aggregator or exchange wallet is on both sides of every
+  // trade by construction: a pool sends to each buyer and receives from each
+  // seller. Counting them called DEGEN, a token with 3,000 distinct weekly
+  // receivers, "likely_wash" on its pools and the LI.FI router (2026-10-17) —
+  // the verdict any actively traded token would get. So the token's own DEX
+  // pairs, registry-labelled infrastructure and contracts are set aside, and
+  // the verdict reads wallets. Contract round-trips are still reported.
+  const pairs = await dexTokenPairs<{ pairAddress?: string }>(token).catch(() => null);
+  const poolSet = new Set((pairs ?? []).map((p) => String(p.pairAddress ?? "").toLowerCase()).filter(Boolean));
+  const kinds = await Promise.all(
+    dual.map(async (r) => {
+      if (poolSet.has(r.address)) return "dex pool";
+      const known = lookupKnown(r.address);
+      if (known) return known.kind;
+      if (!validAddr(r.address)) return "wallet";
+      const code = await client.getCode({ address: r.address as Address }).catch(() => undefined);
+      // EIP-7702 delegated wallets carry 0xef0100… code but still sign for themselves.
+      return code && code !== "0x" && !code.startsWith("0xef0100") ? "contract" : "wallet";
+    }),
+  );
+  const roundTrip = dual.filter((_, i) => kinds[i] === "wallet");
+  const infra = dual.map((r, i) => ({ ...r, kind: kinds[i] })).filter((r) => r.kind !== "wallet");
+  const share = (rows: Array<{ sent: number; received: number }>) =>
+    +((rows.reduce((s, r) => s + Math.min(r.sent, r.received), 0) / total) * 100).toFixed(1);
+  const byMin = (x: { sent: number; received: number }, y: { sent: number; received: number }) =>
+    Math.min(y.sent, y.received) - Math.min(x.sent, x.received);
+  roundTrip.sort(byMin);
+  infra.sort(byMin);
+  const roundTripPct = share(roundTrip);
   // Concentration: few distinct participants driving many transfers.
   const distinct = Math.max(Number(totals[0]?.sf ?? 0), Number(totals[0]?.st ?? 0));
   const perParticipant = distinct > 0 ? +(total / distinct).toFixed(1) : null;
@@ -70,8 +98,11 @@ export async function washTrading(params: Record<string, string>) {
     totalTransfers: total,
     distinctParticipants: distinct,
     transfersPerParticipant: perParticipant,
-    roundTripPct, // share of transfers among addresses active on both sides
+    roundTripPct, // share of transfers among WALLETS active on both sides
     topRoundTrippers: roundTrip.slice(0, 5),
+    // Pools, routers, exchanges and other contracts on both sides — normal market plumbing, not scored.
+    infrastructureRoundTripPct: share(infra),
+    excludedInfrastructure: infra.slice(0, 5),
     verdict, // clean | elevated | likely_wash | no_activity
     recommendation:
       verdict === "likely_wash"
@@ -79,7 +110,7 @@ export async function washTrading(params: Record<string, string>) {
         : verdict === "elevated"
           ? `${roundTripPct}% round-trips through dual-sided addresses — some circular flow. Real volume is likely below the headline.`
           : `Only ${roundTripPct}% round-trips; volume looks organic over ${days}d. (A heuristic from top participants, not proof.)`,
-    note: "Heuristic wash-trading signal from transfer events (CDP SQL): share of transfers round-tripping through addresses heavy on both the send and receive side, plus participant concentration. A signal, not proof — LPs/routers legitimately appear on both sides. Not financial advice.",
+    note: "Heuristic wash-trading signal from transfer events (CDP SQL): share of transfers round-tripping through wallets heavy on both the send and receive side, plus participant concentration. The token's DEX pools, labelled infrastructure and contracts are excluded from the verdict (they sit on both sides of every trade) and reported separately. A signal, not proof. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

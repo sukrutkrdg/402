@@ -119,8 +119,10 @@ export function GET() {
          * this exact defect and fixes it — for the discovery payload and the
          * 402 body. This surface was left behind.
          *
-         * The placeholder stays as the fallback: for a parameter we hold no
-         * real value for, a shape is still better than nothing.
+         * A parameter we hold no real value for gets no `example`. Its
+         * placeholder used to stand in, and an agent copying the examples sent
+         * `payment=0x… 32-byte hash` and `days=30 (max 90)` (seen on our own
+         * paid sweep, 2026-10-17). The shape is kept, labelled as a hint.
          */
         const runnable = exampleInputFor(s) ?? {};
         return Object.fromEntries(
@@ -131,7 +133,8 @@ export function GET() {
               required: Boolean(p.required),
               description: p.label,
               in: "query",
-              example: runnable[p.name] ?? p.placeholder ?? undefined,
+              example: runnable[p.name],
+              ...(runnable[p.name] === undefined && p.placeholder ? { hint: p.placeholder } : {}),
             },
           ]),
         );

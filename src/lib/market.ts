@@ -12,6 +12,7 @@ import { base } from "viem/chains";
 import { getConfig } from "./config";
 import { baseTransport } from "./base-transport";
 import { tokenPrice } from "./onchain-extra";
+import { deepestPool } from "./dex-pool";
 
 const WETH = "0x4200000000000000000000000000000000000006";
 
@@ -68,6 +69,9 @@ export async function tokenInfo(params: Record<string, string>) {
   const address = reqAddr(params.address);
   const p = await bestBasePair(address);
   const info = p.info ?? {};
+  // Liquidity from the deepest pool on either side (dex-pool.ts); the base pair
+  // above is where the token's own name, links and price are read.
+  const deep = deepestPool(((await dexTokenPairs<DSPair>(address)) ?? []).filter(Boolean), address);
   return {
     address,
     name: p.baseToken?.name ?? null,
@@ -82,7 +86,8 @@ export async function tokenInfo(params: Record<string, string>) {
       .map((s) => ({ type: s.type ?? null, url: s.url as string }))
       .slice(0, 8),
     priceUsd: p.priceUsd ?? null,
-    liquidityUsd: p.liquidity?.usd ?? null,
+    liquidityUsd: Math.max(deep?.liquidityUsd ?? 0, p.liquidity?.usd ?? 0) || null,
+    totalLiquidityUsd: deep ? Math.round(deep.totalLiquidityUsd) : null,
     checkedAt: new Date().toISOString(),
   };
 }

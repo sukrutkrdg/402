@@ -97,6 +97,15 @@ describe("screen — match tiers", () => {
     expect(r.matches[0].match).toBe("partial");
   });
 
+  it("does not count a match made only of company-form words", () => {
+    // "Acme Trading LLC" once drew 100 partial matches like "ACS TRADING LLC".
+    const r = screen(parseExports('950,"ACS TRADING LLC",-0- ,"SDGT",-0- ,-0- ', ""), "Acme Trading LLC");
+    expect(r.matches).toEqual([]);
+    // A distinctive word in common still surfaces for review.
+    const r2 = screen(parseExports('951,"ACME TRADING FZE",-0- ,"SDGT",-0- ,-0- ', ""), "Acme Trading LLC");
+    expect(r2.matches[0]?.match).toBe("partial");
+  });
+
   it("never scores a single-token query above partial", () => {
     const r = screen(entries, "TRADING");
     expect(r.singleToken).toBe(true);

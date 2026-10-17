@@ -5,7 +5,7 @@
  *
  *   walletTokens   — full Base token portfolio for an address (ETH + major ERC-20s,
  *                    with optional USD values via DexScreener).
- *   trendingTokens — current boosted / trending tokens on Base via the DexScreener
+ *   trendingTokens — trending Base pools via GeckoTerminal (boosts listed separately) — was the DexScreener
  *                    token-boosts API.
  *
  * Both use public / free data sources: Base RPC (via viem) and the DexScreener
@@ -24,6 +24,7 @@ import {
 import { base } from "viem/chains";
 import { getConfig } from "@/lib/config";
 import { baseTransport } from "@/lib/base-transport";
+import { deepestPool, type DexPoolLike } from "@/lib/dex-pool";
 
 // ---------------------------------------------------------------------------
 // Shared helpers (mirrors onchain.ts / onchain-extra.ts — kept local)
@@ -196,28 +197,14 @@ export async function walletTokens(params: Record<string, string>) {
       // DexScreener /latest/dex/tokens/{addrs} returns pairs for ALL requested
       // addresses mixed together, so match each token to its own pairs by
       // baseToken/quoteToken address and pick the highest-liquidity one.
-      interface DetailedPair extends DexPair {
-        baseToken?: { address?: string };
-        quoteToken?: { address?: string };
-      }
-      const detailedPairs = pairs as DetailedPair[];
+      // priceUsd is the BASE token's price. Taking it from a pair where the
+      // token is the quote side priced USDC at ETH's price (3.78 USDC read as
+      // $9,173 on 2026-10-17); deepestPool derives the quote side's own price.
+      const detailedPairs = pairs as DexPoolLike[];
 
       for (const token of BASE_TOKENS) {
-        const addrLower = token.address.toLowerCase();
-        const matching = detailedPairs.filter(
-          (p) =>
-            p.baseToken?.address?.toLowerCase() === addrLower ||
-            p.quoteToken?.address?.toLowerCase() === addrLower,
-        );
-        if (matching.length > 0) {
-          const best2 = matching.reduce<DetailedPair>((top, p) => {
-            return (p.liquidity?.usd ?? 0) > (top.liquidity?.usd ?? 0) ? p : top;
-          }, matching[0]);
-          if (best2.priceUsd) {
-            const price = parseFloat(best2.priceUsd);
-            if (Number.isFinite(price)) priceMap.set(addrLower, price);
-          }
-        }
+        const deep = deepestPool(detailedPairs, token.address);
+        if (deep?.priceUsd !== null && deep?.priceUsd !== undefined) priceMap.set(token.address.toLowerCase(), deep.priceUsd);
       }
     }
   } catch {
@@ -268,57 +255,90 @@ export async function walletTokens(params: Record<string, string>) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. trendingTokens — boosted / trending tokens on Base via DexScreener
+// 2. trendingTokens — trending pools on Base (GeckoTerminal) + promoted tokens
 // ---------------------------------------------------------------------------
 
+interface GtPool {
+  attributes?: {
+    name?: string;
+    address?: string;
+    reserve_in_usd?: string;
+    base_token_price_usd?: string;
+    volume_usd?: { h24?: string };
+    price_change_percentage?: { h24?: string };
+    transactions?: { h24?: { buys?: number; sells?: number } };
+  };
+  relationships?: { base_token?: { data?: { id?: string } }; dex?: { data?: { id?: string } } };
+}
+
 /**
- * Returns the current list of boosted / promoted tokens on Base from the
- * DexScreener token-boosts API.  Filters to Base-chain entries only and
- * caps the result at 15 tokens.
+ * What is trending on Base DEXes right now.
  *
- * Throws (preventing buyer charge) only when the upstream API is unavailable.
- * A successful response with zero Base entries is a valid (paid) answer.
+ * This used to be DexScreener's token-boosts feed — tokens whose teams PAID to
+ * be promoted, sold as "trending". It is also usually empty for Base: on
+ * 2026-10-17 it held 30 boosts and none on Base, so the endpoint charged for an
+ * empty list (and ai-market-brief told agents there was "zero trending
+ * activity"). GeckoTerminal ranks Base pools by live activity, free and keyless.
+ * Boosts are still reported, separately and labelled as paid promotion.
  *
- * No params required — the trending list is global state.
+ * Throws (not charged) only when the trending feed itself cannot be read.
  */
 export async function trendingTokens(_params: Record<string, string>) {
-  let raw: DexBoostToken[];
-
+  let pools: GtPool[];
   try {
-    const res = await fetch(
-      "https://api.dexscreener.com/token-boosts/latest/v1",
-      { signal: AbortSignal.timeout(8000) },
-    );
-    if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-    raw = (await res.json()) as DexBoostToken[];
+    const res = await fetch("https://api.geckoterminal.com/api/v2/networks/base/trending_pools?page=1", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`GeckoTerminal responded ${res.status}`);
+    pools = ((await res.json()) as { data?: GtPool[] }).data ?? [];
+    if (!Array.isArray(pools)) throw new Error("unexpected response format");
   } catch (err) {
-    // Hard throw — prevents the buyer from being charged for a failed lookup.
-    throw new Error(
-      `Trending data unavailable: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new Error(`Trending data unavailable: ${err instanceof Error ? err.message : String(err)} — not charged, retry shortly`);
   }
 
-  if (!Array.isArray(raw)) {
-    throw new Error("Trending data unavailable: unexpected response format");
-  }
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  const tokens = pools.slice(0, 15).map((p, i) => {
+    const a = p.attributes ?? {};
+    const id = p.relationships?.base_token?.data?.id ?? "";
+    return {
+      rank: i + 1,
+      tokenAddress: id.startsWith("base_") ? id.slice(5) : null,
+      pool: a.name ?? null,
+      poolAddress: a.address ?? null,
+      dex: p.relationships?.dex?.data?.id ?? null,
+      priceUsd: num(a.base_token_price_usd),
+      priceChange24hPct: num(a.price_change_percentage?.h24),
+      volume24hUsd: num(a.volume_usd?.h24),
+      liquidityUsd: num(a.reserve_in_usd),
+      txns24h: a.transactions?.h24 ? (a.transactions.h24.buys ?? 0) + (a.transactions.h24.sells ?? 0) : null,
+    };
+  });
 
-  // Filter to Base chain and take the top 15 by boost amount.
-  const baseTokens = raw
-    .filter((t) => t.chainId === "base")
-    .slice(0, 15)
-    .map((t) => ({
-      tokenAddress: t.tokenAddress ?? null,
-      description: typeof t.description === "string"
-        ? t.description.trim().slice(0, 140) || null
-        : null,
-      amount: t.totalAmount ?? t.amount ?? null,
-      url: t.url ?? null,
-    }));
+  // Paid promotion, best-effort and never mixed into the ranking.
+  let promoted: Array<{ tokenAddress: string | null; amount: number | null }> = [];
+  try {
+    const res = await fetch("https://api.dexscreener.com/token-boosts/latest/v1", { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const raw = (await res.json()) as DexBoostToken[];
+      if (Array.isArray(raw)) {
+        promoted = raw
+          .filter((t) => t.chainId === "base")
+          .slice(0, 10)
+          .map((t) => ({ tokenAddress: t.tokenAddress ?? null, amount: t.totalAmount ?? t.amount ?? null }));
+      }
+    }
+  } catch {
+    /* promotion feed is optional */
+  }
 
   return {
     chain: "base",
-    count: baseTokens.length,
-    tokens: baseTokens,
+    source: "GeckoTerminal trending pools (live DEX activity)",
+    count: tokens.length,
+    tokens,
+    promoted,
+    note: "Trending = ranked by live pool activity, not quality or safety. A trending pool can be a fresh rug: vet with token-risk or pre-trade-gate before buying. `promoted` lists tokens whose teams paid DexScreener for visibility. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

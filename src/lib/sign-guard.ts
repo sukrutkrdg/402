@@ -16,6 +16,8 @@ import "server-only";
 import { decodeFunctionData, getAddress, type Hex } from "viem";
 import { contractDanger } from "./contract-danger";
 import { sanctionsCheck } from "./compliance";
+import { goPlusSecurity } from "./upstream-cache";
+import { establishedContext } from "./established";
 
 // Huge allowances (>= 2^200) are effectively unlimited — the classic drain vector.
 const NEAR_UNLIMITED = 1n << 200n;
@@ -104,7 +106,27 @@ export async function signGuard(params: Record<string, string>) {
   const granteeSanctioned = readSanc(granteeSancR, !!grantee);
   const sanctionsUnavailable = (!!target && destSanctioned === null) || (!!grantee && granteeSanctioned === null);
 
-  const destCritical = destDanger?.dangerLevel === "critical";
+  // A revoke (approve 0, or setApprovalForAll false) can only shrink what the
+  // signer has exposed. Holding it over the destination's owner powers told an
+  // agent cleaning up its approvals on USDC to wait (2026-10-17).
+  const revoke = !!intent && ((intent.action === "approve" && intent.amount === 0n) || (intent.action === "setApprovalForAll" && !intent.unlimited));
+  // On an established token (see established.ts) an upgradeable implementation
+  // is how the issuer runs it — USDC is a proxy — not a risk of this signature.
+  // Only "upgrade" moves to context; blacklist and every other power still holds.
+  const categories = destDanger?.dangerCategories ?? [];
+  let destContext: string[] = [];
+  let established: string | null = null;
+  if (target && destDanger?.dangerLevel === "critical" && categories.length > 0 && categories.every((c) => c === "upgrade")) {
+    const gp = await goPlusSecurity<Record<string, unknown>>(target).catch(() => null);
+    if (gp) {
+      const disq = ["is_honeypot", "hidden_owner", "can_take_back_ownership", "is_airdrop_scam"].filter((k) => String(gp[k]) === "1");
+      const holders = gp.holder_count !== undefined ? Number(gp.holder_count) : null;
+      const ctx = await establishedContext(target, Number.isFinite(holders) ? holders : null, disq);
+      established = ctx.basis;
+      if (ctx.established) destContext = ["upgrade"];
+    }
+  }
+  const destCritical = destDanger?.dangerLevel === "critical" && destContext.length === 0;
   const destUnverified = destDanger?.verified === false;
 
   const observedRisks: string[] = [];
@@ -121,8 +143,8 @@ export async function signGuard(params: Record<string, string>) {
   if (destUninspected) { observedRisks.push("destination contract could not be inspected this call (source registry unavailable)"); hold = true; }
   if (intent?.unlimited && destUninspected) { observedRisks.push("unlimited approval to a contract that could not be inspected"); stop = true; }
   if (intent?.unlimited && (destUnverified || destCritical)) { observedRisks.push("unlimited approval to an unverified/dangerous contract"); stop = true; }
-  if (destCritical) { observedRisks.push(`destination has critical owner powers (${(destDanger?.dangerCategories || []).join(", ")})`); hold = true; }
-  if (destUnverified) { observedRisks.push("destination contract source is not verified — you can't inspect what it does"); hold = true; }
+  if (destCritical) { observedRisks.push(`destination has critical owner powers (${(destDanger?.dangerCategories || []).join(", ")})`); if (!revoke) hold = true; }
+  if (destUnverified) { observedRisks.push("destination contract source is not verified — you can't inspect what it does"); if (!revoke) hold = true; }
   if (intent && /transfer/.test(intent.action)) { observedRisks.push("moves funds out of the signer"); hold = true; }
 
   const decision = stop ? "STOP" : hold ? "HOLD" : "GO";
@@ -139,6 +161,9 @@ export async function signGuard(params: Record<string, string>) {
       granteeSanctioned,
       destinationVerified: destDanger ? destDanger.verified !== false : null,
       destinationDanger: destDanger?.dangerLevel ?? null,
+      // Owner powers reported but not scored, and why.
+      ...(destContext.length ? { destinationContext: destContext, established } : {}),
+      ...(revoke ? { revoke: true } : {}),
     },
     receipt: {
       checked: (data as string).slice(0, 10) + "…",

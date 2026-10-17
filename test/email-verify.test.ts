@@ -191,3 +191,18 @@ describe("emailVerify — classification", () => {
     expect(r.method).toMatch(/no smtp probe/i);
   });
 });
+
+describe("emailVerify — null MX (RFC 7505)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("a domain publishing a null MX accepts no mail, even with an A record", async () => {
+    // example.com publishes "0 ." — we once called someone@example.com deliverable.
+    mxMock.mockResolvedValue([{ exchange: "", priority: 0 }]);
+    a4Mock.mockResolvedValue(["93.184.216.34"]);
+    a6Mock.mockRejectedValue(new Error("no AAAA"));
+    const r = (await emailVerify({ email: "someone@example.com" })) as Result;
+    expect(r.decision).toBe("STOP");
+    expect(r.deliverable).toBe(false);
+    expect(r.reasons).toEqual(expect.arrayContaining(["domain_accepts_no_mail", "null_mx"]));
+  });
+});

@@ -60,6 +60,12 @@ export const POLICY_VERSION: Record<string, string> = {
   // three days of volume is fragile, not an exit trap).
   "pre-trade-bundle": "2.2.0",
   "dump-risk": "1.1.0",
+  // 1.1: a revoke is never held over the destination's powers; an upgradeable
+  // proxy on an established token is context.
+  "sign-guard": "1.1.0",
+  // 1.1: the token's pools, labelled infrastructure and contracts are excluded
+  // from the round-trip verdict (reported separately).
+  "wash-trading": "1.1.0",
 };
 
 /** Confidence in the verdict, derived from how complete the inputs were. */

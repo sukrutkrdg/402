@@ -26,6 +26,7 @@ import { getConfig } from "@/lib/config";
 import { dexPair } from "./upstream-cache";
 import { baseTransport } from "@/lib/base-transport";
 import { dexTokenPairs } from "@/lib/upstream-cache";
+import { deepestPool } from "@/lib/dex-pool";
 
 // ---------------------------------------------------------------------------
 // Shared helpers (mirrors onchain.ts — kept local to avoid coupling)
@@ -168,14 +169,20 @@ export async function tokenPrice(params: Record<string, string>) {
   const self =
     best.baseToken?.address?.toLowerCase() === addrLc ? best.baseToken : best.quoteToken;
 
+  // Depth comes from the deepest pool on EITHER side (see dex-pool.ts): USDC's
+  // base-side pairs are its shallowest. The price stays the base-side read.
+  const deep = deepestPool(pairs, address);
+  const liqPair = deep && deep.liquidityUsd > (best.liquidity?.usd ?? 0) ? deep.pair : best;
+
   return {
     address,
     priceUsd,
     priceChange24h: best.priceChange?.h24 ?? null,
-    liquidityUsd: best.liquidity?.usd ?? null,
+    liquidityUsd: liqPair.liquidity?.usd ?? null,
+    totalLiquidityUsd: deep ? Math.round(deep.totalLiquidityUsd) : null,
     volume24h: best.volume?.h24 ?? null,
-    dexId: best.dexId ?? null,
-    pairAddress: best.pairAddress ?? null,
+    dexId: liqPair.dexId ?? null,
+    pairAddress: liqPair.pairAddress ?? null,
     baseToken: {
       name: self?.name ?? null,
       symbol: self?.symbol ?? null,

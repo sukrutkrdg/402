@@ -44,6 +44,20 @@ export function _resetPolymarketCache() {
   CACHE.clear();
 }
 
+/** Open, and not past its end date. */
+export function isLive(e: GammaEvent & { closed?: boolean; endDate?: string }): boolean {
+  if (e.closed === true) return false;
+  const end = Date.parse(e.endDate ?? e.markets?.[0]?.endDate ?? "");
+  return !Number.isFinite(end) || end > Date.now();
+}
+
+/** Every word of the query appears in the event's title or slug (whole words, case-insensitive). */
+export function matches(e: GammaEvent, query: string): boolean {
+  const hay = ` ${(e.title ?? "").toLowerCase()} ${(e.slug ?? "").toLowerCase().replace(/-/g, " ")} `;
+  const words = query.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return words.length > 0 && words.every((w) => new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(hay));
+}
+
 export async function polymarketOdds(params: Record<string, string>) {
   const query = (params.query || params.slug || params.market || params.search || "crypto").trim();
   if (!query) throw new Error("query= required (e.g. 'fed', 'btc', 'kraken-ipo-in-2025')");
@@ -64,34 +78,35 @@ export async function polymarketOdds(params: Record<string, string>) {
       );
       if (slugRes.ok) {
         const j = (await slugRes.json()) as GammaEvent[];
-        if (Array.isArray(j) && j.length > 0) events = j;
+        // Only the event with exactly this slug; anything else is not what was asked for.
+        if (Array.isArray(j)) events = j.filter((e) => e.slug === query);
       }
     }
 
-    // 2. If no event by slug, search by title keyword
+    // 2. Keyword search. Gamma's /events ignores a `title` parameter, so the old
+    //    title= query returned whatever events came first — on 2026-10-17 "fed"
+    //    answered with "Kraken IPO by ___?", a market that ended in 2025. Every
+    //    candidate is now checked against the keyword and for being still open.
     if (events.length === 0) {
       const searchRes = await fetch(
-        `https://gamma-api.polymarket.com/events?title=${encodeURIComponent(query)}&closed=false&limit=5`,
+        `https://gamma-api.polymarket.com/public-search?q=${encodeURIComponent(query)}&limit_per_type=10&events_status=active`,
         { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) }
       );
       if (searchRes.ok) {
-        const j = (await searchRes.json()) as GammaEvent[];
-        if (Array.isArray(j)) events = j;
+        const j = (await searchRes.json().catch(() => null)) as { events?: GammaEvent[] } | null;
+        if (Array.isArray(j?.events)) events = j.events.filter((e) => isLive(e) && matches(e, query));
       }
     }
 
-    // 3. Fallback: general query on markets if still empty
+    // 3. Fallback: the most active open events, filtered by the keyword.
     if (events.length === 0) {
       const allRes = await fetch(
-        `https://gamma-api.polymarket.com/events?closed=false&limit=10`,
+        `https://gamma-api.polymarket.com/events?closed=false&active=true&order=volume24hr&ascending=false&limit=200`,
         { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) }
       );
       if (allRes.ok) {
         const all = (await allRes.json()) as GammaEvent[];
-        if (Array.isArray(all)) {
-          const lower = query.toLowerCase();
-          events = all.filter((e) => e.title?.toLowerCase().includes(lower) || e.slug?.toLowerCase().includes(lower));
-        }
+        if (Array.isArray(all)) events = all.filter((e) => isLive(e) && matches(e, query));
       }
     }
   } catch (e) {

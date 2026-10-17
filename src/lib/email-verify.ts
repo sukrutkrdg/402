@@ -211,9 +211,13 @@ export async function emailVerify(params: Record<string, string>) {
     .sort((x, y) => x.priority - y.priority)
     .map((r) => ({ host: r.exchange, priority: r.priority }));
   const domainResolves = Boolean((a4.records ?? []).length || (a6.records ?? []).length);
+  // A "null MX" (one record, exchange "." — RFC 7505) is the domain saying it
+  // accepts no mail at all, and it overrides the A-record fallback. example.com
+  // publishes one; we called someone@example.com deliverable (2026-10-17).
+  const nullMx = mxHosts.length === 1 && /^\.?$/.test(mxHosts[0].host.trim());
   // A domain with no MX but an A record accepts mail at that host per RFC 5321 —
   // legacy, but real, so it isn't undeliverable.
-  const acceptsMail = mxHosts.length > 0 || domainResolves;
+  const acceptsMail = !nullMx && (mxHosts.length > 0 || domainResolves);
 
   const disposable = DISPOSABLE.has(domain);
   const freeProvider = FREE_PROVIDERS.has(domain);
@@ -226,7 +230,8 @@ export async function emailVerify(params: Record<string, string>) {
   // mail cannot be delivered. So report both rather than replacing one with the
   // other — a caller filtering on "accepts no mail" must still catch this case.
   if (domainMissing) reasons.push("domain_does_not_resolve");
-  if (!acceptsMail && !dnsUnavailable && !partialDns) reasons.push("domain_accepts_no_mail");
+  if (!acceptsMail && !dnsUnavailable && (!partialDns || nullMx)) reasons.push("domain_accepts_no_mail");
+  if (nullMx) reasons.push("null_mx");
   // Only claim the A-record fallback when the MX lookup actually came back empty.
   if (mx.answered && mxHosts.length === 0 && domainResolves) reasons.push("no_mx_falls_back_to_a_record");
   if (disposable) reasons.push("disposable_provider");
@@ -252,11 +257,11 @@ export async function emailVerify(params: Record<string, string>) {
       ? disposable || suggestion || role
         ? "HOLD"
         : "GO"
-      : partialDns
+      : partialDns && !nullMx // a null MX is the domain's own answer; a missing A/AAAA cannot change it
         ? "REFUSE"
         : "STOP";
 
-  const degraded = dnsUnavailable || (partialDns && !acceptsMail);
+  const degraded = dnsUnavailable || (partialDns && !acceptsMail && !nullMx);
   const receipt = decisionReceipt({
     endpoint: "email-verify",
     params: { email },
@@ -276,7 +281,7 @@ export async function emailVerify(params: Record<string, string>) {
   return {
     email: raw,
     decision,
-    deliverable: dnsUnavailable || (partialDns && !acceptsMail) ? null : acceptsMail,
+    deliverable: dnsUnavailable || (partialDns && !acceptsMail && !nullMx) ? null : acceptsMail,
     reasons,
     syntaxValid: true,
     domain,
