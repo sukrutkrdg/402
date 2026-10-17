@@ -2,8 +2,8 @@
  * tokenized-stock-price — the live ONCHAIN price and liquidity of Coinbase's
  * tokenized equities (AAPLc, TSLAc, NVDAc …). b20_safety tells you a tokenized
  * stock is a real issuance; this tells you what it actually trades at on Base and
- * whether there's liquidity to trade size. Nobody else covers all 82 — the roster
- * is anchored on-chain by the policy admin, not a hand-kept list.
+ * whether there's liquidity to trade size. It covers every stock Coinbase lists —
+ * the roster is seeded from chain and topped up from the issuer's own API.
  *
  * Two modes:
  *   - no symbol → a cheap directory of every tokenized equity we track (ticker,
@@ -18,7 +18,7 @@
 
 import "server-only";
 import { getAddress } from "viem";
-import { TOKENIZED_STOCKS } from "./tokenized-stocks";
+import { findStockBySymbol, stockRoster } from "./tokenized-stocks";
 import { dexTokenPairs } from "./upstream-cache";
 
 interface Pair {
@@ -37,18 +37,18 @@ export async function tokenizedStockPrice(params: Record<string, string>) {
 
   // Directory mode — no upstream call, just the roster.
   if (!raw) {
+    const roster = await stockRoster();
     return {
       mode: "directory",
-      count: TOKENIZED_STOCKS.length,
-      stocks: TOKENIZED_STOCKS.map((s) => ({ ticker: s.ticker, sym: s.sym, name: s.name })),
+      count: roster.length,
+      stocks: roster.map((s) => ({ ticker: s.ticker, sym: s.sym, name: s.name })),
       note: "Every Coinbase tokenized equity we track (anchored on-chain by the policy admin, not a hand-kept list). Pass symbol=AAPL (or AAPLc) for its live on-chain price and liquidity. Not financial advice.",
       checkedAt: new Date().toISOString(),
     };
   }
 
-  // Match by ticker, on-chain sym, or ticker+c.
-  const want = raw.endsWith("C") ? raw.slice(0, -1) : raw;
-  const stock = TOKENIZED_STOCKS.find((s) => s.ticker.toUpperCase() === want || s.sym.toUpperCase() === raw || s.ticker.toUpperCase() === raw);
+  // Match by ticker, on-chain sym, ticker+c, or address — against the live roster.
+  const stock = await findStockBySymbol((params.symbol || params.ticker || params.sym || "").trim());
   if (!stock) {
     return {
       mode: "lookup",

@@ -1,25 +1,20 @@
 /**
- * RWA dividend/split feed — the HISTORY of corporate actions on Base's tokenized
- * equities, plus what is scheduled next.
+ * RWA dividend/split feed — what has been applied, what is announced, and what
+ * each holder has accrued, across Base's tokenized equities.
  *
- * corporate-actions answers "what is queued" (the forward-looking ERC-8056
- * schedule). This is the other half: the record of multiplier moves that have
- * ALREADY happened across the roster — the splits, reverse splits and dividend
- * accruals an accountant reconstructing cost basis, or a vault repricing NAV,
- * needs the timeline of. Read from MultiplierUpdated events on chain, newest
- * first, mapped back to the stock, with the queued changes appended so one call
- * gives past + pending.
+ * Rebuilt 2026-10-17 on two measured facts (see stock-corporate-actions.ts):
+ * Coinbase announces each dividend on chain days ahead (Announcement, id ":pre")
+ * and applies it with an instant multiplier move — not via the ERC-8056
+ * schedule — and the old query (an unbounded lower(toString(address)) scan)
+ * exceeded the warehouse limit, so history read as degraded on every call.
  *
- * The first such event anywhere was GOOGLc on 2026-09-14 (1.0 →
- * 1.000377118676784179), so this feed was empty by fact, not by bug, until then —
- * it reports what the chain returns and makes no claim beyond it. A warehouse
- * read that fails is surfaced as degraded, never as "no actions".
+ * A warehouse read that fails is surfaced as degraded, never as "no actions".
  */
 
 import "server-only";
-import { cdpSql } from "./covalent";
+import { readStockActions } from "./stock-corporate-actions";
 import {
-  TOKENIZED_STOCKS,
+  stockRoster,
   WAD,
   readMultipliers,
   readSchedules,
@@ -32,32 +27,23 @@ const ratioOf = (wad: string) => {
 
 export async function rwaDividendFeed(params: Record<string, string>) {
   const limit = Math.min(Math.max(Number(params.limit) || 50, 1), 200);
-  const byAddr = new Map(TOKENIZED_STOCKS.map((s) => [s.token.toLowerCase(), s]));
-  const inList = TOKENIZED_STOCKS.map((s) => `'${s.token.toLowerCase()}'`).join(",");
+  const roster = await stockRoster();
+  const want = (params.symbol || params.ticker || "").trim().toUpperCase().replace(/C$/, "");
+  const scope = want ? roster.filter((s) => s.ticker.toUpperCase() === want) : roster;
+  if (want && scope.length === 0) throw new Error(`${want} is not a tokenized stock on Base — omit symbol for all`);
 
-  // ---- history: MultiplierUpdated events across the roster, newest first ----
-  const rows = await cdpSql<{ addr?: string; tx?: string; t?: string; blk?: string }>(
-    `SELECT lower(toString(address)) AS addr, transaction_hash AS tx, block_timestamp AS t, block_number AS blk
-     FROM base.events
-     WHERE event_name = 'MultiplierUpdated' AND lower(toString(address)) IN (${inList})
-     ORDER BY block_timestamp DESC
-     LIMIT ${limit}`,
-  );
-  const historyDegraded = rows === null;
-  const history = (rows ?? [])
-    .map((r) => {
-      const s = byAddr.get(String(r.addr ?? ""));
-      if (!s) return null;
-      return { symbol: s.sym, ticker: s.ticker, token: s.token, txHash: r.tx ?? null, at: r.t ?? null, block: r.blk ?? null };
-    })
-    .filter(Boolean);
+  // ---- history + announced: Announcement / MultiplierUpdated events, joined to Coinbase's record ----
+  const actions = await readStockActions(scope);
+  const historyDegraded = actions === null;
+  const history = (actions ?? []).filter((a) => a.status === "applied").slice(0, limit);
+  const announced = (actions ?? []).filter((a) => a.status === "announced");
 
   // ---- upcoming: the queued ERC-8056 schedule (same reader corporate-actions uses) ----
-  const mults = await readMultipliers();
+  const mults = await readMultipliers(scope);
   const curBySym = new Map<string, bigint | null>();
   for (const m of mults) curBySym.set(m.sym, m.multiplier !== null ? BigInt(m.multiplier) : null);
-  const schedules = await readSchedules(TOKENIZED_STOCKS, curBySym);
-  const upcoming = TOKENIZED_STOCKS
+  const schedules = await readSchedules(scope, curBySym);
+  const upcoming = scope
     .map((s) => ({ s, sched: schedules.get(s.sym) }))
     .filter((x) => x.sched?.status === "scheduled")
     .map(({ s, sched }) => ({
@@ -70,21 +56,31 @@ export async function rwaDividendFeed(params: Record<string, string>) {
     }))
     .sort((a, b) => (a.effectiveAtIso ?? "").localeCompare(b.effectiveAtIso ?? ""));
 
+  // What holders have received so far: the live multiplier IS the cumulative accrual.
+  const accrued = scope
+    .map((s) => ({ s, m: curBySym.get(s.sym) ?? null }))
+    .filter((x) => x.m !== null && x.m !== WAD)
+    .map(({ s, m }) => ({ symbol: s.sym, ticker: s.ticker, multiplier: ratioOf(m!.toString()), accruedPct: Math.round((Number((m! * 1_000_000_000n) / WAD) / 1e9 - 1) * 1e6) / 1e4 }))
+    .sort((x, y) => y.accruedPct - x.accruedPct);
+
   return {
     asOf: new Date().toISOString(),
-    rosterSize: TOKENIZED_STOCKS.length,
-    history, // past MultiplierUpdated events, newest first
+    rosterSize: roster.length,
+    ...(want ? { symbol: want } : {}),
+    history, // applied actions, newest first, with multiplier before/after and the accrual
     historyCount: history.length,
     ...(historyDegraded ? { historyDegraded: true } : {}),
-    upcoming, // queued ERC-8056 changes
+    announced, // announced by the issuer on chain, not yet applied — the real dividend calendar
+    announcedCount: announced.length,
+    upcoming, // queued ERC-8056 changes (Coinbase has not used this path so far)
     upcomingCount: upcoming.length,
-    finding:
-      historyDegraded
-        ? "⚠️ The event warehouse could not be read this call — the history is UNKNOWN, not empty. Upcoming (read live from chain) is still shown. Re-check the history."
-        : history.length === 0
-          ? "No corporate action has been recorded on any tokenized equity in this window. The first anywhere was GOOGLc on 2026-09-14; this reports what the chain holds and claims nothing beyond it."
-          : `${history.length} past corporate action(s) on chain, newest ${history[0]!.symbol}. ${upcoming.length} queued ahead (ERC-8056).`,
-    note: "The timeline of corporate actions on Base's tokenized equities: past multiplier moves from MultiplierUpdated events (the record for cost-basis / NAV reconstruction) plus the queued ERC-8056 schedule. The historical companion to corporate-actions (which is upcoming-only). A failed warehouse read reads as degraded, never 'no actions'. Not financial advice.",
+    accrued, // stocks whose multiplier is off 1.0: cumulative share accrual to date
+    finding: historyDegraded
+      ? "⚠️ The event warehouse could not be read this call — history and announcements are UNKNOWN, not empty. Accrued (read live from chain) is still shown. Re-check."
+      : history.length === 0 && announced.length === 0
+        ? "No corporate action announced or applied in this scope. This reports what the chain holds and claims nothing beyond it."
+        : `${history.length} applied${history[0] ? ` (newest ${history[0].symbol} ${history[0].description}${history[0].accrualPct !== null ? `, +${history[0].accrualPct}% shares` : ""})` : ""}; ${announced.length} announced and pending${announced.length ? `: ${announced.slice(0, 6).map((a) => a.symbol).join(", ")}` : ""}.`,
+    note: "Corporate actions on Base's tokenized equities. Coinbase announces a dividend on chain (Announcement, id ':pre') days ahead and applies it with an instant multiplier move; each is joined to Coinbase's own record (status, multiplier before/after). balanceOf never changes — the multiplier does — so a holder's shares = balance × multiplier. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

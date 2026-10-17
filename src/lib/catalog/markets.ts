@@ -6,6 +6,7 @@ import type { ServiceDef } from "./types";
 import { perpFunding } from "../perp-funding";
 import { fundingRadar } from "../funding-radar";
 import { tokenizedStockPrice } from "../tokenized-stock-price";
+import { stockFairValue } from "../stock-fair-value";
 import { marketPulse } from "../market-pulse";
 import { multiChainGas } from "../multi-chain-gas";
 import { exitLiquidity } from "../liquidity";
@@ -56,12 +57,27 @@ export const MARKETS_SERVICES: ServiceDef[] = [
       name: "Tokenized Stock Price (onchain)",
       tagline: "Live Base price & liquidity of Coinbase's tokenized stocks",
       description:
-        "b20-safety says a tokenized stock is a real issuance; this says what it trades at ON-CHAIN and whether there's liquidity for size. Pass symbol=AAPL (or AAPLc) for the deepest Base pool's price, aggregate liquidity, 24h move and volume; omit symbol for the full directory. Covers all 82 — the roster is anchored on-chain by the policy admin, not a hand-kept list. This is the tradeable Base price, which can diverge from NYSE NAV. Not financial advice.",
+        "b20-safety says a tokenized stock is a real issuance; this says what it trades at ON-CHAIN and whether there's liquidity for size. Pass symbol=AAPL (or AAPLc) for the deepest Base pool's price, aggregate liquidity, 24h move and volume; omit symbol for the full directory. Covers every stock Coinbase lists — the roster tops itself up from Coinbase's own API. This is the tradeable Base price, which can diverge from NYSE NAV. Not financial advice.",
       price: "$0.03",
       icon: "🏦",
       category: "Markets",
       params: [{ name: "symbol", label: "Ticker (AAPL, TSLA, NVDA… or AAPLc). Omit for the list", placeholder: "AAPL" }],
       handler: tokenizedStockPrice,
+    },
+  {
+      id: "stock-fair-value",
+      name: "Tokenized Stock Fair Value",
+      tagline: "Is the Base price of AAPLc, NVDAc… fair right now — and is the reference frozen?",
+      description:
+        "Tokenized stocks trade 24/7 on Base; their reference price (Chainlink, used by Aave and Morpho) freezes when the US market shuts. One call: the US session, the reference and its age, the DEX premium/discount in bps against it, pool depth and rough impact for amountUsd, paused features and any announced dividend. Covers every stock Coinbase lists. Not financial advice.",
+      price: "$0.02",
+      icon: "⚖️",
+      category: "Markets",
+      params: [
+        { name: "symbol", label: "Stock (NVDA, NVDAc or token address)", placeholder: "NVDA" },
+        { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
+      ],
+      handler: stockFairValue,
     },
   {
       id: "market-pulse",
@@ -119,9 +135,9 @@ export const MARKETS_SERVICES: ServiceDef[] = [
   {
       id: "corporate-actions",
       name: "Tokenized Stock Corporate Actions",
-      tagline: "Upcoming splits/accruals on Base's tokenized equities, before they land",
+      tagline: "Announced dividends and splits on Base's tokenized stocks, before they land",
       description:
-        "A split, reverse split or dividend adjustment on a B20 tokenized equity is settled by moving the multiplier — and balanceOf does NOT change when it fires, so an integrator reading it is silently wrong. Cobalt made the pending change readable, so this lists every scheduled multiplier action across the 80+ tokenized stocks with its effective time, and — with wallet= — which touch a position that wallet holds. Read live from the ERC-8056 schedule; nobody else publishes it. Not financial advice.",
+        "Dividends and splits on a tokenized stock settle by moving its multiplier; balanceOf never changes, so a naive reader is silently wrong. Coinbase announces each one on chain days ahead. This lists every announced action across all tokenized stocks Coinbase lists, plus any ERC-8056 schedule, and with wallet= which touch that wallet's holdings. Lenders pause a stock's reserve while one is applied. Not financial advice.",
       price: "$0.03",
       icon: "📅",
       category: "Markets",
@@ -133,13 +149,16 @@ export const MARKETS_SERVICES: ServiceDef[] = [
   {
       id: "rwa-dividend-feed",
       name: "Tokenized Stock Action Feed",
-      tagline: "Past + upcoming corporate actions across Base's tokenized equities",
+      tagline: "Dividends paid, dividends announced, and accrual to date on Base's tokenized stocks",
       description:
-        "The timeline corporate-actions doesn't give: PAST multiplier moves (splits, reverse splits, dividend accruals) from MultiplierUpdated events across the 80+ tokenized stocks, newest first — the record a cost-basis or NAV reconstruction needs — plus the queued ERC-8056 schedule, so one call gives history and what's next. A failed warehouse read reads as degraded, never 'none'. Not financial advice.",
+        "Every dividend or split applied to a Coinbase tokenized stock on Base, with multiplier before/after and the share accrual, joined to Coinbase's own record; those announced but not yet applied; and each stock's cumulative accrual. The record cost-basis and NAV need. symbol= narrows to one stock. A failed warehouse read reads as degraded, never 'none'. Not financial advice.",
       price: "$0.03",
       icon: "🗞️",
       category: "Markets",
-      params: [{ name: "limit", label: "Max past events (optional, default 50)", placeholder: "50" }],
+      params: [
+        { name: "symbol", label: "Stock (optional, e.g. NVDA)", placeholder: "NVDA" },
+        { name: "limit", label: "Max past events (optional, default 50)", placeholder: "50" },
+      ],
       handler: rwaDividendFeed,
     },
   {

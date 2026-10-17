@@ -21,13 +21,14 @@ import { createPublicClient, getAddress } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 import {
-  TOKENIZED_STOCKS,
+  stockRoster,
   WAD,
   readMultipliers,
   readSchedules,
   describeScheduledMultiplier,
   type TokenizedStock,
 } from "./tokenized-stocks";
+import { readStockActions } from "./stock-corporate-actions";
 
 const client = createPublicClient({ chain: base, transport: baseTransport(8000) });
 
@@ -43,13 +44,14 @@ export async function corporateActions(params: Record<string, string>) {
 
   // Current multipliers (batched) → schedules (batched), reusing the roster-scale
   // readers so this stays a handful of eth_calls at 80+ tokens.
-  const mults = await readMultipliers();
+  const roster = await stockRoster();
+  const mults = await readMultipliers(roster);
   const curBySym = new Map<string, bigint | null>();
   for (const m of mults) curBySym.set(m.sym, m.multiplier !== null ? BigInt(m.multiplier) : null);
-  const schedules = await readSchedules(TOKENIZED_STOCKS, curBySym);
+  const schedules = await readSchedules(roster, curBySym);
 
-  const bySym = new Map<string, TokenizedStock>(TOKENIZED_STOCKS.map((s) => [s.sym, s]));
-  const scheduled = TOKENIZED_STOCKS
+  const bySym = new Map<string, TokenizedStock>(roster.map((s) => [s.sym, s]));
+  const scheduled = roster
     .map((s) => ({ s, sched: schedules.get(s.sym) }))
     .filter((x) => x.sched?.status === "scheduled")
     .map(({ s, sched }) => ({
@@ -67,19 +69,31 @@ export async function corporateActions(params: Record<string, string>) {
 
   const unreadable = mults.filter((m) => m.multiplier === null).map((m) => m.sym);
 
+  // Coinbase announces dividends on chain days ahead and applies them instantly —
+  // the ERC-8056 schedule above stays empty for them. The announcements are the
+  // real calendar (stock-corporate-actions.ts). null = warehouse unreadable.
+  const actions = await readStockActions(roster);
+  const announced = (actions ?? [])
+    .filter((a) => a.status === "announced")
+    .map((a) => ({ symbol: a.symbol, ticker: a.ticker, token: a.token, description: a.description, announcedAt: a.announcedAt, uri: a.uri }));
+
   // With a wallet, intersect the schedule with what it actually holds — the part
   // that will move THIS holder's entitlement. Batched balanceOf across the stocks
   // that have something queued (there is no point reading balances otherwise).
   let holdingsAffected: Array<Record<string, unknown>> | undefined;
-  if (wallet && scheduled.length > 0) {
-    const contracts = scheduled.map((x) => ({ address: getAddress(x.token), abi: BAL_ABI, functionName: "balanceOf", args: [wallet] }));
+  const pendingForWallet = [
+    ...scheduled.map((x) => ({ symbol: x.symbol, ticker: x.ticker, token: x.token, pendingRatio: x.pendingRatio, effectiveAtIso: x.effectiveAtIso, summary: x.summary })),
+    ...announced.map((a) => ({ symbol: a.symbol, ticker: a.ticker, token: a.token, pendingRatio: null, effectiveAtIso: null, summary: `${a.description} announced ${a.announcedAt ?? ""}`.trim() })),
+  ];
+  if (wallet && pendingForWallet.length > 0) {
+    const contracts = pendingForWallet.map((x) => ({ address: getAddress(x.token), abi: BAL_ABI, functionName: "balanceOf", args: [wallet] }));
     let bal: Array<{ status: string; result?: unknown }> = [];
     try {
       bal = (await client.multicall({ contracts: contracts as never, allowFailure: true })) as never;
     } catch {
-      bal = scheduled.map(() => ({ status: "failure" }));
+      bal = pendingForWallet.map(() => ({ status: "failure" }));
     }
-    holdingsAffected = scheduled
+    holdingsAffected = pendingForWallet
       .map((x, i) => {
         const r = bal[i];
         const raw = r && r.status === "success" ? (r.result as bigint) : null;
@@ -98,17 +112,22 @@ export async function corporateActions(params: Record<string, string>) {
 
   return {
     asOf: new Date().toISOString(),
-    scanned: TOKENIZED_STOCKS.length,
+    scanned: roster.length,
     scheduledCount: scheduled.length,
     scheduled,
+    announcedCount: announced.length,
+    announced,
+    ...(actions === null ? { announcementsDegraded: true } : {}),
     ...(unreadable.length ? { degraded: true, unreadable } : {}),
     ...(wallet ? { wallet, holdingsAffected: holdingsAffected ?? [] } : {}),
     finding:
-      scheduled.length === 0
-        ? "No scheduled multiplier change is queued on any tokenized equity right now. This reads the pending ERC-8056 schedule live, so a split/accrual appears here the moment it is scheduled — before it moves balances."
-        : `${scheduled.length} scheduled corporate action(s): ${scheduled.map((x) => `${x.symbol} ${x.summary ?? "pending"}`).join("; ")}.` +
+      scheduled.length === 0 && announced.length === 0
+        ? actions === null
+          ? "No ERC-8056 change is queued; the issuer's on-chain announcements could not be read this call, so announced dividends are UNKNOWN, not none."
+          : "Nothing scheduled (ERC-8056) and nothing announced by the issuer right now."
+        : `${announced.length} announced by the issuer${announced.length ? ` (${announced.slice(0, 8).map((a) => `${a.symbol} ${a.description}`).join("; ")})` : ""}; ${scheduled.length} scheduled via ERC-8056${scheduled.length ? ` (${scheduled.map((x) => `${x.symbol} ${x.summary ?? "pending"}`).join("; ")})` : ""}.` +
           (wallet ? ` ${holdingsAffected?.length ?? 0} touch this wallet's holdings.` : " Pass wallet= to see which touch a wallet's holdings."),
-    note: "Upcoming corporate actions on Base's tokenized equities, read from the Cobalt ERC-8056 schedule before they take effect. A multiplier move redenominates positions (balanceOf does not change when it fires), so this is the warning an integrator needs ahead of time. Not financial advice.",
+    note: "Upcoming corporate actions on Base's tokenized equities: the issuer's on-chain announcements (how Coinbase pre-announces dividends) plus the Cobalt ERC-8056 schedule. Lenders pause a stock's reserve while an action is applied. A multiplier move redenominates positions (balanceOf does not change when it fires), so this is the warning an integrator needs ahead of time. Not financial advice.",
     checkedAt: new Date().toISOString(),
   };
 }

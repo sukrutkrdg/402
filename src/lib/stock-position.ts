@@ -46,7 +46,7 @@ import { createPublicClient, getAddress } from "viem";
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 import {
-  TOKENIZED_STOCKS,
+  stockRoster,
   WAD,
   readSchedules,
   describeScheduledMultiplier,
@@ -132,7 +132,7 @@ export async function stockPosition(params: Record<string, string>) {
   const unreadable: string[] = [];
 
   // One multicall for balanceOf(wallet)+multiplier across the whole roster.
-  const stocks = TOKENIZED_STOCKS as readonly TokenizedStock[];
+  const stocks = await stockRoster();
   const contracts: unknown[] = [];
   for (const s of stocks) {
     const address = getAddress(s.token);
@@ -192,7 +192,7 @@ export async function stockPosition(params: Record<string, string>) {
 
   return {
     wallet: w,
-    scanned: TOKENIZED_STOCKS.length,
+    scanned: stocks.length,
     held: positions.length,
     positions: positions.sort((a, b) => b.entitledShares - a.entitledShares),
     // Any non-empty list means every total below is a FLOOR. Named so it cannot

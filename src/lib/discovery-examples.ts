@@ -272,6 +272,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "funding-radar": { limit: "8" },
   // Live onchain price of a Coinbase tokenized stock.
   "tokenized-stock-price": { symbol: "AAPL" },
+  "stock-fair-value": { symbol: "NVDA", amountUsd: "1000" },
+  "rwa-dividend-feed": { symbol: "NVDA" },
   // Trading-grade market pulse (no params).
   "market-pulse": {},
   // web-extract's urls= is required; without a runnable example the keepalive cron

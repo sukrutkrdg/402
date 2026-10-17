@@ -70,7 +70,8 @@ import { cdpSql } from "@/lib/covalent";
 import {
   readMultipliers,
   describeMultiplierChange,
-  TOKENIZED_STOCKS,
+  stockRoster,
+  type TokenizedStock,
   readTransferPolicies,
   readSchedules,
   describeScheduledMultiplier,
@@ -222,12 +223,12 @@ const POLICY_KEY = (sym: string) => `stock:policy:${sym}`;
  * as a baseline (unknown is not unchanged), and first sight seeds silently
  * rather than alerting thirteen times on first deploy.
  */
-async function policyWatch(policies: Map<string, TransferPolicyRead>): Promise<{ changes: string[]; seeded: number; unread: number }> {
+async function policyWatch(policies: Map<string, TransferPolicyRead>, roster: readonly TokenizedStock[]): Promise<{ changes: string[]; seeded: number; unread: number }> {
   const changes: string[] = [];
   let seeded = 0;
   let unread = 0;
 
-  for (const s of TOKENIZED_STOCKS) {
+  for (const s of roster) {
     const p = policies.get(s.sym) ?? { senderPolicyId: null, receiverPolicyId: null, canaryMaySend: null, canaryMayReceive: null };
     // Any failed leg makes the whole row untrustworthy: a null canary answer
     // beside a real policy id could be read as "not authorised", which is the
@@ -267,14 +268,14 @@ async function policyWatch(policies: Map<string, TransferPolicyRead>): Promise<{
  * It reports CANDIDATES, not stocks — an 8-decimal B20 is a hint, and the
  * operator anchor is what would confirm one.
  */
-async function rosterDrift(): Promise<string | null> {
+async function rosterDrift(roster: readonly TokenizedStock[]): Promise<string | null> {
   const rows = await cdpSql<{ tok?: string }>(
     `SELECT toString(parameters['token']) AS tok FROM base.events ` +
       `WHERE event_name = 'B20Created' AND toString(parameters['decimals']) = '8' ` +
       `ORDER BY block_timestamp DESC LIMIT 200`,
   );
   if (!rows) return null; // query failed — say nothing rather than guess
-  const known = new Set<string>(TOKENIZED_STOCKS.map((s) => s.token));
+  const known = new Set<string>(roster.map((s) => s.token));
   const seen = new Set((await kvGet(ROSTER_KEY))?.split(",").filter(Boolean) ?? []);
   const candidates = rows
     .map((r) => String(r.tok ?? "").toLowerCase())
@@ -304,8 +305,8 @@ async function rosterDrift(): Promise<string | null> {
 
   return (
     `${confirmed.length} new tokenized equity from the same policy operator: ${confirmed.join(", ")}. ` +
-    `b20-safety and stock-position already cover it — the operator anchor needs no list — but ` +
-    `TOKENIZED_STOCKS in src/lib/tokenized-stocks.ts drives the watcher and /stocks, so add it there.`
+    `b20-safety already recognises it by the operator anchor, but Coinbase's tokenized-stocks API does not list it yet, ` +
+    `so the roster (seed + API) misses it — add it to the TOKENIZED_STOCKS seed if it is a real listing.`
   );
 }
 
@@ -315,7 +316,8 @@ export async function GET(req: NextRequest) {
   const provided = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
   if (!safeEqual(provided, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const reads = await readMultipliers();
+  const roster = await stockRoster();
+  const reads = await readMultipliers(roster);
   const unreadable = reads.filter((r) => r.multiplier === null);
 
   // Every read failed — that is a network verdict, not a market one.
@@ -347,7 +349,7 @@ export async function GET(req: NextRequest) {
   // Batched ERC-8056 schedule read across the roster (one multicall's worth of
   // newUIMultiplier+effectiveAt per token), instead of a per-token loop that
   // would blow the cron's 60s budget at 80+ tokens.
-  const schedules = await readSchedules(TOKENIZED_STOCKS, curBySym);
+  const schedules = await readSchedules(roster, curBySym);
 
   const changes: Change[] = [];
   let seeded = 0;
@@ -381,9 +383,9 @@ export async function GET(req: NextRequest) {
     await kvSet(KEY(r.sym), r.multiplier);
   }
 
-  const drift = await rosterDrift().catch(() => null);
-  const policies = await readTransferPolicies(TOKENIZED_STOCKS).catch(() => new Map());
-  const policy = await policyWatch(policies).catch(() => ({ changes: [], seeded: 0, unread: 0 }));
+  const drift = await rosterDrift(roster).catch(() => null);
+  const policies = await readTransferPolicies(roster).catch(() => new Map());
+  const policy = await policyWatch(policies, roster).catch(() => ({ changes: [], seeded: 0, unread: 0 }));
   const schedule = await scheduleWatch(schedules, multBySym).catch(() => ({ newly: [], cancelled: [], seeded: 0, unread: 0 }));
 
   if (policy.changes.length > 0) {
@@ -416,7 +418,7 @@ export async function GET(req: NextRequest) {
       ...(unreadable.length ? { unreadableCount: unreadable.length, unreadable: unreadable.map((u) => u.sym) } : {}),
       ...(drift ? { rosterDrift: drift } : {}),
       policy: {
-        watched: TOKENIZED_STOCKS.length - policy.unread,
+        watched: roster.length - policy.unread,
         ...(policy.seeded ? { seeded: policy.seeded } : {}),
         ...(policy.unread ? { unread: policy.unread } : {}),
         changes: policy.changes,
