@@ -14,6 +14,9 @@ import { sellability } from "./sellability";
 import { swapRoute } from "./swap-route";
 import { deployerReputation } from "./deployer-rep";
 import { buildLiquidityGuard, type GuardResult } from "./liquidity-guard";
+import { findStock } from "./tokenized-stocks";
+import { stockGate } from "./stock-gate";
+import { getAddress } from "viem";
 
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
@@ -37,6 +40,17 @@ export async function preTradeGate(params: Record<string, string>) {
       guardTimer = setTimeout(() => r({ available: false, reason: "guard build timed out this call" }), 7000);
     }),
   ]).finally(() => clearTimeout(guardTimer));
+
+  // A Coinbase tokenized stock takes its own path: the launchpad-token checks
+  // below (GoPlus honeypot, deployer history) cannot read a B20 precompile and
+  // would hold every real stock forever.
+  const stock = await findStock(address).catch(() => null);
+  if (stock) {
+    const w = (params.wallet || "").trim();
+    if (w && !/^0x[0-9a-fA-F]{40}$/.test(w)) throw new Error("wallet must be a 0x… address");
+    return stockGate(stock, { address, amountUsd, tradeSizeUsd, wallet: w ? getAddress(w) : null, guardP });
+  }
+
   const [riskR, sellR, routeR, deployR] = await Promise.allSettled([
     tokenRisk({ address }),
     sellability({ address }),

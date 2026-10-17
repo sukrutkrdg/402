@@ -4,6 +4,7 @@
 
 import type { ServiceDef } from "./types";
 import { morphoHealth, morphoLiquidations } from "../morpho";
+import { stockCollateralRisk } from "../stock-collateral-risk";
 import { metamorphoVault } from "../vault";
 import { gasSponsor, paymasterAudit } from "../aa";
 import { safeCheck } from "../safe";
@@ -37,6 +38,18 @@ export const UTILITY_SERVICES: ServiceDef[] = [
       ],
       handler: morphoHealth,
       noFreeTier: true,
+    },
+  {
+      id: "stock-collateral-risk",
+      name: "Stock Loan Reopen Risk (Aave V4)",
+      tagline: "Your tokenized-stock loan's health factor when the US market reopens",
+      description:
+        "Aave V4 on Base lends USDC against tokenized stocks (AAPLc, NVDAc, TSLAc…), priced by a 24/5 oracle that freezes from Friday 20:00 to Sunday 20:00 ET while the tokens keep trading. This re-prices each collateral at the live Base DEX price: health factor now, projected at the reopen, the fall that liquidates, paused reserves and announced dividends. Pass wallet=. Not financial advice.",
+      price: "$0.04",
+      icon: "📉",
+      category: "Lending",
+      params: [{ name: "wallet", label: "Borrower wallet", placeholder: "0x… wallet", required: true }],
+      handler: stockCollateralRisk,
     },
   {
       id: "morpho-vault",

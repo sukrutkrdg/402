@@ -42,7 +42,8 @@ export const POLICY_VERSION: Record<string, string> = {
   "rug-score": "1.1.0",
   "sellability": "1.0.0",
   // 1.1: a kept owner is not a HOLD reason on an established token.
-  "pre-trade-gate": "1.1.0",
+  // 1.2: Coinbase tokenized stocks take a stock path (transfer policy, premium, reference age).
+  "pre-trade-gate": "1.2.0",
   "b20-safety": "1.0.0",
   "deep-dd": "1.0.0",
   "sanctions": "1.0.0",

@@ -89,13 +89,14 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Pre-Trade Gate",
       tagline: "One call before you trade — GO / HOLD / STOP",
       description:
-        "Use before an agent buys or swaps into a Base token: token-risk, sellability (honeypot, tax), swap route and price impact for your size, and deployer reputation in one GO/HOLD/STOP verdict with a receipt. GO only when every check ran clean; an outage is HOLD. GO/HOLD also return `enforce`: a Cobalt validity condition so Base never includes your trade if the pool is drained before it lands. Bind this tool first.",
+        "Use before an agent buys or swaps into a Base token: token-risk, sellability (honeypot, tax), swap route and price impact for your size, and deployer reputation in one GO/HOLD/STOP verdict with a receipt. GO only when every check ran clean; an outage is HOLD. Coinbase tokenized stocks get stock checks (transfer policy, wallet eligibility, premium vs reference). GO/HOLD return `enforce`: a Cobalt condition so Base never includes your trade if the pool is drained first. Bind this tool first.",
       price: "$0.10",
       icon: "🚦",
       category: "Onchain",
       params: [
         { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
         { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
+        { name: "wallet", label: "Buyer wallet — for tokenized stocks, checks it may receive (optional)", placeholder: "0x… wallet" },
         { name: "maxLiquidityDropPct", label: "Enforce: max pool drop before the trade is refused, % (optional, default 20)", placeholder: "20" },
       ],
       handler: preTradeGate,

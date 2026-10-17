@@ -273,6 +273,7 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // Live onchain price of a Coinbase tokenized stock.
   "tokenized-stock-price": { symbol: "AAPL" },
   "stock-fair-value": { symbol: "NVDA", amountUsd: "1000" },
+  "stock-collateral-risk": { wallet: "0xC9Bc5Cab29dC93A9D2ea16Ef38620598FAd5ca66" },
   "rwa-dividend-feed": { symbol: "NVDA" },
   // Trading-grade market pulse (no params).
   "market-pulse": {},

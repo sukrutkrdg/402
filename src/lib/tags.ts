@@ -81,6 +81,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "deployer-rep": ["deployer", "serial-deployer", "reputation", "rug-history", "token-safety"],
   "perp-funding": ["derivatives", "perp", "funding-rate", "open-interest", "basis", "futures", "trading", "long-short"],
   "funding-radar": ["derivatives", "funding-rate", "squeeze", "crowding", "long-short", "perp", "market-structure", "trading"],
+  "stock-collateral-risk": ["tokenized-stock", "equities", "stocks", "aave", "lending", "liquidation", "health-factor", "weekend", "rwa"],
   "stock-fair-value": ["tokenized-stock", "equities", "stocks", "rwa", "nav", "premium", "oracle", "weekend", "chainlink", "b20"],
   "tokenized-stock-price": ["tokenized-stock", "equities", "stocks", "rwa", "aapl", "tsla", "price", "onchain-price", "b20"],
   "market-pulse": ["sentiment", "fear-greed", "trending", "funding", "market-mood", "risk-on", "trading", "positioning"],
