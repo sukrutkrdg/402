@@ -16,7 +16,7 @@
  */
 
 import "server-only";
-import { buildValidityPredicates, checkDeadline, sequencerEndpoint } from "./base-swap-validity";
+import { buildValidityPredicates, resolveDeadline, sequencerEndpoint } from "./base-swap-validity";
 
 /** A signed, serialized tx is 0x + an even number of hex chars. We do not decode
  *  or re-sign it — it is the caller's, passed straight through to the envelope. */
@@ -32,9 +32,11 @@ function normalizeSignedTx(raw: string | undefined): string | null {
 export async function validityBuild(params: Record<string, string>) {
   // Validate conditions FIRST — a malformed predicate must fail before anything
   // else, so a bad condition is never charged.
-  const validity = buildValidityPredicates(params);
+  // Base requires a deadline within 60 s on every validity tx; resolveDeadline
+  // sets one when none is given and refuses one that is passed or too far out.
   const signedTx = normalizeSignedTx(params.signedTx || params.rawTx || params.signedRawTransaction);
-  const deadlineCheck = await checkDeadline(params);
+  const { beforeBlock, ...deadlineCheck } = await resolveDeadline(params);
+  const validity = buildValidityPredicates({ ...params, beforeBlock: beforeBlock ?? "" });
   const endpoint = sequencerEndpoint();
 
   const txField = signedTx ?? "0x<SIGNED_RAW_TRANSACTION>";
@@ -44,8 +46,6 @@ export async function validityBuild(params: Record<string, string>) {
     method: "base_sendRawTransactionValidity",
     params: [txField, { validity }],
   };
-
-  const deadline = validity.find((v) => v.type === "block_number" && v.params.op === "<");
 
   return {
     chain: "base" as const,
@@ -60,9 +60,8 @@ export async function validityBuild(params: Record<string, string>) {
         ? "Your signed transaction is embedded below — do NOT also broadcast it with eth_sendRawTransaction."
         : "Sign your transaction (EIP-1559 recommended), then replace 0x<SIGNED_RAW_TRANSACTION> in the request below with the signed serialized tx. Do NOT broadcast it normally.",
       `POST the JSON-RPC request to Base's sequencer (${endpoint}). The response is the 32-byte tx hash.`,
-      deadline
-        ? "Base holds it until every condition holds, then includes it. If the deadline block arrives first it is never included — no stuck order to cancel."
-        : "Base holds it until every condition holds, then includes it. Add a beforeBlock deadline so an unmet condition cannot leave it pending indefinitely.",
+      `Base holds it until every condition holds, then includes it. If the deadline block (${beforeBlock}) arrives first it is never included — no stuck order to cancel.`,
+      `Submit within ${deadlineCheck.expiresInSeconds ?? 60} s: Base only accepts a deadline at most 60 s out${deadlineCheck.deadlineAutoSet ? " (none was given, so we set one)" : ""}. If it lapses, call again for a fresh deadline.`,
     ],
     priceConditionNote:
       "A 'price ≥ X' condition is a storage predicate on your pool's slot — supplied by you, because a predicate reads a raw slot and cannot call a view function, and slot layouts differ by pool. We validate and forward it; we do not derive a slot from a price.",

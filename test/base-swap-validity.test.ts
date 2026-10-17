@@ -24,9 +24,15 @@ describe("validity predicate builder", () => {
   });
 
   it("pins a flashblock index, defaulting the operator to =", () => {
-    expect(buildValidityPredicates({ flashblockIndex: "0" })).toEqual([
-      { type: "flashblock_index", params: { op: "=", value: "0x0" } },
+    expect(buildValidityPredicates({ flashblockIndex: "1" })).toEqual([
+      { type: "flashblock_index", params: { op: "=", value: "0x1" } },
     ]);
+  });
+
+  it("refuses a flashblock index outside Base's 1-10", () => {
+    expect(() => buildValidityPredicates({ flashblockIndex: "0" })).toThrow(/1 through 10/);
+    expect(() => buildValidityPredicates({ flashblockIndex: "11" })).toThrow(/1 through 10/);
+    expect(buildValidityPredicates({ flashblockIndex: "0xa" })[0].params.value).toBe("0xa");
   });
 
   it("builds a native balance floor against the taker by default", () => {

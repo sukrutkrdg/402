@@ -108,11 +108,15 @@ export function buildValidityPredicates(params: Record<string, string>): Predica
   if (params.beforeBlock) preds.push({ type: "block_number", params: { op: "<", value: toHexQuantity(params.beforeBlock, "beforeBlock") } });
   if (params.fromBlock) preds.push({ type: "block_number", params: { op: ">=", value: toHexQuantity(params.fromBlock, "fromBlock") } });
 
-  // Pin to a flashblock position (e.g. "=" "0x0" for the first flashblock).
+  // Pin to a flashblock position. Base numbers them 1 through 10 (0x1–0xa); an
+  // index outside that range can never match.
   if (params.flashblockIndex) {
+    const value = toHexQuantity(params.flashblockIndex, "flashblockIndex");
+    const n = BigInt(value);
+    if (n < 1n || n > 10n) throw new Error(`flashblockIndex must be 1 through 10 (Base numbers flashblocks 1–10; got ${n})`);
     preds.push({
       type: "flashblock_index",
-      params: { op: params.flashblockIndexOp ? asOp(params.flashblockIndexOp, "flashblockIndexOp") : "=", value: toHexQuantity(params.flashblockIndex, "flashblockIndex") },
+      params: { op: params.flashblockIndexOp ? asOp(params.flashblockIndexOp, "flashblockIndexOp") : "=", value },
     });
   }
 
@@ -148,36 +152,88 @@ export function buildValidityPredicates(params: Record<string, string>): Predica
   return preds;
 }
 
+/** Base block time, measured 2026-10-17 (1,000 blocks in 2,000 s). */
+export const BLOCK_SECONDS = 2;
 /**
- * A beforeBlock that has already passed builds a transaction Base will never
- * include, and nothing about the envelope says so: the agent submits it and
- * waits. Our own published example asked for block 50,000,000 when Base was past
- * 52.6M. Refuse it (as the caller's input, before anything is charged) and
- * report the block we read. If the chain cannot be read, the envelope is still
- * built and says the deadline went unchecked.
+ * Base's rule (docs.base.org, "Fees, Ordering, and Lifecycle"): every validity
+ * transaction MUST carry a block_number upper bound, and the bound must be
+ * within 60 seconds of submission. 60 s is 30 blocks; with op "<" the last
+ * includable block is beforeBlock - 1, so beforeBlock may be at most current + 31.
  */
-export async function checkDeadline(params: Record<string, string>): Promise<{ currentBlock: string | null; deadlineChecked: boolean }> {
-  if (!params.beforeBlock) return { currentBlock: null, deadlineChecked: false };
+export const MAX_DEADLINE_BLOCKS = 31;
+/** Used when the caller gives no deadline: ~50 s, leaving room to sign and submit. */
+export const DEFAULT_DEADLINE_BLOCKS = 25;
+
+export interface DeadlineResolution {
+  /** The beforeBlock that goes into the predicates (the caller's, or one we set). */
+  beforeBlock: string | undefined;
+  currentBlock: string | null;
+  deadlineChecked: boolean;
+  /** True when the caller gave none and we set current + DEFAULT_DEADLINE_BLOCKS. */
+  deadlineAutoSet: boolean;
+  /** Seconds from now until the deadline block, at BLOCK_SECONDS per block. */
+  expiresInSeconds: number | null;
+}
+
+/**
+ * Settle the deadline before any predicate is built.
+ *
+ * Base refuses a validity transaction without an upper bound, and one whose
+ * bound is more than 60 s out. Both endpoints used to accept either — our own
+ * example asked for block 999,999,999 — so an agent following us got a request
+ * the sequencer would reject. Now:
+ *   - no beforeBlock: we set current + 25 and say so;
+ *   - a beforeBlock already passed, or more than 60 s ahead: refused as the
+ *     caller's input, naming the current block, before anything is charged.
+ * If the chain cannot be read and the caller gave a deadline, it is forwarded
+ * unchecked and the answer says so; with no deadline we cannot set one, so the
+ * call fails as an outage (not charged).
+ */
+export async function resolveDeadline(params: Record<string, string>): Promise<DeadlineResolution> {
+  const given = (params.beforeBlock ?? "").trim();
+  if (given) toHexQuantity(given, "beforeBlock"); // malformed input is the caller's, before any chain read
   let current: bigint;
   try {
     current = await createPublicClient({ chain: base, transport: baseTransport(6000, true) }).getBlockNumber();
   } catch {
-    return { currentBlock: null, deadlineChecked: false };
+    if (!given) throw new Error("Base block height unavailable, so no deadline could be set — not charged, retry shortly");
+    return { beforeBlock: given, currentBlock: null, deadlineChecked: false, deadlineAutoSet: false, expiresInSeconds: null };
   }
-  const deadline = BigInt(toHexQuantity(params.beforeBlock, "beforeBlock"));
+  if (!given) {
+    const auto = current + BigInt(DEFAULT_DEADLINE_BLOCKS);
+    return {
+      beforeBlock: auto.toString(),
+      currentBlock: current.toString(),
+      deadlineChecked: true,
+      deadlineAutoSet: true,
+      expiresInSeconds: DEFAULT_DEADLINE_BLOCKS * BLOCK_SECONDS,
+    };
+  }
+  const deadline = BigInt(toHexQuantity(given, "beforeBlock"));
   if (deadline <= current) {
     throw new Error(
-      `beforeBlock ${deadline} has already passed: Base is at block ${current}. A deadline must be ahead of the current block (Base makes about 5 blocks a second).`,
+      `beforeBlock ${deadline} has already passed: Base is at block ${current}. A deadline must be ahead of the current block (Base makes a block every ${BLOCK_SECONDS} s).`,
     );
   }
-  return { currentBlock: current.toString(), deadlineChecked: true };
+  if (deadline - current > BigInt(MAX_DEADLINE_BLOCKS)) {
+    throw new Error(
+      `beforeBlock ${deadline} is ${deadline - current} blocks (~${Number(deadline - current) * BLOCK_SECONDS} s) ahead of Base block ${current}. Base requires a validity transaction's deadline within 60 s of submission: use at most ${current + BigInt(MAX_DEADLINE_BLOCKS)}, or omit beforeBlock and we set one.`,
+    );
+  }
+  return {
+    beforeBlock: given,
+    currentBlock: current.toString(),
+    deadlineChecked: true,
+    deadlineAutoSet: false,
+    expiresInSeconds: Number(deadline - current) * BLOCK_SECONDS,
+  };
 }
 
 export async function baseSwapValidity(params: Record<string, string>) {
-  // Validate the conditions FIRST — a malformed predicate must fail before any 0x
-  // call, so a bad condition is never charged.
-  const validity = buildValidityPredicates(params);
-  const deadlineCheck = await checkDeadline(params);
+  // Settle the deadline and validate the conditions FIRST — a malformed predicate
+  // must fail before any 0x call, so a bad condition is never charged.
+  const { beforeBlock, ...deadlineCheck } = await resolveDeadline(params);
+  const validity = buildValidityPredicates({ ...params, beforeBlock: beforeBlock ?? "" });
 
   const swap = await baseSwap(params);
   const endpoint = sequencerEndpoint();
@@ -196,7 +252,8 @@ export async function baseSwapValidity(params: Record<string, string>) {
       : []),
     `Sign the transaction below with ${swap.transaction.from} (EIP-1559 recommended) — but DO NOT broadcast it with eth_sendRawTransaction.`,
     `Instead POST this JSON-RPC request to Base's sequencer (${endpoint}), replacing 0x<SIGNED_RAW_TRANSACTION> with your signed serialized tx. The response is the 32-byte tx hash.`,
-    `Base holds it until every condition holds, then includes it. ${validity.some((v) => v.type === "block_number" && v.params.op === "<") ? "If the deadline block arrives first, it is never included — no stuck order to cancel." : "It stays pending until its conditions are met or its nonce is otherwise used."}`,
+    `Base holds it until every condition holds, then includes it. If the deadline block (${beforeBlock}) arrives first, it is never included — no stuck order to cancel.`,
+    `Submit within ${deadlineCheck.expiresInSeconds ?? 60} s: Base only accepts a deadline at most 60 s out. If it lapses, call again for a fresh deadline and quote.`,
   ];
 
   return {

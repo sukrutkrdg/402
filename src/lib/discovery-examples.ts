@@ -284,11 +284,17 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   },
   // Simulate the same approve(Aerodrome router, 0) from a real wallet: a tx that
   // succeeds and grants a bounded (zero) approval — a safe, runnable example.
+  // value is switched off: its placeholder (0.1 ETH) is a real number, and
+  // sending ETH to USDC's approve reverts — the example simulated a failure.
   "simulate-tx": {
     from: WALLET,
     to: USDC,
     data: "0x095ea7b3000000000000000000000000cf77a3ba9a5ca399b7c97c74d54e5b1beb874e430000000000000000000000000000000000000000000000000000000000000000",
+    value: "",
   },
+  // The entry-price placeholder (0.0012) is a DEGEN price; on USDC it read as an
+  // 83,000% gain.
+  "position-health": { address: DEGEN, size: "1000", entryPrice: "0.0012" },
   "commerce-escrow": { payer: WALLET, receiver: WALLET2, operator: WALLET },
   "commerce-operator-audit": { operator: WALLET },
   "morpho-vault": { vault: VAULT },
@@ -308,19 +314,17 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "polymarket-odds": { query: "fed" },
   // A quote only: the transaction is returned, never sent.
   "base-swap": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-  // Same quote, plus a block deadline so the conditional example actually builds
-  // a (non-empty) validity set. The tx is returned, never sent.
-  //
-  // The deadline has to stay ahead of Base for years: 999,999,999 is about six
-  // years out at five blocks a second; the 50,000,000 used before had passed by
-  // October. The empty values switch off what the label rules would otherwise
-  // declare: the storage operator's placeholder (">=") is a real value, and a
-  // storage condition without its address throws — neither endpoint answered
-  // its own example once.
-  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "999999999", storageOp: "", flashblockIndexOp: "", fromBlock: "", flashblockIndex: "" },
-  // A block deadline alone is a valid, runnable condition set; no signedTx so the
-  // envelope comes back with a placeholder. Nothing is sent.
-  "validity-build": { beforeBlock: "999999999", storageOp: "", flashblockIndexOp: "", fromBlock: "", flashblockIndex: "" },
+  // Same quote as a conditional order. No beforeBlock: Base requires the
+  // deadline within 60 s of submission, so no fixed block can stay valid in a
+  // published example (999,999,999 was refused by the sequencer's rule, 50,000,000
+  // had passed). Omitted, the endpoint sets current + 25 itself. The empty values
+  // switch off what the label rules would otherwise declare: the storage
+  // operator's placeholder (">=") is a real value, and a storage condition
+  // without its address throws. The tx is returned, never sent.
+  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "", storageOp: "", flashblockIndexOp: "", fromBlock: "", flashblockIndex: "" },
+  // The deadline alone is a valid condition set; no signedTx so the envelope
+  // comes back with a placeholder. Nothing is sent.
+  "validity-build": { beforeBlock: "", storageOp: "", flashblockIndexOp: "", fromBlock: "", flashblockIndex: "" },
   // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.
