@@ -50,7 +50,7 @@ export async function x402MarketIntel(params: Record<string, string>) {
   if (!query) throw new Error("Provide a capability/keyword to search the x402 index for (query=…, e.g. 'token safety')");
   const payTo = (params.payTo || params.seller || "").trim();
 
-  const url = `${SEARCH}?query=${encodeURIComponent(query)}${payTo ? `&payTo=${encodeURIComponent(payTo)}` : ""}&limit=200`;
+  const url = `${SEARCH}?query=${encodeURIComponent(query)}${payTo ? `&payTo=${encodeURIComponent(payTo)}` : ""}&limit=20`;
   let res: Response;
   try {
     res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(10_000) });
@@ -110,12 +110,13 @@ export async function x402MarketIntel(params: Record<string, string>) {
   };
 }
 
-function degraded(query: string, reason: string) {
-  return {
-    query,
-    degraded: true,
-    verdict: "unknown",
-    note: `⚠️ ${reason} — the x402 index could not be read, so demand/competition for "${query}" is UNKNOWN this call, not zero. Re-check.`,
-    checkedAt: new Date().toISOString(),
-  };
+/**
+ * The index could not be read. That is not an answer — demand is unknown, not
+ * zero — so it is refused (not charged) rather than sold. It used to return a
+ * billed `verdict: "unknown"`; from 2026-10 the index also refused limit=200
+ * (its maximum is 20), so every call paid for "unknown" until our own paid
+ * sweep found it on 2026-10-17.
+ */
+function degraded(query: string, reason: string): never {
+  throw new Error(`x402 discovery index unavailable (${reason}) for "${query}" — not charged, retry shortly`);
 }
