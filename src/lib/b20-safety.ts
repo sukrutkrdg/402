@@ -907,15 +907,31 @@ export async function b20Gate(params: Record<string, string>) {
     };
   }
 
+  // A recognised regulated issuer (policy administered by a KNOWN_ASSET_ISSUERS
+  // operator — Coinbase's tokenized stocks) holds seize/freeze/rebase/mint powers
+  // by design: they are how a securities wrapper complies and pays dividends. On
+  // such a token they are reported as `issuerControls` context, not as a verdict
+  // — otherwise every real stock is STOP (measured 2026-10-17, approved by the
+  // owner the same day). Recognition is the chain-anchored policy admin, so an
+  // impostor wearing a ticker gets none of this. What is NEVER softened: transfers
+  // paused now, and the caller's wallet already blocked.
+  const issuer = await recogniseIssuer(s.senderPolicyId).catch(() => ({ policyAdmin: null, recognised: false, label: null }));
+  const regulated = issuer.recognised;
   const observedRisks: string[] = [];
+  const issuerControls: string[] = [];
   let stop = false, hold = false;
+  const power = (text: string, level: "stop" | "hold") => {
+    if (regulated) { issuerControls.push(text); return; }
+    observedRisks.push(text);
+    if (level === "stop") stop = true; else hold = true;
+  };
   if (s.paused.transfer) { observedRisks.push("transfers PAUSED right now — you can't move it"); stop = true; }
-  if (s.canSeize) { observedRisks.push("issuer can blocklist + burnBlocked() SEIZE your balance"); stop = true; }
+  if (s.canSeize) power("issuer can blocklist + burnBlocked() SEIZE your balance", "stop");
   // Independent of the transfer policies: seizeWithMemo() bypasses them.
-  if (s.seizeArmed) { observedRisks.push("seize policy ARMED — issuer can seizeWithMemo() a holder's balance"); stop = true; }
-  if (s.transferGated && !s.canSeize) { observedRisks.push("transfers policy-gated — freezable"); hold = true; }
-  if (s.rebase) { observedRisks.push("mutable rebase multiplier — balance can be scaled up/down"); hold = true; }
-  if (!s.supplyCapped) { observedRisks.push("uncapped mint — dilution risk"); hold = true; }
+  if (s.seizeArmed) power("seize policy ARMED — issuer can seizeWithMemo() a holder's balance", "stop");
+  if (s.transferGated && !s.canSeize) power("transfers policy-gated — freezable", "hold");
+  if (s.rebase) power("mutable rebase multiplier — balance can be scaled up/down", "hold");
+  if (!s.supplyCapped) power("uncapped mint — dilution risk", "hold");
 
   // If a buyer wallet is given AND the token can seize, check whether THAT wallet
   // is already blocked — a terminal flag specific to the caller.
@@ -936,6 +952,7 @@ export async function b20Gate(params: Record<string, string>) {
   return {
     address, isB20: true, variant: s.variant, symbol: s.symbol,
     wallet: validAddr(wallet) ? wallet : null, walletStatus, decision,
+    ...(regulated ? { regulatedIssuer: { label: issuer.label, policyAdmin: issuer.policyAdmin }, issuerControls } : {}),
     powers: { seizable: s.canSeize, freezable: s.transferGated, executorGated: s.executorGated, mintGated: s.mintGated, pausedNow: s.paused.transfer, rebase: s.rebase, uncappedMint: !s.supplyCapped },
     ...(composition === null ? {} : composition.composite ? { senderPolicyComposite: true, senderPolicyChildIds: composition.childIds } : { senderPolicyComposite: false }),
     observedRisks,
@@ -946,7 +963,8 @@ export async function b20Gate(params: Record<string, string>) {
         : "Policy removal, a rebase lock, or a supply cap — re-check before sizing up.",
     },
     recommendation:
-      decision === "STOP" ? "Do not hold size — the issuer can freeze or seize your balance at the protocol level."
+      decision === "STOP" ? (regulated ? "Do not trade now — transfers are paused or your wallet is blocked." : "Do not hold size — the issuer can freeze or seize your balance at the protocol level.")
+        : regulated ? `Regulated issuer (${issuer.label ?? "recognised"}): its seize/freeze/multiplier powers are those of a securities wrapper — listed under issuerControls. Nothing is blocking this trade now.`
         : decision === "HOLD" ? "Tradeable with caution — the issuer retains B20 control powers; size down."
           : "No high-control B20 powers detected — behaves close to a plain token.",
     note: "B20-specific pre-trade gate: seize (burnBlocked) + freeze (Policy Registry) + rebase + pause + uncapped mint, collapsed to one verdict. Pass wallet= to also check if YOUR address is already blocked. Not financial advice." + (compositeNote ? ` ${compositeNote}` : ""),

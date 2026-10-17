@@ -59,7 +59,9 @@ export const POLICY_VERSION: Record<string, string> = {
   // token's own pools/vaults, and judges the largest non-exchange holder.
   // 2.2: token-risk 1.3 (established tokens) and dump-risk 1.1 (a bag under
   // three days of volume is fragile, not an exit trap).
-  "pre-trade-bundle": "2.2.0",
+  // 2.3: a recognised regulated issuer's B20 powers are context in b20-gate.
+  "pre-trade-bundle": "2.3.0",
+  "b20-gate": "1.1.0",
   "dump-risk": "1.1.0",
   // 1.1: a revoke is never held over the destination's powers; an upgradeable
   // proxy on an established token is context.

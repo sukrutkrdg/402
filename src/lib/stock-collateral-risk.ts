@@ -32,6 +32,7 @@ import { deepestPool, type DexPoolLike } from "./dex-pool";
 import { findStock } from "./tokenized-stocks";
 import { readStockActions } from "./stock-corporate-actions";
 import { marketSession, hoursUntilReopen } from "./stock-fair-value";
+import { morphoHealth } from "./morpho";
 
 export const AAVE_V4_BASE_MAG7_SPOKE: Address = "0x17905Db0e4A3514467539956c084180616AE7B8D";
 
@@ -96,10 +97,8 @@ export function riskBand(hf: number | null, hasDebt: boolean): RiskBand {
 
 const round = (n: number, d = 4) => Math.round(n * 10 ** d) / 10 ** d;
 
-export async function stockCollateralRisk(params: Record<string, string>) {
-  const raw = (params.wallet || params.address || "").trim();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide wallet= (the borrower's address)");
-  const user = getAddress(raw);
+/** Aave V4 equities-hub position for `user` (the original single-venue read). */
+async function aaveStockRisk(user: Address) {
   const c = createPublicClient({ chain: base, transport: baseTransport(8000) });
   const S = AAVE_V4_BASE_MAG7_SPOKE;
 
@@ -228,5 +227,117 @@ export async function stockCollateralRisk(params: Record<string, string>) {
     warnings,
     note: "Aave V4 equities loan on Base, re-priced at the live Base DEX price — the market's guess at where the 24/5 oracle lands when it resumes. Health factor bands: <1 liquidatable, <1.05 critical, <1.15 at risk, <1.4 watch. Read-only. Not financial advice.",
     checkedAt: now.toISOString(),
+  };
+}
+
+// ---- Morpho Blue: the smaller stock-collateral markets on Base ----
+
+const MORPHO_API = "https://blue-api.morpho.org/graphql";
+const morphoOracleAbi = parseAbi(["function price() view returns (uint256)"]);
+
+interface MorphoApiPosition {
+  market?: { marketId?: string; oracleAddress?: string; collateralAsset?: { address?: string; symbol?: string; decimals?: number }; loanAsset?: { decimals?: number } };
+  state?: { collateral?: number | string; borrowAssets?: number | string };
+}
+
+/** The wallet's Morpho positions whose collateral is a tokenized stock. null = API unreadable. */
+async function morphoStockPositions(user: Address): Promise<MorphoApiPosition[] | null> {
+  const query = `{ marketPositions(first: 100, where: { chainId_in: [8453], userAddress_in: ["${user}"] }) { items { market { marketId oracleAddress collateralAsset { address symbol decimals } loanAsset { decimals } } state { collateral borrowAssets } } } }`;
+  const res = await fetch(MORPHO_API, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query }),
+    signal: AbortSignal.timeout(6000),
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  const j = (await res.json().catch(() => null)) as { data?: { marketPositions?: { items?: MorphoApiPosition[] } } } | null;
+  const items = j?.data?.marketPositions?.items;
+  if (!Array.isArray(items)) return null;
+  const out: MorphoApiPosition[] = [];
+  for (const p of items) {
+    const coll = p.market?.collateralAsset?.address;
+    if (!coll || Number(p.state?.borrowAssets ?? 0) <= 0) continue;
+    if (await findStock(coll)) out.push(p);
+  }
+  return out;
+}
+
+async function morphoStockRisk(user: Address) {
+  const positions = await morphoStockPositions(user);
+  if (positions === null) return { degraded: true as const, positions: [] as never[] };
+  const c = createPublicClient({ chain: base, transport: baseTransport(8000) });
+  const rows = await Promise.all(
+    positions.map(async (p) => {
+      const market = p.market!.marketId!;
+      const token = p.market!.collateralAsset!.address!.toLowerCase();
+      const stock = await findStock(token);
+      // On-chain truth for the position; the API only told us where to look.
+      const h = (await morphoHealth({ wallet: user, market }).catch(() => null)) as Record<string, unknown> | null;
+      const collDec = p.market?.collateralAsset?.decimals ?? 8;
+      const loanDec = p.market?.loanAsset?.decimals ?? 6;
+      const rawPrice = p.market?.oracleAddress
+        ? await c.readContract({ address: getAddress(p.market.oracleAddress), abi: morphoOracleAbi, functionName: "price" }).catch(() => null)
+        : null;
+      // Morpho price: loan units per collateral unit × 1e36.
+      const oraclePrice = rawPrice ? (Number(rawPrice) / 1e36) * 10 ** (collDec - loanDec) : null;
+      const pairs = await dexTokenPairs<DexPoolLike>(token).catch(() => null);
+      const dexPrice = pairs ? deepestPool(pairs, token)?.priceUsd ?? null : null;
+      const hf = typeof h?.healthFactor === "number" ? h.healthFactor : null;
+      const projected = hf !== null && oraclePrice && dexPrice ? hf * (dexPrice / oraclePrice) : null;
+      return {
+        market,
+        symbol: stock?.sym ?? p.market?.collateralAsset?.symbol ?? token,
+        healthFactor: hf,
+        band: riskBand(hf, hf !== null),
+        projectedHealthFactorAtReopen: projected !== null ? round(projected) : null,
+        bandAtReopen: projected !== null ? riskBand(projected, true) : null,
+        dropToLiquidationPct: dropToLiquidation(projected ?? hf),
+        oraclePrice: oraclePrice !== null ? round(oraclePrice, 4) : null,
+        dexPrice,
+        dexVsOracleBps: oraclePrice && dexPrice ? Math.round((dexPrice / oraclePrice - 1) * 10_000) : null,
+        collateral: h?.collateral ?? null,
+        borrowed: h?.borrowed ?? null,
+        liquidationLtvPct: h?.liquidationLtvPct ?? null,
+        ...(h ? {} : { degraded: true }),
+      };
+    }),
+  );
+  return { degraded: false as const, positions: rows };
+}
+
+const BAND_ORDER: RiskBand[] = ["liquidatable", "critical", "at_risk", "watch", "safe", "no_debt"];
+/** The most severe of several bands. Pure. */
+export function worstBand(bands: readonly (RiskBand | null | undefined)[]): RiskBand {
+  const present = bands.filter((b): b is RiskBand => Boolean(b));
+  return present.length ? present.reduce((w, b) => (BAND_ORDER.indexOf(b) < BAND_ORDER.indexOf(w) ? b : w)) : "no_debt";
+}
+
+/**
+ * Both venues for one wallet. `band` is the worst of every position, now or at
+ * the reopen — the one an agent should act on.
+ */
+export async function stockCollateralRisk(params: Record<string, string>) {
+  const raw = (params.wallet || params.address || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide wallet= (the borrower's address)");
+  const user = getAddress(raw);
+  const [aave, morpho] = await Promise.all([aaveStockRisk(user), morphoStockRisk(user)]);
+  const { wallet: _w, session, checkedAt, note: aaveNote, ...aaveRest } = aave as typeof aave & { note: string };
+  void _w;
+  const morphoWarnings: string[] = [];
+  if (morpho.degraded) morphoWarnings.push("Morpho's API could not be read this call — any Morpho stock loan is UNKNOWN, not absent.");
+  for (const p of morpho.positions) {
+    if (p.bandAtReopen && p.bandAtReopen !== p.band) morphoWarnings.push(`Morpho ${p.symbol}: health ${p.healthFactor} now, ${p.projectedHealthFactorAtReopen} (${p.bandAtReopen}) at today's DEX price when the oracle resumes.`);
+    else if (p.healthFactor !== null && p.healthFactor < 1.15) morphoWarnings.push(`Morpho ${p.symbol}: a ${p.dropToLiquidationPct}% fall liquidates this position.`);
+  }
+  const band = worstBand([aave.band as RiskBand, (aave as { bandAtReopen?: RiskBand | null }).bandAtReopen, ...morpho.positions.map((p) => p.band), ...morpho.positions.map((p) => p.bandAtReopen)]);
+  return {
+    wallet: user,
+    session,
+    band,
+    aave: aaveRest,
+    morpho,
+    warnings: [...((aaveRest as { warnings?: string[] }).warnings ?? []), ...morphoWarnings],
+    note: `${aaveNote} Morpho Blue stock-collateral markets on Base are included (positions found via Morpho's API, health read on chain).`,
+    checkedAt,
   };
 }

@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("@/lib/upstream-cache", () => ({ dexTokenPairs: vi.fn() }));
 vi.mock("@/lib/stock-corporate-actions", () => ({ readStockActions: vi.fn(async () => []) }));
 
-import { projectHealth, dropToLiquidation, riskBand, stockCollateralRisk } from "@/lib/stock-collateral-risk";
+import { projectHealth, dropToLiquidation, riskBand, worstBand, stockCollateralRisk } from "@/lib/stock-collateral-risk";
 
 describe("stock collateral risk", () => {
   // Measured 2026-10-17: one AAPLc leg, HF 1.0513, oracle 343.665, DEX 342.99.
@@ -37,6 +37,12 @@ describe("stock collateral risk", () => {
     expect(riskBand(1.3, true)).toBe("watch");
     expect(riskBand(2, true)).toBe("safe");
     expect(riskBand(null, false)).toBe("no_debt");
+  });
+
+  it("the overall band is the worst across venues and the reopen", () => {
+    expect(worstBand(["safe", "watch", null, "critical"])).toBe("critical");
+    expect(worstBand(["no_debt", undefined])).toBe("no_debt");
+    expect(worstBand([])).toBe("no_debt");
   });
 
   it("asks for a wallet", async () => {

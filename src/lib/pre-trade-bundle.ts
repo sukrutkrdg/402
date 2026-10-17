@@ -35,6 +35,7 @@ import { preTradeGate } from "./gate";
 import { b20Gate } from "./b20-safety";
 import { ownerPowers } from "./owner-powers";
 import { dumpRiskCore, usdStablecoin, EXIT_TRAP_MIN_DAYS } from "./dump-risk";
+import { findStock } from "./tokenized-stocks";
 import { ESTABLISHED_LIQUIDITY_USD } from "./established";
 import { clankerTokenAudit } from "./clanker-audit";
 import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
@@ -88,7 +89,10 @@ export function viewGate(g: GateOut): CheckView {
     return { status: "unverified", decision: g.decision, saw, reason: `pre-trade-gate could not verify: ${(g.unverifiedChecks ?? []).join(", ") || "one or more checks"}` };
   }
   if (g.decision === "HOLD") return { status: "risk", decision: g.decision, saw, reason: `pre-trade-gate saw: ${g.receipt.observedRisks.join("; ")}` };
-  if (g.decision === "GO") return { status: "clean", decision: g.decision, saw, reason: "all four gate checks ran and came back clean" };
+  if (g.decision === "GO") {
+    const isStock = "assetType" in g && g.assetType === "tokenized-stock";
+    return { status: "clean", decision: g.decision, saw, reason: isStock ? "tokenized-stock checks (transfer policy, premium vs reference, route) ran and came back clean" : "all four gate checks ran and came back clean" };
+  }
   return { status: "unverified", decision: String(g.decision), saw, reason: "pre-trade-gate returned no recognisable decision" };
 }
 
@@ -105,8 +109,22 @@ export function viewB20(b: B20GateOut): CheckView {
   const saw = { isB20: true, symbol: b.symbol, variant: b.variant, powers: b.powers, observedRisks: b.observedRisks };
   if (b.decision === "STOP") return { status: "stop", decision: b.decision, saw, reason: `B20 terminal power: ${b.observedRisks.join("; ")}` };
   if (b.decision === "HOLD") return { status: "risk", decision: b.decision, saw, reason: `B20 issuer controls: ${b.observedRisks.join("; ")}` };
+  if (b.decision === "GO" && "regulatedIssuer" in b && b.regulatedIssuer) {
+    return { status: "clean", decision: b.decision, saw: { ...saw, issuerControls: b.issuerControls }, reason: `recognised regulated issuer — its powers are context: ${(b.issuerControls ?? []).join("; ")}` };
+  }
   if (b.decision === "GO") return { status: "clean", decision: b.decision, saw, reason: "B20 with no high-control powers" };
   return { status: "unverified", decision: String(b.decision), saw, reason: "b20-gate returned no recognisable decision" };
+}
+
+/**
+ * not_applicable for a roster stock — but only once b20-gate has confirmed the
+ * chain-anchored regulated issuer; a roster hit alone is not enough to waive a check.
+ */
+function stockNotApplicable(b20R: PromiseSettledResult<B20GateOut>, sym: string, why: string): CheckView {
+  const ok = b20R.status === "fulfilled" && "regulatedIssuer" in b20R.value && Boolean(b20R.value.regulatedIssuer);
+  return ok
+    ? { status: "not_applicable", decision: "not_applicable", saw: { tokenizedStock: sym }, reason: `${sym} is a Coinbase tokenized stock — ${why}` }
+    : { status: "unverified", decision: null, saw: { tokenizedStock: sym }, reason: `${sym} is on the stock roster but b20-gate did not confirm its regulated issuer` };
 }
 
 export function viewOwner(o: OwnerPowersOut, established = false, ownerlessOnChain = false): CheckView {
@@ -252,12 +270,16 @@ export async function preTradeBundle(params: Record<string, string>) {
   await Promise.allSettled([goPlusSecurity(address), dexTokenPairs(address)]);
   // A redeemable USD stablecoin has no whale-dump exit to model (see dump-risk).
   const stable = usdStablecoin(address);
+  // A Coinbase tokenized stock is a B20 precompile: GoPlus has no row for it, so
+  // owner-powers and dump-risk can only fail. Its issuer controls are read by
+  // b20-gate, and its exit (pool depth, premium) by the gate's stock path.
+  const stock = await findStock(address).catch(() => null);
 
   const [gateR, b20R, ownerR, dumpR, clankerR] = await Promise.allSettled([
     preTradeGate(tradeSizeUsd !== null ? { address, amountUsd: String(tradeSizeUsd) } : { address }),
     b20Gate({ address }),
-    ownerPowers({ address }),
-    stable ? Promise.resolve(null) : dumpRiskCore({ address }),
+    stock ? Promise.resolve(null) : ownerPowers({ address }),
+    stable || stock ? Promise.resolve(null) : dumpRiskCore({ address }),
     clankerTokenAudit({ address }),
   ]);
 
@@ -278,8 +300,14 @@ export async function preTradeBundle(params: Record<string, string>) {
   const checks: Record<"preTradeGate" | "b20Gate" | "ownerPowers" | "dumpRisk", CheckView> = {
     preTradeGate: viewGate(gateR.value),
     b20Gate: b20R.status === "fulfilled" ? viewB20(b20R.value) : failed(b20R),
-    ownerPowers: ownerR.status === "fulfilled" ? viewOwner(ownerR.value, gateR.value.established === true, gateR.value.ownerless === true) : failed(ownerR),
-    dumpRisk: stable
+    ownerPowers: stock
+      ? stockNotApplicable(b20R, stock.sym, "owner-powers is a GoPlus read of an ERC-20 owner; a B20 stock has none — its issuer's powers are listed by b20-gate (issuerControls)")
+      : ownerR.status === "fulfilled" && ownerR.value
+        ? viewOwner(ownerR.value, gateR.value.established === true, gateR.value.ownerless === true)
+        : failed(ownerR),
+    dumpRisk: stock
+      ? stockNotApplicable(b20R, stock.sym, "holders of a tokenized stock are pools, lenders and Coinbase's authorised participants; exit depth and premium are checked by pre-trade-gate's stock path")
+      : stable
       ? { status: "not_applicable", decision: "not_applicable", saw: { stablecoin: stable.symbol }, reason: `${stable.symbol} is a redeemable USD stablecoin — exit is redemption, not a DEX dump; check stablecoin-peg` }
       : dumpR.status === "fulfilled" && dumpR.value
         ? viewDump(dumpR.value)

@@ -41,10 +41,10 @@ export const UTILITY_SERVICES: ServiceDef[] = [
     },
   {
       id: "stock-collateral-risk",
-      name: "Stock Loan Reopen Risk (Aave V4)",
+      name: "Stock Loan Reopen Risk (Aave V4 + Morpho)",
       tagline: "Your tokenized-stock loan's health factor when the US market reopens",
       description:
-        "Aave V4 on Base lends USDC against tokenized stocks (AAPLc, NVDAc, TSLAc…), priced by a 24/5 oracle that freezes from Friday 20:00 to Sunday 20:00 ET while the tokens keep trading. This re-prices each collateral at the live Base DEX price: health factor now, projected at the reopen, the fall that liquidates, paused reserves and announced dividends. Pass wallet=. Not financial advice.",
+        "Aave V4 and Morpho on Base lend USDC against tokenized stocks (AAPLc, NVDAc, TSLAc…), priced by a 24/5 oracle that freezes from Friday 20:00 to Sunday 20:00 ET while the tokens keep trading. This re-prices each collateral at the live Base DEX price: health factor now, projected at the reopen, the fall that liquidates, paused reserves and announced dividends. Pass wallet=. Not financial advice.",
       price: "$0.04",
       icon: "📉",
       category: "Lending",
