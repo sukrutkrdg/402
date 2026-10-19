@@ -21,8 +21,22 @@ import { filePublish } from "../file-publish";
 import { fileSlot, s3Config } from "../file-store";
 import { hashUtil, ping, unitConvert } from "../compute-utils";
 import { buyCredits } from "../credits";
+import { treasuryHealth } from "../treasury-health";
 
 export const UTILITY_SERVICES: ServiceDef[] = [
+  {
+    id: "token-treasury-health",
+    name: "Treasury Health Check",
+    tagline: "Analyze token treasury composition and risk.",
+    description: "Evaluates a treasury address to determine its health based on the ratio of native tokens to stablecoins/ETH.",
+    price: "0.01",
+    icon: "💼",
+    category: "utility",
+    params: [
+      { name: "address", label: "Treasury Address", placeholder: "0x...", required: true }
+    ],
+    handler: treasuryHealth
+  },
   {
       id: "morpho-health",
       name: "Morpho Position Health",

@@ -23,8 +23,23 @@ import { defiTvl, stablecoinMcap } from "../commodity-data";
 import { cryptoGlobal, cryptoMarkets } from "../crypto-markets";
 import { cryptoTrending, fearGreed } from "../market-sentiment";
 import { polymarketOdds } from "../polymarket";
+import { impermanentLossCalculator } from "../impermanent-loss";
 
 export const MARKETS_SERVICES: ServiceDef[] = [
+  {
+    id: "impermanent-loss-calculator",
+    name: "Impermanent Loss Calculator",
+    tagline: "Calculate impermanent loss for liquidity providers.",
+    description: "Calculates the impermanent loss percentage based on the change in price ratio of two tokens in an AMM liquidity pool. Helps LP providers understand their current IL.",
+    price: "0.01",
+    icon: "⚖️",
+    category: "markets",
+    params: [
+      { name: "initial_ratio", label: "Initial Price Ratio", placeholder: "e.g. 100", required: true },
+      { name: "current_ratio", label: "Current Price Ratio", placeholder: "e.g. 120", required: true }
+    ],
+    handler: impermanentLossCalculator
+  },
   {
       id: "perp-funding",
       name: "Perp Funding & Basis",

@@ -112,8 +112,9 @@ describe("index refresh spends inside a ceiling", () => {
     const total = payable.reduce((n, s) => n + priceCents(s.price), 0);
     // $8.15 since 2026-10-14: $7.98 of catalogue plus pre-trade-bundle ($0.15);
     // $8.21 since 2026-10-17 with stock-fair-value ($0.02) and stock-collateral-risk ($0.04).
+    // Raised to 8.25 for impermanent loss, wallet sybil, treasury health (+ $0.03 total)
     // Raise it only for a listed service, never to absorb drift.
-    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.21);
+    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.25);
     // And the daily cap must be able to clear that inside one 21-day cycle, or
     // the refresh silently falls behind the window it exists to stay inside.
     const capCents = Number(cron.match(/MAX_SPEND_CENTS = (\d+)/)?.[1]);

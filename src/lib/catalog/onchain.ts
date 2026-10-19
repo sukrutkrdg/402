@@ -69,8 +69,22 @@ import { walletSummary } from "../wallet-history";
 import { tokenTransfers, walletActivity } from "../covalent";
 import { tokenApprovals } from "../approvals";
 import { baseBlock, baseNonce, baseReceipt, baseTx, contractInfo, tokenBalance, tokenSupply } from "../primitives";
+import { walletSybilScore } from "../wallet-sybil";
 
 export const ONCHAIN_SERVICES: ServiceDef[] = [
+  {
+    id: "wallet-sybil-score",
+    name: "Wallet Sybil Score",
+    tagline: "Is this wallet a bot or airdrop farmer?",
+    description: "Evaluates a wallet address to determine if it acts like a sybil or bot based on heuristic placeholders.",
+    price: "0.01",
+    icon: "🤖",
+    category: "Onchain",
+    params: [
+      { name: "address", label: "Wallet Address", placeholder: "0x...", required: true }
+    ],
+    handler: walletSybilScore
+  },
   {
       id: "token-risk",
       name: "Token Risk Check",
