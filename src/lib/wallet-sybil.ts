@@ -21,11 +21,12 @@ export async function walletSybilScore(params: Record<string, string>) {
   }
 
   // Heuristic 2: Transaction Count
-  if (summary.outgoingTxCount < 5) {
+  const txCount = summary.outgoingTxCount ?? 0;
+  if (txCount < 5) {
     sybilScore += 30; // Very few transactions typical of burner/bot accounts
-  } else if (summary.outgoingTxCount < 20) {
+  } else if (txCount < 20) {
     sybilScore += 10;
-  } else if (summary.outgoingTxCount > 1000) {
+  } else if (txCount > 1000) {
     sybilScore += 20; // Extremely high transaction count could indicate bot activity
   }
 
@@ -41,7 +42,7 @@ export async function walletSybilScore(params: Record<string, string>) {
     sybil_score: sybilScore,
     risk: riskString,
     wallet_age_days: summary.ageDays,
-    tx_count: summary.outgoingTxCount,
+    tx_count: txCount,
     note: "Sybil score is a heuristic based on wallet age and transaction count. High scores suggest bot or burner wallet behavior."
   };
 }

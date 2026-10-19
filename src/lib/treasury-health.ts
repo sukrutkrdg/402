@@ -17,12 +17,12 @@ export async function treasuryHealth(params: Record<string, string>) {
   // Identify common stablecoins/wrapped ETH based on known list
   const isStable = (symbol: string) => /USDC|USDT|DAI|FRAX|WETH|ETH/i.test(symbol || "");
 
-  if (portfolio.tokens && Array.isArray(portfolio.tokens)) {
-    for (const token of portfolio.tokens) {
-      const val = parseFloat(token.value_usd || "0");
+  if (portfolio.holdings && Array.isArray(portfolio.holdings)) {
+    for (const token of portfolio.holdings) {
+      const val = typeof token.usdValue === "number" ? token.usdValue : 0;
       totalUsd += val;
 
-      if (isStable(token.symbol)) {
+      if (isStable(token.symbol || "")) {
         stableUsd += val;
       } else {
         // We consider the rest as "native/other" tokens
