@@ -79,7 +79,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
     description: "Evaluates a wallet address to determine if it acts like a sybil or bot based on heuristic placeholders.",
     price: "0.01",
     icon: "🤖",
-    category: "Onchain",
+    category: "onchain",
     params: [
       { name: "address", label: "Wallet Address", placeholder: "0x...", required: true }
     ],
