@@ -250,8 +250,6 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "token-age": { address: DEGEN },
   // Overlap between two real Base tokens.
   "holder-overlap": { a: DEGEN, b: USDC },
-  // Impermanent loss default example
-  "impermanent-loss-calculator": { initial_ratio: "100", current_ratio: "120" },
   // Is this recipient a look-alike of a wallet's real counterparty?
   "address-poisoning": { wallet: WALLET2, to: SPENDER },
   // Does a wallet's USDC counterparty set touch an OFAC address?

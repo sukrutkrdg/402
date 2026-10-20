@@ -1,0 +1,21 @@
+{
+  "name": "x402-bazaar-langchain",
+  "version": "0.1.0",
+  "description": "LangChain integration for x402 Bazaar",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.0",
+    "@x402/evm": "^2.16.0",
+    "@x402/extensions": "^2.16.0",
+    "@x402/fetch": "^2.16.0",
+    "zod": "^3.23.8",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
