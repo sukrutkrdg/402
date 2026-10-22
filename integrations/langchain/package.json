@@ -1,14 +1,43 @@
 {
   "name": "x402-bazaar-langchain",
   "version": "0.1.0",
-  "description": "LangChain integration for x402 Bazaar",
+  "description": "LangChain tool for x402 Bazaar: call any of 150+ pay-per-call agent APIs, paid by a prepaid credit token or per call over x402 from the agent's own wallet.",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "license": "MIT",
+  "homepage": "https://402.com.tr/agents",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sukrutkrdg/402.git",
+    "directory": "integrations/langchain"
+  },
+  "keywords": [
+    "langchain",
+    "x402",
+    "base",
+    "ai-agents",
+    "tool-calling"
+  ],
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.0"
   },
   "dependencies": {
-    "@langchain/core": "^0.3.0",
     "@x402/evm": "^2.16.0",
     "@x402/extensions": "^2.16.0",
     "@x402/fetch": "^2.16.0",
@@ -16,6 +45,10 @@
     "viem": "^2.21.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "@langchain/core": "^0.3.0",
+    "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
