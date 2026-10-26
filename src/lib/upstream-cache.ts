@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * Shared, KV-cached fetchers and resilient fallback layer for third-party public upstreams:
  * - GoPlus token security
  * - DexScreener token pairs & pool snapshots
@@ -344,4 +345,97 @@ export async function coinGeckoTrending<T = unknown>(): Promise<T> {
     throw new Error("Trending source unreachable (CoinGecko) — not charged, retry shortly");
   }
   return result;
+=======
+ * Short-TTL cache + in-flight dedupe for the two hottest free upstreams:
+ * GoPlus token_security and DexScreener /latest/dex/tokens.
+ *
+ * Paid composites (rug-score, sellability, deep-dd, ai-token-report, gate)
+ * fan out to the SAME endpoint 2-3× per call — a 429 from GoPlus or
+ * DexScreener fails a call the buyer already paid for. Caching the raw
+ * response body in KV for a short window collapses that fan-out to one
+ * upstream hit, and the in-flight map dedupes concurrent fetches within an
+ * instance (Promise.allSettled composites fire them in parallel).
+ *
+ * Only successful (HTTP 200, parseable) bodies are cached; failures return
+ * null so each caller keeps its own error semantics.
+ */
+
+import "server-only";
+import { kvGet, kvSet } from "./kv";
+
+// Security data moves slowly; prices move fast. Both windows are shorter than
+// any composite's freshness promise (receipts say "recheckAfter" in minutes).
+const GOPLUS_TTL_S = 300;
+const DEX_TTL_S = 60;
+
+const inflight = new Map<string, Promise<string | null>>();
+
+async function fetchBody(url: string, timeoutMs: number): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
+async function cachedBody(cacheKey: string, url: string, ttlSeconds: number, timeoutMs: number): Promise<string | null> {
+  const hit = await kvGet(cacheKey);
+  if (hit) return hit;
+
+  const running = inflight.get(cacheKey);
+  if (running) return running;
+
+  const p = (async () => {
+    const body = await fetchBody(url, timeoutMs);
+    if (body) await kvSet(cacheKey, body, ttlSeconds);
+    return body;
+  })().finally(() => inflight.delete(cacheKey));
+  inflight.set(cacheKey, p);
+  return p;
+}
+
+function parse<T>(body: string | null): T | null {
+  if (!body) return null;
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * GoPlus token_security for a Base token — the full parsed response
+ * (`{ result: { [addrLc]: row } }`), or null when the upstream is unreachable.
+ * Callers extract their row and keep their own empty-data handling.
+ */
+export async function goPlusTokenSecurity<T = { result?: Record<string, Record<string, unknown>> }>(
+  address: string,
+  timeoutMs = 8000,
+): Promise<T | null> {
+  const a = address.toLowerCase();
+  return parse<T>(
+    await cachedBody(
+      `upc:gp:${a}`,
+      `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${a}`,
+      GOPLUS_TTL_S,
+      timeoutMs,
+    ),
+  );
+}
+
+/**
+ * DexScreener /latest/dex/tokens/{address} — the full parsed response
+ * (`{ pairs: [...] }`), or null when the upstream is unreachable.
+ */
+export async function dexScreenerTokenPairs<T = { pairs?: unknown[] | null }>(
+  address: string,
+  timeoutMs = 8000,
+): Promise<T | null> {
+  const a = address.toLowerCase();
+  return parse<T>(
+    await cachedBody(`upc:ds:${a}`, `https://api.dexscreener.com/latest/dex/tokens/${a}`, DEX_TTL_S, timeoutMs),
+  );
+>>>>>>> 40b543d (Add upstream cache, watchlist, whale flow modules)
 }

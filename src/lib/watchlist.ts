@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * watchlist-diff — "what changed on my tokens since my last paid check?"
  *
  * Retention engineered into the product: the first call snapshots up to 10 tokens
@@ -29,10 +30,40 @@ interface Watch {
   id: string;
   tokens: string[];
   snaps: Record<string, Snap>;
+=======
+ * Watchlist Diff — "what changed across my tokens since I last looked?"
+ *
+ * Pay once to register up to 10 tokens; every later call with id=<id> returns
+ * the per-token delta (price / liquidity) versus YOUR previous check plus
+ * threshold alerts (liquidity drain, dump, market gone) — one call instead of
+ * 10 price checks and client-side bookkeeping. Snapshots live in KV per
+ * watchlist id, so a stateless agent gets stateful monitoring.
+ */
+
+import "server-only";
+import { kvGet, kvSet, kvConfigured } from "./kv";
+import { dexScreenerTokenPairs } from "./upstream-cache";
+
+const TTL = 60 * 60 * 24 * 30; // 30 days, refreshed on every check
+
+interface TokenSnap {
+  priceUsd: number | null;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  /** No Base DEX pair found (delisted / drained / never listed). */
+  noMarket?: boolean;
+}
+
+interface Watchlist {
+  id: string;
+  tokens: string[];
+  snaps: Record<string, TokenSnap>;
+>>>>>>> 40b543d (Add upstream cache, watchlist, whale flow modules)
   createdAt: string;
   updatedAt: string;
 }
 
+<<<<<<< HEAD
 const TTL = 60 * 60 * 24 * 30;
 const num = (v: unknown) => {
   const n = parseFloat(String(v));
@@ -140,5 +171,114 @@ export async function watchlistDiff(params: Record<string, string>) {
     baseline: tokens.map((t) => ({ token: t, ...snaps[t] })),
     note: `Watchlist created. Re-check anytime by calling this service with watchId=${id} — you'll get only what changed (liquidity/price/honeypot/tax) since the last check. Expires in 30 days.`,
     checkedAt: new Date().toISOString(),
+=======
+interface DsPair {
+  baseToken?: { address?: string };
+  priceUsd?: string;
+  liquidity?: { usd?: number };
+  volume?: { h24?: number };
+}
+
+const validAddr = (a: string) => /^0x[0-9a-fA-F]{40}$/.test(a);
+
+/** Current snapshot for one token; null = upstream unreachable (keep old snap). */
+async function snapToken(addr: string): Promise<TokenSnap | null> {
+  const j = await dexScreenerTokenPairs<{ pairs?: DsPair[] | null }>(addr);
+  if (!j) return null;
+  const pairs = (j.pairs ?? []).filter((p) => p.baseToken?.address?.toLowerCase() === addr);
+  if (pairs.length === 0) return { priceUsd: null, liquidityUsd: null, volume24hUsd: null, noMarket: true };
+  const best = pairs.reduce((a, p) => ((p.liquidity?.usd ?? 0) > (a.liquidity?.usd ?? 0) ? p : a), pairs[0]);
+  const price = parseFloat(best.priceUsd ?? "");
+  return {
+    priceUsd: Number.isFinite(price) ? price : null,
+    liquidityUsd: best.liquidity?.usd ?? null,
+    volume24hUsd: best.volume?.h24 ?? null,
+  };
+}
+
+const pctChange = (prev: number | null | undefined, cur: number | null): number | null =>
+  prev != null && prev > 0 && cur != null ? +(100 * (cur / prev - 1)).toFixed(2) : null;
+
+export async function watchlistDiff(params: Record<string, string>) {
+  if (!kvConfigured()) throw new Error("Watchlist unavailable: durable storage not configured");
+
+  const id = (params.id || "").trim();
+  const tokensRaw = (params.tokens || "").trim();
+
+  // ---- Re-check mode: diff against the caller's previous snapshot ----
+  if (id) {
+    const raw = await kvGet(`watchdiff:${id}`);
+    if (!raw) return { found: false, note: "No watchlist with that id (expired or never registered). Register with tokens=0x…,0x…" };
+    const wl = JSON.parse(raw) as Watchlist;
+
+    const results = [];
+    let alertTotal = 0;
+    for (const t of wl.tokens) {
+      const prev = wl.snaps[t];
+      const cur = await snapToken(t);
+      if (cur === null) {
+        // Upstream miss for this token: report it, keep the old snapshot.
+        results.push({ address: t, skipped: true, note: "Price source unreachable for this token right now — previous snapshot kept." });
+        continue;
+      }
+      const pricePct = pctChange(prev?.priceUsd, cur.priceUsd);
+      const liquidityPct = pctChange(prev?.liquidityUsd, cur.liquidityUsd);
+      const alerts: string[] = [];
+      if (prev && !prev.noMarket && cur.noMarket) alerts.push("MARKET_GONE");
+      if (liquidityPct !== null && liquidityPct <= -30) alerts.push("LIQUIDITY_DRAIN");
+      if (pricePct !== null && pricePct <= -20) alerts.push("PRICE_DUMP");
+      if (pricePct !== null && pricePct >= 20) alerts.push("PRICE_PUMP");
+      alertTotal += alerts.filter((a) => a !== "PRICE_PUMP").length;
+      results.push({
+        address: t,
+        current: cur,
+        previous: prev ?? null,
+        change: { pricePct, liquidityPct },
+        alerts,
+      });
+      wl.snaps[t] = cur; // roll the baseline forward to THIS check
+    }
+
+    const sinceLastCheck = wl.updatedAt;
+    wl.updatedAt = new Date().toISOString();
+    await kvSet(`watchdiff:${id}`, JSON.stringify(wl), TTL);
+
+    return {
+      found: true,
+      id,
+      tokenCount: wl.tokens.length,
+      sinceLastCheck,
+      tokens: results,
+      alertCount: alertTotal,
+      verdict: alertTotal > 0 ? "CHANGES_NEED_ATTENTION" : "ok",
+      note: "Deltas are versus YOUR previous check (baseline rolls forward each call). Re-check anytime with id=<id>; the watchlist expires after 30 idle days.",
+      checkedAt: wl.updatedAt,
+    };
+  }
+
+  // ---- Register mode: baseline snapshot for up to 10 tokens ----
+  const tokens = [...new Set(tokensRaw.split(/[,\s]+/).map((t) => t.trim().toLowerCase()).filter(validAddr))].slice(0, 10);
+  if (tokens.length === 0) throw new Error("Provide tokens=0x…,0x… (up to 10 Base token addresses) to register, or id=<id> to re-check");
+
+  const snaps: Record<string, TokenSnap> = {};
+  for (const t of tokens) {
+    const s = await snapToken(t);
+    if (s) snaps[t] = s;
+  }
+  if (Object.keys(snaps).length === 0) throw new Error("Price data unavailable for all provided tokens — nothing to baseline");
+
+  const now = new Date().toISOString();
+  const wid = `wd_${crypto.randomUUID().slice(0, 12)}`;
+  const wl: Watchlist = { id: wid, tokens, snaps, createdAt: now, updatedAt: now };
+  await kvSet(`watchdiff:${wid}`, JSON.stringify(wl), TTL);
+
+  return {
+    registered: true,
+    id: wid,
+    tokenCount: tokens.length,
+    baseline: snaps,
+    note: `Baseline stored for ${tokens.length} token(s). Call again with id=${wid} to get what changed since this check — price/liquidity deltas + LIQUIDITY_DRAIN / PRICE_DUMP / MARKET_GONE alerts.`,
+    createdAt: now,
+>>>>>>> 40b543d (Add upstream cache, watchlist, whale flow modules)
   };
 }
