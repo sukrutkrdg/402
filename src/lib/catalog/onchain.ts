@@ -114,6 +114,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       params: [
         { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
         { name: "amountUsd", label: "Trade size in USD (optional)", placeholder: "1000" },
+        { name: "taker", label: "Your wallet — on GO, attaches a ready-to-sign buy (optional)", placeholder: "0x… your wallet" },
       ],
       handler: preTradeBundle,
       noFreeTier: true,
