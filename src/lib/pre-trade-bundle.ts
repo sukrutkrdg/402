@@ -39,6 +39,7 @@ import { findStock } from "./tokenized-stocks";
 import { ESTABLISHED_LIQUIDITY_USD } from "./established";
 import { clankerTokenAudit } from "./clanker-audit";
 import { goPlusSecurity, dexTokenPairs } from "./upstream-cache";
+import { baseSwap } from "./base-swap";
 
 export type GateOut = Awaited<ReturnType<typeof preTradeGate>>;
 export type B20GateOut = Awaited<ReturnType<typeof b20Gate>>;
@@ -375,6 +376,62 @@ export async function preTradeBundle(params: Record<string, string>) {
     };
   }
 
+  // ---- optional execution: turn a clean GO into the trade it clears ----
+  // The bundle's whole subject is the moment before a buy. When the caller hands
+  // us the wallet that would make it, a GO can carry the buy itself — a
+  // ready-to-sign, fee-bearing 0x swap (base-swap, BASE_SWAP_FEE_BPS). It is
+  // opt-in: with no taker the field is absent and the read is exactly as before.
+  // A GO is the only verdict cleared to execute, and a swap that cannot be quoted
+  // is reported — it can change neither the decision nor the bill.
+  const taker = (params.taker || "").trim();
+  type Execution =
+    | { ready: false; reason: string }
+    | { ready: true; reason: string; sizedFrom: string; swap: Awaited<ReturnType<typeof baseSwap>> };
+  let execution: Execution | undefined;
+  if (taker) {
+    if (decision !== "GO") {
+      execution = { ready: false, reason: `a ready-to-sign buy is attached only on a GO verdict — this is ${decision}` };
+    } else {
+      const sell = (params.sell || "USDC").trim();
+      const sellIsUsd = /^(USDC|USDBC|USDbC|DAI|EURC)$/i.test(sell);
+      const recMax = typeof sizing.recommendedMaxSizeUsd === "number" ? sizing.recommendedMaxSizeUsd : null;
+      // Size the buy. An explicit amount wins; otherwise a USD-stablecoin sell
+      // maps the recommended max (capped by the caller's own amountUsd) 1:1 to the
+      // amount to spend. A non-USD sell with no amount cannot be sized here.
+      let amount = (params.amount || "").trim();
+      let sizedFrom = "caller amount";
+      if (!amount && sellIsUsd) {
+        const usd = tradeSizeUsd != null && recMax != null ? Math.min(tradeSizeUsd, recMax) : tradeSizeUsd ?? recMax;
+        if (usd != null && usd > 0) {
+          amount = String(usd);
+          sizedFrom = tradeSizeUsd != null ? "amountUsd (≤ recommended max)" : "recommendedMaxSizeUsd";
+        }
+      }
+      if (!amount) {
+        execution = {
+          ready: false,
+          reason: sellIsUsd
+            ? "no size to spend — pass amount= or amountUsd= (or let dump-risk read the exit liquidity)"
+            : `pass amount= in ${sell} units to size the buy`,
+        };
+      } else {
+        try {
+          const swap = await baseSwap({ sell, buy: address, amount, taker, ...(params.slippage ? { slippage: params.slippage } : {}) });
+          execution = {
+            ready: true,
+            reason: `ready-to-sign buy of ${swap.buy.symbol} for ${amount} ${swap.sell.symbol} — sign from ${taker} (sized from ${sizedFrom})`,
+            sizedFrom,
+            swap,
+          };
+        } catch (e) {
+          // base-swap's own not-charged failures (no ZEROX key, no route, honeypot
+          // on the buy) surface here as "not ready", never as a thrown bundle.
+          execution = { ready: false, reason: e instanceof Error ? e.message : "swap could not be quoted" };
+        }
+      }
+    }
+  }
+
   const degraded = gatingUnverified.length > 0;
   const missing = unverified.map((u) => u.check);
   const receiptParams: Record<string, unknown> = tradeSizeUsd !== null ? { address, amountUsd: tradeSizeUsd } : { address };
@@ -389,6 +446,7 @@ export async function preTradeBundle(params: Record<string, string>) {
     positives,
     notes,
     sizing,
+    ...(execution !== undefined ? { execution } : {}),
     receipt: {
       checked: address,
       at: new Date().toISOString(),

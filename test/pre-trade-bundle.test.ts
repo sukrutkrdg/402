@@ -395,3 +395,42 @@ describe("pre-trade-bundle — field shapes of each dependency", () => {
     expect(v.liquidityLocked).toBe(true);
   });
 });
+
+/**
+ * The optional GO execution. base-swap checks ZEROX_API_KEY before any network
+ * call, so these cover the attachment's contract without a live 0x quote: opt-in
+ * (no taker → no field), GO-gated (a non-GO verdict is never cleared to buy),
+ * and best-effort (a swap that cannot be quoted is reported, never thrown).
+ */
+describe("pre-trade-bundle — optional GO execution", () => {
+  const TAKER = "0x973A31858f4D2125f48C880542DA11a2796f12D6";
+
+  it("omits execution entirely when no taker is passed — the read is unchanged", async () => {
+    const r = await preTradeBundle({ address: DEGEN, amountUsd: "1000" });
+    expect(r.decision).toBe("GO");
+    expect("execution" in r).toBe(false);
+  });
+
+  it("GO + taker with swaps unconfigured → execution reported not-ready, decision still GO", async () => {
+    const prev = process.env.ZEROX_API_KEY;
+    delete process.env.ZEROX_API_KEY;
+    try {
+      const r = await preTradeBundle({ address: DEGEN, amountUsd: "1000", taker: TAKER });
+      expect(r.decision).toBe("GO");
+      expect(r.execution).toBeDefined();
+      expect(r.execution?.ready).toBe(false);
+      if (r.execution && r.execution.ready === false) expect(r.execution.reason).toMatch(/ZEROX|not configured/i);
+    } finally {
+      if (prev !== undefined) process.env.ZEROX_API_KEY = prev;
+    }
+  });
+
+  it("taker on a non-GO verdict attaches no buy — only a GO is cleared to execute", async () => {
+    state.goplus = { ...cleanGoPlus(), is_honeypot: "1" };
+    sellabilityMock.mockResolvedValue({ canSell: false, sellTaxPct: 0 });
+    const r = await preTradeBundle({ address: DEGEN, taker: TAKER });
+    expect(r.decision).toBe("STOP");
+    expect(r.execution?.ready).toBe(false);
+    if (r.execution && r.execution.ready === false) expect(r.execution.reason).toMatch(/only on a GO/i);
+  });
+});
