@@ -3,11 +3,11 @@
   "crons": [
     {
       "path": "/api/cron/check-alerts",
-      "schedule": "*/10 * * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/token-scout",
-      "schedule": "15 0,4,8,12,16,20 * * *"
+      "schedule": "15 8 * * *"
     },
     {
       "path": "/api/cron/index-all",
@@ -15,11 +15,11 @@
     },
     {
       "path": "/api/cron/ai-health",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/index-gap",
-      "schedule": "0 7,12,17,22 * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/stock-actions",
