@@ -6,20 +6,8 @@
       "schedule": "*/30 * * * *"
     },
     {
-      "path": "/api/cron/token-scout",
-      "schedule": "15 8 * * *"
-    },
-    {
       "path": "/api/cron/index-all",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/ai-health",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/cron/index-gap",
-      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/stock-actions",
