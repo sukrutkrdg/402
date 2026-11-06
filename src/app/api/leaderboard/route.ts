@@ -8,7 +8,11 @@ import { NextResponse } from "next/server";
 import { externalLeaderboard } from "@/lib/keepalive-economics";
 import { SERVICES } from "@/lib/services";
 
-export const revalidate = 300;
+// Live KV-backed counts: render on demand, never prerender at build. A build-time
+// prerender calls Upstash, so a rate-limited KV turned a transient hiccup into a
+// failed deploy (2026-11-06, HGETALL external:calls:svc). The Cache-Control header
+// below still gives the CDN its 5-minute window.
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const lb = await externalLeaderboard();

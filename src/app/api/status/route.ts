@@ -9,7 +9,10 @@ import { readHealth, readFailures } from "@/lib/health";
 import { SERVICES } from "@/lib/services";
 import { goPlusAuthState } from "@/lib/goplus-auth";
 
-export const revalidate = 300;
+// Live KV-backed health: render on demand, never prerender at build (a build-time
+// prerender depends on Upstash being up — see api/leaderboard). The Cache-Control
+// header below keeps the CDN's 5-minute window.
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const [h, failures, goplus] = await Promise.all([readHealth(7), readFailures(), goPlusAuthState()]);
