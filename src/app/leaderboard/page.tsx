@@ -14,7 +14,10 @@ export const metadata = {
   description: "Which x402 Bazaar services outside agents actually pay for, counted at settlement with our own purchases excluded.",
 };
 
-export const revalidate = 300;
+// Render on demand, not at build: externalLeaderboard()/readHealth() do raw KV
+// reads that throw on failure, so a build-time prerender died when Upstash was
+// rate-limited (2026-11-06). Matches /api/leaderboard.
+export const dynamic = "force-dynamic";
 
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "—");
 
