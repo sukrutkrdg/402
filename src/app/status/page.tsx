@@ -12,7 +12,9 @@ export const metadata = {
   description: "Live reliability of every x402 Bazaar endpoint over the last 7 days: calls, success rate and latency, measured on the calls themselves.",
 };
 
-export const revalidate = 300;
+// Render on demand, not at build: readHealth() does a raw KV read that throws on
+// failure (same build-time risk as /leaderboard under an Upstash rate limit).
+export const dynamic = "force-dynamic";
 
 const tone = (pct: number | null) =>
   pct === null ? "text-gray-500" : pct >= 99 ? "text-emerald-300" : pct >= 95 ? "text-amber-300" : "text-rose-300";
