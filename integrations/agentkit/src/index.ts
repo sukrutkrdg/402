@@ -1,5 +1,5 @@
-/**
- * x402 Bazaar actions for Coinbase AgentKit — check, then act.
+﻿/**
+ * x402 Bazaar actions for Coinbase AgentKit â€” check, then act.
  *
  *   const agentkit = await AgentKit.from({
  *     walletProvider,
@@ -20,15 +20,15 @@ export { BazaarClient } from "./client.js";
 
 const PreTradeSchema = z
   .object({
-    chain: z.enum(["base", "near"]).describe("Where the token lives: base (0x… address) or near (a NEAR token account like usdt.tether-token.near)"),
-    token: z.string().describe("The token to check: a 0x… address on Base, or a NEAR token account"),
+    chain: z.enum(["base", "near"]).describe("Where the token lives: base (0xâ€¦ address) or near (a NEAR token account like usdt.tether-token.near)"),
+    token: z.string().describe("The token to check: a 0xâ€¦ address on Base, or a NEAR token account"),
     sizeUsd: z.number().positive().optional().describe("Trade size in USD (default 1000 on Base, 100 on NEAR)"),
   })
   .strip();
 
 const BaseSwapSchema = z
   .object({
-    sell: z.string().describe("Token to sell: ETH, USDC, WETH, cbBTC, AERO… or a 0x… address on Base"),
+    sell: z.string().describe("Token to sell: ETH, USDC, WETH, cbBTC, AEROâ€¦ or a 0xâ€¦ address on Base"),
     buy: z.string().describe("Token to buy: same forms as sell"),
     amount: z.string().describe("Amount to sell in whole units, e.g. \"25\" or \"0.01\""),
     slippageBps: z.number().int().min(1).max(1000).optional().describe("Slippage tolerance in basis points (default 100 = 1%)"),
@@ -37,7 +37,7 @@ const BaseSwapSchema = z
 
 const CrossChainSchema = z
   .object({
-    from: z.string().describe("Asset you pay with: USDC (on NEAR), NEAR, USDC@base, ETH@base, BTC@btc, SOL@sol… or a NEAR token account"),
+    from: z.string().describe("Asset you pay with: USDC (on NEAR), NEAR, USDC@base, ETH@base, BTC@btc, SOL@solâ€¦ or a NEAR token account"),
     to: z.string().describe("Asset you want, same forms"),
     amount: z.string().describe("Amount of the paying asset in whole units"),
     recipient: z.string().describe("Address on the destination chain that receives the output"),
@@ -55,7 +55,7 @@ const CallSchema = z
   .strip();
 
 export interface X402BazaarOptions {
-  /** Prepaid credit token (ck_…). Without it, each call is paid over x402 from the AgentKit wallet. */
+  /** Prepaid credit token (ck_â€¦). Without it, each call is paid over x402 from the AgentKit wallet. */
   creditToken?: string;
   baseUrl?: string;
   /**
@@ -85,7 +85,7 @@ export class X402BazaarActionProvider extends ActionProvider<EvmWalletProvider> 
 
   @CreateAction({
     name: "pre_trade_check",
-    description: `Check a token BEFORE buying it — returns GO / HOLD / STOP with reasons.
+    description: `Check a token BEFORE buying it â€” returns GO / HOLD / STOP with reasons.
 On Base: honeypot and sell-tax simulation, owner powers, liquidity and price impact, deployer reputation.
 On NEAR: who controls the token (full-access keys, owner, pause) and whether you can exit, tested as a USDC round trip through NEAR Intents.
 Call this before any swap into a token you do not already trust. Do not buy on STOP.`,
@@ -106,7 +106,7 @@ Call this before any swap into a token you do not already trust. Do not buy on S
 
   @CreateAction({
     name: "swap_on_base",
-    description: `Swap tokens on Base at the best price across Base DEXes (Uniswap, Aerodrome, Balancer, Curve… routed by 0x) and EXECUTE it from this wallet.
+    description: `Swap tokens on Base at the best price across Base DEXes (Uniswap, Aerodrome, Balancer, Curveâ€¦ routed by 0x) and EXECUTE it from this wallet.
 Approves exactly the amount sold if needed, then sends the swap and waits for it. Returns the route, amounts and transaction hash.
 Buying an unknown token runs a sellability check first and refuses a honeypot. The swap reverts (costing only gas) if the price moves beyond slippage.`,
     schema: BaseSwapSchema,
@@ -146,7 +146,7 @@ Buying an unknown token runs a sellability check first and refuses a honeypot. T
       const receipt = (await wallet.waitForTransactionReceipt(hash)) as { status?: string };
       if (receipt?.status && receipt.status !== "success") return `Swap reverted (price moved beyond slippage). Tx: ${hash}`;
       return JSON.stringify({
-        swapped: `${q.sell.amount} ${q.sell.symbol} → ~${q.buy.amount} ${q.buy.symbol} (min ${q.buy.minAmount})`,
+        swapped: `${q.sell.amount} ${q.sell.symbol} â†’ ~${q.buy.amount} ${q.buy.symbol} (min ${q.buy.minAmount})`,
         route: q.route,
         fees: q.fees,
         approvalTx: approval,
@@ -160,7 +160,7 @@ Buying an unknown token runs a sellability check first and refuses a honeypot. T
 
   @CreateAction({
     name: "cross_chain_swap",
-    description: `Swap across chains through NEAR Intents — NEAR, Base, Ethereum, Solana, Bitcoin and more — e.g. USDC@base → NEAR, ETH@base → SOL@sol.
+    description: `Swap across chains through NEAR Intents â€” NEAR, Base, Ethereum, Solana, Bitcoin and more â€” e.g. USDC@base â†’ NEAR, ETH@base â†’ SOL@sol.
 Returns a one-time deposit address. When paying FROM Base, this action also sends the deposit from this wallet; otherwise it returns what to send, where, and by when.
 The output goes to recipient, or the deposit is refunded to refundTo. Buying a NEAR token runs a token-safety check first. Track with cross_chain_swap_status.`,
     schema: CrossChainSchema,
@@ -189,7 +189,7 @@ The output goes to recipient, or the deposit is refunded to refundTo. Buying a N
       const dr = (await wallet.waitForTransactionReceipt(hash)) as { status?: string };
       if (dr?.status && dr.status !== "success") return `Error: the deposit reverted; nothing was sent. Tx: ${hash}`;
       return JSON.stringify({
-        deposited: `${q.deposit.amount} ${q.deposit.asset} on Base → ${q.deposit.address}`,
+        deposited: `${q.deposit.amount} ${q.deposit.asset} on Base â†’ ${q.deposit.address}`,
         depositTx: `https://basescan.org/tx/${hash}`,
         youGet: `~${q.amountOut} ${q.to.symbol} (min ${q.minAmountOut}) at ${args.recipient}`,
         track: `cross_chain_swap_status with depositAddress ${q.deposit.address}`,
@@ -214,7 +214,7 @@ The output goes to recipient, or the deposit is refunded to refundTo. Buying a N
 
   @CreateAction({
     name: "x402_bazaar_call",
-    description: `Call any x402 Bazaar service by id — 150+ pay-per-call APIs for agents: token risk, wallet and approval audits, NEAR account/portfolio/staking yields/lending health, web search and page-to-JSON, OFAC screening and more.
+    description: `Call any x402 Bazaar service by id â€” 200+ pay-per-call APIs for agents: token risk, wallet and approval audits, NEAR account/portfolio/staking yields/lending health, web search and page-to-JSON, OFAC screening and more.
 List them at https://402.com.tr/api/catalog. Pass the service's query parameters in params.`,
     schema: CallSchema,
   })

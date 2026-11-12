@@ -3,7 +3,8 @@
  * recorded by the cron at scan time (src/lib/live-events.ts, `scout:results`).
  *
  * ?limit=1..50 (default 20). Rate-limited per IP (30/min) and CDN-cached 60s;
- * the cron writes every 4 hours, so polling faster than a minute gains nothing.
+ * scans land on demand rather than on a fixed clock, so polling faster than a
+ * minute gains nothing.
  *
  * Each row is "our scan at <at> computed <verdict/level/flags>", not a verdict
  * that a token is a scam; `recheck` re-runs the rug score now.
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const rl = rateLimit(`scout-latest:${clientIp(req)}`, 30, 60_000);
   if (!rl.ok) {
     return NextResponse.json(
-      { error: "Rate limited — this list changes every 4 hours; poll at most once a minute." },
+      { error: "Rate limited — this list changes at most a few times a day; poll at most once a minute." },
       { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } },
     );
   }
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
       scans: scans.map(publicScan),
       count: scans.length,
       method:
-        "Recorded by our token-scout cron (every 4h, up to 20 newly listed Base tokens per run) exactly as computed: sell_side_flags = GoPlus honeypot / can't-sell-all / sell tax >= 30%; scored = rug score level, score and signals; not_scored = no result. sources answered, sourcesMissing did not; degraded = incomplete check. A point-in-time scan, not a verdict — use recheck before acting.",
+        "Recorded by our token-scout (runs on demand, up to 20 newly listed Base tokens per run) exactly as computed: sell_side_flags = GoPlus honeypot / can't-sell-all / sell tax >= 30%; scored = rug score level, score and signals; not_scored = no result. sources answered, sourcesMissing did not; degraded = incomplete check. A point-in-time scan, not a verdict — use recheck before acting.",
     },
     { headers: { "Cache-Control": `public, s-maxage=${CACHE_SEC}, stale-while-revalidate=${CACHE_SEC}` } },
   );

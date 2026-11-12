@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "@sukrutkrdg/plugin-x402-bazaar",
   "version": "0.1.1",
-  "description": "Check, then act — x402 Bazaar plugin for ElizaOS: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base (0x) executed from the agent's wallet, cross-chain swaps through NEAR Intents, and 150+ pay-per-call agent APIs.",
+  "description": "Check, then act â€” x402 Bazaar plugin for ElizaOS: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base (0x) executed from the agent's wallet, cross-chain swaps through NEAR Intents, and 200+ pay-per-call agent APIs.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -56,7 +56,7 @@
     "pluginParameters": {
       "X402_CREDIT_TOKEN": {
         "type": "string",
-        "description": "Prepaid credit token (ck_…) from https://402.com.tr/credits — pays calls with one header"
+        "description": "Prepaid credit token (ck_â€¦) from https://402.com.tr/credits â€” pays calls with one header"
       },
       "EVM_PRIVATE_KEY": {
         "type": "string",

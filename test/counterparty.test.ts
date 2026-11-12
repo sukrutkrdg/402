@@ -15,7 +15,10 @@ describe("normalizeCompany", () => {
  * the single worst thing this endpoint could do, so the live tests below are
  * about what it REFUSES to call a match.
  */
-describe("leiLookup — live GLEIF", () => {
+// Live GLEIF queries: valuable (they caught refusal bugs mocks missed) but they
+// contradict the default suite's no-network contract and flake offline — so they
+// run only under LIVE=1, like test/reference-live.test.ts.
+describe.skipIf(process.env.LIVE !== "1")("leiLookup — live GLEIF", () => {
   it("finds the real entity and reports it as an exact match", async () => {
     const r = await leiLookup("Coinbase Global, Inc.");
     expect(r.answered).toBe(true);
