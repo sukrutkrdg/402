@@ -17,9 +17,19 @@ const { kvMock } = vi.hoisted(() => ({
     kvSRem: vi.fn(),
     kvSMembers: vi.fn(),
     kvExpire: vi.fn(),
+    kvEval: vi.fn(),
   },
 }));
 vi.mock("@/lib/kv", () => kvMock);
+
+/** The two scripts recovery runs: a balance read that returns '0' for a missing
+ *  key (so null is always a failed request), and an atomic delete-if-empty. */
+const isDelScript = (script: string) => script.includes("DEL");
+/** Answer the balance-read eval from a balances map; the del script succeeds. */
+function evalFrom(balances: Record<string, number>) {
+  return async (script: string, [key]: string[]) =>
+    isDelScript(script) ? 1 : String(balances[key] ?? 0);
+}
 
 import { recoverCredits, linkCreditOwner, CreditRecoveryStuck } from "@/lib/credits";
 
@@ -38,8 +48,7 @@ describe("recoverCredits", () => {
 
   it("moves the whole balance onto a fresh token", async () => {
     kvMock.kvSMembers.mockResolvedValue(["credit:old"]);
-    // balance read: 100 before draining, 0 after
-    kvMock.kvGetNumber.mockResolvedValueOnce(100).mockResolvedValueOnce(0);
+    kvMock.kvEval.mockImplementation(evalFrom({ "credit:old": 100 }));
     kvMock.kvDecrBy.mockResolvedValue(0); // drained cleanly
     kvMock.kvIncrBy.mockResolvedValue(100); // mint credits the new key
 
@@ -48,18 +57,14 @@ describe("recoverCredits", () => {
     expect(r.tokensMerged).toBe(1);
     expect(r.minted?.creditToken).toMatch(/^ck_[0-9a-f]{36}$/);
     expect(r.minted?.balanceUsd).toBe(1);
-    // Old key drained by exactly its balance, then removed.
+    // Old key drained by exactly its balance, then deleted (atomically, if empty).
     expect(kvMock.kvDecrBy).toHaveBeenCalledWith("credit:old", 100);
-    expect(kvMock.kvDel).toHaveBeenCalledWith("credit:old");
+    expect(kvMock.kvEval).toHaveBeenCalledWith(expect.stringContaining("DEL"), ["credit:old"], []);
   });
 
   it("merges several tokens into one", async () => {
     kvMock.kvSMembers.mockResolvedValue(["credit:a", "credit:b"]);
-    kvMock.kvGetNumber
-      .mockResolvedValueOnce(100) // a: balance
-      .mockResolvedValueOnce(0) //  a: after drain
-      .mockResolvedValueOnce(25) //  b: balance
-      .mockResolvedValueOnce(0); //  b: after drain
+    kvMock.kvEval.mockImplementation(evalFrom({ "credit:a": 100, "credit:b": 25 }));
     kvMock.kvDecrBy.mockResolvedValue(0);
     kvMock.kvIncrBy.mockResolvedValue(125);
 
@@ -70,7 +75,7 @@ describe("recoverCredits", () => {
 
   it("does not re-issue cents a concurrent call already spent", async () => {
     kvMock.kvSMembers.mockResolvedValue(["credit:old"]);
-    kvMock.kvGetNumber.mockResolvedValueOnce(100).mockResolvedValueOnce(0);
+    kvMock.kvEval.mockImplementation(evalFrom({ "credit:old": 100 }));
     // Someone spent 30¢ between the read and the decrement → overdrawn by 30.
     kvMock.kvDecrBy.mockResolvedValue(-30);
     kvMock.kvIncrBy.mockResolvedValue(70);
@@ -83,13 +88,26 @@ describe("recoverCredits", () => {
 
   it("reports nothing to recover for a wallet with no balance", async () => {
     kvMock.kvSMembers.mockResolvedValue(["credit:spent"]);
-    kvMock.kvGetNumber.mockResolvedValue(0);
+    kvMock.kvEval.mockImplementation(evalFrom({})); // script ran, key missing → '0'
 
     const r = await recoverCredits(OWNER);
     expect(r.recoveredCents).toBe(0);
     expect(r.minted).toBeUndefined();
     // A spent key stops being tracked so the index doesn't grow forever.
     expect(kvMock.kvSRem).toHaveBeenCalledWith(`credit:owner:${OWNER}`, "credit:spent");
+  });
+
+  it("a failed balance read aborts — it must never read as 0 and de-index a live balance", async () => {
+    // THE regression this file exists to pin now: during an Upstash rate-limit
+    // the old kvGetNumber read returned 0 for a funded key, and recovery then
+    // kvSRem'd it out of the only index that makes it recoverable — permanently.
+    kvMock.kvSMembers.mockResolvedValue(["credit:live"]);
+    kvMock.kvEval.mockResolvedValue(null); // transport failure, NOT an empty key
+
+    await expect(recoverCredits(OWNER)).rejects.toThrow(/retry|unavailable/i);
+    expect(kvMock.kvSRem).not.toHaveBeenCalled();
+    expect(kvMock.kvDecrBy).not.toHaveBeenCalled();
+    expect(kvMock.kvDel).not.toHaveBeenCalled();
   });
 
   it("reports nothing for a wallet that never bought", async () => {
@@ -99,13 +117,14 @@ describe("recoverCredits", () => {
     expect(kvMock.kvIncrBy).not.toHaveBeenCalled();
   });
 
-  it("changes nothing when the ledger read fails", async () => {
+  it("changes nothing when the ledger write fails", async () => {
     kvMock.kvSMembers.mockResolvedValue(["credit:old"]);
-    kvMock.kvGetNumber.mockResolvedValueOnce(100);
-    kvMock.kvDecrBy.mockResolvedValue(null); // KV outage
+    kvMock.kvEval.mockImplementation(evalFrom({ "credit:old": 100 }));
+    kvMock.kvDecrBy.mockResolvedValue(null); // KV outage on the drain write
 
     await expect(recoverCredits(OWNER)).rejects.toThrow(/ledger/i);
     expect(kvMock.kvDel).not.toHaveBeenCalled();
+    expect(kvMock.kvEval).not.toHaveBeenCalledWith(expect.stringContaining("DEL"), expect.anything(), expect.anything());
   });
 
   it("fails closed with no durable store", async () => {
@@ -201,7 +220,8 @@ describe("recoverCredits when the mint fails after draining", () => {
   it("puts every drained cent back on the original tokens", async () => {
     const balances: Record<string, number> = { "credit:a": 400, "credit:b": 150 };
     kvMock.kvSMembers.mockResolvedValue(["credit:a", "credit:b"]);
-    kvMock.kvGetNumber.mockImplementation(async (k: string) => balances[k] ?? 0);
+    kvMock.kvEval.mockImplementation(async (script: string, [k]: string[]) =>
+      script.includes("DEL") ? 1 : String(balances[k] ?? 0));
     kvMock.kvDecrBy.mockImplementation(async (k: string, n: number) => (balances[k] -= n));
     kvMock.kvIncrBy.mockImplementation(async (k: string, n: number) => {
       // The mint writes to a key derived from a fresh token, so it is the only
@@ -231,7 +251,7 @@ describe("recoverCredits when the mint fails after draining", () => {
     // Restoration itself failing is the one case where "nothing was changed" is
     // a lie, and where a retry would drain the balance a second time.
     kvMock.kvSMembers.mockResolvedValue(["credit:a"]);
-    kvMock.kvGetNumber.mockResolvedValue(250);
+    kvMock.kvEval.mockImplementation(evalFrom({ "credit:a": 250 }));
     kvMock.kvDecrBy.mockResolvedValue(0);
     kvMock.kvIncrBy.mockResolvedValue(null); // mint fails, and so does the restore
     kvMock.kvDel.mockResolvedValue(undefined);
