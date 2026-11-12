@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "x402-bazaar-agentkit",
   "version": "0.1.1",
-  "description": "Check, then act — x402 Bazaar actions for Coinbase AgentKit: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base (0x) executed from the agent's wallet, cross-chain swaps through NEAR Intents, and 150+ pay-per-call agent APIs.",
+  "description": "Check, then act â€” x402 Bazaar actions for Coinbase AgentKit: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base (0x) executed from the agent's wallet, cross-chain swaps through NEAR Intents, and 200+ pay-per-call agent APIs.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

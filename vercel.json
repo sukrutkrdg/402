@@ -1,5 +1,5 @@
 {
-  "ignoreCommand": "exit 1",
+  "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [
     {
       "path": "/api/cron/check-alerts",

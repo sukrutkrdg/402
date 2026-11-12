@@ -10,8 +10,9 @@ Redis (KV) for counters, credits and state. See README.md for the architecture.
 done, section 8 what is next).
 
 - NEAR discovery and buying credits with NEAR Intents are live (first NEAR sale 2026-09-26).
-- Six NEAR-native services are live: `near-pre-trade-gate`, `near-token-safety`,
-  `near-transfer-preflight`, `near-swap-quote`, `near-account`, `near-portfolio`.
+- NEAR-native services are live (14 as of 2026-11; the list is `src/lib/catalog/near.ts`),
+  including `near-pre-trade-gate`, `near-token-safety`, `near-transfer-preflight`,
+  `near-swap-quote`, `near-account` and `near-portfolio`.
 - NEAR agent market (market.near.ai): the API list is in `docs/near-market/paths.txt`, the full
   OpenAPI spec in `docs/near-market/market.json`. A connector listing has been requested.
 

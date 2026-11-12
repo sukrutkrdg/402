@@ -58,7 +58,9 @@ describe("domainCheck — input handling", () => {
  * that mocks did not, so the same rule applies here: at least one round against
  * the real thing. RDAP is free and unauthenticated.
  */
-describe("domainCheck — live RDAP", () => {
+// Run only under LIVE=1: real RDAP/DNS round trips flake offline and do not
+// belong in the default (mocked) suite — same gate as test/reference-live.test.ts.
+describe.skipIf(process.env.LIVE !== "1")("domainCheck — live RDAP", () => {
   it("reads an established gTLD domain and says GO", async () => {
     const r = await check("coinbase.com");
     expect(r.decision).toBe("GO");

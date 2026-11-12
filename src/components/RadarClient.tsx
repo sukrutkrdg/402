@@ -358,8 +358,8 @@ export default function RadarClient() {
           <p className="p-4 text-sm text-gray-400">{failed ? "No data — could not be read right now." : "Loading…"}</p>
         ) : data.scans.length === 0 ? (
           <p className="p-4 text-sm text-gray-400">
-            No scans recorded yet. Our scout scans newly listed Base tokens every 4 hours; each scan appears here as it
-            was computed.
+            No scans recorded yet. Our scout scans newly listed Base tokens as runs are triggered; each scan appears
+            here as it was computed.
           </p>
         ) : (
           <table className="mt-2 w-full text-sm">

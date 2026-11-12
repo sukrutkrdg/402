@@ -1,16 +1,16 @@
-# x402-bazaar-agentkit
+﻿# x402-bazaar-agentkit
 
-**Check, then act** — [x402 Bazaar](https://402.com.tr) actions for [Coinbase AgentKit](https://github.com/coinbase/agentkit).
+**Check, then act** â€” [x402 Bazaar](https://402.com.tr) actions for [Coinbase AgentKit](https://github.com/coinbase/agentkit).
 
-Your agent checks a token before it buys, then swaps at the best price — from its own wallet. Nothing is held by us.
+Your agent checks a token before it buys, then swaps at the best price â€” from its own wallet. Nothing is held by us.
 
 | Action | What it does |
 |---|---|
 | `pre_trade_check` | GO / HOLD / STOP before buying a token on **Base** (honeypot and sell-tax simulation, owner powers, liquidity, deployer) or **NEAR** (keys, owner, pause, exit tested through NEAR Intents) |
-| `swap_on_base` | Best-price swap on Base, routed by 0x across Uniswap, Aerodrome, Balancer, Curve and more — **executed** from the AgentKit wallet (approves exactly the amount sold). Unknown tokens get a sellability check; honeypots are refused |
-| `cross_chain_swap` | Swap across chains through NEAR Intents — NEAR, Base, Ethereum, Solana, Bitcoin… Paying from Base, the wallet sends the deposit itself |
+| `swap_on_base` | Best-price swap on Base, routed by 0x across Uniswap, Aerodrome, Balancer, Curve and more â€” **executed** from the AgentKit wallet (approves exactly the amount sold). Unknown tokens get a sellability check; honeypots are refused |
+| `cross_chain_swap` | Swap across chains through NEAR Intents â€” NEAR, Base, Ethereum, Solana, Bitcoinâ€¦ Paying from Base, the wallet sends the deposit itself |
 | `cross_chain_swap_status` | Pending, processing, SUCCESS, REFUNDED or FAILED |
-| `x402_bazaar_call` | Any of the 150+ services in the [catalog](https://402.com.tr/api/catalog): wallet and approval audits, NEAR portfolio / staking yields / lending health, web search, page-to-JSON, OFAC screening… |
+| `x402_bazaar_call` | Any of the 200+ services in the [catalog](https://402.com.tr/api/catalog): wallet and approval audits, NEAR portfolio / staking yields / lending health, web search, page-to-JSON, OFAC screeningâ€¦ |
 
 ## Install
 
@@ -38,7 +38,7 @@ Every swap transaction is checked before it is signed: it must go to the 0x Allo
 
 ## Paying
 
-- **Credit token** (recommended): buy once at [402.com.tr/credits](https://402.com.tr/credits) — with USDC on Base, a card, or from NEAR — and pass it as `creditToken`. Each call debits its price; no signing per call.
+- **Credit token** (recommended): buy once at [402.com.tr/credits](https://402.com.tr/credits) â€” with USDC on Base, a card, or from NEAR â€” and pass it as `creditToken`. Each call debits its price; no signing per call.
 - **No token**: each call is paid over [x402](https://x402.org) in USDC on Base, signed by the AgentKit wallet.
 
-Calls cost $0.002–$0.10. Swaps carry a small service fee inside the swap itself, shown in every quote. If a call fails, it is not charged.
+Calls cost $0.002â€“$0.10. Swaps carry a small service fee inside the swap itself, shown in every quote. If a call fails, it is not charged.

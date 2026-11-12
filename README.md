@@ -73,7 +73,7 @@ One Next.js app plays all three roles in the x402 flow:
   for liquid Base tokens and alerts that actually fired — recorded events only.
 - **Leaderboard** (`/leaderboard`): services ranked by paid calls from outside payers, our own
   purchases excluded, counts only.
-- **Alerts**: price and rug (liquidity-pull) monitors checked every 10 minutes; webhook deliveries
+- **Alerts**: price and rug (liquidity-pull) monitors checked every 30 minutes; webhook deliveries
   are HMAC-signed and retried.
 
 ## Agents on NEAR

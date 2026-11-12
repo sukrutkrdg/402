@@ -1,12 +1,12 @@
-/**
- * x402 Bazaar plugin for ElizaOS — check, then act.
+﻿/**
+ * x402 Bazaar plugin for ElizaOS â€” check, then act.
  *
  *   import { x402BazaarPlugin } from "@sukrutkrdg/plugin-x402-bazaar";
  *   character.plugins = [..., x402BazaarPlugin];
  *
  * Settings (character secrets or env):
- *   X402_CREDIT_TOKEN   prepaid credit token (ck_…) — pays calls with one header, no signing
- *   EVM_PRIVATE_KEY     a Base wallet key — pays per call over x402 when there is no
+ *   X402_CREDIT_TOKEN   prepaid credit token (ck_â€¦) â€” pays calls with one header, no signing
+ *   EVM_PRIVATE_KEY     a Base wallet key â€” pays per call over x402 when there is no
  *                       credit token, and signs the swaps this plugin executes
  *   X402_BAZAAR_URL     optional, defaults to https://402.com.tr
  *   X402_BAZAAR_EXECUTE "true" lets the agent SIGN swaps and deposits. Off by default:
@@ -92,13 +92,13 @@ const preTradeCheck: Action = {
   validate: always,
   handler: async (runtime, message, state, options, callback) => {
     try {
-      const p = await inputs(runtime, message, state, options, `"chain": "base" or "near", "token": 0x… address on Base or NEAR token account, "sizeUsd": trade size in USD or ""`);
+      const p = await inputs(runtime, message, state, options, `"chain": "base" or "near", "token": 0xâ€¦ address on Base or NEAR token account, "sizeUsd": trade size in USD or ""`);
       const near = p.chain === "near" || (!/^0x[0-9a-fA-F]{40}$/.test(p.token) && /\.(near|tg)$|^[0-9a-f]{64}$/.test(p.token));
       const r = near
         ? await client(runtime).call<{ verdict: string; reasons: string[] }>("near-pre-trade-gate", { token: p.token, size: p.sizeUsd })
         : await client(runtime).call<{ verdict?: string; decision?: string; reasons?: string[] }>("pre-trade-gate", { address: p.token, amountUsd: p.sizeUsd });
       const verdict = (r as { verdict?: string; decision?: string }).verdict ?? (r as { decision?: string }).decision ?? "?";
-      const text = `${verdict} for ${p.token}${Array.isArray(r.reasons) && r.reasons.length ? ` — ${r.reasons.slice(0, 3).join(" ")}` : ""}`;
+      const text = `${verdict} for ${p.token}${Array.isArray(r.reasons) && r.reasons.length ? ` â€” ${r.reasons.slice(0, 3).join(" ")}` : ""}`;
       await callback?.({ text, actions: ["PRE_TRADE_CHECK"] });
       return { success: true, text, data: r as Record<string, unknown> };
     } catch (e) {
@@ -124,7 +124,7 @@ const swapOnBase: Action = {
     try {
       const w = wallet(runtime);
       if (!w) throw new Error("EVM_PRIVATE_KEY is not set");
-      if (!canExecute(runtime)) throw new Error("signing is off — set X402_BAZAAR_EXECUTE=true to let this agent swap");
+      if (!canExecute(runtime)) throw new Error("signing is off â€” set X402_BAZAAR_EXECUTE=true to let this agent swap");
       const p = await inputs(runtime, message, state, options, `"sell": token symbol or 0x address, "buy": token symbol or 0x address, "amount": amount to sell in whole units`);
       const c = client(runtime);
       const quote = () => c.call<BaseSwapQuote>("base-swap", { sell: p.sell, buy: p.buy, amount: p.amount, taker: w.account.address });
@@ -150,7 +150,7 @@ const swapOnBase: Action = {
       });
       const rc = await w.reader.waitForTransactionReceipt({ hash });
       if (rc.status !== "success") throw new Error(`the swap reverted (price moved beyond slippage): ${hash}`);
-      const text = `Swapped ${q.sell.amount} ${q.sell.symbol} → ~${q.buy.amount} ${q.buy.symbol} via ${q.route.map((r) => `${r.source} ${r.sharePct}%`).join(", ")}. https://basescan.org/tx/${hash}`;
+      const text = `Swapped ${q.sell.amount} ${q.sell.symbol} â†’ ~${q.buy.amount} ${q.buy.symbol} via ${q.route.map((r) => `${r.source} ${r.sharePct}%`).join(", ")}. https://basescan.org/tx/${hash}`;
       await callback?.({ text, actions: ["SWAP_ON_BASE"] });
       return { success: true, text, data: { tx: hash, route: q.route, fees: q.fees } };
     } catch (e) {
@@ -170,7 +170,7 @@ const crossChainSwap: Action = {
   name: "CROSS_CHAIN_SWAP",
   similes: ["BRIDGE_AND_SWAP", "SWAP_TO_NEAR", "SWAP_ACROSS_CHAINS", "NEAR_INTENTS_SWAP"],
   description:
-    "Swap across chains through NEAR Intents (NEAR, Base, Ethereum, Solana, Bitcoin…), e.g. USDC@base → NEAR. Returns a one-time deposit address and what to send. The agent deposits itself only when paying from Base with EVM_PRIVATE_KEY, X402_BAZAAR_EXECUTE=true and a recipient listed in X402_BAZAAR_RECIPIENTS. Failed swaps are refunded.",
+    "Swap across chains through NEAR Intents (NEAR, Base, Ethereum, Solana, Bitcoinâ€¦), e.g. USDC@base â†’ NEAR. Returns a one-time deposit address and what to send. The agent deposits itself only when paying from Base with EVM_PRIVATE_KEY, X402_BAZAAR_EXECUTE=true and a recipient listed in X402_BAZAAR_RECIPIENTS. Failed swaps are refunded.",
   validate: always,
   handler: async (runtime, message, state, options, callback) => {
     try {
@@ -179,7 +179,7 @@ const crossChainSwap: Action = {
         message,
         state,
         options,
-        `"from": asset paid (USDC, NEAR, USDC@base, ETH@base, SOL@sol…), "to": asset wanted, "amount": amount of the paid asset, "recipient": address on the destination chain, "refundTo": address on the origin chain or ""`,
+        `"from": asset paid (USDC, NEAR, USDC@base, ETH@base, SOL@solâ€¦), "to": asset wanted, "amount": amount of the paid asset, "recipient": address on the destination chain, "refundTo": address on the origin chain or ""`,
       );
       const w = wallet(runtime);
       const refundTo = p.refundTo || (/@base$/i.test(p.from) && w ? w.account.address : "");
@@ -227,7 +227,7 @@ const swapStatus: Action = {
     try {
       const p = await inputs(runtime, message, state, options, `"depositAddress": the swap's deposit address`);
       const r = await client(runtime).call<{ status: string; meaning?: string }>("near-swap-status", { depositAddress: p.depositAddress });
-      const text = `${r.status}${r.meaning ? ` — ${r.meaning}` : ""}`;
+      const text = `${r.status}${r.meaning ? ` â€” ${r.meaning}` : ""}`;
       await callback?.({ text, actions: ["CROSS_CHAIN_SWAP_STATUS"] });
       return { success: true, text, data: r as Record<string, unknown> };
     } catch (e) {
@@ -242,7 +242,7 @@ const callService: Action = {
   name: "X402_BAZAAR_CALL",
   similes: ["CALL_BAZAAR", "X402_SERVICE"],
   description:
-    "Call any x402 Bazaar service by id (catalog: https://402.com.tr/api/catalog) — token risk, wallet and approval audits, NEAR account/portfolio/staking yields/lending health, web search and page-to-JSON, OFAC screening and more.",
+    "Call any x402 Bazaar service by id (catalog: https://402.com.tr/api/catalog) â€” token risk, wallet and approval audits, NEAR account/portfolio/staking yields/lending health, web search and page-to-JSON, OFAC screening and more.",
   validate: always,
   handler: async (runtime, message, state, options, callback) => {
     try {
@@ -267,7 +267,7 @@ const callService: Action = {
 
 export const x402BazaarPlugin: Plugin = {
   name: "x402-bazaar",
-  description: "Check, then act: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base, cross-chain swaps via NEAR Intents, and 150+ pay-per-call agent APIs.",
+  description: "Check, then act: pre-trade GO/HOLD/STOP on Base and NEAR, best-price swaps on Base, cross-chain swaps via NEAR Intents, and 200+ pay-per-call agent APIs.",
   actions: [preTradeCheck, swapOnBase, crossChainSwap, swapStatus, callService],
 };
 
