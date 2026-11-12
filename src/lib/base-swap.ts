@@ -142,7 +142,9 @@ export async function baseSwap(params: Record<string, string>) {
   // and quotes that cannot be sent as they stand: a wallet short of funds, or one that must approve
   // first (the quote taken after the approval is the one that gets booked, so a swap counts once).
   if (taker.toLowerCase() !== "0xd8da6bf26964af9d7eed9e03e53415d37aa96045" && !q.issues?.balance && !q.issues?.allowance) {
-    const stable = /^(USDC|USDBC|DAI|EURC)$/i.test(sell.symbol);
+    // EURC excluded: it is a EUR stablecoin, and booking its amount as `usd`
+    // overstated every EURC-sell quote in the ledger by the FX rate.
+    const stable = /^(USDC|USDBC|DAI)$/i.test(sell.symbol);
     await import("./near-swap-ledger")
       .then((m) =>
         m.recordBaseSwapQuote({

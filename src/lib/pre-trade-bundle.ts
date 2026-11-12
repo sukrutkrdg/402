@@ -393,7 +393,9 @@ export async function preTradeBundle(params: Record<string, string>) {
       execution = { ready: false, reason: `a ready-to-sign buy is attached only on a GO verdict — this is ${decision}` };
     } else {
       const sell = (params.sell || "USDC").trim();
-      const sellIsUsd = /^(USDC|USDBC|USDbC|DAI|EURC)$/i.test(sell);
+      // EURC is deliberately NOT here: it is a EUR stablecoin, and mapping a USD
+      // size 1:1 into EURC units would overspend the recommended max by the FX rate.
+      const sellIsUsd = /^(USDC|USDBC|USDbC|DAI)$/i.test(sell);
       const recMax = typeof sizing.recommendedMaxSizeUsd === "number" ? sizing.recommendedMaxSizeUsd : null;
       // Size the buy. An explicit amount wins; otherwise a USD-stablecoin sell
       // maps the recommended max (capped by the caller's own amountUsd) 1:1 to the
@@ -426,7 +428,12 @@ export async function preTradeBundle(params: Record<string, string>) {
         } catch (e) {
           // base-swap's own not-charged failures (no ZEROX key, no route, honeypot
           // on the buy) surface here as "not ready", never as a thrown bundle.
-          execution = { ready: false, reason: e instanceof Error ? e.message : "swap could not be quoted" };
+          // Its messages were written for the standalone $0.01 service and say
+          // "not charged" — false inside a billed $0.15 bundle read — so they are
+          // neutralized before the caller sees them.
+          const raw = e instanceof Error ? e.message : "swap could not be quoted";
+          const msg = raw.replace(/\s*—\s*not charged[^.]*/gi, "").replace(/\s*Pass force=1[^.]*\.?/gi, "");
+          execution = { ready: false, reason: `swap not quoted: ${msg.trim()} — the verdict and the bundle charge are unaffected` };
         }
       }
     }
@@ -434,7 +441,14 @@ export async function preTradeBundle(params: Record<string, string>) {
 
   const degraded = gatingUnverified.length > 0;
   const missing = unverified.map((u) => u.check);
-  const receiptParams: Record<string, unknown> = tradeSizeUsd !== null ? { address, amountUsd: tradeSizeUsd } : { address };
+  // taker is part of the receipt's identity: a GO carrying a ready-to-sign swap
+  // must not hash identically to the same read without one, or a caller deduping
+  // on inputHash can cache-serve a response missing its execution payload.
+  const receiptParams: Record<string, unknown> = {
+    address,
+    ...(tradeSizeUsd !== null ? { amountUsd: tradeSizeUsd } : {}),
+    ...(taker ? { taker } : {}),
+  };
 
   return {
     address,
