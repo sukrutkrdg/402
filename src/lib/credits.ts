@@ -291,9 +291,16 @@ export async function recoverCredits(owner: string): Promise<RecoverResult> {
 
   try {
     for (const key of keys) {
-      const balance = await kvGetNumber(key);
+      // Read the balance through a script that returns '0' for a missing key,
+      // so null can only mean the REQUEST failed. kvGetNumber conflates the
+      // two, and during an Upstash rate-limit that read a live, funded balance
+      // as 0 — and the kvSRem below then removed it from the only index that
+      // makes it recoverable. An outage must abort recovery, never prune it.
+      const read = await kvEval<string>("return redis.call('GET', KEYS[1]) or '0'", [key], []);
+      if (read === null) throw new Error("Credits unavailable: balance read failed mid-recovery");
+      const balance = parseInt(read, 10) || 0;
       if (balance <= 0) {
-        await kvSRem(ownerKey(owner), key); // spent or expired — stop tracking it
+        await kvSRem(ownerKey(owner), key); // genuinely spent or expired — stop tracking it
         continue;
       }
       // Drain the old key so the previous token can't keep spending what we're
@@ -311,7 +318,11 @@ export async function recoverCredits(owner: string): Promise<RecoverResult> {
       drained.push({ key, cents: moved });
       total += moved;
       merged++;
-      if ((await kvGetNumber(key)) <= 0) await kvDel(key);
+      // Delete only if still empty, atomically: the old read-then-DEL raced a
+      // concurrent refund landing after the drain (destroyed), and a FAILED
+      // read counted as 0 (destroyed). A null here just leaves the empty key
+      // to its TTL — nothing to lose.
+      await kvEval("local v = tonumber(redis.call('GET', KEYS[1]) or '0') if v <= 0 then redis.call('DEL', KEYS[1]) return 1 end return 0", [key], []);
       await kvSRem(ownerKey(owner), key);
     }
 

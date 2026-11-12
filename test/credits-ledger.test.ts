@@ -30,6 +30,7 @@ const { kvMock } = vi.hoisted(() => ({
     kvLPush: vi.fn(),
     kvLRange: vi.fn(),
     kvPipeline: vi.fn(),
+    kvEval: vi.fn(),
   },
 }));
 vi.mock("@/lib/kv", () => kvMock);
@@ -94,7 +95,9 @@ describe("credits ledger", () => {
    */
   it("does not count a recovery as a sale", async () => {
     kvMock.kvSMembers.mockResolvedValue(["credit:" + "b".repeat(24)]);
-    kvMock.kvGetNumber.mockResolvedValue(40);
+    // Balance read is an EVAL (returns '0' for a missing key, null only on a
+    // failed request); the delete-if-empty EVAL succeeds.
+    kvMock.kvEval.mockImplementation(async (script: string) => (script.includes("DEL") ? 1 : "40"));
     kvMock.kvDecrBy.mockResolvedValue(0);
     await recoverCredits("0x" + "1".repeat(40));
     expect(incrementsTo("credits:packs"), "re-issuing is not selling").toEqual([]);
