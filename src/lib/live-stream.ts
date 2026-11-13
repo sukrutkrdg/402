@@ -16,7 +16,10 @@ import "server-only";
 import { eventTimeMs, readFeedShared, type LiveEvent } from "./live-events";
 
 export const LIVE_STREAM_MS = 55_000;
-export const LIVE_POLL_MS = 5_000;
+// 30s, not 5s: the feed records a handful of events per DAY, and each poll is
+// KV commands on a metered plan. A tab left open on /radar polled every 5s —
+// ~34K commands/day, a third of the free tier's monthly quota in a week.
+export const LIVE_POLL_MS = 30_000;
 export const LIVE_HEARTBEAT_MS = 15_000;
 export const LIVE_RETRY_MS = 3_000;
 export const LIVE_BACKLOG = 20;
@@ -46,7 +49,7 @@ export function liveEventStream(opts: LiveStreamOptions = {}): ReadableStream<Ui
   const durationMs = Math.min(opts.durationMs ?? LIVE_STREAM_MS, LIVE_STREAM_MS);
   const pollMs = opts.pollMs ?? LIVE_POLL_MS;
   const heartbeatMs = opts.heartbeatMs ?? LIVE_HEARTBEAT_MS;
-  const read = opts.read ?? (() => readFeedShared(Math.min(4000, pollMs - 1)));
+  const read = opts.read ?? (() => readFeedShared(Math.max(4000, pollMs - 1000)));
   const enc = new TextEncoder();
 
   // Cursor: the last event the client has. Events at or before it are never resent.

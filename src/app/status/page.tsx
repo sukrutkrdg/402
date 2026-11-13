@@ -5,6 +5,7 @@
  */
 
 import { readHealth } from "@/lib/health";
+import { snapshot } from "@/lib/snapshot";
 import { SERVICES } from "@/lib/services";
 
 export const metadata = {
@@ -20,7 +21,8 @@ const tone = (pct: number | null) =>
   pct === null ? "text-gray-500" : pct >= 99 ? "text-emerald-300" : pct >= 95 ? "text-amber-300" : "text-rose-300";
 
 export default async function StatusPage() {
-  const h = await readHealth(7);
+  // One KV read per instance per 5 minutes; last good snapshot on failure.
+  const { value: h } = await snapshot("page:status", 300_000, () => readHealth(7));
   const byId = new Map(SERVICES.filter((s) => !s.hidden).map((s) => [s.id, s]));
   const rows = h.services.filter((s) => byId.has(s.service)).sort((a, b) => b.calls - a.calls);
   const ok = rows.reduce((s, x) => s + x.ok, 0);

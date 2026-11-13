@@ -11,6 +11,7 @@ vi.mock("@/lib/kv", () => ({
   kvConfigured: () => true,
   kvPipeline: pipeline,
   ttlDue: () => false,
+  kvSoftBudgetExceeded: () => false,
   kvIncr: vi.fn(),
   kvGetNumber: vi.fn(),
   kvGetNumberStable: vi.fn(),
@@ -44,6 +45,13 @@ describe("logUsage — slim record for bot 402 probes", () => {
     await logUsage("token-risk", false, "src1", BROWSER, "", false, false, true);
     expect(ops()).toEqual(expect.arrayContaining(["LPUSH usage:recent", "INCR usage:challenge:token-risk"]));
     expect(ops().some((x) => x.startsWith("SADD usage:src:"))).toBe(true);
+  });
+
+  it("slims an api-class (no-UA) challenge too — headless agents are the class that burned the quota", async () => {
+    await logUsage("token-risk", false, "src1", "", "", false, false, true);
+    const o = ops();
+    expect(o).toEqual(expect.arrayContaining(["INCR usage:total:token-risk", "INCR usage:challenge:token-risk"]));
+    expect(o.some((x) => x.startsWith("SADD") || x.startsWith("LPUSH"))).toBe(false);
   });
 
   it("logs a bot's PAID call in full — only price probes are slimmed", async () => {

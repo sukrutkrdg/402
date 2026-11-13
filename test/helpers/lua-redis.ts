@@ -295,6 +295,7 @@ export function kvBackedBy(r: LuaRedis) {
   return {
     kvConfigured: () => true,
     ttlDue: () => true,
+    kvSoftBudgetExceeded: () => false,
     // Analytics pipelines use commands this fake does not model; they answer null, as a failed pipeline would.
     kvPipeline: async (cmds: (string | number)[][]) =>
       cmds.map((c) => {

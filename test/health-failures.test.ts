@@ -5,6 +5,7 @@ vi.mock("@/lib/kv", () => ({
   kvHIncrBy: vi.fn(async () => undefined),
   kvHGetAll: vi.fn(async () => ({})),
   ttlDue: () => false,
+  kvSoftBudgetExceeded: () => false,
   kvExpire: vi.fn(async () => undefined),
   kvLPush: vi.fn(async (k: string, v: string, cap = 200) => {
     lists.set(k, [v, ...(lists.get(k) ?? [])].slice(0, cap));

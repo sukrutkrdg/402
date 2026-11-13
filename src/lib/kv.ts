@@ -20,6 +20,30 @@ export function kvConfigured(): boolean {
   return Boolean(URL_ENV && TOKEN_ENV);
 }
 
+// ---- soft daily command budget (per instance) ----
+// The free Upstash tier is capped per MONTH, and one chatty surface can burn it:
+// 500K commands went in six days (2026-11-12 — a 5s live-feed poll, crawler
+// usage logging, per-request health reads). Every command sent through this
+// module is counted per UTC day, and NON-CRITICAL consumers (usage analytics,
+// health bookkeeping, the live-feed poll) check kvSoftBudgetExceeded() and stop
+// spending for the rest of the day once the soft budget is passed. Money and
+// quota paths never consult this: they keep their own fail-closed semantics.
+let budgetDay = "";
+let budgetUsed = 0;
+function countCommands(n: number): void {
+  const d = new Date().toISOString().slice(0, 10);
+  if (d !== budgetDay) {
+    budgetDay = d;
+    budgetUsed = 0;
+  }
+  budgetUsed += n;
+}
+/** True once this instance has sent its soft daily allowance of commands. */
+export function kvSoftBudgetExceeded(): boolean {
+  if (new Date().toISOString().slice(0, 10) !== budgetDay) return false;
+  return budgetUsed >= Number(process.env.KV_DAILY_SOFT_BUDGET || 12_000);
+}
+
 // ---- in-memory fallback ----
 type Entry = { value: string; expireAt?: number };
 const mem = new Map<string, Entry>();
@@ -42,6 +66,7 @@ function memValid(k: string): Entry | undefined {
 // (missing key). Callers that must not surface a transient failure as a real "0"
 // use this via cmdRead() to retry only the transport-failure case.
 async function cmdOnce<T = unknown>(args: (string | number)[]): Promise<{ ok: boolean; result: T | null }> {
+  countCommands(1);
   try {
     const res = await fetch(URL_ENV, {
       method: "POST",
@@ -102,6 +127,7 @@ async function cmdRead<T = unknown>(args: (string | number)[]): Promise<T | null
  */
 export async function kvPipeline(commands: (string | number)[][]): Promise<unknown[] | null> {
   if (!kvConfigured()) return null;
+  countCommands(commands.length);
   try {
     const res = await fetch(`${URL_ENV}/pipeline`, {
       method: "POST",

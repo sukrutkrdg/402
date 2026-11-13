@@ -9,7 +9,7 @@
 
 import "server-only";
 import { createHash } from "node:crypto";
-import { kvIncr, kvGetNumber, kvGetNumberStable, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured, kvHIncrBy, kvHGetAll, ttlDue } from "./kv";
+import { kvIncr, kvGetNumber, kvGetNumberStable, kvLPush, kvLRange, kvSAdd, kvSMembers, kvPipeline, kvConfigured, kvHIncrBy, kvHGetAll, ttlDue, kvSoftBudgetExceeded } from "./kv";
 
 const day = () => new Date().toISOString().slice(0, 10);
 
@@ -82,6 +82,10 @@ export async function logUsage(
   payer = "",
 ): Promise<void> {
   try {
+    // Analytics are the first spend to stop when the instance has used its soft
+    // daily KV allowance — missing a day of counters beats exhausting the
+    // month's quota and taking credits/alerts down with it.
+    if (kvConfigured() && kvSoftBudgetExceeded()) return;
     const kind = classifyUa(ua);
     const d = day();
     const entry = JSON.stringify({
@@ -112,8 +116,11 @@ export async function logUsage(
       // incremented, so call totals and challenge→paid conversion are exact —
       // but it is kept out of "sources today" and the recent feed, where it was
       // mostly noise, at a saving of 2–4 Upstash commands per probe.
+      // "api" (no UA — headless agents and indexers) is slimmed with "bot": that
+      // class burned the free KV tier's monthly quota in six days (2026-11-12).
+      // Only a browser challenge — a human at the shop window — logs in full.
       // USAGE_SLIM_BOT_CHALLENGES=false restores the full record.
-      const slim = challenge && kind === "bot" && process.env.USAGE_SLIM_BOT_CHALLENGES !== "false";
+      const slim = challenge && kind !== "browser" && process.env.USAGE_SLIM_BOT_CHALLENGES !== "false";
       const cmds: (string | number)[][] = [
         ["INCR", `usage:total:${serviceId}`],
         ["INCR", "usage:calls:total"],

@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { externalLeaderboard } from "@/lib/keepalive-economics";
+import { snapshot } from "@/lib/snapshot";
 import { SERVICES } from "@/lib/services";
 
 // Live KV-backed counts: render on demand, never prerender at build. A build-time
@@ -15,11 +16,15 @@ import { SERVICES } from "@/lib/services";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const lb = await externalLeaderboard();
+  // Coalesced per instance (5 min) with a last-good fallback — a crawler storm
+  // or a KV outage costs at most one read per window, never a 500.
+  const snap = await snapshot("api:leaderboard", 300_000, externalLeaderboard);
+  const lb = snap.value;
   const names = new Map(SERVICES.map((s) => [s.id, s.name]));
   return NextResponse.json(
     {
       ...lb,
+      ...(snap.stale ? { stale: true, asOf: snap.at } : {}),
       services: lb.services.map((s) => ({ ...s, name: names.get(s.id) ?? s.id, listed: names.has(s.id) })),
       method:
         "Paid x402 calls whose signer is not our own buyer wallet, counted at settlement. Our keepalive/indexing purchases and unreadable payers are excluded. Prepaid-credit calls are not included.",

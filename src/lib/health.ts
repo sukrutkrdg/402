@@ -14,7 +14,7 @@
 
 import "server-only";
 import { after } from "next/server";
-import { kvHIncrBy, kvHGetAll, ttlDue, kvExpire, kvLPush, kvLRange } from "./kv";
+import { kvHIncrBy, kvHGetAll, ttlDue, kvExpire, kvLPush, kvLRange, kvSoftBudgetExceeded } from "./kv";
 import { isRefundable } from "./envelope";
 
 /** The HTTP status a handler error deserves: the caller's input (400), an upstream (502), or ours (500). */
@@ -52,6 +52,7 @@ const bucketOf = (ms: number) => BUCKETS.find((b) => ms < b.upto)!.id;
 export type Outcome = "ok" | "input" | "fail";
 
 export async function recordOutcome(service: string, outcome: Outcome, ms: number): Promise<void> {
+  if (kvSoftBudgetExceeded()) return; // bookkeeping yields to the daily KV budget
   const key = dayKey(new Date());
   try {
     await kvHIncrBy(key, `${service}|${outcome}|${bucketOf(ms)}`, 1);

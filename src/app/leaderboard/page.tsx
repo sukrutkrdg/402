@@ -7,6 +7,7 @@
 
 import { externalLeaderboard } from "@/lib/keepalive-economics";
 import { readHealth } from "@/lib/health";
+import { snapshot } from "@/lib/snapshot";
 import { SERVICES } from "@/lib/services";
 
 export const metadata = {
@@ -22,7 +23,12 @@ export const dynamic = "force-dynamic";
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "—");
 
 export default async function LeaderboardPage() {
-  const [lb, health] = await Promise.all([externalLeaderboard(), readHealth(7).catch(() => null)]);
+  // One KV read per instance per 5 minutes, whoever asks (mostly crawlers) —
+  // and the last good snapshot when KV is down, instead of a 500.
+  const { value: data } = await snapshot("page:leaderboard", 300_000, async () =>
+    Promise.all([externalLeaderboard(), readHealth(7).catch(() => null)]),
+  );
+  const [lb, health] = data;
   const byId = new Map(SERVICES.map((s) => [s.id, s]));
   const success = new Map((health?.services ?? []).map((h) => [h.service, h.successPct]));
   const rows = lb.services.slice(0, 25);
