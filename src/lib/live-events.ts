@@ -35,7 +35,7 @@
 
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { kvExpire, kvLPush, kvLRange } from "./kv";
+import { kvExpire, kvLPush, kvLRange, kvSoftBudgetExceeded } from "./kv";
 
 export const LIVE_KEYS = { feed: "live:events", alerts: "radar:alerts", scans: "scout:results" } as const;
 export const FEED_CAP = 100;
@@ -308,6 +308,9 @@ let shared: { at: number; p: Promise<LiveEvent[]> } | null = null;
 export function readFeedShared(maxAgeMs = 4000, limit = 30): Promise<LiveEvent[]> {
   const now = Date.now();
   if (shared && now - shared.at < maxAgeMs) return shared.p;
+  // Over the instance's daily KV allowance the poll stops refreshing: open
+  // streams keep the last answer (or silence) instead of spending the quota.
+  if (kvSoftBudgetExceeded()) return shared?.p ?? Promise.resolve([] as LiveEvent[]);
   const p = readFeed(limit).catch(() => [] as LiveEvent[]);
   shared = { at: now, p };
   return p;
