@@ -38,8 +38,22 @@ function countCommands(n: number): void {
   }
   budgetUsed += n;
 }
-/** True once this instance has sent its soft daily allowance of commands. */
+/** KV_ANALYTICS=off: a hard switch for a cost-sensitive deploy. It stops ALL
+ *  non-essential KV at the source — usage logging, health stats, the live feed —
+ *  leaving only the money path (credits / fleet / rate-limit) and the tiny
+ *  external-revenue counter. The free tier then fills from real paid calls only
+ *  (~1/day), so it effectively never runs out. The dashboard/leaderboard/status
+ *  go dark until it is turned back on, which is the right trade before there is
+ *  traffic worth measuring. */
+export function kvAnalyticsOff(): boolean {
+  return process.env.KV_ANALYTICS === "off";
+}
+
+/** True when non-essential KV writers should stand down: analytics switched off,
+ *  or this instance has spent its soft daily allowance. Money/quota paths never
+ *  consult this. */
 export function kvSoftBudgetExceeded(): boolean {
+  if (kvAnalyticsOff()) return true;
   if (new Date().toISOString().slice(0, 10) !== budgetDay) return false;
   return budgetUsed >= Number(process.env.KV_DAILY_SOFT_BUDGET || 12_000);
 }
