@@ -7,11 +7,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * traffic class. Everything else logs exactly as before.
  */
 const { pipeline } = vi.hoisted(() => ({ pipeline: vi.fn(async (_c: (string | number)[][]) => [] as unknown[]) }));
+const { budget } = vi.hoisted(() => ({ budget: { off: false } }));
 vi.mock("@/lib/kv", () => ({
   kvConfigured: () => true,
   kvPipeline: pipeline,
   ttlDue: () => false,
-  kvSoftBudgetExceeded: () => false,
+  kvSoftBudgetExceeded: () => budget.off,
   kvIncr: vi.fn(),
   kvGetNumber: vi.fn(),
   kvGetNumberStable: vi.fn(),
@@ -30,8 +31,17 @@ const BROWSER = "Mozilla/5.0 (Windows NT 10.0) Chrome/130";
 const ops = () => pipeline.mock.calls[0][0].map((c) => `${c[0]} ${c[1]}`);
 
 describe("logUsage — slim record for bot 402 probes", () => {
-  beforeEach(() => pipeline.mockClear());
+  beforeEach(() => {
+    pipeline.mockClear();
+    budget.off = false;
+  });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("writes nothing at all when non-essential KV is switched off", async () => {
+    budget.off = true; // KV_ANALYTICS=off / soft budget spent
+    await logUsage("token-risk", true, "src1", BROWSER, "");
+    expect(pipeline).not.toHaveBeenCalled();
+  });
 
   it("still counts a bot challenge, but skips the source sets and the recent feed", async () => {
     await logUsage("token-risk", false, "src1", BOT, "", false, false, true);
