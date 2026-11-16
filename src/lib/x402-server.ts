@@ -10,6 +10,7 @@ import "server-only";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
+import { builderCodeResourceServerExtension } from "@x402/extensions/builder-code";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { ALL_NETWORKS, getConfig, sellerReady } from "./config";
 
@@ -70,6 +71,15 @@ function buildResourceServer(): x402ResourceServer {
   // else — same code path, same payTo, same settlement shape.
   let server = new x402ResourceServer(facilitator);
   for (const net of ALL_NETWORKS) server = server.register(net, new ExactEvmScheme());
-  cached = server.registerExtension(bazaarResourceServerExtension);
+  // Register BOTH server extensions:
+  //  - bazaar: auto-indexes routes that declare a discovery extension.
+  //  - builder-code: formally declares the server supports ERC-8021 attribution,
+  //    so the core recognises and carries the per-route app code (`a`,
+  //    declareBuilderCodeExtension in the route) through to a conforming client's
+  //    payment payload, which the facilitator then encodes into settlement
+  //    calldata. It cannot force a non-conforming client to echo it — that loss
+  //    is inherent to x402 — but it makes OUR side of the declaration airtight.
+  server = server.registerExtension(bazaarResourceServerExtension);
+  cached = server.registerExtension(builderCodeResourceServerExtension);
   return cached;
 }
