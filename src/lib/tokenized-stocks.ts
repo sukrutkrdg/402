@@ -63,10 +63,12 @@ export interface TokenizedStock {
 }
 
 /**
- * Discovered from chain by the operator anchor, refreshed 2026-10-03: every
- * 8-decimal B20Created token whose TRANSFER_SENDER_POLICY is administered by
- * STOCK_POLICY_ADMIN. 82 confirmed, all on policy id 5. The roster grew from the
- * original 13 (2026-09-03) as Coinbase issued more — the membership test needs
+ * Discovered from chain by the operator anchor: every 8-decimal B20Created token
+ * whose TRANSFER_SENDER_POLICY is administered by STOCK_POLICY_ADMIN, all on
+ * policy id 5. This seed is a snapshot (it has grown from the original 13 of
+ * 2026-09-03 to ~180 as Coinbase keeps issuing); stockRoster() below reads the
+ * live, authoritative set from Coinbase's API, so the exact count is never
+ * pinned here. The membership test needs
  * no edit to RECOGNISE a new one (b20-safety does that live), but this list
  * drives the /stocks board, the watcher and stock-position, so it is kept in
  * sync here. The operator also deploys `tDUMMY*` test assets under the same admin

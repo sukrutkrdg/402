@@ -8,8 +8,8 @@
 
 A **live pay-per-call API marketplace** on **Base mainnet**, with NEAR-native checks and payment from **NEAR** — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
 Open source (MIT) — every settlement is verifiable on-chain, no DB and no trust required (decode the Builder Codes yourself at [`/dashboard`](https://402.com.tr/dashboard)).
-229 public services as of 2026-10-17 ([live catalogue](https://402.com.tr/api/catalog)) — token safety,
-a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all 82 of Coinbase's
+229 public services ([live catalogue](https://402.com.tr/api/catalog) is the source of truth) — token safety,
+a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all of Coinbase's
 tokenized equities, Cobalt coverage (validity/conditional swaps, composite policies, scheduled
 multiplier), a full x402 agent-trust suite (seller & payer reputation, Know-Your-Agent identity,
 pre-pay screening, wallet drain-surface, MEV/sandwich guard), address-poisoning and
@@ -20,7 +20,7 @@ still do to you after you buy), supply-inflation (is the token quietly minting,
 and how fast), activity-trend (adoption trajectory — growing or quietly dying),
 perp-funding (futures funding/basis/OI — the spot-vs-perp decision data),
 funding-radar (market-wide crowded longs/shorts — squeeze-setup scanner),
-tokenized-stock-price (live onchain price & liquidity of all 82 tokenized stocks),
+tokenized-stock-price (live onchain price & liquidity of every tokenized stock),
 market-pulse (trading-grade mood + attention + leverage), x402 market intelligence,
 stablecoin-peg monitoring, wallet intelligence, OFAC screening, AI-written reports — sold to AI
 agents and humans over
@@ -47,8 +47,8 @@ One Next.js app plays all three roles in the x402 flow:
 - **Tokenized equities**: Coinbase's tokenized stocks are B20 Asset tokens, so the same reads cover
   them. `b20_safety` tells a real issuance apart from a token merely wearing an equity ticker, by
   checking who administers the transfer policy on chain — not by consulting a list of addresses.
-  That recognises all 82 of them (AAPLc, AMZNc, GOOGLc, METAc, NVDAc, TSLAc, MSTRc, COINc … the
-  roster grew from the original 13 as Coinbase issued more) with no per-token configuration, and the
+  That recognises all of them (AAPLc, AMZNc, GOOGLc, METAc, NVDAc, TSLAc, MSTRc, COINc … the
+  roster has grown from the original 13 as Coinbase keeps issuing more) with no per-token configuration, and the
   next the day it is issued — the operator anchor needs no list. It also
   reports holder-eligibility gating and gated mint as the regulated shape they are, rather than
   scoring a compliant issuer as dangerous. A daily watcher records corporate actions, and caught the
