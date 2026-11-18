@@ -173,6 +173,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               GitHub
             </a>
           </p>
+          <p className="mt-2">
+            <a className="text-sky-400 hover:underline" href="/terms">Terms</a>{" "}
+            ·{" "}
+            <a className="text-sky-400 hover:underline" href="/privacy">Privacy</a>
+          </p>
           <p className="mt-4 flex justify-center">
             <a href="https://agentcharts.xyz/sellers/402.com.tr/" target="_blank" rel="noreferrer" aria-label="402.com.tr on Agent Charts">
               {/* eslint-disable-next-line @next/next/no-img-element */}
