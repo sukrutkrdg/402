@@ -52,6 +52,7 @@ const SERVICE_TAGS: Record<string, string[]> = {
   "contract-danger": ["contract-risk", "token-safety", "mint", "pause", "blacklist", "upgradeable", "scam"],
   "pre-trade-gate": ["pre-trade", "token-safety", "honeypot", "rug-check", "trade-gate", "go-no-go"],
   "pre-trade-bundle": ["pre-trade", "bundle", "composite", "token-safety", "honeypot", "b20", "owner-privileges", "exit-liquidity", "go-no-go"],
+  "token-verdict": ["token-verdict", "verdict", "token-safety", "pre-trade", "honeypot", "rug-check", "go-no-go", "safe-caution-avoid"],
   "clanker-token-audit": ["clanker", "token-launch", "launch-verification", "provenance", "lp-lock", "farcaster", "memecoin"],
   "rug-monitor": ["rug-pull", "liquidity-drop", "monitor", "alert", "webhook", "token-safety"],
   "sign-guard": ["transaction-safety", "calldata", "approval", "sign", "wallet-security", "drainer"],
