@@ -112,6 +112,9 @@ const OUTPUT_EXAMPLES: Record<string, Record<string, unknown>> = {
   // the preview drops nested blocks, and the per-check statuses ARE the product.
   // Each status/decision pair and the size are exactly what that call returned.
   "pre-trade-bundle": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","decision":"HOLD","unverifiedCount":0,"observedRisksCount":3,"positivesCount":0,"notesCount":0,"checks":{"preTradeGate":{"status":"risk","decision":"HOLD"},"b20Gate":{"status":"not_applicable","decision":"N/A"},"ownerPowers":{"status":"risk","decision":"limited_controls"},"dumpRisk":{"status":"risk","decision":"exit_trap"},"clankerTokenAudit":{"status":"info","decision":"not_clanker"}},"recommendedMaxSizeUsd":10000},
+  // The whole pre-trade stack reduced to one verdict + reasons — the shop window
+  // is the verdict, the confidence and the reason count (reasons are the goods).
+  "token-verdict": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","verdict":"CAUTION","confidence":"medium","headline":"Tradeable, but with real risks — size down and stay exit-ready.","reasonsCount":3,"recommendedMaxSizeUsd":10000},
   "clanker-token-audit": {"address":"0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb","verdict":"clanker_verified","isClanker":true,"clankerVersion":"v0","factory":"0x250c9FB2b411B48273f69879007803790A6AeA47","symbol":"CLANKER","isContract":true,"liquidityLocked":null,"sourcesCount":6},
   "contract-danger": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","verified":true,"dangerLevel":"high","dangerCategoriesCount":2,"dangerCount":7,"dangersCount":7,"functionCount":38},
   "deep-dd": {"address":"0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed","verdict":"caution","safetyScore":52,"confidence":"high","liquidityAssessment":"Moderate liquidity at $1.05M with low exit impact (0.95%) on a $5k trade, but concentrated among 19 LP holders with 0% locked LP creates withdrawal risk.","holderAssessment":"Highly concentrated: top holder controls 22.4%, top 10 hold 61.7% of supply across 1.18M accounts. Medium concentration risk with several contract-based address…","factorsCount":5,"risksCount":5,"positivesCount":5,"model":"claude-haiku-4-5"},
@@ -424,6 +427,7 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "clanker-token-audit": { address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb" },
   // A token every check can read (GoPlus + DexScreener) — the captured example above.
   "pre-trade-bundle": { address: DEGEN, amountUsd: "1000" },
+  "token-verdict": { address: DEGEN, amountUsd: "1000" },
   "token-unlock": { address: DEGEN },
   // example.com/article is a 404. A declared URL has to be a page that is
   // actually there, and has enough text to show what the endpoint returns.

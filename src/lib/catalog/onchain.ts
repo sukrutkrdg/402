@@ -6,6 +6,7 @@ import type { ServiceDef } from "./types";
 import { addressIntel, tokenRisk } from "../onchain";
 import { preTradeGate } from "../gate";
 import { preTradeBundle } from "../pre-trade-bundle";
+import { tokenVerdict } from "../token-verdict";
 import { signGuard } from "../sign-guard";
 import { spendAudit } from "../spend-audit";
 import { agentWalletAudit } from "../agent-wallet-audit";
@@ -121,6 +122,21 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       ],
       handler: preTradeBundle,
       noFreeTier: true,
+    },
+  {
+      id: "token-verdict",
+      name: "Token Verdict",
+      tagline: "SAFE / CAUTION / AVOID for any Base token — one call",
+      description:
+        "One call, one answer: SAFE / CAUTION / AVOID for any Base token. Runs the full pre-trade safety stack (honeypot, sell-tax, owner powers, exit-liquidity, deployer, B20 seize/freeze) and distils it to a single plain-language verdict with the reasons behind it, a confidence, a max safe size and a shareable card. The depth of pre-trade-bundle, reduced to the one decision an agent needs before it buys. A gating check that could not run is UNKNOWN, not charged. Not financial advice.",
+      price: "$0.03",
+      icon: "⚖️",
+      category: "Onchain",
+      params: [
+        { name: "address", label: "Token contract address", placeholder: "0x… token", required: true },
+        { name: "amountUsd", label: "Trade size in USD (optional — sizes the max-safe check)", placeholder: "1000" },
+      ],
+      handler: tokenVerdict,
     },
   {
       id: "sign-guard",
