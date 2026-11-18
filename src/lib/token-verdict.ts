@@ -16,6 +16,7 @@
 import "server-only";
 import { getAddress } from "viem";
 import { preTradeBundle } from "./pre-trade-bundle";
+import { getSiteUrl } from "./config";
 
 type Verdict = "SAFE" | "CAUTION" | "AVOID" | "UNKNOWN";
 
@@ -52,6 +53,12 @@ export async function tokenVerdict(params: Record<string, string>) {
   const short = `${address.slice(0, 6)}…${address.slice(-4)}`;
   const card = `${short} → ${verdict} (${confidence} confidence). ${reasons[0]}`;
 
+  // A link to the shareable PNG of THIS verdict. The card route is a pure
+  // renderer (it draws these params, never recomputes), so linking it is free.
+  const cardUrl =
+    `${getSiteUrl()}/brand/verdict?v=${verdict}&addr=${address}&conf=${confidence}` +
+    `&size=${recommendedMaxSizeUsd ?? ""}&reason=${encodeURIComponent(reasons[0] ?? "")}`;
+
   return {
     address,
     verdict, // SAFE | CAUTION | AVOID | UNKNOWN
@@ -69,6 +76,8 @@ export async function tokenVerdict(params: Record<string, string>) {
     },
     /** A one-line, shareable summary. */
     card,
+    /** A 1200×630 PNG of this verdict, ready to embed or post. */
+    cardUrl,
     // Pass the composite's receipt through unchanged so the x402/credit rails
     // apply the SAME billing + refund-on-degraded semantics.
     receipt: b.receipt,
