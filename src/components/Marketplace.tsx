@@ -446,7 +446,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
   });
   const groups = groupByCategory(visible);
   const cats = CATEGORY_ORDER.filter((c) => services.some((s) => s.category === c));
-  const flagship = services.find((s) => s.id === "ai-token-report");
+  const flagship = services.find((s) => s.id === "token-verdict");
   // Retention services — set once, get pinged later (recurring value).
   const alertSuite = ["rug-monitor", "price-alert", "token-unlock"]
     .map((id) => services.find((s) => s.id === id))
@@ -631,31 +631,42 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
         )}
       </section>
 
-      {/* Flagship — AI Token Report */}
+      {/* Flagship — Token Verdict: the one call before every trade */}
       {flagship && (
         <section className="flex flex-col gap-3">
-          <div className="label">Featured</div>
+          <div className="label">⭐ The one call before every trade</div>
           <div className="card relative overflow-hidden border-base-blue/40 bg-gradient-to-br from-base-blue/15 via-black/20 to-black/10 p-5">
-            <span className="pill mb-2 w-fit border-base-blue/40 bg-base-blue/10 text-sky-200">⭐ Flagship</span>
-            <div className="flex items-start gap-3">
-              <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-base-line bg-black/40 text-2xl">
-                {flagship.icon}
-              </span>
+            <div className="grid gap-5 sm:grid-cols-[1fr_minmax(0,340px)] sm:items-center">
               <div className="min-w-0">
-                <h2 className="text-lg font-bold">{flagship.name}</h2>
+                <span className="pill mb-2 w-fit border-base-blue/40 bg-base-blue/10 text-sky-200">
+                  ⚖️ Flagship · token-verdict
+                </span>
+                <h2 className="text-lg font-bold leading-tight">
+                  One call → <span className="text-emerald-300">SAFE</span> ·{" "}
+                  <span className="text-amber-300">CAUTION</span> ·{" "}
+                  <span className="text-red-300">AVOID</span> for any Base token
+                </h2>
                 <p className="mt-1 text-sm leading-relaxed text-gray-300">{flagship.description}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="pill">verdict: avoid → favorable</span>
-                  <span className="pill">risks + positives</span>
+                  <span className="pill border-emerald-500/30 bg-emerald-500/10 text-emerald-300">SAFE</span>
+                  <span className="pill border-amber-500/30 bg-amber-500/10 text-amber-300">CAUTION</span>
+                  <span className="pill border-red-500/30 bg-red-500/10 text-red-300">AVOID</span>
+                  <span className="pill">reasons + max safe size</span>
                   <span className="font-mono font-bold text-emerald-300">{flagship.price}/call</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <a href="/agents" className="btn-primary !py-2 !text-xs">Use in your agent →</a>
-                  <a href="https://t.me/Bazaar402_bot" className="btn-ghost !py-2 !text-xs">
-                    Try free in Telegram: /ai
-                  </a>
+                  <a href="/app" className="btn-primary !py-2 !text-xs">🛡️ Check a token →</a>
+                  <a href="/agents" className="btn-ghost !py-2 !text-xs">Use in your agent →</a>
                 </div>
               </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/verdict?v=SAFE&addr=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed&conf=high&size=10000&reason=LP%20locked%2C%20no%20owner%20mint%2C%20sells%20clear"
+                alt="token-verdict sample card — SAFE, clear to trade"
+                width={340}
+                loading="lazy"
+                className="hidden w-full rounded-xl border border-base-line sm:block"
+              />
             </div>
           </div>
         </section>
