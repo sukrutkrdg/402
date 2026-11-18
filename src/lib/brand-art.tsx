@@ -346,8 +346,8 @@ function chip(label: string, value: string, accent?: string) {
         marginRight: 18,
       }}
     >
-      <div style={{ display: "flex", fontSize: 22, letterSpacing: 2, color: "#6b7484" }}>{label}</div>
-      <div style={{ display: "flex", fontSize: 34, fontWeight: 700, color: accent ?? "#e7eaf0", marginTop: 6 }}>
+      <div style={{ display: "flex", fontSize: 20, letterSpacing: 2, color: "#6b7484" }}>{label}</div>
+      <div style={{ display: "flex", fontSize: 30, fontWeight: 700, color: accent ?? "#e7eaf0", marginTop: 6 }}>
         {value}
       </div>
     </div>
@@ -381,7 +381,7 @@ export function verdictArt(opts: {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        padding: 72,
+        padding: 60,
         background: "#07080a",
         backgroundImage: `radial-gradient(1100px 620px at 84% -16%, ${t.glow}, transparent 62%)`,
         color: "#e7eaf0",
@@ -451,9 +451,9 @@ export function verdictArt(opts: {
       <div style={{ display: "flex", alignItems: "center" }}>
         {chip("CONFIDENCE", (opts.confidence || "—").toUpperCase(), t.accent)}
         {chip("MAX SAFE SIZE", size)}
-        {chip("CHECKS", "honeypot · tax · owner · liquidity")}
+        {chip("CHECKS", "honeypot · tax · owner")}
         <div style={{ display: "flex", flexGrow: 1 }} />
-        <div style={{ display: "flex", fontSize: 28, color: "#6b7484" }}>402.com.tr/app</div>
+        <div style={{ display: "flex", fontSize: 28, fontWeight: 600, color: "#6b7484" }}>402.com.tr/app</div>
       </div>
     </div>
   );
