@@ -52,6 +52,7 @@ export const TRENDING_TOKENS = [
 ] as const;
 
 const CHECKS = [
+  { id: "token-verdict", label: "⚖️ Token Verdict · SAFE / CAUTION / AVOID" },
   { id: "pre-trade-bundle", label: "🧰 Pre-Trade Bundle · 5 checks, one verdict" },
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety" },
@@ -118,6 +119,12 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     : "";
   const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
   switch (id) {
+    case "token-verdict": {
+      const sz = typeof d.recommendedMaxSizeUsd === "number"
+        ? `\nMax safe size: $${(d.recommendedMaxSizeUsd as number).toLocaleString("en-US")}`
+        : "";
+      return `VERDICT: ${s(d.verdict).toUpperCase()} · ${s(d.confidence)} confidence\n${s(d.headline)}${reasons ? "\n\n" + reasons : ""}${sz}`;
+    }
     case "pre-trade-bundle": {
       const label: Record<string, string> = { preTradeGate: "Gate", b20Gate: "B20", ownerPowers: "Owner powers", dumpRisk: "Dump risk", clankerTokenAudit: "Clanker" };
       const checks = (d.checks ?? {}) as Record<string, { status?: string; decision?: string | null }>;
@@ -197,7 +204,7 @@ function formatResult(id: string, d: Record<string, unknown>): string {
 function getVerdictStatus(text: string): { label: "DANGER" | "CAUTION" | "PASSED"; icon: string; style: string } {
   // If explicitly blocked, scam, or abort
   const isDanger =
-    /VERDICT:\s*(BLOCKED|IMPERSONATOR|HIGH_RISK|DANGEROUS)|CRITICAL:\s*Token detected as honeypot|🚫\s*CANNOT SELL|🚨\s*HIGH SCAM|Danger:\s*CRITICAL|Rug score:.*\(CRITICAL\)|Rug score:.*\(HIGH\)|decision:\s*STOP|Recommendation:\s*ABORT/i.test(
+    /VERDICT:\s*(BLOCKED|IMPERSONATOR|HIGH_RISK|DANGEROUS|AVOID)|CRITICAL:\s*Token detected as honeypot|🚫\s*CANNOT SELL|🚨\s*HIGH SCAM|Danger:\s*CRITICAL|Rug score:.*\(CRITICAL\)|Rug score:.*\(HIGH\)|decision:\s*STOP|Recommendation:\s*ABORT/i.test(
       text
     );
 
@@ -211,7 +218,7 @@ function getVerdictStatus(text: string): { label: "DANGER" | "CAUTION" | "PASSED
 
   // If caution, degraded, illiquid, or hold
   const isCaution =
-    /VERDICT:\s*(ILLIQUID|CAUTION|HOLD)|⚠️|degraded|HIGH RISK|SUSPICIOUS|POOR|MODERATE|Rug score:.*\(MEDIUM\)|Recommendation:\s*(REDUCE_SIZE|HOLD|CAUTION)/i.test(
+    /VERDICT:\s*(ILLIQUID|CAUTION|HOLD|UNKNOWN)|⚠️|degraded|HIGH RISK|SUSPICIOUS|POOR|MODERATE|Rug score:.*\(MEDIUM\)|Recommendation:\s*(REDUCE_SIZE|HOLD|CAUTION)/i.test(
       text
     );
 
