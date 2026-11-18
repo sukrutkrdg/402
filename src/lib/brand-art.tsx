@@ -322,6 +322,143 @@ export function screenAttribution() {
   );
 }
 
+// ─── token-verdict share card ──────────────────────────────────────────────
+
+export type VerdictName = "SAFE" | "CAUTION" | "AVOID" | "UNKNOWN";
+
+const VERDICT_THEME: Record<VerdictName, { accent: string; glow: string; tint: string; tag: string }> = {
+  SAFE: { accent: "#16c784", glow: "rgba(22,199,132,0.40)", tint: "rgba(22,199,132,0.12)", tag: "CLEAR TO TRADE" },
+  CAUTION: { accent: "#f5a623", glow: "rgba(245,166,35,0.36)", tint: "rgba(245,166,35,0.12)", tag: "TRADE WITH CARE" },
+  AVOID: { accent: "#ff4d4f", glow: "rgba(255,77,79,0.40)", tint: "rgba(255,77,79,0.12)", tag: "DO NOT TRADE" },
+  UNKNOWN: { accent: "#8b95a7", glow: "rgba(139,149,167,0.32)", tint: "rgba(139,149,167,0.12)", tag: "NOT VERIFIED" },
+};
+
+function chip(label: string, value: string, accent?: string) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        border: "1px solid #1f232b",
+        background: "rgba(17,19,23,0.8)",
+        borderRadius: 18,
+        padding: "16px 26px",
+        marginRight: 18,
+      }}
+    >
+      <div style={{ display: "flex", fontSize: 22, letterSpacing: 2, color: "#6b7484" }}>{label}</div>
+      <div style={{ display: "flex", fontSize: 34, fontWeight: 700, color: accent ?? "#e7eaf0", marginTop: 6 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 1200×630 shareable verdict card for token-verdict. A PURE RENDERER — it draws
+ * whatever verdict it is handed, it never computes one, so it is free to serve
+ * and safe to link. Called with no params it shows the product itself.
+ */
+export function verdictArt(opts: {
+  verdict: VerdictName;
+  address?: string;
+  confidence?: string;
+  reason?: string;
+  size?: string | null;
+}) {
+  const t = VERDICT_THEME[opts.verdict] ?? VERDICT_THEME.UNKNOWN;
+  const short =
+    opts.address && /^0x[0-9a-fA-F]{40}$/.test(opts.address)
+      ? `${opts.address.slice(0, 6)}…${opts.address.slice(-4)}`
+      : "any Base token";
+  const reason = (opts.reason || "One call distils the full pre-trade stack into one answer.").slice(0, 96);
+  const size = opts.size && Number(opts.size) > 0 ? `$${Number(opts.size).toLocaleString("en-US")}` : "—";
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        padding: 72,
+        background: "#07080a",
+        backgroundImage: `radial-gradient(1100px 620px at 84% -16%, ${t.glow}, transparent 62%)`,
+        color: "#e7eaf0",
+      }}
+    >
+      {/* header */}
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 72,
+            height: 72,
+            borderRadius: 18,
+            marginRight: 22,
+            background: "linear-gradient(135deg, #0052ff, #0036aa)",
+            fontSize: 30,
+            fontWeight: 800,
+            color: "#ffffff",
+          }}
+        >
+          402
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", fontSize: 32, fontWeight: 800 }}>x402 Bazaar</div>
+          <div style={{ display: "flex", fontSize: 22, letterSpacing: 5, color: "#7e8aa0" }}>TOKEN VERDICT</div>
+        </div>
+        <div style={{ display: "flex", flexGrow: 1 }} />
+        <div style={{ display: "flex", fontSize: 30, fontWeight: 700, color: "#6b7484" }}>{short}</div>
+      </div>
+
+      <div style={{ display: "flex", flexGrow: 1 }} />
+
+      {/* verdict hero */}
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 32,
+            padding: "26px 56px",
+            background: t.tint,
+            border: `2px solid ${t.accent}`,
+            fontSize: 132,
+            fontWeight: 800,
+            color: t.accent,
+            letterSpacing: -2,
+          }}
+        >
+          {opts.verdict}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", marginLeft: 44 }}>
+          <div style={{ display: "flex", fontSize: 40, fontWeight: 800, letterSpacing: 4, color: t.accent }}>
+            {t.tag}
+          </div>
+          <div style={{ display: "flex", fontSize: 30, color: "#aab4c5", marginTop: 12, maxWidth: 560 }}>
+            {reason}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexGrow: 1 }} />
+
+      {/* facts */}
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {chip("CONFIDENCE", (opts.confidence || "—").toUpperCase(), t.accent)}
+        {chip("MAX SAFE SIZE", size)}
+        {chip("CHECKS", "honeypot · tax · owner · liquidity")}
+        <div style={{ display: "flex", flexGrow: 1 }} />
+        <div style={{ display: "flex", fontSize: 28, color: "#6b7484" }}>402.com.tr/app</div>
+      </div>
+    </div>
+  );
+}
+
 /** 1200×630 thumbnail / social card. */
 export function thumbArt() {
   return (
