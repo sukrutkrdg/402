@@ -173,6 +173,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               GitHub
             </a>
           </p>
+          <p className="mt-4 flex justify-center">
+            <a href="https://agentcharts.xyz/sellers/402.com.tr/" target="_blank" rel="noreferrer" aria-label="402.com.tr on Agent Charts">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://agentcharts.xyz/badges/402.com.tr/compact-dark.svg"
+                height={40}
+                alt="402.com.tr on Agent Charts, ranked weekly by AI-agent spend"
+              />
+            </a>
+          </p>
         </footer>
       </body>
     </html>

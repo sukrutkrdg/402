@@ -6,6 +6,8 @@
 [![Live APIs: 229](https://img.shields.io/badge/live%20APIs-229-0052FF)](https://402.com.tr/api/catalog)
 [![Status: live](https://img.shields.io/badge/status-live%20on%20mainnet-brightgreen)](https://402.com.tr)
 
+[![402.com.tr on Agent Charts, ranked weekly by AI-agent spend](https://agentcharts.xyz/badges/402.com.tr/compact.svg)](https://agentcharts.xyz/sellers/402.com.tr/)
+
 A **live pay-per-call API marketplace** on **Base mainnet**, with NEAR-native checks and payment from **NEAR** — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
 Open source (MIT) — every settlement is verifiable on-chain, no DB and no trust required (decode the Builder Codes yourself at [`/dashboard`](https://402.com.tr/dashboard)).
 229 public services ([live catalogue](https://402.com.tr/api/catalog) is the source of truth) — token safety,
