@@ -179,6 +179,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <img
                 src="https://agentcharts.xyz/badges/402.com.tr/compact-dark.svg"
                 height={40}
+                loading="lazy"
                 alt="402.com.tr on Agent Charts, ranked weekly by AI-agent spend"
               />
             </a>
