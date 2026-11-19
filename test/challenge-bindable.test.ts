@@ -51,10 +51,11 @@ describe("one resource quotes one network", () => {
     const route = readFileSync("src/app/api/x402/[service]/route.ts", "utf8");
     // EVM chains still flow through the guarded ALL_NETWORKS list…
     expect(route).toMatch(/\.\.\.ALL_NETWORKS\.map/);
-    // …and the only non-EVM chain (Solana) is gated behind an explicit flag, so it
-    // can never arrive by accident: a binding client sees it ONLY when the operator
-    // deliberately turns Solana payments on, and Base stays the first entry.
-    expect(route, "a second network must be deliberate + gated").toMatch(/isSolanaPaymentsEnabled\(\)/);
+    // …and the only non-EVM chain (Solana) is gated behind a facilitator
+    // confirmation (facilitatorSupportsSolana), so it is advertised ONLY when the
+    // live supported-map contains it — it can never arrive by accident, and a wrong
+    // string / unsupported facilitator omits it rather than throwing Base down.
+    expect(route, "a second network must be deliberate + facilitator-confirmed").toMatch(/facilitatorSupportsSolana\(\)/);
     expect(route, "a hardcoded chain id would bypass the guard").not.toMatch(/eip155:137/);
   });
 

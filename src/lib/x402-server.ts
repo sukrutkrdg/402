@@ -87,3 +87,27 @@ function buildResourceServer(): x402ResourceServer {
   cached = server.registerExtension(builderCodeResourceServerExtension);
   return cached;
 }
+
+/**
+ * The structural Base-safety guard for Solana. Returns true ONLY if the
+ * INITIALIZED resource server's facilitator supported-map actually contains
+ * (exact, SOLANA_NETWORK) — the same map `buildPaymentRequirements` consults, so
+ * it cannot disagree with what the challenge builder will accept.
+ *
+ * The route advertises the Solana accepts entry only when this is true, so a
+ * wrong network string / unsupported facilitator / probe error means the entry
+ * is simply omitted and Base's 402 is byte-for-byte unchanged and cannot throw.
+ * This is what makes Base un-breakable even if Solana is misconfigured.
+ */
+export async function facilitatorSupportsSolana(): Promise<boolean> {
+  if (!isSolanaPaymentsEnabled()) return false;
+  try {
+    const server = (await getResourceServer()) as unknown as {
+      getSupportedKind?: (x402Version: number, network: string, scheme: string) => unknown;
+    };
+    if (typeof server.getSupportedKind !== "function") return false;
+    return Boolean(server.getSupportedKind(2, SOLANA_NETWORK, "exact"));
+  } catch {
+    return false; // never let this probe affect the Base path
+  }
+}

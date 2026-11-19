@@ -14,9 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { withX402, type RouteConfig } from "@x402/next";
 import { BUILDER_CODE, declareBuilderCodeExtension } from "@x402/extensions/builder-code";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { getResourceServer } from "@/lib/x402-server";
+import { getResourceServer, facilitatorSupportsSolana } from "@/lib/x402-server";
 import { getService } from "@/lib/services";
-import { NETWORK, ALL_NETWORKS, getConfig, getSiteUrl, isSolanaPaymentsEnabled, SOLANA_NETWORK, getSolanaPayTo } from "@/lib/config";
+import { NETWORK, ALL_NETWORKS, getConfig, getSiteUrl, SOLANA_NETWORK, getSolanaPayTo } from "@/lib/config";
 import { consumeFree } from "@/lib/free-tier";
 import { toPreview } from "@/lib/preview";
 import { clientIp, rateLimitKv } from "@/lib/rate-limit";
@@ -674,6 +674,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
   // the challenge and the credit debit cannot disagree. See effectivePriceFor.
   const effectivePrice = await effectivePriceFor(service, req);
 
+  // Advertise a Solana accepts entry ONLY when the live facilitator supported-map
+  // confirms (exact, SOLANA_NETWORK). False unless the flag is on AND CDP lists it,
+  // so a wrong string / unsupported facilitator can never throw Base's 402.
+  const solanaOk = await facilitatorSupportsSolana();
+
   const routeConfig: RouteConfig = {
     // One entry per network we accept. x402 v2 lets the payer choose, so an
     // agent funded on Polygon can buy without us moving off Base — Base stays
@@ -685,10 +690,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         network,
         payTo: cfg.payTo,
       })),
-      // Solana (SVM) — additive; present only when ENABLE_SOLANA_PAYMENTS=true AND
-      // SOLANA_PAY_TO is set. A Solana-native agent can then pay USDC on Solana
-      // (base58 payTo) instead of bridging to Base. Absent the flag, this is [].
-      ...(isSolanaPaymentsEnabled()
+      // Solana (SVM) — additive; advertised ONLY when the live facilitator
+      // supported-map confirms (exact, SOLANA_NETWORK). A Solana-native agent can
+      // then pay USDC on Solana (base58 payTo) instead of bridging to Base. If not
+      // confirmed, this is [] and the Base accepts above are byte-for-byte unchanged.
+      ...(solanaOk
         ? [{ scheme: "exact" as const, price: effectivePrice, network: SOLANA_NETWORK, payTo: getSolanaPayTo() }]
         : []),
     ],

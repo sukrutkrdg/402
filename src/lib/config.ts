@@ -44,31 +44,36 @@ export const ALL_NETWORKS: Network[] = [NETWORK, ...EXTRA_NETWORKS];
 /** USDC on Base mainnet — the asset x402 "exact" settles in by default. */
 export const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
-// ── Solana payments (Phase 2 — additive, gated, OFF by default) ──────────────
-// Accepting USDC on Solana is purely additive: the Solana `accepts[]` entry and
-// the ExactSvmScheme registration only exist when ENABLE_SOLANA_PAYMENTS=true AND
-// SOLANA_PAY_TO (a base58 Solana address) is set. Absent either, every payment
-// path — ALL_NETWORKS, the server registration, the accepts array — is byte-for-
-// byte identical to today. The CDP facilitator settles SVM with our existing creds.
-/** The x402 network id for Solana mainnet (env-overridable in case it drifts). */
-export const SOLANA_NETWORK: Network = (process.env.SOLANA_X402_NETWORK?.trim() || "solana:mainnet") as Network;
+// ── Solana payments (Phase 2 — additive, gated, Base-safe by construction) ───
+// Accepting USDC on Solana is additive. The *structural* safety is in
+// x402-server.ts `facilitatorSupportsSolana()`: the route advertises the Solana
+// accepts entry ONLY when the live, initialized facilitator supported-map
+// confirms (exact, SOLANA_NETWORK). If it isn't confirmed (wrong string, CDP
+// doesn't support it, flag off), the entry is simply omitted — so Base's 402 is
+// byte-for-byte unchanged and cannot throw. This flag just lets us kill it
+// instantly via env without a deploy.
+/** Canonical CAIP-2 for Solana mainnet. NOT "solana:mainnet" — that string is not
+ *  what CDP's /supported returns; advertising it threw "Facilitator does not
+ *  support exact on solana:mainnet" and, via the single shared accepts[] loop,
+ *  took Base down with it. Verified vs @x402/svm SOLANA_MAINNET_CAIP2 + CDP docs. */
+export const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+/** Solana devnet CAIP-2 — the test rail (@x402/svm SOLANA_DEVNET_CAIP2). */
+export const SOLANA_DEVNET = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+/** The Solana network we advertise. Env override only to switch to devnet for a
+ *  test deploy; defaults to the canonical mainnet CAIP-2. */
+export const SOLANA_NETWORK: Network = (process.env.SOLANA_X402_NETWORK?.trim() || SOLANA_MAINNET) as Network;
 /** USDC on Solana (SPL mint). */
 export const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 /** Where Solana USDC lands — a base58 Solana address, NEVER the EVM payTo. */
 export function getSolanaPayTo(): string {
   return process.env.SOLANA_PAY_TO?.trim() || "";
 }
-/** True only when we both want and can accept Solana payments.
- *
- * HARD-DISABLED 2026-11-19: our CDP facilitator (@x402/@coinbase 2.16) returns
- * "Facilitator does not support exact on solana:mainnet" — advertising a Solana
- * accepts entry made challenge-building throw a 503 on EVERY paid endpoint, Base
- * included. Until the facilitator supports SVM (newer @x402/* bumped together +
- * a re-verified Base settlement, or a different SVM facilitator), this stays
- * false regardless of env, so a stray ENABLE_SOLANA_PAYMENTS can't take Base down. */
+/** Want to accept Solana. Still env-gated AND defaults OFF — but the real
+ *  Base-safety is the facilitator supported-map guard, so even a stray
+ *  ENABLE_SOLANA_PAYMENTS can no longer 503 Base: the entry is only advertised
+ *  when the live facilitator confirms it. */
 export function isSolanaPaymentsEnabled(): boolean {
-  return false;
-  // return process.env.ENABLE_SOLANA_PAYMENTS === "true" && !!getSolanaPayTo();
+  return process.env.ENABLE_SOLANA_PAYMENTS === "true" && !!getSolanaPayTo();
 }
 
 export const BASESCAN_TX = (hash: string) => `https://basescan.org/tx/${hash}`;
