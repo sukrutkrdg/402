@@ -32,7 +32,7 @@ export default function SwapPage() {
         </div>
         <p className="text-xs leading-relaxed text-gray-300">
           A good-till-block or conditional order with no limit-order contract and nobody holding the trade. Base keeps
-          your signed transaction dormant until every condition holds — a deadline block, a flashblock position, a
+          your signed transaction dormant until every condition holds — a deadline block, an earliest block, a
           balance floor, or a caller-supplied storage predicate for a price — then includes it. We never hold funds or
           keys: you sign and submit to Base&apos;s sequencer.
         </p>

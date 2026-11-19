@@ -18,8 +18,10 @@
  * What we build natively, because it is exact and pool-agnostic:
  *   - beforeBlock / fromBlock  → a block_number window (a hard deadline: the
  *     trade lands before block N or never — the sequencer drops it otherwise).
- *   - flashblockIndex          → pin inclusion to a flashblock position.
  *   - minNativeBalanceWei      → a balance floor on the taker (native ETH).
+ *
+ * (flashblock_index predicates are intentionally NOT built: Base rejects them
+ * post-Denim — see docs.base.org build-transaction/predicates-and-safety.)
  *
  * What we DO NOT fabricate: a "price ≥ X" predicate. A storage predicate reads a
  * RAW storage slot — Base compares `(storage[address][slot] & mask)` to a value
@@ -43,7 +45,7 @@ const ALLOWED_OPS = new Set(["<", "<=", "=", "!=", ">", ">="]);
 type Op = "<" | "<=" | "=" | "!=" | ">" | ">=";
 
 interface Predicate {
-  type: "block_number" | "flashblock_index" | "balance" | "storage";
+  type: "block_number" | "balance" | "storage";
   params: Record<string, string>;
 }
 
@@ -56,7 +58,7 @@ export function sequencerEndpoint(): string {
 }
 
 /**
- * A non-negative integer (block number, flashblock index, wei) as a Base
+ * A non-negative integer (block number, wei) as a Base
  * predicate value: a 0x-prefixed, minimal hex QUANTITY. Accepts decimal or hex
  * input. Throws (so the caller is not charged) on anything that is not a
  * non-negative integer.
@@ -108,17 +110,9 @@ export function buildValidityPredicates(params: Record<string, string>): Predica
   if (params.beforeBlock) preds.push({ type: "block_number", params: { op: "<", value: toHexQuantity(params.beforeBlock, "beforeBlock") } });
   if (params.fromBlock) preds.push({ type: "block_number", params: { op: ">=", value: toHexQuantity(params.fromBlock, "fromBlock") } });
 
-  // Pin to a flashblock position. Base numbers them 1 through 10 (0x1–0xa); an
-  // index outside that range can never match.
-  if (params.flashblockIndex) {
-    const value = toHexQuantity(params.flashblockIndex, "flashblockIndex");
-    const n = BigInt(value);
-    if (n < 1n || n > 10n) throw new Error(`flashblockIndex must be 1 through 10 (Base numbers flashblocks 1–10; got ${n})`);
-    preds.push({
-      type: "flashblock_index",
-      params: { op: params.flashblockIndexOp ? asOp(params.flashblockIndexOp, "flashblockIndexOp") : "=", value },
-    });
-  }
+  // (A flashblock_index predicate used to go here. Base rejects flashblock_index
+  // post-Denim — docs.base.org build-transaction/predicates-and-safety — so it is
+  // no longer built or accepted. flashblockIndex params are silently ignored.)
 
   // Native-balance floor on an account (defaults to the taker). Note: this is
   // the NATIVE ETH balance; a token balance or a price lives in a storage slot,
@@ -146,7 +140,7 @@ export function buildValidityPredicates(params: Record<string, string>): Predica
 
   if (preds.length === 0) {
     throw new Error(
-      "A validity transaction needs at least one condition — pass beforeBlock (a deadline), fromBlock, flashblockIndex, minNativeBalanceWei, or a storage predicate (storageAddress+storageSlot+storageOp+storageValue). With none, use the plain base-swap.",
+      "A validity transaction needs at least one condition — pass beforeBlock (a deadline), fromBlock, minNativeBalanceWei, or a storage predicate (storageAddress+storageSlot+storageOp+storageValue). With none, use the plain base-swap.",
     );
   }
   return preds;
