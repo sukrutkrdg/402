@@ -53,6 +53,7 @@ export const TRENDING_TOKENS = [
 
 const CHECKS = [
   { id: "token-verdict", label: "⚖️ Token Verdict · SAFE / CAUTION / AVOID" },
+  { id: "sol-token-verdict", label: "◎ Solana Token Verdict · SAFE / CAUTION / AVOID" },
   { id: "pre-trade-bundle", label: "🧰 Pre-Trade Bundle · 5 checks, one verdict" },
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety" },
@@ -119,7 +120,8 @@ function formatResult(id: string, d: Record<string, unknown>): string {
     : "";
   const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]).map((r) => `• ${r}`).join("\n") : "";
   switch (id) {
-    case "token-verdict": {
+    case "token-verdict":
+    case "sol-token-verdict": {
       const sz = typeof d.recommendedMaxSizeUsd === "number"
         ? `\nMax safe size: $${(d.recommendedMaxSizeUsd as number).toLocaleString("en-US")}`
         : "";
@@ -335,8 +337,12 @@ export default function MiniApp() {
     sdk.actions.ready().catch(() => {});
   }, []);
 
-  const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
   const check = CHECKS.find((c) => c.id === selected) ?? CHECKS[0];
+  // Solana checks take a base58 SPL mint; Base checks take a 0x address.
+  const isSolanaCheck = check.id.startsWith("sol-");
+  const valid = isSolanaCheck
+    ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr.trim())
+    : /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
   const price = prices[check.id] ?? null;
 
   // A cast deep-linked a token → run the free rug-score automatically so the
@@ -752,7 +758,7 @@ export default function MiniApp() {
               <input
                 value={addr}
                 onChange={(e) => setAddr(e.target.value)}
-                placeholder="0x… Base token contract"
+                placeholder={isSolanaCheck ? "Solana SPL mint address (base58)" : "0x… Base token contract"}
                 className="w-full rounded-xl border border-base-line bg-black/40 pl-3.5 pr-24 py-2.5 font-mono text-xs text-white placeholder-gray-500 outline-none focus:border-base-blue transition"
               />
               <div className="absolute right-2 flex items-center gap-1">
