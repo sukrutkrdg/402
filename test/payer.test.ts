@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { payerFromHeaders } from "../src/lib/payer";
+import { payerFromHeaders, networkFromHeaders } from "../src/lib/payer";
 
 /**
  * x402 v2 renamed the payment header from `X-PAYMENT` to `PAYMENT-SIGNATURE`,
@@ -75,5 +75,34 @@ describe("reading the paying wallet", () => {
     expect(
       payerFromHeaders(headers({ "payment-signature": "garbage", "x-payment": b64(v2Payload) })),
     ).toBe(WALLET.toLowerCase());
+  });
+});
+
+/**
+ * A Solana payer signs with a base58 key the EVM payer parser cannot read, so a
+ * settlement's chain is taken from the payload's CAIP-2 `network`. Without this
+ * the dashboard + live feed would drop every Solana purchase.
+ */
+describe("reading the settlement chain", () => {
+  const svmPayload = {
+    x402Version: 2,
+    scheme: "exact",
+    network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKt",
+    payload: { transaction: "base64tx", authority: "4au4N67H9KpfqgPC5yEu15Ac6weHJVNnkRQnW7sucgHX" },
+  };
+
+  it("tags a Base settlement", () => {
+    expect(networkFromHeaders(headers({ "payment-signature": b64(v2Payload) }))).toBe("base");
+  });
+
+  it("tags a Solana settlement", () => {
+    expect(networkFromHeaders(headers({ "payment-signature": b64(svmPayload) }))).toBe("solana");
+  });
+
+  it("returns empty rather than throwing when the chain is unreadable", () => {
+    const junk: Record<string, string>[] = [{}, { "payment-signature": "not-base64!!" }, { "payment-signature": b64({ network: "aptos:1" }) }];
+    for (const h of junk) {
+      expect(networkFromHeaders(headers(h))).toBe("");
+    }
   });
 });

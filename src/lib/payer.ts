@@ -58,3 +58,41 @@ export function payerFromHeaders(headers: { get(name: string): string | null }):
   }
   return "";
 }
+
+/** Depth-first search for the first CAIP-2 `network` string the payer chose. */
+function digNetwork(o: unknown, depth = 0): "base" | "solana" | "" {
+  if (!o || typeof o !== "object" || depth > 6) return "";
+  for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+    if (/^network$/i.test(k) && typeof v === "string") {
+      if (/^solana:/i.test(v)) return "solana";
+      if (/^eip155:/i.test(v)) return "base";
+    }
+    if (v && typeof v === "object") {
+      const r = digNetwork(v, depth + 1);
+      if (r) return r;
+    }
+  }
+  return "";
+}
+
+/**
+ * Which chain settled this payment — "base" | "solana" | "" (unreadable).
+ *
+ * The x402 v2 payment payload carries the chosen accepts entry's `network` in
+ * CAIP-2 form (`eip155:8453` = Base, `solana:…` = Solana). Read structurally so
+ * a nested scheme variant still resolves. Never throws — this only tags
+ * analytics, which is not worth failing a paid request over.
+ */
+export function networkFromHeaders(headers: { get(name: string): string | null }): "base" | "solana" | "" {
+  for (const name of ["payment-signature", "x-payment"]) {
+    const h = headers.get(name);
+    if (!h) continue;
+    try {
+      const net = digNetwork(JSON.parse(Buffer.from(h, "base64").toString("utf8")));
+      if (net) return net;
+    } catch {
+      /* try the next header */
+    }
+  }
+  return "";
+}

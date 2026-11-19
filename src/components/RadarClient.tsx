@@ -175,6 +175,7 @@ function FeedLine({ e }: { e: LiveEvent }) {
     return (
       <span>
         <span className="text-emerald-400">Paid call</span> <code>{e.service}</code> · ${e.priceUsd}
+        {e.network === "solana" ? <span className="text-violet-400"> · ◎ Solana</span> : null}
       </span>
     );
   }

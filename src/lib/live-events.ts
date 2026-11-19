@@ -52,6 +52,8 @@ export interface PaidCallEvent {
   service: string;
   priceUsd: number;
   at: string;
+  /** Which chain settled it. Absent on legacy events (pre-Solana) = Base. */
+  network?: "base" | "solana";
 }
 
 export interface AlertEvent {
@@ -124,7 +126,7 @@ export function eventTimeMs(id: string): number {
 const finite = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
 
 /** Record one paid call by an outside payer. No payer, no request data — service, price, time. */
-export async function recordPaidCall(serviceId: string, mills: number, now = Date.now()): Promise<void> {
+export async function recordPaidCall(serviceId: string, mills: number, now = Date.now(), network?: "base" | "solana"): Promise<void> {
   try {
     if (!SERVICE_ID.test(serviceId) || !Number.isFinite(mills) || mills <= 0) return;
     const ev: PaidCallEvent = {
@@ -133,6 +135,7 @@ export async function recordPaidCall(serviceId: string, mills: number, now = Dat
       service: serviceId,
       priceUsd: Math.round(mills) / 1000,
       at: new Date(now).toISOString(),
+      ...(network ? { network } : {}),
     };
     await kvLPush(LIVE_KEYS.feed, JSON.stringify(ev), FEED_CAP);
   } catch {
@@ -224,7 +227,8 @@ export function sanitizeEvent(raw: unknown): LiveEvent | null {
     const service = typeof r.service === "string" && SERVICE_ID.test(r.service) ? r.service : null;
     const priceUsd = finite(r.priceUsd);
     if (!service || priceUsd === null || priceUsd <= 0) return null;
-    return { kind: "paid_call", id, service, priceUsd, at };
+    const network = r.network === "solana" || r.network === "base" ? r.network : undefined;
+    return { kind: "paid_call", id, service, priceUsd, at, ...(network ? { network } : {}) };
   }
   if (r.kind === "alert") {
     const type = r.type === "price_alert" || r.type === "rug_warning" ? r.type : null;

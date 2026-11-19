@@ -41,7 +41,7 @@ import { priceMills } from "@/lib/price";
 import { paramsFrom, effectivePriceFor, COUPON_PRICE } from "@/lib/effective-price";
 import { recordExternalRevenue, isOwnPayer } from "@/lib/keepalive-economics";
 import { withPaymentTerms } from "@/lib/challenge-terms";
-import { payerFromHeaders } from "@/lib/payer";
+import { payerFromHeaders, networkFromHeaders } from "@/lib/payer";
 import { getBuyerAddress } from "@/lib/x402-client";
 import { indexFreshKey, INDEX_FRESH_SECONDS, indexSeededKey, INDEX_SEEDED_SECONDS } from "@/lib/index-freshness";
 import { tagsFor } from "@/lib/tags";
@@ -594,8 +594,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
     // into a paid-but-undelivered call.
     try {
       const ourBuyer = getBuyerAddress()?.toLowerCase();
-      if (payer && payer.toLowerCase() !== ourBuyer && !isOwnPayer(payer)) {
-        await recordExternalRevenue(priceMills(await effectivePriceFor(service, request)), service.id, payer);
+      const mills = priceMills(await effectivePriceFor(service, request));
+      const net = networkFromHeaders(request.headers);
+      if (net === "solana") {
+        // A Solana payer signs with a base58 key the EVM `payerFromHeaders`
+        // cannot read, so `payer` is "" here and the EVM branch below would
+        // drop the sale. But a Solana settlement is external by construction —
+        // our own keepalive buyer only ever pays on Base — so book it directly.
+        // Without this, Solana purchases are invisible to the dashboard + feed.
+        await recordExternalRevenue(mills, service.id, undefined, "solana");
+      } else if (payer && payer.toLowerCase() !== ourBuyer && !isOwnPayer(payer)) {
+        await recordExternalRevenue(mills, service.id, payer, "base");
       }
     } catch {
       /* the answer is the point; the ledger is an optimisation */

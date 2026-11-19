@@ -138,7 +138,7 @@ export async function externalLeaderboard(): Promise<{
  * Called from the x402 paid path, which knows the payer address, so "not us" is
  * decided from who actually signed rather than inferred from a total.
  */
-export async function recordExternalRevenue(mills: number, serviceId?: string, payer?: string): Promise<void> {
+export async function recordExternalRevenue(mills: number, serviceId?: string, payer?: string, network?: "base" | "solana"): Promise<void> {
   if (!kvConfigured() || !Number.isFinite(mills) || mills <= 0) return;
   try {
     if (!(await kvGet(KEY.since))) await kvSet(KEY.since, new Date().toISOString());
@@ -151,8 +151,8 @@ export async function recordExternalRevenue(mills: number, serviceId?: string, p
   } catch {
     /* the settlement is the point; this is only the books */
   }
-  // The live feed's copy: service id + price + time only — the payer never goes in.
-  if (serviceId) await recordPaidCall(serviceId, mills);
+  // The live feed's copy: service id + price + time (+ chain) only — the payer never goes in.
+  if (serviceId) await recordPaidCall(serviceId, mills, Date.now(), network);
 }
 
 /**
