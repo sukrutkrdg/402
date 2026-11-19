@@ -47,7 +47,7 @@ const CHECKER = "https://buildercode-checker.vercel.app/";
 // Category display order — earlier index = rendered first.
 // "Web" sits high on purpose: it's the category that isn't crypto, and it's the
 // one a non-crypto agent operator can recognise on the first screen.
-const CATEGORY_ORDER = ["B20", "NEAR", "Web", "Files", "Compliance", "Business", "AI", "Onchain", "Accounts", "Lending", "Markets", "Data", "Utility", "Fun"];
+const CATEGORY_ORDER = ["B20", "NEAR", "Solana", "Web", "Files", "Compliance", "Business", "AI", "Onchain", "Accounts", "Lending", "Markets", "Data", "Utility", "Fun"];
 
 // The AI synthesis suite — the differentiated moat, featured up top.
 const AI_FLAGSHIP_IDS = [
@@ -774,6 +774,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
             const emojiMap: Record<string, string> = {
               B20: "🚨",
               NEAR: "Ⓝ",
+              Solana: "◎",
               Web: "🌐",
               Files: "📁",
               Compliance: "🛡️",
