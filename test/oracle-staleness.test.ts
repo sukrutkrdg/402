@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const readContract = vi.fn();
-const getBlock = vi.fn();
+const { readContract, getBlock } = vi.hoisted(() => ({ readContract: vi.fn(), getBlock: vi.fn() }));
 
 vi.mock("viem", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;

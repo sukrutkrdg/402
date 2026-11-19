@@ -44,6 +44,25 @@ export const ALL_NETWORKS: Network[] = [NETWORK, ...EXTRA_NETWORKS];
 /** USDC on Base mainnet — the asset x402 "exact" settles in by default. */
 export const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
+// ── Solana payments (Phase 2 — additive, gated, OFF by default) ──────────────
+// Accepting USDC on Solana is purely additive: the Solana `accepts[]` entry and
+// the ExactSvmScheme registration only exist when ENABLE_SOLANA_PAYMENTS=true AND
+// SOLANA_PAY_TO (a base58 Solana address) is set. Absent either, every payment
+// path — ALL_NETWORKS, the server registration, the accepts array — is byte-for-
+// byte identical to today. The CDP facilitator settles SVM with our existing creds.
+/** The x402 network id for Solana mainnet (env-overridable in case it drifts). */
+export const SOLANA_NETWORK: Network = (process.env.SOLANA_X402_NETWORK?.trim() || "solana:mainnet") as Network;
+/** USDC on Solana (SPL mint). */
+export const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/** Where Solana USDC lands — a base58 Solana address, NEVER the EVM payTo. */
+export function getSolanaPayTo(): string {
+  return process.env.SOLANA_PAY_TO?.trim() || "";
+}
+/** True only when we both want and can accept Solana payments. */
+export function isSolanaPaymentsEnabled(): boolean {
+  return process.env.ENABLE_SOLANA_PAYMENTS === "true" && !!getSolanaPayTo();
+}
+
 export const BASESCAN_TX = (hash: string) => `https://basescan.org/tx/${hash}`;
 export const BASESCAN_ADDR = (addr: string) => `https://basescan.org/address/${addr}`;
 

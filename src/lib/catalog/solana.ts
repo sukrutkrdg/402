@@ -12,7 +12,7 @@ export const SOLANA_SERVICES: ServiceDef[] = [
     name: "Solana Token Verdict",
     tagline: "One call → SAFE / CAUTION / AVOID for any Solana (SPL) token",
     description:
-      "🆕 The token-verdict hero, now for Solana. One call distils SPL safety into a single SAFE / CAUTION / AVOID verdict for any mint: mint & freeze authority (the Solana seize/freeze analog), Token-2022 extensions (permanent-delegate seize, transfer-hook honeypot, non-transferable, frozen-by-default), sellability via Jupiter (buyable-but-not-sellable = honeypot), and LP-lock + holder concentration via RugCheck. Returns the reasons, a confidence and a shareable card — the same shape as the Base token-verdict, so agents branch on it identically. A gating read that can't run is UNKNOWN, not charged. Not financial advice.",
+      "🆕 token-verdict for Solana — one call → SAFE / CAUTION / AVOID for any SPL mint: mint & freeze authority (the Solana seize/freeze analog), Token-2022 extensions (permanent-delegate seize, transfer-hook honeypot, non-transferable, frozen-by-default), Jupiter sellability (buy-but-not-sell = honeypot) and RugCheck LP-lock + concentration. Same output shape as the Base hero. An unrunnable gating read is UNKNOWN, not charged. Not advice.",
     price: "$0.03",
     icon: "◎",
     category: "Solana",

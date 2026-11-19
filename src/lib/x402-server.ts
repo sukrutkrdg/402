@@ -9,10 +9,11 @@
 import "server-only";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { builderCodeResourceServerExtension } from "@x402/extensions/builder-code";
 import { createFacilitatorConfig } from "@coinbase/x402";
-import { ALL_NETWORKS, getConfig, sellerReady } from "./config";
+import { ALL_NETWORKS, getConfig, sellerReady, isSolanaPaymentsEnabled, SOLANA_NETWORK } from "./config";
 
 let cached: x402ResourceServer | undefined;
 let initOnce: Promise<void> | undefined;
@@ -71,6 +72,9 @@ function buildResourceServer(): x402ResourceServer {
   // else — same code path, same payTo, same settlement shape.
   let server = new x402ResourceServer(facilitator);
   for (const net of ALL_NETWORKS) server = server.register(net, new ExactEvmScheme());
+  // Solana (SVM) — additive and gated. Only registers when ENABLE_SOLANA_PAYMENTS
+  // is on AND a Solana payTo is set; otherwise the server is identical to Base-only.
+  if (isSolanaPaymentsEnabled()) server = server.register(SOLANA_NETWORK, new ExactSvmScheme());
   // Register BOTH server extensions:
   //  - bazaar: auto-indexes routes that declare a discovery extension.
   //  - builder-code: formally declares the server supports ERC-8021 attribution,

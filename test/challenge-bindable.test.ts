@@ -49,7 +49,12 @@ describe("one resource quotes one network", () => {
     // The challenge builds from ALL_NETWORKS, so nothing can add a chain
     // without going through the list this test reads.
     const route = readFileSync("src/app/api/x402/[service]/route.ts", "utf8");
-    expect(route).toMatch(/accepts: ALL_NETWORKS\.map/);
+    // EVM chains still flow through the guarded ALL_NETWORKS list…
+    expect(route).toMatch(/\.\.\.ALL_NETWORKS\.map/);
+    // …and the only non-EVM chain (Solana) is gated behind an explicit flag, so it
+    // can never arrive by accident: a binding client sees it ONLY when the operator
+    // deliberately turns Solana payments on, and Base stays the first entry.
+    expect(route, "a second network must be deliberate + gated").toMatch(/isSolanaPaymentsEnabled\(\)/);
     expect(route, "a hardcoded chain id would bypass the guard").not.toMatch(/eip155:137/);
   });
 

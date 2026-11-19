@@ -791,7 +791,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Oracle Staleness Check",
       tagline: "Is this V3 pool's TWAP oracle current — or will observe() revert?",
       description:
-        "🆕 Before a trading agent reads a Uniswap-V3-style pool as a price oracle, screen it: reads slot0 (observation cardinality + cursor) and the newest stored observation, anchors 'now' to Base's BaseTime predeploy (timestampMs), and returns healthy / shallow / stale / unusable. Flags the two failure modes — a STALE last observation (TWAP covers the wrong window) and a SHALLOW buffer (observe() reverts 'OLD' on a real lookback). Sharper post-Denim: 200ms blocks let pools write ~1 obs/sec, so a fixed cardinality now holds 10× less wall-clock history. Pure onchain reads; an unreadable pool is UNKNOWN, not safe.",
+        "🆕 Screen a Uniswap-V3-style pool before trusting its TWAP oracle: reads slot0 cardinality + the newest observation, anchors now to Base BaseTime (timestampMs), and returns healthy / shallow / stale / unusable. Catches a STALE observation (wrong TWAP window) and a SHALLOW buffer (observe reverts OLD on a real lookback). Sharper post-Denim: 200ms blocks burn a fixed cardinality ~10x faster. Pure onchain reads; an unreadable pool is UNKNOWN, not safe.",
       price: "$0.03",
       icon: "⏱️",
       category: "Onchain",
