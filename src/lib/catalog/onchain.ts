@@ -44,6 +44,7 @@ import { bridgeRoute } from "../bridge-route";
 import { bridgeStatus } from "../bridge-status";
 import { baseSwapValidity } from "../base-swap-validity";
 import { validityBuild } from "../validity-tx";
+import { oracleStaleness } from "../oracle-staleness";
 import { x402SellerCheck } from "../x402-seller";
 import { agentPayGate } from "../agent-pay-gate";
 import { agentReputation } from "../agent-reputation";
@@ -784,6 +785,18 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
         { name: "storageMask", label: "Advanced: mask (hex, optional)", placeholder: "0x…" },
       ],
       handler: validityBuild,
+    },
+  {
+      id: "oracle-staleness",
+      name: "Oracle Staleness Check",
+      tagline: "Is this V3 pool's TWAP oracle current — or will observe() revert?",
+      description:
+        "🆕 Before a trading agent reads a Uniswap-V3-style pool as a price oracle, screen it: reads slot0 (observation cardinality + cursor) and the newest stored observation, anchors 'now' to Base's BaseTime predeploy (timestampMs), and returns healthy / shallow / stale / unusable. Flags the two failure modes — a STALE last observation (TWAP covers the wrong window) and a SHALLOW buffer (observe() reverts 'OLD' on a real lookback). Sharper post-Denim: 200ms blocks let pools write ~1 obs/sec, so a fixed cardinality now holds 10× less wall-clock history. Pure onchain reads; an unreadable pool is UNKNOWN, not safe.",
+      price: "$0.03",
+      icon: "⏱️",
+      category: "Onchain",
+      params: [{ name: "pool", label: "Uniswap-V3-style pool address", placeholder: "0x… V3 pool", required: true }],
+      handler: oracleStaleness,
     },
   {
       id: "x402-seller-check",

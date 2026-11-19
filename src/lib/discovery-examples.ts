@@ -331,6 +331,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // The deadline alone is a valid condition set; no signedTx so the envelope
   // comes back with a placeholder. Nothing is sent.
   "validity-build": { beforeBlock: "", storageOp: "", fromBlock: "" },
+  // A real Base Uniswap-V3 pool with a deep oracle buffer (cardinality ~6700).
+  "oracle-staleness": { pool: "0xd0b53D9277642d899DF5C87A3966A349A798F224" },
   // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.
