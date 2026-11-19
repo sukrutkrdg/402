@@ -6,6 +6,7 @@ import type { ServiceDef } from "./types";
 import { ONCHAIN_SERVICES } from "./onchain";
 import { B20_SERVICES } from "./b20";
 import { NEAR_SERVICES } from "./near";
+import { SOLANA_SERVICES } from "./solana";
 import { AI_SERVICES } from "./ai";
 import { MARKETS_SERVICES } from "./markets";
 import { BUSINESS_SERVICES } from "./business";
@@ -15,6 +16,7 @@ export * from "./types";
 export { ONCHAIN_SERVICES } from "./onchain";
 export { B20_SERVICES } from "./b20";
 export { NEAR_SERVICES } from "./near";
+export { SOLANA_SERVICES } from "./solana";
 export { AI_SERVICES } from "./ai";
 export { MARKETS_SERVICES } from "./markets";
 export { BUSINESS_SERVICES } from "./business";
@@ -24,6 +26,7 @@ export const SERVICES: ServiceDef[] = [
   ...ONCHAIN_SERVICES,
   ...B20_SERVICES,
   ...NEAR_SERVICES,
+  ...SOLANA_SERVICES,
   ...AI_SERVICES,
   ...MARKETS_SERVICES,
   ...BUSINESS_SERVICES,
