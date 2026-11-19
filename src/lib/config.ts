@@ -59,9 +59,16 @@ export function getSolanaPayTo(): string {
   return process.env.SOLANA_PAY_TO?.trim() || "";
 }
 /** True only when we both want and can accept Solana payments.
- *  (Activated in prod 2026-11-19: ENABLE_SOLANA_PAYMENTS + SOLANA_PAY_TO set.) */
+ *
+ * HARD-DISABLED 2026-11-19: our CDP facilitator (@x402/@coinbase 2.16) returns
+ * "Facilitator does not support exact on solana:mainnet" — advertising a Solana
+ * accepts entry made challenge-building throw a 503 on EVERY paid endpoint, Base
+ * included. Until the facilitator supports SVM (newer @x402/* bumped together +
+ * a re-verified Base settlement, or a different SVM facilitator), this stays
+ * false regardless of env, so a stray ENABLE_SOLANA_PAYMENTS can't take Base down. */
 export function isSolanaPaymentsEnabled(): boolean {
-  return process.env.ENABLE_SOLANA_PAYMENTS === "true" && !!getSolanaPayTo();
+  return false;
+  // return process.env.ENABLE_SOLANA_PAYMENTS === "true" && !!getSolanaPayTo();
 }
 
 export const BASESCAN_TX = (hash: string) => `https://basescan.org/tx/${hash}`;
