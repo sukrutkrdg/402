@@ -34,6 +34,8 @@ interface BaseQuoteRecord {
   amount: string;
   usd: number | null;
   feeBps: number;
+  /** Who served it (absent on records from before LCX Liberty DEX was added). */
+  provider?: "0x" | "lcx";
 }
 
 /** One quote's USD, capped: quotes are free to ask for, so one made-up $1B quote must not own the panel. */
