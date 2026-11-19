@@ -486,7 +486,7 @@ export default function Marketplace({ services }: { services: ServiceMeta[] }) {
       {/* Hero */}
       <section className="flex flex-col gap-5">
         <div className="flex flex-col gap-4">
-          <span className="pill w-fit">⚡ x402 · Base + NEAR · Builder Codes</span>
+          <span className="pill w-fit">⚡ x402 · Base + NEAR + Solana · Builder Codes</span>
 
           <h1 className="max-w-2xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
             Your agent shouldn&apos;t touch a Base token{" "}

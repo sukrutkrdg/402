@@ -501,7 +501,7 @@ export function thumbArt() {
 
       <div style={{ display: "flex", fontSize: 86, fontWeight: 800, lineHeight: 1.05 }}>x402 Bazaar</div>
       <div style={{ display: "flex", fontSize: 38, color: "#aab4c5", marginTop: 20 }}>
-        Pay-per-call APIs for agents on Base &amp; NEAR.
+        Pay-per-call APIs for agents on Base, NEAR &amp; Solana.
       </div>
 
       <div style={{ display: "flex", marginTop: 42 }}>
