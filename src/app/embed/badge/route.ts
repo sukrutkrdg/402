@@ -1,4 +1,4 @@
-import { kvGet, kvSet, kvSoftBudgetExceeded } from "@/lib/kv";
+import { kvGet, kvSet, kvIncr } from "@/lib/kv";
 import { tokenVerdict } from "@/lib/token-verdict";
 
 /**
@@ -21,6 +21,9 @@ const COLOR: Record<Verdict, string> = {
   UNKNOWN: "#8b95a7",
 };
 const CACHE_TTL = 600;
+/** Global cap on fresh verdict computations per minute, so badge <img> traffic
+ *  can't run the paid safety stack without bound. Legit embeds are cache hits. */
+const COMPUTE_CAP_PER_MIN = 20;
 
 function esc(s: string): string {
   return s.replace(
@@ -58,10 +61,15 @@ export async function GET(req: Request): Promise<Response> {
       const cached = await kvGet(key);
       if (cached) {
         verdict = (cached.split("|")[0] as Verdict) || "UNKNOWN";
-      } else if (!kvSoftBudgetExceeded()) {
-        const r = await tokenVerdict({ address: addr });
-        verdict = (r.verdict as Verdict) ?? "UNKNOWN";
-        await kvSet(key, `${verdict}|${r.confidence ?? ""}`, CACHE_TTL).catch(() => {});
+      } else {
+        const minute = Math.floor(Date.now() / 60000);
+        const n = await kvIncr(`embed:badge:rl:${minute}`, 90).catch(() => null);
+        if (n === null || n <= COMPUTE_CAP_PER_MIN) {
+          const r = await tokenVerdict({ address: addr });
+          verdict = (r.verdict as Verdict) ?? "UNKNOWN";
+          await kvSet(key, `${verdict}|${r.confidence ?? ""}`, CACHE_TTL).catch(() => {});
+        }
+        // Over the per-minute cap → serve UNKNOWN without computing.
       }
     } catch {
       verdict = "UNKNOWN";
