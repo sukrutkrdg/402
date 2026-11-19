@@ -327,10 +327,10 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   // switch off what the label rules would otherwise declare: the storage
   // operator's placeholder (">=") is a real value, and a storage condition
   // without its address throws. The tx is returned, never sent.
-  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "", storageOp: "", flashblockIndexOp: "", fromBlock: "", flashblockIndex: "" },
+  "base-swap-validity": { sell: "USDC", buy: "ETH", amount: "10", taker: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", beforeBlock: "", storageOp: "", fromBlock: "" },
   // The deadline alone is a valid condition set; no signedTx so the envelope
   // comes back with a placeholder. Nothing is sent.
-  "validity-build": { beforeBlock: "", storageOp: "", flashblockIndexOp: "", fromBlock: "", flashblockIndex: "" },
+  "validity-build": { beforeBlock: "", storageOp: "", fromBlock: "" },
   // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.

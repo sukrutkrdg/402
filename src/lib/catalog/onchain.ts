@@ -741,7 +741,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Base Swap — Conditional",
       tagline: "A swap that lands only when your conditions hold (Cobalt validity tx)",
       description:
-        "The base-swap 0x trade as a Cobalt validity transaction: Base includes your signed tx only while your conditions hold — a conditional order with no limit-order contract and nobody holding the trade. We never hold funds or keys; you sign and submit. Every request carries the deadline Base requires (at most 60 s out; set for you if omitted). Optional conditions: fromBlock, flashblockIndex (1-10), minNativeBalanceWei, or a caller-supplied storage predicate for price.",
+        "The base-swap 0x trade as a Cobalt validity transaction: Base includes your signed tx only while your conditions hold — a conditional order with no limit-order contract and nobody holding the trade. We never hold funds or keys; you sign and submit. Every request carries the deadline Base requires (at most 60 s out; set for you if omitted). Optional conditions: fromBlock, minNativeBalanceWei, or a caller-supplied storage predicate for price.",
       price: "$0.02",
       icon: "⏱️",
       category: "Onchain",
@@ -752,7 +752,6 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
         { name: "taker", label: "Your wallet (signs the swap)", placeholder: "0x…", required: true },
         { name: "beforeBlock", label: "Deadline block (optional; at most 60 s out, set for you if omitted)", placeholder: "e.g. current block + 25" },
         { name: "fromBlock", label: "Earliest block (optional)", placeholder: "0" },
-        { name: "flashblockIndex", label: "Flashblock index 1-10 (optional)", placeholder: "e.g. 1" },
         { name: "minNativeBalanceWei", label: "Min taker ETH balance in wei (optional)", placeholder: "0x…" },
         { name: "slippage", label: "Slippage in bps (optional, default 100)", placeholder: "100" },
         { name: "storageAddress", label: "Advanced: pool/token for a storage condition", placeholder: "0x…" },
@@ -768,15 +767,13 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Validity Transaction Builder",
       tagline: "Make any signed Base transaction conditional (Cobalt)",
       description:
-        "Make any signed Base transaction conditional (Cobalt validity tx): Base includes it only while your conditions hold. We validate the predicates and return the base_sendRawTransactionValidity request; we never touch funds or keys. Every request carries the deadline Base requires (at most 60 s out; set for you if omitted). Optional conditions: fromBlock, flashblockIndex (1-10), minNativeBalanceWei, or a storage predicate for price.",
+        "Make any signed Base transaction conditional (Cobalt validity tx): Base includes it only while your conditions hold. We validate the predicates and return the base_sendRawTransactionValidity request; we never touch funds or keys. Every request carries the deadline Base requires (at most 60 s out; set for you if omitted). Optional conditions: fromBlock, minNativeBalanceWei, or a storage predicate for price.",
       price: "$0.01",
       icon: "⏱️",
       category: "Onchain",
       params: [
         { name: "beforeBlock", label: "Deadline block (optional; at most 60 s out, set for you if omitted)", placeholder: "e.g. current block + 25" },
         { name: "fromBlock", label: "Earliest block (optional)", placeholder: "0" },
-        { name: "flashblockIndex", label: "Flashblock index 1-10 (optional)", placeholder: "e.g. 1" },
-        { name: "flashblockIndexOp", label: "Flashblock operator (optional, default =)", placeholder: "=" },
         { name: "minNativeBalanceWei", label: "Min ETH balance floor, wei (optional)", placeholder: "0x…" },
         { name: "balanceAddress", label: "Account for the balance floor (optional)", placeholder: "0x…" },
         { name: "signedTx", label: "Your signed serialized tx (optional)", placeholder: "0x… (omit for a placeholder)" },

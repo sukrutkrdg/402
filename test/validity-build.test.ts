@@ -89,8 +89,8 @@ describe("validity-build", () => {
     expect(r.currentBlock).toBe("1000000");
   });
 
-  it("adds the deadline alongside a flashblock condition", async () => {
+  it("ignores flashblockIndex (Base rejects it post-Denim) — only the deadline remains", async () => {
     const r = await validityBuild({ flashblockIndex: "2" });
-    expect(r.validity.map((v) => v.type)).toEqual(["block_number", "flashblock_index"]);
+    expect(r.validity.map((v) => v.type)).toEqual(["block_number"]);
   });
 });

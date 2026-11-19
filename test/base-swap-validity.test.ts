@@ -23,16 +23,12 @@ describe("validity predicate builder", () => {
     expect(p[1]).toEqual({ type: "block_number", params: { op: ">=", value: "0x11a3a0" } });
   });
 
-  it("pins a flashblock index, defaulting the operator to =", () => {
-    expect(buildValidityPredicates({ flashblockIndex: "1" })).toEqual([
-      { type: "flashblock_index", params: { op: "=", value: "0x1" } },
-    ]);
-  });
-
-  it("refuses a flashblock index outside Base's 1-10", () => {
-    expect(() => buildValidityPredicates({ flashblockIndex: "0" })).toThrow(/1 through 10/);
-    expect(() => buildValidityPredicates({ flashblockIndex: "11" })).toThrow(/1 through 10/);
-    expect(buildValidityPredicates({ flashblockIndex: "0xa" })[0].params.value).toBe("0xa");
+  it("ignores flashblockIndex — Base rejects flashblock_index predicates post-Denim", () => {
+    // flashblockIndex alone is no longer a condition, so the array is empty and refused.
+    expect(() => buildValidityPredicates({ flashblockIndex: "1" })).toThrow(/at least one condition/);
+    // …and it is never emitted alongside a real condition either.
+    const p = buildValidityPredicates({ beforeBlock: "0x11a788", flashblockIndex: "3", flashblockIndexOp: "<=" });
+    expect(p).toEqual([{ type: "block_number", params: { op: "<", value: "0x11a788" } }]);
   });
 
   it("builds a native balance floor against the taker by default", () => {
@@ -53,12 +49,6 @@ describe("validity predicate builder", () => {
         type: "storage",
         params: { address: "0x8ba1f109551bd432803012645ac136ddd64dba72", slot: "0x8", op: ">=", value: "0x2a", mask: "0xff" },
       },
-    ]);
-  });
-
-  it("honours a custom operator on the flashblock index", () => {
-    expect(buildValidityPredicates({ flashblockIndex: "3", flashblockIndexOp: "<=" })).toEqual([
-      { type: "flashblock_index", params: { op: "<=", value: "0x3" } },
     ]);
   });
 
