@@ -362,6 +362,16 @@ export default function MiniApp() {
     setOut(null);
     setBusy("free");
     try {
+      // Solana checks have no Base rug-score; run the selected sol- service free
+      // (base58 `mint`) and render its verdict through the shared formatter.
+      if (selected.startsWith("sol-")) {
+        const rs = await fetch(`/api/x402/${selected}?mint=${addr.trim()}&free=1`);
+        const js = await rs.json();
+        if (!rs.ok) throw new Error(js.error || "Check failed");
+        setOut(formatResult(selected, (js.data ?? js) as Record<string, unknown>));
+        setPreviewShown(false);
+        return;
+      }
       // free=1 is required now: a bare request answers with the payment
       // challenge so that discovery crawlers can read the declaration.
       const r = await fetch(`/api/x402/rug-score?address=${addr.trim()}&free=1`);
@@ -492,7 +502,10 @@ export default function MiniApp() {
       const pay = wrapFetchWithPayment(fetch, client);
 
       setStep(`Running ${check.label}…`);
-      const r = await withTimeout(pay(`/api/x402/${selected}?address=${addr.trim()}&token=${addr.trim()}`), 90000, "payment/settlement");
+      // Solana checks take a base58 `mint`; Base checks take a 0x `address`. The
+      // route treats `address` as an EVM address, so a Solana mint must go as `mint`.
+      const tokenParam = selected.startsWith("sol-") ? "mint" : "address";
+      const r = await withTimeout(pay(`/api/x402/${selected}?${tokenParam}=${addr.trim()}&token=${addr.trim()}`), 90000, "payment/settlement");
       setStep("Reading report…");
       const text = await r.text();
       if (!r.ok) {
@@ -669,7 +682,8 @@ export default function MiniApp() {
   // clears the used-key when it genuinely can't deliver).
   async function redeemReport(pay: { hash: string; service: string; address: string; label: string; price: string }) {
     setStep(`Running ${pay.label}…`);
-    const r = await fetch(`/api/onchain/${pay.service}?address=${pay.address}&txHash=${pay.hash}`, { method: "POST" });
+    const tokenParam = pay.service.startsWith("sol-") ? "mint" : "address";
+    const r = await fetch(`/api/onchain/${pay.service}?${tokenParam}=${pay.address}&txHash=${pay.hash}`, { method: "POST" });
     const text = await r.text();
     if (!r.ok) {
       let msg = text.slice(0, 220) || "no body";
