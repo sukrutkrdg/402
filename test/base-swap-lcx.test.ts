@@ -59,7 +59,7 @@ const QUOTE_0X = {
 };
 
 /** An LCX /v1/swap answer for 10 USDC → ETH (or `native` = 0.01 ETH → USDC), as the API shapes it. */
-function lcxAnswer(o: { data?: string; to?: string; chainId?: number; minAmountOut?: string | null; value?: string; fee?: object; native?: boolean } = {}) {
+function lcxAnswer(o: { data?: string; to?: string; spender?: string; chainId?: number; routerDeployed?: boolean; minAmountOut?: string | null; value?: string; fee?: object; native?: boolean } = {}) {
   const [tokenIn, tokenOut, amountIn, out, min] = o.native
     ? [ZERO, USDC, "10000000000000000", "18022465", "17842240"]
     : [USDC, ZERO, "10000000", "3100000000000000", "3069000000000000"];
@@ -74,7 +74,7 @@ function lcxAnswer(o: { data?: string; to?: string; chainId?: number; minAmountO
         output: { amount: out, minimumAmount: min, token: tokenOut },
         fee: { bps: 0, amount: "0", token: tokenOut, integrator: ZERO, integratorSource: "none", grossAmount: out, ...o.fee },
         gasEstimateWei: "5100000000000",
-        spender: ROUTER,
+        spender: o.spender ?? ROUTER,
         routes: [
           { amountIn: o.native ? amountIn : "7000000", hops: [{ dex: "elfomo" }, { dex: "aerodrome-cl-3" }] },
           ...(o.native ? [] : [{ amountIn: "3000000", hops: [{ dex: "uniswap-v3" }] }]),
@@ -86,7 +86,7 @@ function lcxAnswer(o: { data?: string; to?: string; chainId?: number; minAmountO
         value: o.value ?? (o.native ? amountIn : "0"),
         gas: "367938",
         chainId: o.chainId ?? 8453,
-        routerDeployed: true,
+        routerDeployed: o.routerDeployed ?? true,
         ...(o.minAmountOut === null ? {} : { minAmountOut: o.minAmountOut ?? min }),
       },
     },
@@ -190,6 +190,18 @@ describe("baseSwap with LCX Liberty DEX", () => {
     expect(JSON.parse((await kvLRange("base:swap:recent", 0, 0))[0])).toMatchObject({ sell: "ETH", buy: "USDC", feeBps: 0, provider: "lcx" });
   });
 
+  it("serves a floor below output × (1 − slippage): a maker leg lifts the headline, not the floor", async () => {
+    lcxOn();
+    const floor = 2_500_000_000_000_000n; // ~19% under the 0.0031 ETH headline, at 1% slippage
+    const a = lcxAnswer();
+    a.data.quote.output.minimumAmount = String(floor);
+    a.data.transaction.data = swapSplit({ minAmountOut: floor });
+    a.data.transaction.minAmountOut = String(floor);
+    stub({ lcx: a });
+    const r = await baseSwap({ sell: "USDC", buy: "ETH", amount: "10", taker: TAKER });
+    expect(r).toMatchObject({ router: "LCX Liberty DEX router", buy: { amount: "0.0031", minAmount: "0.0025" } });
+  });
+
   it("a wallet short of the amount is told to top up", async () => {
     lcxOn();
     stub({ balance: 5_000_000n });
@@ -224,10 +236,15 @@ describe("baseSwap with LCX Liberty DEX", () => {
     ["insufficient_liquidity", { lcx: { success: false, code: "insufficient_liquidity", maxAmountIn: "1" }, lcxStatus: 422 }, null],
     ["a 503", { lcx: { success: false, code: "store_unavailable" }, lcxStatus: 503 }, null],
     ["a network error", { lcxThrows: true }, null],
-    ["a transaction to another contract", { lcx: lcxAnswer({ to: OTHER }) }, /does not go to the router/],
-    ["a spender that differs from /v1/allowance", { allowance: { spender: OTHER } }, /does not go to the router/],
+    ["a transaction to another contract", { lcx: lcxAnswer({ to: OTHER }) }, /not the LCX router/],
+    ["a quote spender that is not the router", { lcx: lcxAnswer({ spender: OTHER }) }, /not the LCX router/],
+    ["a /v1/allowance spender that is not the router", { allowance: { spender: OTHER } }, /not the LCX router/],
+    ["a router that is not the pinned one, even if all three agree", { lcx: lcxAnswer({ to: OTHER, spender: OTHER }), allowance: { spender: OTHER } }, /not the LCX router/],
+    ["no router deployed", { lcx: lcxAnswer({ routerDeployed: false }) }, /no transaction/],
     ["another chain", { lcx: lcxAnswer({ chainId: 1 }) }, /not a Base transaction/],
     ["an unreadable output", { lcx: withQuote({ output: { amount: "3.1e15", minimumAmount: "3069000000000000", token: ZERO } }) }, /no transaction/],
+    ["a zero minimum out", { lcx: withQuote({ output: { amount: "3100000000000000", minimumAmount: "0", token: ZERO } }) }, /outside 0 < min <= output/],
+    ["a minimum out above the output", { lcx: withQuote({ output: { amount: "3100000000000000", minimumAmount: "3100000000000001", token: ZERO } }) }, /outside 0 < min <= output/],
     ["a quote for another amount", { lcx: withQuote({ input: { amount: "9999999", token: USDC } }) }, /different trade/],
     ["no minimum out", { lcx: lcxAnswer({ minAmountOut: null }) }, /no minimum out/],
     ["a minimum out below the quote's", { lcx: lcxAnswer({ minAmountOut: "3000000000000000" }) }, /no minimum out at the quoted floor/],

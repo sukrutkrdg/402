@@ -7,10 +7,11 @@
  * GET /v1/allowance names the contract to approve. The answer is mapped into
  * the 0x quote shape, so base-swap builds its response along one path.
  *
- * Nothing is handed out unchecked: the transaction must go to the spender
- * /v1/allowance named, on Base, and its calldata must decode to a sale of
- * exactly this amount of these tokens, to the taker, with a floor no lower than
- * the quote's and a live deadline. Any mismatch throws, and base-swap serves 0x.
+ * Nothing is handed out unchecked: the transaction, the quote's spender and
+ * /v1/allowance's spender must all be the LCX router pinned below, on Base, and
+ * the calldata must decode to a sale of exactly this amount of these tokens, to
+ * the taker, with a floor no lower than the quote's and a live deadline. Any
+ * mismatch throws, and base-swap serves 0x.
  *
  * Integrator fee: LCX does not take a rate per request. LCX registers a rate
  * on-chain for an integrator address (at most 100 bps). When base-swap's fee is
@@ -30,6 +31,8 @@ import type { ZeroExQuote } from "./base-swap";
 const API = "https://swap-api.lcx.com/v1";
 const EEEE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 const ZERO = "0x0000000000000000000000000000000000000000";
+/** The LCX Liberty DEX router on Base. Pinned on purpose: if LCX moves it, this needs a code update. */
+const ROUTER = "0x0000000000b1ae06c96aB73FF4360d7AeAaB56F0";
 /** Bebop's settlement contracts: the only ones a makerSwap leg may call. */
 const BEBOP = new Set(["0xbeb0009aca35087ce7ccf11637e24dd1aad3bf2a", "0xbbbbbbb520d69a9775e85b458c58c648259fad5f"]);
 
@@ -204,8 +207,12 @@ export async function lcxBaseQuote(p: {
   }
   if (!q?.input || !int(q.output?.amount) || !int(q.output.minimumAmount) || !tx?.to || !tx.data || tx.routerDeployed !== true) refuse("no transaction");
   if (q.chainId !== 8453 || tx.chainId !== 8453) refuse("not a Base transaction");
-  if (!eq(tx.to, spender) || !eq(q.spender, spender)) refuse("transaction does not go to the router /v1/allowance named");
+  if (!eq(tx.to, ROUTER) || !eq(q.spender, ROUTER) || !eq(spender, ROUTER)) refuse("transaction or spender is not the LCX router");
   if (q.input.amount !== amountIn || !eq(q.input.token, tokenIn) || !eq(q.output.token, tokenOut)) refuse("quote is for a different trade");
+  // No local slippage floor (output.amount × (1 − slippage)) on purpose: LCX sets minimumAmount from the
+  // route without its market-maker legs, so when a maker improves the headline the floor sits below that
+  // figure, and a maker that does not fill never reverts the swap. Sanity-check it, then hold the calldata to it.
+  if (BigInt(q.output.minimumAmount) === 0n || BigInt(q.output.minimumAmount) > BigInt(q.output.amount)) refuse("minimum out is outside 0 < min <= output");
   if (!int(tx.minAmountOut) || BigInt(tx.minAmountOut) < BigInt(q.output.minimumAmount)) refuse("no minimum out at the quoted floor");
   if (BigInt(tx.value ?? "0") !== (tokenIn === ZERO ? p.sellAmount : 0n)) refuse("transaction value does not match the sale");
   const fee = q.fee;
