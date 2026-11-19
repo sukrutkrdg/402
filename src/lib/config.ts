@@ -58,7 +58,8 @@ export const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export function getSolanaPayTo(): string {
   return process.env.SOLANA_PAY_TO?.trim() || "";
 }
-/** True only when we both want and can accept Solana payments. */
+/** True only when we both want and can accept Solana payments.
+ *  (Activated in prod 2026-11-19: ENABLE_SOLANA_PAYMENTS + SOLANA_PAY_TO set.) */
 export function isSolanaPaymentsEnabled(): boolean {
   return process.env.ENABLE_SOLANA_PAYMENTS === "true" && !!getSolanaPayTo();
 }
