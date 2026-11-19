@@ -174,6 +174,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
           </p>
           <p className="mt-2">
+            <a className="text-sky-400 hover:underline" href="/embed">For platforms · Embed</a>{" "}
+            ·{" "}
             <a className="text-sky-400 hover:underline" href="/terms">Terms</a>{" "}
             ·{" "}
             <a className="text-sky-400 hover:underline" href="/privacy">Privacy</a>
