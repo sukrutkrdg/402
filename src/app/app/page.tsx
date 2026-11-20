@@ -54,6 +54,9 @@ export const TRENDING_TOKENS = [
 const CHECKS = [
   { id: "token-verdict", label: "⚖️ Token Verdict · SAFE / CAUTION / AVOID" },
   { id: "sol-token-verdict", label: "◎ Solana Token Verdict · SAFE / CAUTION / AVOID" },
+  { id: "sol-pre-trade-gate", label: "◎ Solana Pre-Trade Gate · GO/HOLD/STOP" },
+  { id: "sol-holder-concentration", label: "◎ Solana Holder Concentration · insider/bundle %" },
+  { id: "sol-liquidity", label: "◎ Solana Liquidity & Volume" },
   { id: "pre-trade-bundle", label: "🧰 Pre-Trade Bundle · 5 checks, one verdict" },
   { id: "pre-trade-gate", label: "🚦 Pre-Trade Gate · GO/HOLD/STOP" },
   { id: "ai-token-report", label: "🛡️ AI Token Safety" },
@@ -126,6 +129,20 @@ function formatResult(id: string, d: Record<string, unknown>): string {
         ? `\nMax safe size: $${(d.recommendedMaxSizeUsd as number).toLocaleString("en-US")}`
         : "";
       return `VERDICT: ${s(d.verdict).toUpperCase()} · ${s(d.confidence)} confidence\n${s(d.headline)}${reasons ? "\n\n" + reasons : ""}${sz}`;
+    }
+    case "sol-pre-trade-gate": {
+      const sz = typeof d.recommendedMaxSizeUsd === "number"
+        ? `\nMax safe size: $${(d.recommendedMaxSizeUsd as number).toLocaleString("en-US")}`
+        : "";
+      return `${s(d.gate).toUpperCase()} · ${s(d.confidence)} confidence\n${s(d.headline)}${reasons ? "\n\n" + reasons : ""}${sz}`;
+    }
+    case "sol-holder-concentration": {
+      if (d.top10Pct === null || d.top10Pct === undefined) return s(d.note) || "Holder data unavailable — not charged.";
+      return `TOP-10 CONCENTRATION: ${s(d.concentration).toUpperCase()}\n${s(d.headline)}\n\nℹ️ ${s(d.note)}`;
+    }
+    case "sol-liquidity": {
+      if (d.liquidityUsd === null || d.liquidityUsd === undefined) return s(d.note) || "No DEX liquidity found — not charged.";
+      return `LIQUIDITY: ${s(d.depth).toUpperCase()}\n${s(d.headline)}${d.fdvUsd ? `\nFDV: $${Math.round(Number(d.fdvUsd)).toLocaleString("en-US")}` : ""}`;
     }
     case "pre-trade-bundle": {
       const label: Record<string, string> = { preTradeGate: "Gate", b20Gate: "B20", ownerPowers: "Owner powers", dumpRisk: "Dump risk", clankerTokenAudit: "Clanker" };
