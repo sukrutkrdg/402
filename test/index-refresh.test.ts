@@ -122,8 +122,10 @@ describe("index refresh spends inside a ceiling", () => {
     // arb-sellability ($0.02), arb-token-risk ($0.02) — token-safety on the biggest EVM L2.
     // $8.60 since 2026-11-20 with sol-pre-trade-bundle ($0.05, whole stack one call)
     // and sol-new-pairs ($0.02, the fresh-launch feed sniper bots watch).
+    // $8.66 since 2026-11-20 with sol-safe-launches ($0.06, the fresh-launch feed
+    // with a built-in clean/risky/danger screen — the ax1.vc-style poll product).
     // Raise it only for a listed service, never to absorb drift.
-    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.60);
+    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.66);
     // And the daily cap must be able to clear that inside one 21-day cycle, or
     // the refresh silently falls behind the window it exists to stay inside.
     const capCents = Number(cron.match(/MAX_SPEND_CENTS = (\d+)/)?.[1]);

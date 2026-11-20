@@ -229,6 +229,56 @@ export async function solNewPairs(params: Record<string, string>) {
   };
 }
 
+/**
+ * sol-safe-launches — the fresh-launch feed with a built-in safety screen. New
+ * Solana pools, each tagged clean / risky / danger from a fast mint-level check
+ * (authorities + Token-2022 seize extensions). The feed a sniper polls to skip
+ * the obvious rugs, then upgrades to sol-pre-trade-gate on the ones it likes.
+ */
+export async function solSafeLaunches(params: Record<string, string>) {
+  const limit = Math.min(Math.max(Number(params.limit) || 12, 1), 20);
+  const minLiq = Math.max(Number(params.minLiquidityUsd) || 0, 0);
+  const pools = await solanaNewPools(25);
+  if (!pools)
+    return { chain: "solana" as const, count: 0, pairs: null, note: "GeckoTerminal unavailable — not charged; retry shortly.", receipt: { refundable: true }, checkedAt: now() };
+
+  const picked = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq).slice(0, limit);
+  const SEIZE = new Set(["permanentDelegate", "transferHook", "nonTransferable"]);
+  const screened = await Promise.all(
+    picked.map(async (p) => {
+      let mintRenounced: boolean | null = null;
+      let freezeRenounced: boolean | null = null;
+      let seize = false;
+      try {
+        const m = await readSplMint(p.mint);
+        const ext = new Set(m.extensions.map((e) => e.type));
+        const das = m.extensions.find((e) => e.type === "defaultAccountState");
+        seize = [...SEIZE].some((k) => ext.has(k)) || (typeof das?.state === "string" && das.state.toLowerCase() === "frozen");
+        mintRenounced = !m.mintAuthority;
+        freezeRenounced = !m.freezeAuthority;
+      } catch {
+        /* unreadable mint → screen = unknown */
+      }
+      const screen =
+        seize ? "danger"
+        : mintRenounced === null ? "unknown"
+        : mintRenounced && freezeRenounced ? "clean"
+        : "risky";
+      return { ...p, screen, mintRenounced, freezeRenounced };
+    }),
+  );
+  const clean = screened.filter((p) => p.screen === "clean").length;
+  return {
+    chain: "solana" as const,
+    count: screened.length,
+    headline: `${screened.length} fresh Solana pools, ${clean} pass the quick clean screen (authorities renounced, no seize extensions).`,
+    note: "Fast mint-level screen only — run sol-pre-trade-gate on a mint for the full verdict before buying.",
+    pairs: screened,
+    receipt: { refundable: false },
+    checkedAt: now(),
+  };
+}
+
 /** sol-liquidity — pool depth, 24h volume and FDV (is there room to size in and out?). */
 export async function solLiquidity(params: Record<string, string>) {
   const mint = mintOf(params);

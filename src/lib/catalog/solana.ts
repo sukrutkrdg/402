@@ -10,6 +10,7 @@ import {
   solLiquidity,
   solPreTradeBundle,
   solNewPairs,
+  solSafeLaunches,
 } from "../sol-services";
 
 /**
@@ -130,6 +131,21 @@ export const SOLANA_SERVICES: ServiceDef[] = [
       { name: "minLiquidityUsd", label: "Min liquidity USD", placeholder: "0", required: false },
     ],
     handler: solNewPairs,
+  },
+  {
+    id: "sol-safe-launches",
+    name: "Solana Safe Launches Feed",
+    tagline: "Fresh pools + a built-in clean/risky/danger screen — poll it, skip the rugs",
+    description:
+      "The fresh-launch feed with a safety screen built in: the newest Solana pools (incl. pump.fun), each tagged clean / risky / danger from a fast mint-level check — mint & freeze authority renounced, and Token-2022 seize extensions (permanent-delegate, transfer-hook, non-transferable, frozen-by-default). Poll it to skip the obvious rugs, then run sol-pre-trade-gate on the ones you like. Optional: limit (1–20), minLiquidityUsd. No feed → not charged. Not advice.",
+    price: "$0.06",
+    icon: "◎",
+    category: "Solana",
+    params: [
+      { name: "limit", label: "Max pools (1–20)", placeholder: "12", required: false },
+      { name: "minLiquidityUsd", label: "Min liquidity USD", placeholder: "0", required: false },
+    ],
+    handler: solSafeLaunches,
   },
   {
     id: "sol-liquidity",
