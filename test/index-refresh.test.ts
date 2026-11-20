@@ -115,8 +115,11 @@ describe("index refresh spends inside a ceiling", () => {
     // $8.24 since 2026-11-18 with token-verdict ($0.03), the focused SAFE/CAUTION/AVOID hero.
     // $8.27 since 2026-11-19 with oracle-staleness ($0.03), the BaseTime oracle-freshness check.
     // $8.30 since 2026-11-19 with sol-token-verdict ($0.03), the hero on Solana (SPL).
+    // $8.45 since 2026-11-20 with the Solana safety suite: sol-pre-trade-gate ($0.04),
+    // sol-token-risk/sellability/lp-check/liquidity ($0.02 each), sol-holder-concentration
+    // ($0.03) and sol-price ($0.01) — the services Solana trading agents call every trade.
     // Raise it only for a listed service, never to absorb drift.
-    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.30);
+    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.46);
     // And the daily cap must be able to clear that inside one 21-day cycle, or
     // the refresh silently falls behind the window it exists to stay inside.
     const capCents = Number(cron.match(/MAX_SPEND_CENTS = (\d+)/)?.[1]);

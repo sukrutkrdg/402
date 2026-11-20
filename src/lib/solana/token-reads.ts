@@ -94,6 +94,64 @@ export async function jupiterSell(mint: string, decimals: number): Promise<{ sel
   }
 }
 
+export interface TopHolders {
+  /** % of supply held by the 10 largest token accounts (includes pools/CEX — a raw concentration signal). */
+  top10Pct: number | null;
+  /** The single largest account's % of supply. */
+  topPct: number | null;
+  accounts: { address: string; pct: number }[];
+}
+
+/** Top-holder concentration via getTokenLargestAccounts (keyless RPC). Secondary. */
+export async function splTopHolders(mint: string, supplyRaw: string): Promise<TopHolders | null> {
+  try {
+    const r = await solanaRpc<{ value?: { address: string; amount: string }[] }>("getTokenLargestAccounts", [mint]);
+    const supply = Number(supplyRaw);
+    if (!r?.value?.length || !Number.isFinite(supply) || supply <= 0) return null;
+    const accounts = r.value.map(a => ({ address: a.address, pct: (Number(a.amount) / supply) * 100 }));
+    return {
+      top10Pct: accounts.slice(0, 10).reduce((n, a) => n + a.pct, 0),
+      topPct: accounts[0]?.pct ?? null,
+      accounts: accounts.slice(0, 10),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface DexMarket {
+  priceUsd: number | null;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  fdvUsd: number | null;
+  pairs: number;
+  topPairUrl: string | null;
+}
+
+/** Price / liquidity / 24h volume / FDV via DexScreener (keyless). Secondary. */
+export async function dexscreenerMarket(mint: string): Promise<DexMarket | null> {
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      pairs?: Array<{ priceUsd?: string; liquidity?: { usd?: number }; volume?: { h24?: number }; fdv?: number; url?: string }>;
+    };
+    const pairs = Array.isArray(j.pairs) ? j.pairs : [];
+    if (!pairs.length) return { priceUsd: null, liquidityUsd: null, volume24hUsd: null, fdvUsd: null, pairs: 0, topPairUrl: null };
+    const top = [...pairs].sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
+    return {
+      priceUsd: top.priceUsd != null ? Number(top.priceUsd) : null,
+      liquidityUsd: top.liquidity?.usd ?? null,
+      volume24hUsd: top.volume?.h24 ?? null,
+      fdvUsd: top.fdv ?? null,
+      pairs: pairs.length,
+      topPairUrl: top.url ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Jupiter Shield security warnings (freeze/mint authority, unverified, new…). Secondary. */
 export async function jupiterShield(mint: string): Promise<string[] | null> {
   try {
