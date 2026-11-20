@@ -187,6 +187,8 @@ interface Payers {
   date: string;
   available: boolean;
   payTo?: string;
+  /** All-time external paid calls split by settlement rail (Base vs Solana). */
+  byChain?: { chain: string; calls: number; usd: number }[];
   walletCount?: number;
   txCount?: number;
   totalUsdc?: number;
@@ -552,6 +554,25 @@ export default function Stats() {
 
         {payersLoading && (
           <div className="card animate-pulse px-4 py-6 text-center text-sm text-gray-500">Reading chain…</div>
+        )}
+
+        {/* Which rail agents pay on — all-time, from the x402 settlement counters
+            (captures Solana, which never shows in the Base on-chain figures). */}
+        {payers && (payers.byChain?.length ?? 0) > 0 && (
+          <div className="card p-4">
+            <div className="label">By chain · all time</div>
+            <div className="mt-2 flex flex-wrap gap-4">
+              {payers.byChain!.map((c) => (
+                <div key={c.chain} className="flex items-baseline gap-2">
+                  <span className={c.chain === "solana" ? "text-violet-300" : "text-sky-300"}>
+                    {c.chain === "solana" ? "◎ Solana" : c.chain === "base" ? "⬡ Base" : c.chain}
+                  </span>
+                  <span className="font-mono text-lg font-bold">{c.calls}</span>
+                  <span className="text-xs text-gray-500">call{c.calls === 1 ? "" : "s"} · ${c.usd.toFixed(3)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Gate on whether the chain had ANY payment that day, not on the external

@@ -85,6 +85,10 @@ const KEY = {
   externalByService: "external:calls:svc",
   /** When per-service counting began — later than `since`. */
   externalByServiceSince: "external:calls:svc:since",
+  /** Per-chain external paid calls (hash "base"|"solana" → count) — which rail agents pay on. */
+  externalByChain: "external:calls:chain",
+  /** Per-chain external revenue in mills (hash "base"|"solana" → mills). */
+  externalChainMills: "external:mills:chain",
   /** Distinct external payers, as truncated sha256 hashes — never addresses. */
   externalPayers: "external:payers",
 } as const;
@@ -133,6 +137,20 @@ export async function externalLeaderboard(): Promise<{
 }
 
 /**
+ * External paid calls split by settlement rail (Base vs Solana), so the
+ * dashboard can show which chain agents actually pay on. Counts both chains
+ * because the x402 path records the network for each settlement.
+ */
+export async function externalByChain(): Promise<{ chain: string; calls: number; usd: number }[]> {
+  if (!kvConfigured()) return [];
+  const [calls, mills] = await Promise.all([kvHGetAll(KEY.externalByChain), kvHGetAll(KEY.externalChainMills)]);
+  return Object.entries(calls)
+    .map(([chain, c]) => ({ chain, calls: Number(c) || 0, usd: (Number(mills[chain]) || 0) / 1000 }))
+    .filter((x) => x.calls > 0)
+    .sort((a, b) => b.calls - a.calls);
+}
+
+/**
  * Record one settlement by somebody else.
  *
  * Called from the x402 paid path, which knows the payer address, so "not us" is
@@ -147,6 +165,13 @@ export async function recordExternalRevenue(mills: number, serviceId?: string, p
       if (!(await kvGet(KEY.externalByServiceSince))) await kvSet(KEY.externalByServiceSince, new Date().toISOString());
       await kvHIncrBy(KEY.externalByService, serviceId, 1);
     }
+    // Which rail the payment settled on. A Solana payer can't be read (base58,
+    // not EVM), so network comes from the payment payload; default "base".
+    const chain = network ?? "base";
+    await Promise.all([
+      kvHIncrBy(KEY.externalByChain, chain, 1),
+      kvHIncrBy(KEY.externalChainMills, chain, Math.round(mills)),
+    ]);
     if (payer) await kvSAdd(KEY.externalPayers, payerHash(payer));
   } catch {
     /* the settlement is the point; this is only the books */

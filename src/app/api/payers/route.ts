@@ -18,6 +18,7 @@ import { kvGet } from "@/lib/kv";
 import { srcHash, getPayerServices } from "@/lib/usage";
 import { SERVICES } from "@/lib/services";
 import { getBuyerAddress } from "@/lib/x402-client";
+import { externalByChain } from "@/lib/keepalive-economics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -173,10 +174,16 @@ export async function GET(req: NextRequest) {
   const sum = (list: typeof wallets, pick: (w: (typeof wallets)[number]) => number) =>
     +list.reduce((n, w) => n + pick(w), 0).toFixed(2);
 
+  // Which rail external agents pay on (Base vs Solana), from the x402 counters.
+  // Unlike the on-chain wallet figures above (Base USDC receipts only), this
+  // captures Solana settlements too, which never show in the Base CDP index.
+  const byChain = await externalByChain();
+
   return NextResponse.json({
     date,
     available: true,
     payTo: cfg.payTo,
+    byChain,
     // Headline figures are EXTERNAL only — what someone else chose to pay for.
     walletCount: external.length,
     txCount: external.reduce((n, w) => n + w.txCount, 0),
