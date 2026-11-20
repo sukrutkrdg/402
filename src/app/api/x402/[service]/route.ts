@@ -602,6 +602,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ service: st
         // drop the sale. But a Solana settlement is external by construction —
         // our own keepalive buyer only ever pays on Base — so book it directly.
         // Without this, Solana purchases are invisible to the dashboard + feed.
+        // (The chain tag also drives the "◎ Solana" badge on the live feed.)
         await recordExternalRevenue(mills, service.id, undefined, "solana");
       } else if (payer && payer.toLowerCase() !== ourBuyer && !isOwnPayer(payer)) {
         await recordExternalRevenue(mills, service.id, payer, "base");
