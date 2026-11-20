@@ -121,7 +121,11 @@ export async function solLpCheck(params: Record<string, string>) {
   });
 }
 
-/** sol-holder-concentration — top-10 holder % (incl. pools), an insider/bundle signal. */
+/**
+ * sol-holder-concentration — top-10 holder % (incl. pools), an insider/bundle signal.
+ * Needs a full RPC (SOLANA_RPC_URL): the public endpoint rate-limits
+ * getTokenLargestAccounts, so without it this degrades to refundable-unverified.
+ */
 export async function solHolderConcentration(params: Record<string, string>) {
   const mint = mintOf(params);
   let m: SplMint;
