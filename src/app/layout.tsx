@@ -30,22 +30,22 @@ const frameEmbed = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "x402 Bazaar — Pay-per-call API marketplace on Base, NEAR & Solana",
+  title: "x402 Bazaar — Pay-per-call API marketplace on Base, Arbitrum, NEAR & Solana",
   description:
-    "A pay-per-call API marketplace for agents on Base, NEAR and Solana, powered by x402 and Base Builder Codes. Check SPL tokens on Solana and ERC-20s on Base; every payment settles in USDC, attributed onchain via ERC-8021.",
+    "A pay-per-call API marketplace for agents on Base, Arbitrum, NEAR and Solana, powered by x402 and Base Builder Codes. Check SPL tokens on Solana and ERC-20s on Base; every payment settles in USDC, attributed onchain via ERC-8021.",
   applicationName: "x402 Bazaar",
   alternates: { canonical: SITE_URL },
   openGraph: {
     type: "website",
     siteName: "x402 Bazaar",
     url: SITE_URL,
-    title: "x402 Bazaar — Pay-per-call API marketplace on Base, NEAR & Solana",
+    title: "x402 Bazaar — Pay-per-call API marketplace on Base, Arbitrum, NEAR & Solana",
     description:
-      "Pay-per-call APIs for AI agents on Base, NEAR and Solana. Pay a tiny USDC micro-payment per call over x402 — no keys, no signup.",
+      "Pay-per-call APIs for AI agents on Base, Arbitrum, NEAR and Solana. Pay a tiny USDC micro-payment per call over x402 — no keys, no signup.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "x402 Bazaar — Pay-per-call APIs on Base, NEAR & Solana",
+    title: "x402 Bazaar — Pay-per-call APIs on Base, Arbitrum, NEAR & Solana",
     description: "Pay-per-call APIs for AI agents. USDC over x402, no keys. MCP-ready.",
   },
   other: {
@@ -101,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   "@type": "WebAPI",
                   "@id": `${SITE_URL}/#webapi`,
                   "name": "x402 Bazaar API Suite",
-                  "description": "Pay-per-call microservices for AI agents on Base, NEAR and Solana, paid with x402 (USDC), with ERC-8021 builder attribution.",
+                  "description": "Pay-per-call microservices for AI agents on Base, Arbitrum, NEAR and Solana, paid with x402 (USDC), with ERC-8021 builder attribution.",
                   "documentation": `${SITE_URL}/agents`,
                   "provider": {
                     "@type": "Organization",
@@ -137,7 +137,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="whitespace-nowrap leading-tight">
                 <div className="text-sm font-bold tracking-tight">x402 Bazaar</div>
                 <div className="text-[10px] uppercase tracking-widest text-gray-500">
-                  Base · NEAR · Solana
+                  Base · Arbitrum · NEAR · Solana
                 </div>
               </div>
             </Link>

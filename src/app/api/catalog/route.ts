@@ -26,7 +26,7 @@ export function GET() {
     {
     name: "x402 Bazaar",
     description:
-      "Pay-per-call API marketplace for agents on Base, NEAR and Solana — ERC-20 and SPL token safety, wallet intel, swaps and AI reports. Call any endpoint over HTTP; pay a USDC micro-payment via x402 on Base or Solana, or with a credit token bought from NEAR (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
+      "Pay-per-call API marketplace for agents on Base, Arbitrum, NEAR and Solana — ERC-20 and SPL token safety, wallet intel, swaps and AI reports. Call any endpoint over HTTP; pay a USDC micro-payment via x402 on Base or Solana, or with a credit token bought from NEAR (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
     x402Version: 2,
     protocol: "x402",
     network: "eip155:8453",

@@ -218,7 +218,7 @@ export function GET() {
         title: "x402 Bazaar",
         version: "1.0.0",
         description:
-          "Pay-per-call APIs for agents on Base, NEAR and Solana via the x402 protocol (settled in USDC on Base; credits can be bought from NEAR). Each endpoint returns HTTP 402 with payment requirements; an x402 client pays a USDC micro-payment and retries.",
+          "Pay-per-call APIs for agents on Base, Arbitrum, NEAR and Solana via the x402 protocol (settled in USDC on Base; credits can be bought from NEAR). Each endpoint returns HTTP 402 with payment requirements; an x402 client pays a USDC micro-payment and retries.",
       },
       servers: [{ url: site }],
       paths,
