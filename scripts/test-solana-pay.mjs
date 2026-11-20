@@ -35,7 +35,10 @@ const bytes = secret.trim().startsWith("[")
 const signer = await createKeyPairSignerFromBytes(bytes);
 console.log("payer:", signer.address);
 
-const client = new x402Client();
+// The default selector takes accepts[0], which is Base here — but this client
+// only knows Solana. Force the Solana entry so our SVM scheme builds the payload.
+const selectSolana = (_v, accepts) => accepts.find((a) => String(a.network).startsWith("solana")) ?? accepts[0];
+const client = new x402Client(selectSolana);
 registerExactSvmScheme(client, { signer });
 const payFetch = wrapFetchWithPayment(fetch, client);
 
