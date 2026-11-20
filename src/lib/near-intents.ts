@@ -41,6 +41,7 @@ import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { kvConfigured, kvGet, kvSetChecked, kvSetNx, kvDel, kvIncrBy, kvGetNumber, kvLPush, kvLRange, kvSAdd, kvSRem, kvSMembers } from "./kv";
 import { CREDIT_TIERS, mintCredits } from "./credits";
+import { recordChainSettlement } from "./keepalive-economics";
 import { USDC_BASE, getConfig } from "./config";
 
 export const ONECLICK_BASE = "https://1click.chaindefuser.com";
@@ -460,6 +461,9 @@ export async function checkNearOrder(orderId: string, secret: string) {
     kvIncrBy(NEAR_LEDGER.paidCents, receivedCents),
     ...(stored ? [kvSRem(NEAR_LEDGER.open, orderId)] : []),
   ]).catch(() => {});
+  // Also onto the per-chain split so NEAR shows beside Base/Solana on the
+  // dashboard. Chain counter only — NEAR_LEDGER above is the revenue book.
+  await recordChainSettlement("near", receivedCents * 10).catch(() => {});
   // Each sale, for the owner's /stats panel — the demand signal the NEAR plan
   // waits on. Inside the mint lock, so one row per order. Best-effort: the
   // counters above are the books; this is the list you read them by.

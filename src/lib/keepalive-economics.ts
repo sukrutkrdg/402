@@ -137,9 +137,27 @@ export async function externalLeaderboard(): Promise<{
 }
 
 /**
- * External paid calls split by settlement rail (Base vs Solana), so the
- * dashboard can show which chain agents actually pay on. Counts both chains
- * because the x402 path records the network for each settlement.
+ * Tally one external settlement onto the per-chain counters (base | solana | near).
+ * The x402 path calls this with the payload network; the NEAR Intents credit mint
+ * calls it with "near" so that rail shows alongside Base/Solana on the dashboard.
+ * Only the chain counters move here — never the revenue/call totals — so a caller
+ * that books revenue elsewhere (NEAR_LEDGER) is not double-counted.
+ */
+export async function recordChainSettlement(chain: string, mills: number): Promise<void> {
+  if (!kvConfigured() || !Number.isFinite(mills) || mills <= 0) return;
+  try {
+    await Promise.all([
+      kvHIncrBy(KEY.externalByChain, chain, 1),
+      kvHIncrBy(KEY.externalChainMills, chain, Math.round(mills)),
+    ]);
+  } catch {
+    /* books are the counters elsewhere; this is only the chain split */
+  }
+}
+
+/**
+ * External paid calls split by settlement rail (Base / Solana / NEAR), so the
+ * dashboard can show which chain agents actually pay on.
  */
 export async function externalByChain(): Promise<{ chain: string; calls: number; usd: number }[]> {
   if (!kvConfigured()) return [];
@@ -167,11 +185,7 @@ export async function recordExternalRevenue(mills: number, serviceId?: string, p
     }
     // Which rail the payment settled on. A Solana payer can't be read (base58,
     // not EVM), so network comes from the payment payload; default "base".
-    const chain = network ?? "base";
-    await Promise.all([
-      kvHIncrBy(KEY.externalByChain, chain, 1),
-      kvHIncrBy(KEY.externalChainMills, chain, Math.round(mills)),
-    ]);
+    await recordChainSettlement(network ?? "base", mills);
     if (payer) await kvSAdd(KEY.externalPayers, payerHash(payer));
   } catch {
     /* the settlement is the point; this is only the books */

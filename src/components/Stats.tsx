@@ -564,8 +564,8 @@ export default function Stats() {
             <div className="mt-2 flex flex-wrap gap-4">
               {payers.byChain!.map((c) => (
                 <div key={c.chain} className="flex items-baseline gap-2">
-                  <span className={c.chain === "solana" ? "text-violet-300" : "text-sky-300"}>
-                    {c.chain === "solana" ? "◎ Solana" : c.chain === "base" ? "⬡ Base" : c.chain}
+                  <span className={c.chain === "solana" ? "text-violet-300" : c.chain === "near" ? "text-emerald-300" : "text-sky-300"}>
+                    {c.chain === "solana" ? "◎ Solana" : c.chain === "base" ? "⬡ Base" : c.chain === "near" ? "Ⓝ NEAR" : c.chain}
                   </span>
                   <span className="font-mono text-lg font-bold">{c.calls}</span>
                   <span className="text-xs text-gray-500">call{c.calls === 1 ? "" : "s"} · ${c.usd.toFixed(3)}</span>
