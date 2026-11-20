@@ -8,6 +8,8 @@ import {
   solHolderConcentration,
   solPrice,
   solLiquidity,
+  solPreTradeBundle,
+  solNewPairs,
 } from "../sol-services";
 
 /**
@@ -101,6 +103,33 @@ export const SOLANA_SERVICES: ServiceDef[] = [
     category: "Solana",
     params: MINT_PARAM,
     handler: solPrice,
+  },
+  {
+    id: "sol-pre-trade-bundle",
+    name: "Solana Pre-Trade Bundle",
+    tagline: "The whole Solana stack in one call — gate + safety + holders + market",
+    description:
+      "One call returns everything a Solana agent needs before a buy: a GO / HOLD / STOP gate, the full safety verdict (authorities, Token-2022 seize extensions, sellability, LP-lock), top-10 holder concentration, and market depth (price, liquidity, 24h volume). Fewer round-trips than calling each check. An unreadable gating read is UNKNOWN, not charged. Not advice.",
+    price: "$0.05",
+    icon: "◎",
+    category: "Solana",
+    params: MINT_PARAM,
+    handler: solPreTradeBundle,
+  },
+  {
+    id: "sol-new-pairs",
+    name: "Solana New Pairs",
+    tagline: "Freshly-created Solana pools (incl. pump.fun) — snipe, then verify",
+    description:
+      "The newest Solana DEX pools (via GeckoTerminal), each with its mint, age, liquidity, 24h volume and a pump.fun flag — the fresh-launch feed sniper bots watch. Optional: limit (1–30) and minLiquidityUsd to filter dust. New ≠ safe: pair it with sol-token-verdict before buying. No feed → not charged. Not advice.",
+    price: "$0.02",
+    icon: "◎",
+    category: "Solana",
+    params: [
+      { name: "limit", label: "Max pools (1–30)", placeholder: "15", required: false },
+      { name: "minLiquidityUsd", label: "Min liquidity USD", placeholder: "0", required: false },
+    ],
+    handler: solNewPairs,
   },
   {
     id: "sol-liquidity",

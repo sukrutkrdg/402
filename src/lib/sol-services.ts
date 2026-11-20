@@ -13,6 +13,7 @@ import {
   jupiterSell,
   splTopHolders,
   dexscreenerMarket,
+  solanaNewPools,
   type SplMint,
 } from "./solana/token-reads";
 import { solTokenVerdict } from "./sol-token-verdict";
@@ -162,6 +163,70 @@ export async function solPrice(params: Record<string, string>) {
     headline: `$${d.priceUsd} per token (deepest of ${d.pairs} pair${d.pairs === 1 ? "" : "s"}).`,
     detail: { topPairUrl: d.topPairUrl },
   });
+}
+
+/**
+ * sol-pre-trade-bundle — the whole Solana stack in one call: a GO/HOLD/STOP gate
+ * plus safety, holder concentration and market depth. Reuses sol-token-verdict
+ * (never forks the safety logic) and adds holders + market.
+ */
+export async function solPreTradeBundle(params: Record<string, string>) {
+  const mint = mintOf(params);
+  const [v, holders, market] = await Promise.all([
+    solTokenVerdict(params),
+    (async () => {
+      try {
+        const m = await readSplMint(mint);
+        return await splTopHolders(mint, m.supply);
+      } catch {
+        return null;
+      }
+    })(),
+    dexscreenerMarket(mint),
+  ]);
+  const gate =
+    v.verdict === "SAFE" ? "GO" : v.verdict === "CAUTION" ? "HOLD" : v.verdict === "AVOID" ? "STOP" : "UNKNOWN";
+  return {
+    mint,
+    chain: "solana" as const,
+    gate,
+    verdict: v.verdict,
+    confidence: v.confidence,
+    headline:
+      gate === "GO" ? "GO — no terminal flags."
+      : gate === "HOLD" ? "HOLD — real risks; size down."
+      : gate === "STOP" ? "STOP — a terminal flag is set."
+      : "UNKNOWN — could not verify; re-check.",
+    reasons: v.reasons,
+    recommendedMaxSizeUsd: v.recommendedMaxSizeUsd,
+    checks: {
+      safety: v.detail,
+      holders: holders ? { top10Pct: holders.top10Pct, topHolderPct: holders.topPct } : null,
+      market: market ? { priceUsd: market.priceUsd, liquidityUsd: market.liquidityUsd, volume24hUsd: market.volume24hUsd, fdvUsd: market.fdvUsd } : null,
+    },
+    receipt: v.receipt,
+    checkedAt: now(),
+  };
+}
+
+/** sol-new-pairs — freshly-created Solana pools (incl. pump.fun), for sniping safely. */
+export async function solNewPairs(params: Record<string, string>) {
+  const limit = Math.min(Math.max(Number(params.limit) || 15, 1), 30);
+  const minLiq = Math.max(Number(params.minLiquidityUsd) || 0, 0);
+  const pools = await solanaNewPools(30);
+  if (!pools)
+    return { chain: "solana" as const, count: 0, pairs: null, note: "GeckoTerminal unavailable — not charged; retry shortly.", receipt: { refundable: true }, checkedAt: now() };
+  const pairs = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq).slice(0, limit);
+  const pump = pairs.filter((p) => p.isPumpFun).length;
+  return {
+    chain: "solana" as const,
+    count: pairs.length,
+    headline: `${pairs.length} fresh Solana pool${pairs.length === 1 ? "" : "s"}${pump ? ` (${pump} pump.fun)` : ""}, newest ${pairs[0]?.ageMinutes ?? "?"}m old.`,
+    note: "New ≠ safe — run sol-token-verdict or sol-pre-trade-gate on a mint before buying.",
+    pairs,
+    receipt: { refundable: false },
+    checkedAt: now(),
+  };
 }
 
 /** sol-liquidity — pool depth, 24h volume and FDV (is there room to size in and out?). */

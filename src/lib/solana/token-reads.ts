@@ -152,6 +152,57 @@ export async function dexscreenerMarket(mint: string): Promise<DexMarket | null>
   }
 }
 
+export interface NewPool {
+  mint: string;
+  name: string;
+  createdAt: string;
+  ageMinutes: number;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  priceUsd: number | null;
+  /** pump.fun launch (mint ends in "pump"). */
+  isPumpFun: boolean;
+}
+
+/** Freshly-created Solana DEX pools (GeckoTerminal, keyless). Secondary. */
+export async function solanaNewPools(limit = 15): Promise<NewPool[] | null> {
+  try {
+    const res = await fetch("https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      data?: Array<{ attributes?: Record<string, unknown>; relationships?: { base_token?: { data?: { id?: string } } } }>;
+    };
+    const now = Date.now();
+    const num = (v: unknown): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    return (j.data ?? [])
+      .map((p) => {
+        const a = p.attributes ?? {};
+        const mint = String(p.relationships?.base_token?.data?.id ?? "").replace(/^solana_/, "");
+        const createdAt = String(a.pool_created_at ?? "");
+        return {
+          mint,
+          name: String(a.name ?? ""),
+          createdAt,
+          ageMinutes: createdAt ? Math.round((now - Date.parse(createdAt)) / 60000) : -1,
+          liquidityUsd: num(a.reserve_in_usd),
+          volume24hUsd: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
+          priceUsd: num(a.base_token_price_usd),
+          isPumpFun: /pump$/i.test(mint),
+        };
+      })
+      .filter((p) => p.mint)
+      .slice(0, limit);
+  } catch {
+    return null;
+  }
+}
+
 /** Jupiter Shield security warnings (freeze/mint authority, unverified, new…). Secondary. */
 export async function jupiterShield(mint: string): Promise<string[] | null> {
   try {
