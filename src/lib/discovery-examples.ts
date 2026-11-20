@@ -342,6 +342,10 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "sol-holder-concentration": { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
   "sol-price": { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
   "sol-liquidity": { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
+  // ARB — a liquid, renounced, verified Arbitrum token (a real verdict).
+  "arb-token-verdict": { address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },
+  "arb-sellability": { address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },
+  "arb-token-risk": { address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },
   // Our own x402 endpoint + payTo: a real, well-formed seller to screen.
   "x402-seller-check": { url: "https://402.com.tr/api/x402/token-risk", payTo: WALLET },
   // An established wallet to screen before a (hypothetical) payment.
