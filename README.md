@@ -3,7 +3,7 @@
 [![Open Source: MIT](https://img.shields.io/badge/open%20source-MIT-0052FF)](LICENSE)
 [![Built on Base](https://img.shields.io/badge/built%20on-Base-0052FF)](https://base.org)
 [![x402](https://img.shields.io/badge/x402-pay--per--call-0052FF)](https://docs.cdp.coinbase.com/x402)
-[![Live APIs: 244](https://img.shields.io/badge/live%20APIs-244-0052FF)](https://402.com.tr/api/catalog)
+[![Live APIs: 245](https://img.shields.io/badge/live%20APIs-245-0052FF)](https://402.com.tr/api/catalog)
 [![Status: live](https://img.shields.io/badge/status-live%20on%20mainnet-brightgreen)](https://402.com.tr)
 
 [![402.com.tr on Agent Charts, ranked weekly by AI-agent spend](https://agentcharts.xyz/badges/402.com.tr/compact.svg)](https://agentcharts.xyz/sellers/402.com.tr/)
