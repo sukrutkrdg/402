@@ -7,7 +7,7 @@
  */
 
 import { SERVICES } from "@/lib/services";
-import { getConfig, getSiteUrl } from "@/lib/config";
+import { getConfig, getSiteUrl, isSolanaPaymentsEnabled, SOLANA_NETWORK, SOLANA_USDC, getSolanaPayTo } from "@/lib/config";
 import { POLICY_VERSION } from "@/lib/envelope";
 import { exampleInputFor } from "@/lib/discovery-examples";
 import { nearFunding } from "@/lib/near-funding";
@@ -26,11 +26,22 @@ export function GET() {
     {
     name: "x402 Bazaar",
     description:
-      "Pay-per-call API marketplace for agents on Base, NEAR and Solana — ERC-20 and SPL token safety, wallet intel, swaps and AI reports. Call any endpoint over HTTP; pay a USDC micro-payment via x402 on Base, or with a credit token bought from NEAR (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
+      "Pay-per-call API marketplace for agents on Base, NEAR and Solana — ERC-20 and SPL token safety, wallet intel, swaps and AI reports. Call any endpoint over HTTP; pay a USDC micro-payment via x402 on Base or Solana, or with a credit token bought from NEAR (no keys, no accounts). Every payment is attributed onchain with Builder Codes.",
     x402Version: 2,
     protocol: "x402",
     network: "eip155:8453",
     asset: "USDC",
+    // Every payment rail an agent can use, so Base, Solana AND NEAR agents all
+    // see a path. Base + Solana settle directly via x402 (the challenge's
+    // accepts[] carries both); NEAR agents fund a prepaid credit token from NEAR
+    // and call with x-credit-token — no Base/Solana wallet needed.
+    networks: [
+      { chain: "Base", network: "eip155:8453", asset: "USDC", settlement: "x402-exact" },
+      ...(isSolanaPaymentsEnabled()
+        ? [{ chain: "Solana", network: SOLANA_NETWORK, asset: SOLANA_USDC, payTo: getSolanaPayTo(), settlement: "x402-exact" }]
+        : []),
+      { chain: "NEAR", settlement: "credits", note: "Fund a prepaid credit token from NEAR (see payment.near), then send x-credit-token on any endpoint — no Base/Solana wallet needed." },
+    ],
     builderCode: cfg.appBuilderCode,
     baseUrl: SITE_URL,
     docs: `${SITE_URL}/agents`,
