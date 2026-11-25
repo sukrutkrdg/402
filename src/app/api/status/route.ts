@@ -17,10 +17,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   // Coalesced per instance (5 min) with a last-good fallback — see src/lib/snapshot.ts.
-  const { value, stale } = await snapshot("api:status", 300_000, async () =>
-    Promise.all([readHealth(7), readFailures(), goPlusAuthState()]),
-  );
-  const [h, failures, goplus] = value;
+  // On a cold instance during a KV outage there is no last-good snapshot, so the
+  // read rethrows; answer with a 200 "degraded" rather than a 500 error page so
+  // agents (and the owner dashboard) still get something readable.
+  try {
+    const { value, stale } = await snapshot("api:status", 300_000, async () =>
+      Promise.all([readHealth(7), readFailures(), goPlusAuthState()]),
+    );
+    const [h, failures, goplus] = value;
   const visible = new Set(SERVICES.filter((s) => !s.hidden).map((s) => s.id));
   const services = h.services
     .filter((s) => visible.has(s.service))
@@ -42,5 +46,11 @@ export async function GET() {
       notCalledThisWeek: [...visible].filter((id) => !services.some((s) => s.service === id)).sort(),
     },
     { headers: { "cache-control": "public, max-age=60, s-maxage=300" } },
-  );
+    );
+  } catch {
+    return NextResponse.json(
+      { degraded: true, error: "health data temporarily unavailable", window: null, overall: { calls: 0, successPct: null }, services: [] },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
 }
