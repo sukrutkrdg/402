@@ -21,8 +21,21 @@ import { filePublish } from "../file-publish";
 import { fileSlot, s3Config } from "../file-store";
 import { hashUtil, ping, unitConvert } from "../compute-utils";
 import { buyCredits } from "../credits";
+import { logAnalyze } from "../log-analyze";
 
 export const UTILITY_SERVICES: ServiceDef[] = [
+  {
+    id: "log-analyze",
+    name: "Log Analyze",
+    tagline: "Paste a log line → severity + root cause + next steps",
+    description:
+      "An agent pastes a raw log line or short snippet and gets back a concise SRE read: severity (info/warning/error/critical), the single most likely root cause, and 1-3 concrete next steps. Powered by a self-hosted model, so it's fast and cheap. Pass log=. If the backend is unreachable you are not charged. Not advice.",
+    price: "$0.002",
+    icon: "📋",
+    category: "Utility",
+    params: [{ name: "log", label: "Log line or snippet", placeholder: "ERROR: Redis connection timeout on 10.0.0.5:6379", required: true, multiline: true }],
+    handler: logAnalyze,
+  },
   {
       id: "morpho-health",
       name: "Morpho Position Health",
