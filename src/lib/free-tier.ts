@@ -20,6 +20,25 @@ function dayKey(key: string): string {
 }
 
 /**
+ * In-memory fallback used ONLY when KV can't count (outage / free-quota
+ * exhausted). Lets a real agent still get its free try during a KV blip —
+ * conversion beats denying everyone — while capping per instance per UTC day so
+ * an outage can never open an unlimited free tier.
+ */
+const memCounts = new Map<string, number>();
+let memDay = "";
+function memConsume(key: string, limit: number): { allowed: boolean; remaining: number } {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== memDay) {
+    memCounts.clear();
+    memDay = today;
+  }
+  const n = (memCounts.get(key) ?? 0) + 1;
+  memCounts.set(key, n);
+  return { allowed: n <= limit, remaining: Math.max(0, limit - n) };
+}
+
+/**
  * Atomically consume one free call for this key (per day).
  *
  * `degraded` distinguishes the two reasons for a refusal, and the caller has to
@@ -35,10 +54,16 @@ export async function consumeFree(
   const limit = freeLimit();
   if (limit <= 0) return { allowed: false, remaining: 0, limit, degraded: false };
   const n = await kvIncr(dayKey(key), 86400); // expires after 24h
-  // FAIL CLOSED: if the counter can't be read (KV outage / quota exhausted) we
-  // can't know whether this caller already used their free call — deny the
-  // freebie rather than open an unlimited free tier. Paying is unaffected.
-  if (n === null) return { allowed: false, remaining: 0, limit, degraded: true };
+  // FAIL OPEN: if the counter can't be read (KV outage / free-quota exhausted),
+  // fall back to a per-instance in-memory cap instead of denying every legit
+  // agent their free try — a denied free call is a lost conversion, and for a
+  // pre-traction marketplace that matters more than the theoretical abuse a
+  // bounded in-memory counter still prevents. `degraded` stays true so the route
+  // knows KV was down (and the in-memory-capped case falls through to paid).
+  if (n === null) {
+    const m = memConsume(key, limit);
+    return { allowed: m.allowed, remaining: m.remaining, limit, degraded: true };
+  }
   if (n > limit) return { allowed: false, remaining: 0, limit, degraded: false };
   return { allowed: true, remaining: limit - n, limit, degraded: false };
 }
