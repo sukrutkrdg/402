@@ -27,7 +27,10 @@ export async function vllmChat(
   const key = process.env.VLLM_API_KEY?.trim() || "";
   const model = opts.model || process.env.VLLM_MODEL?.trim() || "log-expert";
 
-  const res = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
+  // Normalise to the OpenAI route whether VLLM_BASE_URL ends in /v1 or not.
+  const b = base.replace(/\/+$/, "");
+  const endpoint = /\/v1$/.test(b) ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
     body: JSON.stringify({
