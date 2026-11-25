@@ -4,7 +4,7 @@
  * services it powers can run a real free tier. Plain fetch, no SDK.
  *
  * Config: VLLM_BASE_URL (e.g. https://llm-api.402.com.tr/v1), VLLM_API_KEY,
- * optional VLLM_MODEL default.
+ * optional VLLM_MODEL default. (Build bump to pick up rotated VLLM_API_KEY.)
  */
 import "server-only";
 
