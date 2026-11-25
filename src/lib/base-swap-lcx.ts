@@ -8,18 +8,20 @@
  * the 0x quote shape, so base-swap builds its response along one path.
  *
  * Nothing is handed out unchecked: the transaction, the quote's spender and
- * /v1/allowance's spender must all be the LCX router pinned below, on Base, and
- * the calldata must decode to a sale of exactly this amount of these tokens, to
- * the taker, with a floor no lower than the quote's and a live deadline. Any
- * mismatch throws, and base-swap serves 0x.
+ * /v1/allowance's spender must all be the same one of the two LCX contracts
+ * pinned below, on Base, and the calldata must decode to a sale of exactly this
+ * amount of these tokens, to the taker, with a floor no lower than the quote's
+ * and a live deadline. Any mismatch throws, and base-swap serves 0x.
  *
  * Integrator fee: LCX does not take a rate per request. LCX registers a rate
  * on-chain for an integrator address (at most 100 bps). When base-swap's fee is
- * on, its recipient goes in as `integrator`; what was charged is read from the
- * quote's `fee` block (`output.amount` is net of it), and a rate above
- * BASE_SWAP_FEE_BPS, or a fee to anyone else, is refused.
- * TODO: until LCX has registered the fee recipient, that block reads 0 bps and
- * an LCX-served swap earns no fee.
+ * on, its recipient goes in as `integrator` on both calls; what was charged is
+ * read from the quote's `fee` block (`output.amount` is net of it), and a rate
+ * above BASE_SWAP_FEE_BPS, or a fee to anyone else, is refused.
+ * Until LCX has registered the recipient, LCX answers through its router and the
+ * fee block reads 0 bps, so an LCX-served swap earns no fee. Once it has, LCX
+ * answers through its fee contract, which takes the fee and swaps through the
+ * same router, and the taker approves the fee contract instead.
  */
 
 import "server-only";
@@ -33,6 +35,14 @@ const EEEE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 const ZERO = "0x0000000000000000000000000000000000000000";
 /** The LCX Liberty DEX router on Base. Pinned on purpose: if LCX moves it, this needs a code update. */
 const ROUTER = "0x0000000000b1ae06c96aB73FF4360d7AeAaB56F0";
+/**
+ * LCX's fee contract on Base (its `core()` is ROUTER). A swap that names an
+ * integrator LCX has registered goes through it; accepted only when base-swap
+ * names one. Pinned like ROUTER.
+ */
+export const FEE_CONTRACT = "0xa21CC8129AC9ed88435c67B889F66c0279Bf63CE";
+/** The fee contract's entrypoints: everything else in LCX_ROUTER_ABI is the router's alone. */
+const FEE_CONTRACT_FUNCTIONS = new Set(["swapSplitWithFee", "swapSplitViaPropAMM", "swapSplitWithPropAMMSplit"]);
 /** Bebop's settlement contracts: the only ones a makerSwap leg may call. */
 const BEBOP = new Set(["0xbeb0009aca35087ce7ccf11637e24dd1aad3bf2a", "0xbbbbbbb520d69a9775e85b458c58c648259fad5f"]);
 
@@ -92,6 +102,8 @@ interface Want {
   recipient: string;
   minOut: bigint;
   integrator: string | null;
+  /** True when the transaction goes to FEE_CONTRACT rather than ROUTER. */
+  viaFeeContract?: boolean;
 }
 
 /**
@@ -105,6 +117,7 @@ export function lcxCalldataProblem(data: string, want: Want): string | null {
   } catch {
     return "calldata is not an LCX router swap";
   }
+  if (want.viaFeeContract && !FEE_CONTRACT_FUNCTIONS.has(d.functionName)) return `the fee contract has no ${d.functionName}`;
   let s: { tokenIn: string; tokenOut: string; totalIn: bigint; minAmountOut: bigint; recipient: string; deadline: bigint; integrator: string };
   if (d.functionName === "swapSplit") {
     const [tokenIn, tokenOut, totalIn, minAmountOut, recipient, deadline] = d.args;
@@ -190,7 +203,8 @@ export async function lcxBaseQuote(p: {
       body: JSON.stringify({ chainId: 8453, tokenIn, tokenOut, amountIn, taker: p.taker, slippageBps: p.slippageBps, ...(p.integrator ? { integrator: p.integrator } : {}) }),
       signal,
     }),
-    fetch(`${API}/allowance?${new URLSearchParams({ chainId: "8453", token: tokenIn, taker: p.taker, amount: amountIn })}`, { headers: auth, signal }),
+    // The same integrator as the swap, so LCX names the contract that swap goes through.
+    fetch(`${API}/allowance?${new URLSearchParams({ chainId: "8453", token: tokenIn, taker: p.taker, amount: amountIn, ...(p.integrator ? { integrator: p.integrator } : {}) })}`, { headers: auth, signal }),
     balanceOf(tokenIn, p.taker),
   ]);
   const r = (await swapRes.json().catch(() => ({}))) as LcxSwap;
@@ -207,7 +221,9 @@ export async function lcxBaseQuote(p: {
   }
   if (!q?.input || !int(q.output?.amount) || !int(q.output.minimumAmount) || !tx?.to || !tx.data || tx.routerDeployed !== true) refuse("no transaction");
   if (q.chainId !== 8453 || tx.chainId !== 8453) refuse("not a Base transaction");
-  if (!eq(tx.to, ROUTER) || !eq(q.spender, ROUTER) || !eq(spender, ROUTER)) refuse("transaction or spender is not the LCX router");
+  // The router, or the fee contract when we named a fee recipient; the spenders must be that same contract.
+  const viaFeeContract = Boolean(p.integrator) && eq(tx.to, FEE_CONTRACT);
+  if (!(eq(tx.to, ROUTER) || viaFeeContract) || !eq(q.spender, tx.to) || !eq(spender, tx.to)) refuse("transaction or spender is not the LCX router");
   if (q.input.amount !== amountIn || !eq(q.input.token, tokenIn) || !eq(q.output.token, tokenOut)) refuse("quote is for a different trade");
   // No local slippage floor (output.amount × (1 − slippage)) on purpose: LCX sets minimumAmount from the
   // route without its market-maker legs, so when a maker improves the headline the floor sits below that
@@ -218,7 +234,7 @@ export async function lcxBaseQuote(p: {
   const fee = q.fee;
   const feeBps = fee?.bps ?? 0;
   if (fee && feeBps > 0 && (feeBps > p.maxFeeBps || !eq(fee.integrator, p.integrator) || !int(fee.amount))) refuse(`a ${feeBps} bps fee we did not configure`);
-  const calldata = lcxCalldataProblem(tx.data, { tokenIn, tokenOut, amountIn: p.sellAmount, recipient: p.taker, minOut: BigInt(tx.minAmountOut), integrator: p.integrator });
+  const calldata = lcxCalldataProblem(tx.data, { tokenIn, tokenOut, amountIn: p.sellAmount, recipient: p.taker, minOut: BigInt(tx.minAmountOut), integrator: p.integrator, viaFeeContract });
   if (calldata) refuse(calldata);
 
   return {

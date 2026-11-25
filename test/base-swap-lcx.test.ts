@@ -15,6 +15,7 @@ const TAKER: Hex = "0x1111111111111111111111111111111111111111";
 const FEE_TO: Hex = "0x2222222222222222222222222222222222222222";
 const OTHER: Hex = "0x3333333333333333333333333333333333333333";
 const ROUTER: Hex = "0x0000000000b1ae06c96aB73FF4360d7AeAaB56F0";
+const FEES: Hex = "0xa21CC8129AC9ed88435c67B889F66c0279Bf63CE";
 const USDC: Hex = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const WETH: Hex = "0x4200000000000000000000000000000000000006";
 const ZERO: Hex = "0x0000000000000000000000000000000000000000";
@@ -223,11 +224,47 @@ describe("baseSwap with LCX Liberty DEX", () => {
     calls = stub({ lcx: lcxAnswer({ data: withFee(FEE_TO), fee: { bps: 20, amount: "6200000000000", integrator: FEE_TO } }) });
     r = await baseSwap({ sell: "USDC", buy: "ETH", amount: "10", taker: TAKER });
     expect(r).toMatchObject({ router: "LCX Liberty DEX router", fees: { integratorFeeBps: 20, integratorFee: "0.0000062 ETH" } });
+    expect(new URL(hits(calls, "https://swap-api.lcx.com/v1/allowance")[0].url).searchParams.get("integrator")).toBe(FEE_TO);
     // More than BASE_SWAP_FEE_BPS, even to the right recipient: not served.
     vi.spyOn(console, "error").mockImplementation(() => {});
     stub({ lcx: lcxAnswer({ data: withFee(FEE_TO), fee: { bps: 30, amount: "9300000000000", integrator: FEE_TO } }) });
     r = await baseSwap({ sell: "USDC", buy: "ETH", amount: "10", taker: TAKER });
     expect(r.router).toBe("0x Swap API (AllowanceHolder)");
+  });
+
+  it("serves a registered fee through LCX's fee contract, and the taker approves that contract", async () => {
+    lcxOn();
+    vi.stubEnv("BASE_SWAP_FEE_BPS", "20");
+    vi.stubEnv("BASE_SWAP_FEE_RECIPIENT", FEE_TO);
+    const calls = stub({
+      lcx: lcxAnswer({ to: FEES, spender: FEES, data: withFee(FEE_TO), fee: { bps: 20, amount: "6200000000000", integrator: FEE_TO } }),
+      allowance: { spender: FEES },
+    });
+    const r = await baseSwap({ sell: "USDC", buy: "ETH", amount: "10", taker: TAKER });
+    expect(new URL(hits(calls, "https://swap-api.lcx.com/v1/allowance")[0].url).searchParams.get("integrator")).toBe(FEE_TO);
+    expect(r).toMatchObject({
+      router: "LCX Liberty DEX router",
+      fees: { integratorFeeBps: 20, integratorFee: "0.0000062 ETH" },
+      needsApproval: { token: USDC, spender: FEES },
+      transaction: { to: FEES },
+    });
+    expect(r.steps[0]).toMatch(/approve\(0xa21CC8129AC9ed88435c67B889F66c0279Bf63CE, amount\).*fee contract/);
+  });
+
+  it.each([
+    ["a fee-contract transaction whose /v1/allowance spender is the router", { lcx: lcxAnswer({ to: FEES, spender: FEES, data: withFee(FEE_TO) }) }, /not the LCX router/],
+    ["a router transaction whose spender is the fee contract", { lcx: lcxAnswer({ spender: FEES }), allowance: { spender: FEES } }, /not the LCX router/],
+    ["a fee-contract transaction calling a router-only function", { lcx: lcxAnswer({ to: FEES, spender: FEES }), allowance: { spender: FEES } }, /the fee contract has no swapSplit/],
+    ["a fee-contract transaction paying another integrator", { lcx: lcxAnswer({ to: FEES, spender: FEES, data: withFee(OTHER) }), allowance: { spender: FEES } }, /integrator we did not name/],
+  ])("with a fee recipient set, falls through to 0x on %s", async (_why, answers, refusal) => {
+    lcxOn();
+    vi.stubEnv("BASE_SWAP_FEE_BPS", "20");
+    vi.stubEnv("BASE_SWAP_FEE_RECIPIENT", FEE_TO);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    stub(answers);
+    const r = await baseSwap({ sell: "USDC", buy: "ETH", amount: "10", taker: TAKER });
+    expect(r.router).toBe("0x Swap API (AllowanceHolder)");
+    expect(String(err.mock.calls[0]?.[0])).toMatch(refusal);
   });
 
   // The last column is the refusal base-swap-lcx logs; null for an answer that is simply not a route.
@@ -240,6 +277,7 @@ describe("baseSwap with LCX Liberty DEX", () => {
     ["a quote spender that is not the router", { lcx: lcxAnswer({ spender: OTHER }) }, /not the LCX router/],
     ["a /v1/allowance spender that is not the router", { allowance: { spender: OTHER } }, /not the LCX router/],
     ["a router that is not the pinned one, even if all three agree", { lcx: lcxAnswer({ to: OTHER, spender: OTHER }), allowance: { spender: OTHER } }, /not the LCX router/],
+    ["the fee contract when no fee recipient was named", { lcx: lcxAnswer({ to: FEES, spender: FEES, data: withFee(ZERO) }), allowance: { spender: FEES } }, /not the LCX router/],
     ["no router deployed", { lcx: lcxAnswer({ routerDeployed: false }) }, /no transaction/],
     ["another chain", { lcx: lcxAnswer({ chainId: 1 }) }, /not a Base transaction/],
     ["an unreadable output", { lcx: withQuote({ output: { amount: "3.1e15", minimumAmount: "3069000000000000", token: ZERO } }) }, /no transaction/],
@@ -310,6 +348,8 @@ describe("lcxCalldataProblem", () => {
     expect(lcxCalldataProblem(swapSplit({ minAmountOut: 4_000_000_000_000_000n }), WANT)).toBeNull();
     expect(lcxCalldataProblem(withFee(ZERO), WANT)).toBeNull();
     expect(lcxCalldataProblem(withFee(FEE_TO), { ...WANT, integrator: FEE_TO })).toBeNull();
+    expect(lcxCalldataProblem(withFee(FEE_TO), { ...WANT, integrator: FEE_TO, viaFeeContract: true })).toBeNull();
+    expect(lcxCalldataProblem(withFee(ZERO), { ...WANT, integrator: FEE_TO, viaFeeContract: true })).toBeNull();
     expect(lcxCalldataProblem(maker({ target: BEBOP, spender: BEBOP, amountIn: 4_000_000n }), WANT)).toBeNull();
     expect(lcxCalldataProblem(maker({ target: ZERO, spender: ZERO, amountIn: 0n, data: "0x" }), WANT)).toBeNull();
   });
@@ -337,5 +377,12 @@ describe("lcxCalldataProblem", () => {
     ],
   ])("refuses %s", (_why, data, reason) => {
     expect(lcxCalldataProblem(data, WANT)).toMatch(reason);
+  });
+
+  it.each([
+    ["swapSplit", swapSplit()],
+    ["makerSwap", maker({ target: BEBOP, spender: BEBOP, amountIn: 4_000_000n })],
+  ])("refuses %s sent to the fee contract, which only has the fee entrypoints", (fn, data) => {
+    expect(lcxCalldataProblem(data, { ...WANT, integrator: FEE_TO, viaFeeContract: true })).toBe(`the fee contract has no ${fn}`);
   });
 });

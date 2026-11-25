@@ -28,7 +28,7 @@ import { createPublicClient, erc20Abi, formatUnits, parseUnits, getAddress, type
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 import { sellability } from "./sellability";
-import { lcxBaseQuote } from "./base-swap-lcx";
+import { lcxBaseQuote, FEE_CONTRACT } from "./base-swap-lcx";
 
 const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 
@@ -169,7 +169,7 @@ export async function baseSwap(params: Record<string, string>) {
           sellAmount,
           taker,
           slippageBps: slippage,
-          // TODO: LCX charges this recipient only once LCX has registered its fee on-chain.
+          // LCX charges this recipient only once LCX has registered its fee on-chain; until then 0 bps.
           integrator: fee?.recipient ?? null,
           maxFeeBps: fee?.bps ?? 0,
         }).catch(failed)
@@ -226,7 +226,7 @@ export async function baseSwap(params: Record<string, string>) {
   if (short) steps.push(`Your wallet holds ${fmt(short.actual, sell.decimals)} ${sell.symbol}; the swap needs ${fmt(short.expected, sell.decimals)}. Top up first.`);
   if (allowance) {
     steps.push(
-      `Approve once: call approve(${allowance.spender}, amount) on ${sell.symbol} (${sell.address}) from ${taker}. The spender is ${viaLcx ? "the LCX Liberty DEX router" : "0x's AllowanceHolder contract"}.`,
+      `Approve once: call approve(${allowance.spender}, amount) on ${sell.symbol} (${sell.address}) from ${taker}. The spender is ${!viaLcx ? "0x's AllowanceHolder contract" : allowance.spender.toLowerCase() === FEE_CONTRACT.toLowerCase() ? "LCX Liberty DEX's fee contract, which swaps through its router" : "the LCX Liberty DEX router"}.`,
     );
   }
   steps.push(`Send the transaction below from ${taker} on Base (chainId 8453). It reverts, costing only gas, if the price moves beyond ${slippage / 100}%.`);
