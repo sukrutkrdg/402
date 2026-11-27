@@ -346,6 +346,8 @@ const OVERRIDES: Record<string, Record<string, string>> = {
   "sol-new-pairs": { limit: "15" },
   "sol-safe-launches": { limit: "12" },
   "log-analyze": { log: "ERROR: Redis connection timeout on 10.0.0.5:6379" },
+  // AAPL on Robinhood Chain — an authentic tokenized stock.
+  "rh-stock-verify": { address: "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9" },
   // ARB — a liquid, renounced, verified Arbitrum token (a real verdict).
   "arb-token-verdict": { address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },
   "arb-sellability": { address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },

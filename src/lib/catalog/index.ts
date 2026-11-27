@@ -8,6 +8,7 @@ import { B20_SERVICES } from "./b20";
 import { NEAR_SERVICES } from "./near";
 import { SOLANA_SERVICES } from "./solana";
 import { ARBITRUM_SERVICES } from "./arbitrum";
+import { ROBINHOOD_SERVICES } from "./robinhood";
 import { AI_SERVICES } from "./ai";
 import { MARKETS_SERVICES } from "./markets";
 import { BUSINESS_SERVICES } from "./business";
@@ -19,6 +20,7 @@ export { B20_SERVICES } from "./b20";
 export { NEAR_SERVICES } from "./near";
 export { SOLANA_SERVICES } from "./solana";
 export { ARBITRUM_SERVICES } from "./arbitrum";
+export { ROBINHOOD_SERVICES } from "./robinhood";
 export { AI_SERVICES } from "./ai";
 export { MARKETS_SERVICES } from "./markets";
 export { BUSINESS_SERVICES } from "./business";
@@ -30,6 +32,7 @@ export const SERVICES: ServiceDef[] = [
   ...NEAR_SERVICES,
   ...SOLANA_SERVICES,
   ...ARBITRUM_SERVICES,
+  ...ROBINHOOD_SERVICES,
   ...AI_SERVICES,
   ...MARKETS_SERVICES,
   ...BUSINESS_SERVICES,
