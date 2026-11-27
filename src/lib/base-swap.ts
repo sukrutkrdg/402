@@ -10,6 +10,13 @@
  * trade inside the same transaction and delivers it to BASE_SWAP_FEE_RECIPIENT
  * (default PAY_TO_ADDRESS) — no withdrawal step, no split. Off when unset.
  *
+ * LCX Liberty DEX (optional, LCX_API_KEY — key at dex.lcx.com/dashboard) is a
+ * second quote source beside 0x, in base-swap-lcx.ts. BASE_SWAP_PROVIDER=lcx
+ * serves it and falls back to 0x on any failure; =best asks both at once and
+ * serves the larger output net of each one's fee; BASE_SWAP_COMPARE=1 asks both
+ * and logs both while the chosen provider keeps serving. Unset: 0x only. LCX
+ * charges the fee rate it registered for the fee recipient, read from its quote.
+ *
  * Buying a token that is not a major: run through sellability first (honeypot,
  * sell tax); a token that cannot be sold is refused (not charged) unless force=1.
  *
@@ -21,6 +28,7 @@ import { createPublicClient, erc20Abi, formatUnits, parseUnits, getAddress, type
 import { base } from "viem/chains";
 import { baseTransport } from "./base-transport";
 import { sellability } from "./sellability";
+import { lcxBaseQuote, FEE_CONTRACT } from "./base-swap-lcx";
 
 const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 
@@ -46,6 +54,12 @@ export function baseSwapFee(): { recipient: string; bps: number } | null {
   return { recipient, bps: Math.min(bps, 100) };
 }
 
+/** Who serves the swap: 0x (the default), lcx or best. Anything but 0x needs LCX_API_KEY. */
+export function baseSwapProvider(): "0x" | "lcx" | "best" {
+  const p = (process.env.BASE_SWAP_PROVIDER || "").trim().toLowerCase();
+  return process.env.LCX_API_KEY && (p === "lcx" || p === "best") ? p : "0x";
+}
+
 async function resolve(raw: string, what: string): Promise<{ address: string; symbol: string; decimals: number; major: boolean }> {
   const q = (raw || "").trim();
   if (!q) throw new Error(`${what} is required: a symbol (ETH, USDC, WETH, cbBTC, AERO…) or a Base token address`);
@@ -64,7 +78,7 @@ async function resolve(raw: string, what: string): Promise<{ address: string; sy
   return { address, symbol: symbol ?? address.slice(0, 8), decimals: Number(decimals), major: MAJOR_ADDRS.has(address.toLowerCase()) };
 }
 
-interface ZeroExQuote {
+export interface ZeroExQuote {
   liquidityAvailable?: boolean;
   buyAmount?: string;
   minBuyAmount?: string;
@@ -121,21 +135,64 @@ export async function baseSwap(params: Record<string, string>) {
     slippageBps: String(slippage),
     ...(fee ? { swapFeeRecipient: fee.recipient, swapFeeBps: String(fee.bps), swapFeeToken: feeToken } : {}),
   });
-  let res: Response;
-  try {
-    res = await fetch(`https://api.0x.org/swap/allowance-holder/quote?${qs}`, {
-      headers: { "0x-api-key": key, "0x-version": "v2", accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch {
-    throw new Error("0x Swap API unreachable — not charged, retry shortly");
+  const quote0x = async (): Promise<ZeroExQuote> => {
+    let res: Response;
+    try {
+      res = await fetch(`https://api.0x.org/swap/allowance-holder/quote?${qs}`, {
+        headers: { "0x-api-key": key, "0x-version": "v2", accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      throw new Error("0x Swap API unreachable — not charged, retry shortly");
+    }
+    if (res.status >= 500 || res.status === 429) throw new Error(`0x Swap API unavailable (${res.status}) — not charged, retry shortly`);
+    const q = (await res.json().catch(() => ({}))) as ZeroExQuote;
+    if (!res.ok) throw new Error(`No swap: ${q.message || q.name || res.status} — not charged`);
+    if (q.liquidityAvailable === false || !q.transaction || !q.buyAmount) {
+      throw new Error(`No route: 0x found no liquidity for ${sell.symbol} → ${buy.symbol} at this size — not charged`);
+    }
+    return q;
+  };
+
+  // LCX Liberty DEX beside 0x. "lcx" asks 0x only if LCX fails; "best" and compare
+  // ask both at once. Any LCX failure (no_route, insufficient_liquidity, a check in
+  // base-swap-lcx.ts) leaves 0x serving; with 0x failing too, 0x's error stands.
+  const provider = baseSwapProvider();
+  const compare = Boolean(process.env.LCX_API_KEY) && process.env.BASE_SWAP_COMPARE === "1";
+  const failed = (e: unknown) => (e instanceof Error ? e : new Error(String(e)));
+  const lcxAsk =
+    provider !== "0x" || compare
+      ? lcxBaseQuote({
+          key: process.env.LCX_API_KEY || "",
+          sellToken: sell.address,
+          buyToken: buy.address,
+          sellAmount,
+          taker,
+          slippageBps: slippage,
+          // LCX charges this recipient only once LCX has registered its fee on-chain; until then 0 bps.
+          integrator: fee?.recipient ?? null,
+          maxFeeBps: fee?.bps ?? 0,
+        }).catch(failed)
+      : null;
+  const zxAsk = provider === "lcx" && !compare ? null : quote0x().catch(failed);
+  const lcx = await lcxAsk;
+  const zx = (await zxAsk) ?? (lcx instanceof Error ? await quote0x().catch(failed) : null);
+  const lcxQ = lcx instanceof Error ? null : lcx;
+  const zxQ = zx instanceof Error ? null : zx;
+  // Both buyAmounts are what the taker receives, after that provider's own fee.
+  const viaLcx =
+    lcxQ !== null && (provider === "lcx" || (provider === "best" && (zxQ === null || BigInt(lcxQ.buyAmount ?? 0) > BigInt(zxQ.buyAmount ?? 0))));
+  const feeBps = viaLcx ? (lcxQ?.feeBps ?? 0) : (fee?.bps ?? 0);
+  if (compare) {
+    const out = (r: ZeroExQuote | Error | null, bps: number) =>
+      r === null ? null : r instanceof Error ? { error: r.message } : { buyAmount: r.buyAmount, minBuyAmount: r.minBuyAmount, feeBps: bps, fee: r.fees?.integratorFee?.amount ?? "0" };
+    const diff = lcxQ && zxQ ? Number(((BigInt(lcxQ.buyAmount ?? 0) - BigInt(zxQ.buyAmount ?? 0)) * 10_000n) / BigInt(zxQ.buyAmount || 1)) : null;
+    console.log(
+      `[base-swap] compare ${JSON.stringify({ sell: sell.symbol, buy: buy.symbol, amount: formatUnits(sellAmount, sell.decimals), provider, served: viaLcx ? "lcx" : "0x", zeroEx: out(zx, fee?.bps ?? 0), lcx: out(lcx, lcxQ?.feeBps ?? 0), lcxVs0xBps: diff })}`,
+    );
   }
-  if (res.status >= 500 || res.status === 429) throw new Error(`0x Swap API unavailable (${res.status}) — not charged, retry shortly`);
-  const q = (await res.json().catch(() => ({}))) as ZeroExQuote;
-  if (!res.ok) throw new Error(`No swap: ${q.message || q.name || res.status} — not charged`);
-  if (q.liquidityAvailable === false || !q.transaction || !q.buyAmount) {
-    throw new Error(`No route: 0x found no liquidity for ${sell.symbol} → ${buy.symbol} at this size — not charged`);
-  }
+  const q = viaLcx ? lcxQ : zxQ;
+  if (!q?.transaction || !q.buyAmount) throw zx; // 0x's own not-charged error
 
   const fmt = (raw: string | undefined, d: number) => (raw ? formatUnits(BigInt(raw), d) : null);
   // Book it for /stats — except the daily discovery probe, which quotes for a wallet it does not own,
@@ -153,13 +210,15 @@ export async function baseSwap(params: Record<string, string>) {
           buy: buy.symbol,
           amount: formatUnits(sellAmount, sell.decimals),
           usd: stable ? Number(formatUnits(sellAmount, sell.decimals)) : null,
-          feeBps: fee?.bps ?? 0,
+          feeBps,
+          provider: viaLcx ? "lcx" : "0x",
         }),
       )
       .catch(() => {});
   }
-  const feeDec = feeToken === sell.address ? sell.decimals : buy.decimals;
-  const feeSym = feeToken === sell.address ? sell.symbol : buy.symbol;
+  // 0x takes the fee in feeToken; LCX in the token bought.
+  const feeDec = feeToken === sell.address && !viaLcx ? sell.decimals : buy.decimals;
+  const feeSym = feeToken === sell.address && !viaLcx ? sell.symbol : buy.symbol;
   const allowance = q.issues?.allowance ?? null;
   const short = q.issues?.balance ?? null;
 
@@ -167,7 +226,7 @@ export async function baseSwap(params: Record<string, string>) {
   if (short) steps.push(`Your wallet holds ${fmt(short.actual, sell.decimals)} ${sell.symbol}; the swap needs ${fmt(short.expected, sell.decimals)}. Top up first.`);
   if (allowance) {
     steps.push(
-      `Approve once: call approve(${allowance.spender}, amount) on ${sell.symbol} (${sell.address}) from ${taker}. The spender is 0x's AllowanceHolder contract.`,
+      `Approve once: call approve(${allowance.spender}, amount) on ${sell.symbol} (${sell.address}) from ${taker}. The spender is ${!viaLcx ? "0x's AllowanceHolder contract" : allowance.spender.toLowerCase() === FEE_CONTRACT.toLowerCase() ? "LCX Liberty DEX's fee contract, which swaps through its router" : "the LCX Liberty DEX router"}.`,
     );
   }
   steps.push(`Send the transaction below from ${taker} on Base (chainId 8453). It reverts, costing only gas, if the price moves beyond ${slippage / 100}%.`);
@@ -175,12 +234,12 @@ export async function baseSwap(params: Record<string, string>) {
   return {
     chain: "base" as const,
     checkedAt: new Date().toISOString(),
-    router: "0x Swap API (AllowanceHolder)",
+    router: viaLcx ? "LCX Liberty DEX router" : "0x Swap API (AllowanceHolder)",
     sell: { symbol: sell.symbol, address: sell.address, amount: formatUnits(sellAmount, sell.decimals), amountBaseUnits: sellAmount.toString() },
     buy: { symbol: buy.symbol, address: buy.address, amount: fmt(q.buyAmount, buy.decimals), minAmount: fmt(q.minBuyAmount, buy.decimals) },
     route: (q.route?.fills ?? []).map((f) => ({ source: f.source, sharePct: Number(f.proportionBps) / 100 })),
     fees: {
-      integratorFeeBps: fee?.bps ?? 0,
+      integratorFeeBps: feeBps,
       integratorFee: q.fees?.integratorFee ? `${fmt(q.fees.integratorFee.amount, feeDec)} ${feeSym}` : null,
       zeroExFee: q.fees?.zeroExFee ? `${fmt(q.fees.zeroExFee.amount, q.fees.zeroExFee.token.toLowerCase() === buy.address.toLowerCase() ? buy.decimals : sell.decimals)} ${q.fees.zeroExFee.token.toLowerCase() === buy.address.toLowerCase() ? buy.symbol : sell.symbol}` : null,
       networkFeeEth: q.totalNetworkFee ? formatUnits(BigInt(q.totalNetworkFee), 18) : null,
