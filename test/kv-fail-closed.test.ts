@@ -2,8 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 /**
  * KV outage behavior: when KV IS configured but unreachable (quota exhausted,
- * network down), money/quota guards must FAIL CLOSED — a KV outage must never
- * open an unlimited free tier or disable rate limiting entirely.
+ * network down), MONEY/quota guards must FAIL CLOSED — a KV outage must never
+ * grant a reservation or disable rate limiting entirely.
+ *
+ * The one deliberate exception is the FREE TIER: it fails OPEN via a bounded
+ * per-instance in-memory cap (a denied free try is a lost conversion, and a
+ * cold-start-resetting counter still prevents an unlimited tier). The full
+ * fail-open contract lives in free-tier-failopen.test.ts; here we only pin that
+ * the outage path grants the first try and flags `degraded` so the route knows.
  *
  * kv.ts reads its env at module load, so each test re-imports the modules with
  * the env stubbed and fetch failing.
@@ -38,19 +44,28 @@ describe("KV outage → fail closed", () => {
     expect(await kv.kvIncr("some-key")).toBeNull();
   });
 
-  it("consumeFree denies the free call during a KV outage", async () => {
+  it("the free tier FAILS OPEN (bounded) during a KV outage", async () => {
+    // A denied free call is a lost conversion; the in-memory fallback grants the
+    // first try per instance and still caps it, so an outage can't open an
+    // unlimited tier. Full contract: free-tier-failopen.test.ts.
     const { freeTier } = await freshModules();
-    const r = await freeTier.consumeFree(`ip-${Math.random()}`);
-    expect(r.allowed).toBe(false);
+    const key = `ip-${Math.random()}`;
+    const first = await freeTier.consumeFree(key);
+    expect(first.allowed).toBe(true);
+    expect(first.degraded).toBe(true);
+    expect((await freeTier.consumeFree(key)).allowed).toBe(false); // capped per instance
   });
 
-  it("consumeFree says WHY it denied, because the two reasons need opposite handling", async () => {
-    // "You used today's call" earns a preview. "We could not count" must not —
-    // see the route assertion below.
+  it("a capped outage call is flagged degraded (not spent), so the route falls to paid", async () => {
+    // "You used today's call" (spent) earns a preview. "We could not count"
+    // (degraded) must NOT — it falls through to the paid 402. Opposite handling,
+    // same allowed:false shape, told apart by `degraded`. See the route assertion below.
     const { freeTier } = await freshModules();
-    const outage = await freeTier.consumeFree(`ip-${Math.random()}`);
-    expect(outage.allowed).toBe(false);
-    expect(outage.degraded).toBe(true);
+    const key = `ip-${Math.random()}`;
+    await freeTier.consumeFree(key); // first try, allowed
+    const capped = await freeTier.consumeFree(key); // over the in-memory cap
+    expect(capped.allowed).toBe(false);
+    expect(capped.degraded).toBe(true);
   });
 
   it("a spent quota is not marked degraded", async () => {
@@ -128,12 +143,14 @@ describe("KV rate-limited → an error body with HTTP 200 is a failure, not an e
     expect(await kv.kvSetNx("k", 60)).toBe(false);
   });
 
-  it("the free tier is denied as degraded, not as spent", async () => {
+  it("the free tier still fails open (degraded) under a rate-limited KV", async () => {
+    // Same fail-open path as a hard outage: the first try is granted from the
+    // in-memory cap and flagged degraded, while money guards above return null.
     await rateLimitedKv();
     process.env.FREE_TIER_DAILY = "1";
     const freeTier = await import("@/lib/free-tier");
     const r = await freeTier.consumeFree(`ip-${Math.random()}`);
-    expect(r.allowed).toBe(false);
+    expect(r.allowed).toBe(true);
     expect(r.degraded).toBe(true);
   });
 });
