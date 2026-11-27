@@ -209,20 +209,49 @@ export async function solPreTradeBundle(params: Record<string, string>) {
   };
 }
 
-/** sol-new-pairs — freshly-created Solana pools (incl. pump.fun), for sniping safely. */
+/** Parse an ISO `since` cursor → epoch ms, or null. Lets an agent poll for deltas. */
+function sinceMs(params: Record<string, string>): number | null {
+  const raw = (params.since || "").trim();
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? t : null;
+}
+/** Newest `createdAt` across the fetched feed → the cursor to pass back next poll. */
+function newestCursor(pools: { createdAt?: string }[], prev?: string): string | null {
+  let max = prev ? Date.parse(prev) : 0;
+  for (const p of pools) {
+    const t = p.createdAt ? Date.parse(p.createdAt) : 0;
+    if (Number.isFinite(t) && t > max) max = t;
+  }
+  return max ? new Date(max).toISOString() : prev || null;
+}
+
+/**
+ * sol-new-pairs — freshly-created Solana pools (incl. pump.fun), for sniping safely.
+ * Loop-friendly: pass `since=<cursor>` to get only pools newer than your last poll,
+ * and read `cursor` back for the next call. A tight poll then costs one cheap call.
+ */
 export async function solNewPairs(params: Record<string, string>) {
   const limit = Math.min(Math.max(Number(params.limit) || 15, 1), 30);
   const minLiq = Math.max(Number(params.minLiquidityUsd) || 0, 0);
+  const since = sinceMs(params);
   const pools = await solanaNewPools(30);
   if (!pools)
     return { chain: "solana" as const, count: 0, pairs: null, note: "GeckoTerminal unavailable — not charged; retry shortly.", receipt: { refundable: true }, checkedAt: now() };
-  const pairs = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq).slice(0, limit);
+  const cursor = newestCursor(pools, params.since);
+  let pairs = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq);
+  if (since != null) pairs = pairs.filter((p) => p.createdAt && Date.parse(p.createdAt) > since);
+  pairs = pairs.slice(0, limit);
   const pump = pairs.filter((p) => p.isPumpFun).length;
   return {
     chain: "solana" as const,
     count: pairs.length,
-    headline: `${pairs.length} fresh Solana pool${pairs.length === 1 ? "" : "s"}${pump ? ` (${pump} pump.fun)` : ""}, newest ${pairs[0]?.ageMinutes ?? "?"}m old.`,
-    note: "New ≠ safe — run sol-token-verdict or sol-pre-trade-gate on a mint before buying.",
+    cursor,
+    headline:
+      since != null
+        ? `${pairs.length} NEW Solana pool${pairs.length === 1 ? "" : "s"} since your last poll${pump ? ` (${pump} pump.fun)` : ""}.`
+        : `${pairs.length} fresh Solana pool${pairs.length === 1 ? "" : "s"}${pump ? ` (${pump} pump.fun)` : ""}, newest ${pairs[0]?.ageMinutes ?? "?"}m old.`,
+    note: "New ≠ safe — run sol-token-verdict or sol-pre-trade-gate on a mint before buying. Poll with ?since=<cursor> to get only new pools next time.",
     pairs,
     receipt: { refundable: false },
     checkedAt: now(),
@@ -238,11 +267,17 @@ export async function solNewPairs(params: Record<string, string>) {
 export async function solSafeLaunches(params: Record<string, string>) {
   const limit = Math.min(Math.max(Number(params.limit) || 12, 1), 20);
   const minLiq = Math.max(Number(params.minLiquidityUsd) || 0, 0);
+  const since = sinceMs(params);
   const pools = await solanaNewPools(25);
   if (!pools)
     return { chain: "solana" as const, count: 0, pairs: null, note: "GeckoTerminal unavailable — not charged; retry shortly.", receipt: { refundable: true }, checkedAt: now() };
 
-  const picked = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq).slice(0, limit);
+  const cursor = newestCursor(pools, params.since);
+  // On a delta poll we screen ONLY the pools newer than the cursor — so a tight
+  // loop does a few mint reads, not 20, and the call stays cheap for both sides.
+  let picked = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq);
+  if (since != null) picked = picked.filter((p) => p.createdAt && Date.parse(p.createdAt) > since);
+  picked = picked.slice(0, limit);
   const SEIZE = new Set(["permanentDelegate", "transferHook", "nonTransferable"]);
   const screened = await Promise.all(
     picked.map(async (p) => {
@@ -271,8 +306,12 @@ export async function solSafeLaunches(params: Record<string, string>) {
   return {
     chain: "solana" as const,
     count: screened.length,
-    headline: `${screened.length} fresh Solana pools, ${clean} pass the quick clean screen (authorities renounced, no seize extensions).`,
-    note: "Fast mint-level screen only — run sol-pre-trade-gate on a mint for the full verdict before buying.",
+    cursor,
+    headline:
+      since != null
+        ? `${screened.length} NEW screened Solana pool${screened.length === 1 ? "" : "s"} since your last poll, ${clean} clean.`
+        : `${screened.length} fresh Solana pools, ${clean} pass the quick clean screen (authorities renounced, no seize extensions).`,
+    note: "Fast mint-level screen only — run sol-pre-trade-gate on a mint for the full verdict before buying. Poll with ?since=<cursor> to screen only new pools next time.",
     pairs: screened,
     receipt: { refundable: false },
     checkedAt: now(),

@@ -120,13 +120,14 @@ export const SOLANA_SERVICES: ServiceDef[] = [
   {
     id: "sol-new-pairs",
     name: "Solana New Pairs",
-    tagline: "Freshly-created Solana pools (incl. pump.fun) — snipe, then verify",
+    tagline: "Freshly-created Solana pools (incl. pump.fun) — poll the delta, snipe, verify",
     description:
-      "The newest Solana DEX pools (via GeckoTerminal), each with its mint, age, liquidity, 24h volume and a pump.fun flag — the fresh-launch feed sniper bots watch. Optional: limit (1–30) and minLiquidityUsd to filter dust. New ≠ safe: pair it with sol-token-verdict before buying. No feed → not charged. Not advice.",
-    price: "$0.02",
+      "The newest Solana DEX pools (via GeckoTerminal), each with its mint, age, liquidity, 24h volume and a pump.fun flag — the fresh-launch feed sniper bots watch. Built for a tight poll loop: pass since=<cursor> to get ONLY pools created since your last call, and read `cursor` back for the next poll. Optional: limit (1–30), minLiquidityUsd. New ≠ safe: pair with sol-token-verdict before buying. No feed → not charged. Not advice.",
+    price: "$0.01",
     icon: "◎",
     category: "Solana",
     params: [
+      { name: "since", label: "Cursor (ISO) — only newer pools", placeholder: "2026-11-27T08:00:00Z", required: false },
       { name: "limit", label: "Max pools (1–30)", placeholder: "15", required: false },
       { name: "minLiquidityUsd", label: "Min liquidity USD", placeholder: "0", required: false },
     ],
@@ -135,13 +136,14 @@ export const SOLANA_SERVICES: ServiceDef[] = [
   {
     id: "sol-safe-launches",
     name: "Solana Safe Launches Feed",
-    tagline: "Fresh pools + a built-in clean/risky/danger screen — poll it, skip the rugs",
+    tagline: "Fresh pools + a built-in clean/risky/danger screen — poll the delta, skip the rugs",
     description:
-      "The fresh-launch feed with a safety screen built in: the newest Solana pools (incl. pump.fun), each tagged clean / risky / danger from a fast mint-level check — mint & freeze authority renounced, and Token-2022 seize extensions (permanent-delegate, transfer-hook, non-transferable, frozen-by-default). Poll it to skip the obvious rugs, then run sol-pre-trade-gate on the ones you like. Optional: limit (1–20), minLiquidityUsd. No feed → not charged. Not advice.",
-    price: "$0.06",
+      "The fresh-launch feed with a safety screen built in: the newest Solana pools (incl. pump.fun), each tagged clean / risky / danger from a fast mint-level check — mint & freeze authority renounced, and Token-2022 seize extensions (permanent-delegate, transfer-hook, non-transferable, frozen-by-default). Built for a poll loop: pass since=<cursor> to screen ONLY pools created since your last call (cheap per poll), read `cursor` back for the next. Then run sol-pre-trade-gate on the ones you like. Optional: limit (1–20), minLiquidityUsd. No feed → not charged. Not advice.",
+    price: "$0.02",
     icon: "◎",
     category: "Solana",
     params: [
+      { name: "since", label: "Cursor (ISO) — only newer pools", placeholder: "2026-11-27T08:00:00Z", required: false },
       { name: "limit", label: "Max pools (1–20)", placeholder: "12", required: false },
       { name: "minLiquidityUsd", label: "Min liquidity USD", placeholder: "0", required: false },
     ],
