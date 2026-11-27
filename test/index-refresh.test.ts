@@ -128,7 +128,7 @@ describe("index refresh spends inside a ceiling", () => {
     // $8.68 since 2026-11-27 with rh-stock-verify ($0.02, Robinhood Chain
     // tokenized-stock authenticity — early-mover on chain 4663).
     // Raise it only for a listed service, never to absorb drift.
-    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.69);
+    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.71);
     // And the daily cap must be able to clear that inside one 21-day cycle, or
     // the refresh silently falls behind the window it exists to stay inside.
     const capCents = Number(cron.match(/MAX_SPEND_CENTS = (\d+)/)?.[1]);

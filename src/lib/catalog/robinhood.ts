@@ -1,5 +1,7 @@
 import type { ServiceDef } from "./types";
-import { rhStockVerify } from "../rh-services";
+import { rhStockVerify, rhStockPrice } from "../rh-services";
+
+const RH_ADDR = [{ name: "address", label: "Robinhood Chain token address", placeholder: "e.g. 0xaF3D76…93f9 (AAPL)", required: true }];
 
 /**
  * Robinhood Chain (chain 4663) services — an isolated EVM chain arm, settled in
@@ -16,7 +18,19 @@ export const ROBINHOOD_SERVICES: ServiceDef[] = [
     price: "$0.02",
     icon: "🏛️",
     category: "Robinhood",
-    params: [{ name: "address", label: "Robinhood Chain token address", placeholder: "e.g. 0xaF3D76…93f9 (AAPL)", required: true }],
+    params: RH_ADDR,
     handler: rhStockVerify,
+  },
+  {
+    id: "rh-stock-price",
+    name: "Robinhood Stock Price",
+    tagline: "On-chain price, liquidity & 24h volume of a tokenized stock",
+    description:
+      "🆕 The on-chain tradeable price of a Robinhood Chain tokenized stock (via GeckoTerminal) — USD price, pool depth (deep/moderate/thin) and 24h volume. Compare it to the real equity to spot a de-peg, or size a trade against the on-chain liquidity. No DEX price found → not charged. Not advice.",
+    price: "$0.02",
+    icon: "🏛️",
+    category: "Robinhood",
+    params: RH_ADDR,
+    handler: rhStockPrice,
   },
 ];

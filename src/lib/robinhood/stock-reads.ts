@@ -43,6 +43,39 @@ export interface RhStock {
   supply: number | null;
 }
 
+export interface RhMarket {
+  priceUsd: number | null;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  pool: string | null;
+}
+
+/** Tokenized-stock DEX price/liquidity/volume via GeckoTerminal (keyless). Secondary. */
+export async function rhMarket(address: string): Promise<RhMarket | null> {
+  try {
+    const res = await fetch(`https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/${address}/pools?page=1`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { data?: { attributes?: Record<string, unknown> }[] };
+    const a = (j.data ?? [])[0]?.attributes;
+    if (!a) return { priceUsd: null, liquidityUsd: null, volume24hUsd: null, pool: null };
+    const num = (v: unknown): number | null => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    return {
+      priceUsd: num(a.base_token_price_usd),
+      liquidityUsd: num(a.reserve_in_usd),
+      volume24hUsd: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
+      pool: typeof a.name === "string" ? a.name : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Read a Robinhood Chain token and verify it's an authentic Stock Token. null = RPC failure. */
 export async function readRhStock(address: string): Promise<RhStock | null> {
   try {

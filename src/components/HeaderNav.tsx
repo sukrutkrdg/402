@@ -298,7 +298,7 @@ export default function HeaderNav() {
                   </svg>
                   <span>@sukrutkrdg on X</span>
                 </a>
-                <span className="text-[10px] text-gray-500">Base · Arbitrum · NEAR · Solana</span>
+                <span className="text-[10px] text-gray-500">Base · Arbitrum · Robinhood · NEAR · Solana</span>
               </div>
             </div>
           </div>

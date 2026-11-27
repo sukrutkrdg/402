@@ -8,9 +8,38 @@
  */
 import "server-only";
 import { getAddress } from "viem";
-import { readRhStock } from "./robinhood/stock-reads";
+import { readRhStock, rhMarket } from "./robinhood/stock-reads";
 
 const now = () => new Date().toISOString();
+
+function addrOf(params: Record<string, string>): string {
+  const raw = (params.address || params.token || "").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) throw new Error("Provide a valid 0x… Robinhood Chain token address (address=)");
+  return getAddress(raw);
+}
+
+/** rh-stock-price — the on-chain tradeable price, liquidity and 24h volume for a Robinhood stock token. */
+export async function rhStockPrice(params: Record<string, string>) {
+  const address = addrOf(params);
+  const m = await rhMarket(address);
+  if (!m || m.priceUsd === null) {
+    return { address, chain: "robinhood" as const, priceUsd: null, note: "No DEX price on Robinhood Chain this call — not charged.", receipt: { refundable: true }, checkedAt: now() };
+  }
+  const depth = (m.liquidityUsd ?? 0) >= 100000 ? "deep" : (m.liquidityUsd ?? 0) >= 10000 ? "moderate" : "thin";
+  return {
+    address,
+    chain: "robinhood" as const,
+    priceUsd: m.priceUsd,
+    liquidityUsd: m.liquidityUsd,
+    volume24hUsd: m.volume24hUsd,
+    depth,
+    pool: m.pool,
+    headline: `$${m.priceUsd} on-chain${m.pool ? ` (${m.pool})` : ""} — ${depth} liquidity, $${Math.round(m.volume24hUsd ?? 0).toLocaleString()} 24h volume.`,
+    note: "On-chain DEX price of the tokenized stock — compare to the real equity to spot a de-peg. Not advice.",
+    receipt: { refundable: false },
+    checkedAt: now(),
+  };
+}
 
 /** rh-stock-verify — authentic Robinhood tokenized stock, or an impersonator? */
 export async function rhStockVerify(params: Record<string, string>) {
