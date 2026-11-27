@@ -1165,14 +1165,18 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
     },
   {
       id: "new-tokens",
-      name: "New Token Scanner",
-      tagline: "Freshly listed/profiled tokens on Base",
+      name: "Base New Pairs",
+      tagline: "Freshest Base DEX pools — poll the delta, snipe, verify",
       description:
-        "Returns the latest tokens profiled on Base from the DexScreener feed — address, description, and links. Great for discovery bots hunting new launches early.",
+        "The newest Base DEX pools (via GeckoTerminal), each with its token address, age, liquidity, 24h volume and price — the Base fresh-launch feed sniper bots watch. Built for a tight poll loop: pass since=<cursor> to get ONLY pools created since your last call, and read `cursor` back for the next poll. Optional: limit (1–40), minLiquidityUsd to filter dust. New ≠ safe: pair with token-verdict or pre-trade-gate before buying. No feed → not charged. Not advice.",
       price: "$0.01",
       icon: "🆕",
       category: "Onchain",
-      params: [],
+      params: [
+        { name: "since", label: "Cursor (ISO) — only newer pools", placeholder: "2026-11-27T08:00:00Z", required: false },
+        { name: "limit", label: "Max pools (1–40)", placeholder: "20", required: false },
+        { name: "minLiquidityUsd", label: "Min liquidity USD", placeholder: "0", required: false },
+      ],
       handler: newTokens,
       noFreeTier: true, // paid-only: discovery bots scrape this for free; make them pay (or leave)
     },

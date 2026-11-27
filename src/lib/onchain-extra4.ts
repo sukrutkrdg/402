@@ -1,102 +1,114 @@
 /**
- * New Token Scanner — recently listed/profiled tokens on Base.
- *
- * Uses the free DexScreener token-profiles feed (latest profiled tokens across
- * chains), filtered to Base. Great for discovery bots hunting fresh launches.
- * Throws on upstream failure so x402 doesn't charge for an empty answer.
+ * new-tokens — the freshest Base DEX pools, the Base fresh-launch feed (the
+ * ax1.vc model: a cheap feed a sniper polls in a tight loop). GeckoTerminal
+ * new_pools, keyless, with each pool's address, age, liquidity, 24h volume and
+ * price. Loop-friendly: pass `since=<cursor>` to get only pools created since
+ * your last poll and read `cursor` back. Throws on upstream failure so x402
+ * doesn't charge for an empty answer.
  */
 
 import "server-only";
 
-interface TokenProfile {
-  chainId?: string;
-  tokenAddress?: string;
-  description?: string;
-  url?: string;
-  icon?: string;
-  links?: Array<{ type?: string; label?: string; url?: string }>;
+interface BasePool {
+  address: string;
+  name: string;
+  createdAt: string;
+  ageMinutes: number;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  priceUsd: number | null;
 }
 
-// GeckoTerminal "new pools" — the FRESHEST Base launches (where honeypots live).
-// Far richer for Base than DexScreener's profile/boost feeds. Returns TokenProfile
-// shape so it merges with the others.
-async function geckoNewPools(): Promise<TokenProfile[]> {
-  const out: TokenProfile[] = [];
-  for (const page of [1, 2]) {
+/** Freshest Base DEX pools (GeckoTerminal new_pools), newest first. null = upstream down. */
+async function baseNewPools(pages = 2): Promise<BasePool[] | null> {
+  const out: BasePool[] = [];
+  let anyOk = false;
+  const nowMs = Date.now();
+  const num = (v: unknown): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  for (let page = 1; page <= pages; page++) {
     try {
-      const res = await fetch(
-        `https://api.geckoterminal.com/api/v2/networks/base/new_pools?page=${page}`,
-        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
-      );
+      const res = await fetch(`https://api.geckoterminal.com/api/v2/networks/base/new_pools?page=${page}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(8000),
+      });
       if (!res.ok) continue;
+      anyOk = true;
       const j = (await res.json()) as {
-        data?: Array<{ attributes?: { name?: string }; relationships?: { base_token?: { data?: { id?: string } } } }>;
+        data?: Array<{ attributes?: Record<string, unknown>; relationships?: { base_token?: { data?: { id?: string } } } }>;
       };
       for (const p of j.data ?? []) {
-        const id = p.relationships?.base_token?.data?.id ?? ""; // "base_0x…"
-        const addr = id.includes("_") ? id.split("_")[1] : null;
-        if (addr && /^0x[0-9a-fA-F]{40}$/.test(addr)) {
-          out.push({ chainId: "base", tokenAddress: addr, description: p.attributes?.name });
-        }
+        const a = p.attributes ?? {};
+        const id = String(p.relationships?.base_token?.data?.id ?? ""); // "base_0x…"
+        const address = id.includes("_") ? id.split("_")[1] : "";
+        if (!/^0x[0-9a-fA-F]{40}$/.test(address)) continue;
+        const createdAt = String(a.pool_created_at ?? "");
+        out.push({
+          address,
+          name: String(a.name ?? ""),
+          createdAt,
+          ageMinutes: createdAt ? Math.round((nowMs - Date.parse(createdAt)) / 60000) : -1,
+          liquidityUsd: num(a.reserve_in_usd),
+          volume24hUsd: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
+          priceUsd: num(a.base_token_price_usd),
+        });
       }
     } catch {
       /* best-effort per page */
     }
   }
-  return out;
-}
-
-export async function newTokens(_params: Record<string, string>) {
-  // Merge multiple free feeds — GeckoTerminal new-pools (freshest Base launches,
-  // where scams live) + DexScreener profiles + boosts — to maximise the fresh
-  // candidate set the scout screens. More fresh candidates = more scams caught.
-  const dexFeeds = [
-    "https://api.dexscreener.com/token-profiles/latest/v1",
-    "https://api.dexscreener.com/token-boosts/latest/v1",
-  ];
-  const results = await Promise.allSettled([
-    geckoNewPools(),
-    ...dexFeeds.map(async (u) => {
-      const res = await fetch(u, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error(`DexScreener responded ${res.status}`);
-      return (await res.json()) as TokenProfile[];
-    }),
-  ]);
-  const raw: TokenProfile[] = results.flatMap((r) =>
-    r.status === "fulfilled" && Array.isArray(r.value) ? r.value : [],
-  );
-  if (raw.length === 0) {
-    throw new Error("New-token feed unavailable: all feeds returned nothing");
-  }
-
+  if (!anyOk) return null; // every page failed → upstream down → caller refunds
   const seen = new Set<string>();
-  const tokens = raw
-    .filter((t) => t.chainId === "base" && typeof t.tokenAddress === "string")
-    .filter((t) => {
-      const a = (t.tokenAddress || "").toLowerCase();
-      if (seen.has(a)) return false;
-      seen.add(a);
+  return out
+    .filter((p) => {
+      const k = p.address.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
       return true;
     })
-    .slice(0, 40)
-    .map((t) => ({
-      tokenAddress: t.tokenAddress ?? null,
-      description:
-        typeof t.description === "string" ? t.description.trim().slice(0, 160) || null : null,
-      url: typeof t.url === "string" && t.url.startsWith("https://") ? t.url : null,
-      links: Array.isArray(t.links)
-        ? t.links
-            .map((l) => l.url)
-            .filter((u): u is string => typeof u === "string" && u.startsWith("https://"))
-            .slice(0, 5)
-        : [],
-    }));
+    .sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""));
+}
 
+/** Parse an ISO `since` cursor → epoch ms, or null. Lets an agent poll for deltas. */
+function sinceMs(params: Record<string, string>): number | null {
+  const raw = (params.since || "").trim();
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? t : null;
+}
+/** Newest `createdAt` across the feed → the cursor to pass back next poll. */
+function newestCursor(pools: { createdAt?: string }[], prev?: string): string | null {
+  let max = prev ? Date.parse(prev) : 0;
+  for (const p of pools) {
+    const t = p.createdAt ? Date.parse(p.createdAt) : 0;
+    if (Number.isFinite(t) && t > max) max = t;
+  }
+  return max ? new Date(max).toISOString() : prev || null;
+}
+
+export async function newTokens(params: Record<string, string>) {
+  const limit = Math.min(Math.max(Number(params.limit) || 20, 1), 40);
+  const minLiq = Math.max(Number(params.minLiquidityUsd) || 0, 0);
+  const since = sinceMs(params);
+  const pools = await baseNewPools(2);
+  if (pools === null) throw new Error("Base new-pools feed unavailable — not charged; retry shortly.");
+  const cursor = newestCursor(pools, params.since);
+  let pairs = pools.filter((p) => (p.liquidityUsd ?? 0) >= minLiq);
+  if (since != null) pairs = pairs.filter((p) => p.createdAt && Date.parse(p.createdAt) > since);
+  pairs = pairs.slice(0, limit);
   return {
-    chain: "base",
-    count: tokens.length,
-    tokens,
-    source: "GeckoTerminal new-pools + DexScreener profiles/boosts",
+    chain: "base" as const,
+    count: pairs.length,
+    cursor,
+    headline:
+      since != null
+        ? `${pairs.length} NEW Base pool${pairs.length === 1 ? "" : "s"} since your last poll.`
+        : `${pairs.length} fresh Base pool${pairs.length === 1 ? "" : "s"}, newest ${pairs[0]?.ageMinutes ?? "?"}m old.`,
+    note: "New ≠ safe — run token-verdict or pre-trade-gate on an address before buying. Poll with ?since=<cursor> to get only pools created since your last call.",
+    pairs,
+    source: "GeckoTerminal new-pools (Base)",
     checkedAt: new Date().toISOString(),
   };
 }
