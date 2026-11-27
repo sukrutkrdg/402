@@ -1,4 +1,4 @@
-# x402 Bazaar — Pay-per-call API marketplace for agents on Base, Solana, Arbitrum & NEAR
+# x402 Bazaar — Pay-per-call API marketplace for agents on Base, Solana, Arbitrum, Robinhood & NEAR
 
 [![Open Source: MIT](https://img.shields.io/badge/open%20source-MIT-0052FF)](LICENSE)
 [![Built on Base](https://img.shields.io/badge/built%20on-Base-0052FF)](https://base.org)
@@ -8,9 +8,9 @@
 
 [![402.com.tr on Agent Charts, ranked weekly by AI-agent spend](https://agentcharts.xyz/badges/402.com.tr/compact.svg)](https://agentcharts.xyz/sellers/402.com.tr/)
 
-A **live pay-per-call API marketplace** led by **token-verdict** — one call → SAFE / CAUTION / AVOID for any **Base, Solana or Arbitrum** token. Settles in USDC on **Base or Solana** over x402; NEAR agents pay from **NEAR** via credits — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
+A **live pay-per-call API marketplace** led by **token-verdict** — one call → SAFE / CAUTION / AVOID for any **Base, Solana or Arbitrum** token, plus **Robinhood Chain** tokenized-stock authenticity. Settles in USDC on **Base or Solana** over x402; NEAR agents pay from **NEAR** via credits — [402.com.tr](https://402.com.tr) · [402.com.tr/near](https://402.com.tr/near).
 Open source (MIT) — every settlement is verifiable on-chain, no DB and no trust required (decode the Builder Codes yourself at [`/dashboard`](https://402.com.tr/dashboard)).
-229 public services ([live catalogue](https://402.com.tr/api/catalog) is the source of truth) — token safety,
+240+ public services ([live catalogue](https://402.com.tr/api/catalog) is the source of truth) — token safety,
 a 30-tool B20 protection suite incl. real-time seizure alerts and cover for all of Coinbase's
 tokenized equities, Cobalt coverage (validity/conditional swaps, composite policies, scheduled
 multiplier), a full x402 agent-trust suite (seller & payer reputation, Know-Your-Agent identity,
