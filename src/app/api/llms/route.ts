@@ -19,7 +19,7 @@ export function GET() {
     // doesn't have one — which is most of them. The free call and the credit
     // token both work with no wallet at all; that fact was buried three
     // paragraphs down while the crypto framing did the filtering.
-    "> Web search, page-to-JSON, token safety and wallet intelligence as plain HTTP APIs for agents. No API key, no account, no signup. Try any endpoint free right now — add ?free=1 for one free call per service per day, no wallet needed.",
+    "> Fresh-launch feeds (Base & Solana new-pairs / safe-launches, delta-pollable), token safety, web search, page-to-JSON and wallet intelligence as plain HTTP APIs for agents. No API key, no account, no signup. Try any endpoint free right now — add ?free=1 for one free call per service per day, no wallet needed.",
     "",
     "## No wallet? Two of the three ways in need none",
     `1. FREE — add ?free=1 (or header x-402-free: 1) for ${freeLimit()} free call/day per service. Nothing to install, nothing to sign.`,

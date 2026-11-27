@@ -64,6 +64,26 @@ export const SOLANA_DEVNET = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 export const SOLANA_NETWORK: Network = (process.env.SOLANA_X402_NETWORK?.trim() || SOLANA_MAINNET) as Network;
 /** USDC on Solana (SPL mint). */
 export const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+// ── Tempo (groundwork — NOT yet a live payment network) ──────────────────────
+// Tempo is Stripe+Paradigm's EVM payments L1 (chain 4217, live 2026-03-18). It's
+// a real x402 venue — aisa.one does ~$2,084/mo entirely on Tempo — so accepting
+// USDC there would tap a market we're absent from. Two deliberate blockers before
+// it can be flipped on:
+//   1. Settlement: our CDP facilitator settles Base + Solana, NOT Tempo — Tempo's
+//      x402 runs on Stripe's Machine Payments Protocol facilitator. We'd wait for
+//      CDP to add eip155:4217, or register Stripe's facilitator/scheme ourselves.
+//   2. EVM ambiguity: Tempo and Base are both eip155, so advertising both in one
+//      accepts[] hands an EVM payer a choice to resolve — the exact reason
+//      EXTRA_NETWORKS is empty. Enabling Tempo means handling that, not appending.
+// These constants live here so enabling is a config change, not a code hunt. The
+// plan + decision is in TEMPO.md. Nothing here is wired into the live accepts[].
+export const TEMPO_NETWORK: Network = "eip155:4217";
+export const TEMPO_CHAIN_ID = 4217;
+export const TEMPO_RPC_URL = process.env.TEMPO_RPC_URL?.trim() || "https://rpc.tempo.xyz";
+/** USDC on Tempo. */
+export const TEMPO_USDC = "0x20c000000000000000000000b9537d11c60e8b50";
+
 /** Where Solana USDC lands — a base58 Solana address, NEVER the EVM payTo. */
 export function getSolanaPayTo(): string {
   return process.env.SOLANA_PAY_TO?.trim() || "";
