@@ -43,3 +43,4 @@ _*.md
 
 # hero/OG image render artifact
 scripts/.hero.svg
+scripts/paid-sweep-results.json
