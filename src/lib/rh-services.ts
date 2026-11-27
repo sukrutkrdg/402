@@ -9,6 +9,7 @@
 import "server-only";
 import { getAddress } from "viem";
 import { readRhStock, rhMarket } from "./robinhood/stock-reads";
+import { realStockPrice } from "./stock-quote";
 
 const now = () => new Date().toISOString();
 
@@ -35,6 +36,71 @@ export async function rhStockPrice(params: Record<string, string>) {
     depth,
     headline: `$${m.priceUsd} on-chain — ${depth} liquidity ($${Math.round(m.liquidityUsd ?? 0).toLocaleString()}), $${Math.round(m.volume24hUsd ?? 0).toLocaleString()} 24h volume.`,
     note: "On-chain DEX price of the tokenized stock — compare to the real equity to spot a de-peg. Not advice.",
+    receipt: { refundable: false },
+    checkedAt: now(),
+  };
+}
+
+/** rh-stock-peg — does the tokenized stock still track the real equity, or has it de-pegged? */
+export async function rhStockPeg(params: Record<string, string>) {
+  const address = addrOf(params);
+  const [s, m] = await Promise.all([readRhStock(address), rhMarket(address)]);
+  const ticker = s?.symbol ?? null;
+  if (!s || !ticker) {
+    return { address, chain: "robinhood" as const, verdict: "UNKNOWN", pegPct: null, note: "Could not read the stock ticker on-chain — not charged.", receipt: { refundable: true }, checkedAt: now() };
+  }
+  const real = await realStockPrice(ticker);
+  if (!m || m.priceUsd === null || real === null) {
+    return { address, chain: "robinhood" as const, ticker, verdict: "UNKNOWN", pegPct: null, note: "On-chain or real price unavailable this call — not charged.", receipt: { refundable: true }, checkedAt: now() };
+  }
+  const pegPct = ((m.priceUsd - real) / real) * 100;
+  const abs = Math.abs(pegPct);
+  const verdict = abs < 2 ? "IN_PEG" : pegPct > 0 ? "PREMIUM" : "DISCOUNT";
+  return {
+    address,
+    chain: "robinhood" as const,
+    ticker,
+    verdict,
+    verified: s.verified,
+    onchainPriceUsd: m.priceUsd,
+    realPriceUsd: real,
+    pegPct: +pegPct.toFixed(2),
+    headline:
+      verdict === "IN_PEG"
+        ? `${ticker} tracking its real price — on-chain $${m.priceUsd} vs real $${real} (${pegPct >= 0 ? "+" : ""}${pegPct.toFixed(2)}%).`
+        : `${ticker} trading at a ${abs.toFixed(2)}% ${verdict === "PREMIUM" ? "PREMIUM over" : "DISCOUNT to"} its real price — on-chain $${m.priceUsd} vs real $${real}.`,
+    note: "On-chain DEX price vs the real equity's last market price (Yahoo). A wide gap = premium/discount (thin pools, after-hours, or stale). Not advice.",
+    receipt: { refundable: false },
+    checkedAt: now(),
+  };
+}
+
+/** rh-stock-bundle — the whole Robinhood-stock read in one call: authenticity + price + peg + liquidity. */
+export async function rhStockBundle(params: Record<string, string>) {
+  const address = addrOf(params);
+  const [s, m] = await Promise.all([readRhStock(address), rhMarket(address)]);
+  if (!s) {
+    return { address, chain: "robinhood" as const, verdict: "UNKNOWN", note: "Could not read Robinhood Chain this call — not charged.", receipt: { refundable: true }, checkedAt: now() };
+  }
+  const ticker = s.symbol ?? null;
+  const real = ticker ? await realStockPrice(ticker) : null;
+  const pegPct = m?.priceUsd != null && real != null ? ((m.priceUsd - real) / real) * 100 : null;
+  const pegVerdict = pegPct == null ? "UNKNOWN" : Math.abs(pegPct) < 2 ? "IN_PEG" : pegPct > 0 ? "PREMIUM" : "DISCOUNT";
+  return {
+    address,
+    chain: "robinhood" as const,
+    ticker,
+    name: s.name,
+    authentic: s.verified,
+    onchainPriceUsd: m?.priceUsd ?? null,
+    realPriceUsd: real,
+    pegPct: pegPct != null ? +pegPct.toFixed(2) : null,
+    pegVerdict,
+    liquidityUsd: m?.liquidityUsd ?? null,
+    volume24hUsd: m?.volume24hUsd ?? null,
+    supply: s.supply,
+    headline: `${ticker ?? "?"}: ${s.verified ? "AUTHENTIC" : "UNVERIFIED"}${pegPct != null ? ` · ${pegVerdict} (${pegPct >= 0 ? "+" : ""}${pegPct.toFixed(2)}%)` : ""}${m?.priceUsd != null ? ` · $${m.priceUsd} on-chain` : ""}.`,
+    note: "Authenticity (official issuance?), on-chain vs real price (peg), and liquidity — in one call. Not advice.",
     receipt: { refundable: false },
     checkedAt: now(),
   };

@@ -127,8 +127,11 @@ describe("index refresh spends inside a ceiling", () => {
     // $8.662 since 2026-11-25 with log-analyze ($0.002, self-hosted vLLM log triage).
     // $8.68 since 2026-11-27 with rh-stock-verify ($0.02, Robinhood Chain
     // tokenized-stock authenticity — early-mover on chain 4663).
+    // $8.70 since 2026-11-27 with rh-stock-price ($0.02, on-chain price/liquidity).
+    // $8.78 since 2026-11-27 with rh-stock-peg ($0.03, on-chain vs real-equity
+    // de-peg) and rh-stock-bundle ($0.05, authenticity+price+peg+liquidity one call).
     // Raise it only for a listed service, never to absorb drift.
-    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.71);
+    expect(total / 100, `worst-case cycle is $${(total / 100).toFixed(2)}`).toBeLessThan(8.80);
     // And the daily cap must be able to clear that inside one 21-day cycle, or
     // the refresh silently falls behind the window it exists to stay inside.
     const capCents = Number(cron.match(/MAX_SPEND_CENTS = (\d+)/)?.[1]);
