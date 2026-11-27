@@ -144,7 +144,7 @@ export const ONCHAIN_SERVICES: ServiceDef[] = [
       name: "Sign Guard",
       tagline: "Should the agent sign THIS calldata? GO/HOLD/STOP",
       description:
-        "The check before the riskiest moment — signing. Decodes raw unsigned calldata (approve / permit / transfer / setApprovalForAll), shows the exact intent (who gets power over what, and whether it's UNLIMITED), and screens the destination + spender for OFAC sanctions and dangerous owner powers, in one GO/HOLD/STOP verdict + receipt. No simulation needed — pure decode + onchain risk. Catches the unlimited-approval drain vector before it's signed.",
+        "The check before the riskiest moment — signing. Decodes raw unsigned calldata (approve / permit / transfer / setApprovalForAll) — and unwraps EIP-8430 Base Transactions / EIP-5792 / smart-account BATCHES to inspect every inner call — shows the exact intent (who gets power over what, and whether it's UNLIMITED), and screens the destination + spender for OFAC sanctions and dangerous owner powers, in one GO/HOLD/STOP verdict + receipt. No simulation needed — pure decode + onchain risk. Catches the unlimited-approval drain vector — even hidden inside a batch — before it's signed.",
       price: "$0.06",
       icon: "✍️",
       category: "Onchain",
