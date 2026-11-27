@@ -47,29 +47,31 @@ export interface RhMarket {
   priceUsd: number | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
-  pool: string | null;
 }
 
-/** Tokenized-stock DEX price/liquidity/volume via GeckoTerminal (keyless). Secondary. */
+/**
+ * Tokenized-stock price/liquidity/volume via GeckoTerminal's token endpoint
+ * (keyless). Uses the token's own aggregated `price_usd` — NOT a single pool's
+ * base price, which would be the WRONG token's price when the stock is the quote
+ * side of a pair (e.g. an SPY/AAPL pool). Secondary.
+ */
 export async function rhMarket(address: string): Promise<RhMarket | null> {
   try {
-    const res = await fetch(`https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/${address}/pools?page=1`, {
+    const res = await fetch(`https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/${address}`, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
-    const j = (await res.json()) as { data?: { attributes?: Record<string, unknown> }[] };
-    const a = (j.data ?? [])[0]?.attributes;
-    if (!a) return { priceUsd: null, liquidityUsd: null, volume24hUsd: null, pool: null };
+    const a = ((await res.json()) as { data?: { attributes?: Record<string, unknown> } }).data?.attributes;
+    if (!a) return { priceUsd: null, liquidityUsd: null, volume24hUsd: null };
     const num = (v: unknown): number | null => {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
     return {
-      priceUsd: num(a.base_token_price_usd),
-      liquidityUsd: num(a.reserve_in_usd),
+      priceUsd: num(a.price_usd),
+      liquidityUsd: num(a.total_reserve_in_usd),
       volume24hUsd: num((a.volume_usd as Record<string, unknown> | undefined)?.h24),
-      pool: typeof a.name === "string" ? a.name : null,
     };
   } catch {
     return null;
